@@ -55,7 +55,4 @@ src/agente_oracle/
 ## Roadmap
 
 - [x] Esqueleto do projeto + tool de teste de conectividade
-- [ ] Catálogo de relatórios pré-definidos (queries parametrizadas)
-- [ ] Log de auditoria (usuário, relatório, parâmetros, timestamp)
-- [ ] Deploy do servidor central na infraestrutura da empresa
-- [ ] Avaliar necessidade de credenciais Oracle por usuário
+

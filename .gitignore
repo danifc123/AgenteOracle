@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Variáveis de ambiente / segredos
+.env
+.env.*
+!.env.example
+
+# Oracle wallet (se vier a ser usado)
+wallet/
+*.pem
+
+# Testes / cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

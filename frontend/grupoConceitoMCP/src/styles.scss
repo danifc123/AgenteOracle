@@ -1,1 +1,39 @@
 /* You can add global styles to this file, and also import other style files */
+
+:root {
+  --color-primary: #1b4332;
+  --color-primary-dark: #123024;
+  --color-primary-light: #2f9e58;
+  --color-bg: #eef6f0;
+  --color-surface: #ffffff;
+  --color-border: #dbe7de;
+  --color-text: #1f2a24;
+  --color-text-muted: #5b6b62;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --shadow-sm: 0 1px 3px rgba(15, 41, 26, 0.08);
+  --shadow-md: 0 4px 16px rgba(15, 41, 26, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}

@@ -1,9 +1,16 @@
+import csv
+from datetime import datetime
+from pathlib import Path
+
 from agente_oracle.db.connection import get_connection
+
+EXPORTS_DIR = Path("exports")
 
 
 def listar_transacoes_financeiras(limite: int = 20) -> str:
     """Lista as transações financeiras mais recentes, unindo (INNER JOIN) a conta
-    bancária, a categoria financeira e o fornecedor/cliente de cada lançamento.
+    bancária, a categoria financeira e o fornecedor/cliente de cada lançamento, e
+    exporta o resultado em um arquivo CSV organizado e com uma tabela persolanizada com os dados.
     """
     query = """
         SELECT
@@ -35,26 +42,56 @@ def listar_transacoes_financeiras(limite: int = 20) -> str:
     if not rows:
         return "Nenhuma transação encontrada."
 
-    linhas = []
-    for (
-        id_transacao,
-        descricao,
-        tipo_transacao,
-        valor,
-        data_transacao,
-        status_transacao,
-        nome_conta,
-        banco,
-        nome_categoria,
-        tipo_categoria,
-        nome_entidade,
-        tipo_entidade,
-    ) in rows:
-        linhas.append(
-            f"#{id_transacao} | {data_transacao:%d/%m/%Y} | {tipo_transacao} | "
-            f"R$ {valor:.2f} | {status_transacao} | {descricao} | "
-            f"Conta: {nome_conta} ({banco}) | Categoria: {nome_categoria} ({tipo_categoria}) | "
-            f"{tipo_entidade}: {nome_entidade}"
-        )
+    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    caminho_arquivo = EXPORTS_DIR / f"transacoes_financeiras_{datetime.now():%Y%m%d_%H%M%S}.csv"
 
-    return "\n".join(linhas)
+    cabecalho = [
+        "ID_TRANSACAO",
+        "DATA_TRANSACAO",
+        "TIPO_TRANSACAO",
+        "STATUS_TRANSACAO",
+        "DESCRICAO",
+        "VALOR",
+        "CONTA",
+        "BANCO",
+        "CATEGORIA",
+        "TIPO_CATEGORIA",
+        "ENTIDADE",
+        "TIPO_ENTIDADE",
+    ]
+
+    with caminho_arquivo.open("w", newline="", encoding="utf-8-sig") as arquivo_csv:
+        escritor = csv.writer(arquivo_csv, delimiter=";")
+        escritor.writerow(cabecalho)
+        for (
+            id_transacao,
+            descricao,
+            tipo_transacao,
+            valor,
+            data_transacao,
+            status_transacao,
+            nome_conta,
+            banco,
+            nome_categoria,
+            tipo_categoria,
+            nome_entidade,
+            tipo_entidade,
+        ) in rows:
+            escritor.writerow(
+                [
+                    id_transacao,
+                    data_transacao.strftime("%d/%m/%Y"),
+                    tipo_transacao,
+                    status_transacao,
+                    descricao,
+                    f"{valor:.2f}",
+                    nome_conta,
+                    banco,
+                    nome_categoria,
+                    tipo_categoria,
+                    nome_entidade,
+                    tipo_entidade,
+                ]
+            )
+
+    return f"Exportação concluída: {len(rows)} transação(ões) salvas em {caminho_arquivo.resolve()}"

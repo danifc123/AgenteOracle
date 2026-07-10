@@ -52,6 +52,37 @@ src/agente_oracle/
 
 5. Para validar a conexão, chame a tool `testar_conexao_oracle` a partir de um cliente MCP apontando para esse servidor.
 
+## Agente local (Ollama)
+
+Para conversar com o agente sem gastar tokens de API paga, ele roda localmente usando o [Ollama](https://ollama.com/).
+
+1. Instale o Ollama e baixe um modelo com suporte a *tool calling*:
+
+   ```powershell
+   ollama pull qwen2.5:7b
+   ```
+
+2. Configure (opcional, já tem esses valores como padrão) no `.env`:
+
+   ```
+   OLLAMA_HOST=http://127.0.0.1:11434
+   OLLAMA_MODEL=qwen2.5:7b
+   ```
+
+3. Em um terminal, suba o servidor MCP:
+
+   ```powershell
+   agente-oracle
+   ```
+
+4. Em outro terminal, suba o agente de chat (conecta no MCP acima e no Ollama local):
+
+   ```powershell
+   agente-oracle-chat
+   ```
+
+   Digite perguntas como "quais foram as últimas transações?" ou "teste a conexão com o Oracle". Digite `sair` para encerrar.
+
 ## Roadmap
 
 - [x] Esqueleto do projeto + tool de teste de conectividade

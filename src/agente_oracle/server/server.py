@@ -1,10 +1,10 @@
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from agente_oracle.config import settings
 from agente_oracle.tools.connectivity import check_oracle_connection
-from agente_oracle.tools.financeiro import exportar_transacoes_csv, listar_transacoes_financeiras
+from agente_oracle.tools.financeiro import exportar_transacoes_csv, listar_transacoes_json
 
 mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
 
@@ -15,11 +15,12 @@ def testar_conexao_oracle() -> str:
     return check_oracle_connection()
 
 
-@mcp.tool()
-def listar_transacoes(limite: int = 20) -> str:
-    """Lista as transações financeiras mais recentes, com dados da conta bancária,
-    categoria e fornecedor/cliente vinculados (via INNER JOIN)."""
-    return listar_transacoes_financeiras(limite)
+@mcp.custom_route("/api/transacoes", methods=["GET"])
+async def listar_transacoes_route(request: Request) -> JSONResponse:
+    """Endpoint HTTP usado pelo frontend para preencher a tabela de transações."""
+    limite = int(request.query_params.get("limite", 20))
+    transacoes = listar_transacoes_json(limite)
+    return JSONResponse(transacoes, headers={"Access-Control-Allow-Origin": "*"})
 
 
 @mcp.custom_route("/api/transacoes/exportar", methods=["GET"])

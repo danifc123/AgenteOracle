@@ -16,4 +16,10 @@
   <p class="erro-exportacao">{{ erroExportacao() }}</p>
 }
 
-<app-tabela-transacoes [transacoes]="transacoes" />
+@if (carregando()) {
+  <p class="carregando">Carregando transações...</p>
+} @else if (erroCarregamento()) {
+  <p class="erro-exportacao">{{ erroCarregamento() }}</p>
+} @else {
+  <app-tabela-transacoes [transacoes]="transacoes" />
+}

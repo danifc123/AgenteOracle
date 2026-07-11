@@ -1,6 +1,5 @@
 .table-wrapper {
   width: 100%;
-  overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -8,20 +7,55 @@
 
 .tabela-transacoes {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13.5px;
+
+  .col-data {
+    width: 9%;
+  }
+
+  .col-descricao {
+    width: 22%;
+  }
+
+  .col-categoria {
+    width: 14%;
+  }
+
+  .col-entidade {
+    width: 16%;
+  }
+
+  .col-conta {
+    width: 13%;
+  }
+
+  .col-tipo {
+    width: 9%;
+  }
+
+  .col-valor {
+    width: 10%;
+  }
+
+  .col-status {
+    width: 7%;
+  }
 
   th,
   td {
-    padding: 12px 16px;
+    padding: 10px 12px;
     text-align: left;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    vertical-align: top;
   }
 
   thead th {
     color: var(--color-text-muted);
     font-weight: 600;
-    font-size: 12px;
+    font-size: 11.5px;
     text-transform: uppercase;
     letter-spacing: 0.03em;
     border-bottom: 1px solid var(--color-border);

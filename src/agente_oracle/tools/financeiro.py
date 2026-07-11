@@ -1,11 +1,8 @@
 import csv
 import io
 from datetime import datetime
-from pathlib import Path
 
 from agente_oracle.db.connection import get_connection
-
-EXPORTS_DIR = Path("exports")
 
 _QUERY = """
     SELECT
@@ -83,26 +80,38 @@ def _linha_csv(row: tuple) -> list:
     ]
 
 
-def listar_transacoes_financeiras(limite: int = 20) -> str:
+def listar_transacoes_json(limite: int = 20) -> list[dict]:
     """Lista as transações financeiras mais recentes, unindo (INNER JOIN) a conta
-    bancária, a categoria financeira e o fornecedor/cliente de cada lançamento, e
-    exporta o resultado em um arquivo CSV organizado e com uma tabela persolanizada com os dados.
-    """
+    bancária, a categoria financeira e o fornecedor/cliente de cada lançamento, no
+    formato usado pela tabela do frontend."""
     rows = _buscar_transacoes(limite)
-
-    if not rows:
-        return "Nenhuma transação encontrada."
-
-    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    caminho_arquivo = EXPORTS_DIR / f"transacoes_financeiras_{datetime.now():%Y%m%d_%H%M%S}.csv"
-
-    with caminho_arquivo.open("w", newline="", encoding="utf-8-sig") as arquivo_csv:
-        escritor = csv.writer(arquivo_csv, delimiter=";")
-        escritor.writerow(_CABECALHO)
-        for row in rows:
-            escritor.writerow(_linha_csv(row))
-
-    return f"Exportação concluída: {len(rows)} transação(ões) salvas em {caminho_arquivo.resolve()}"
+    return [
+        {
+            "idTransacao": id_transacao,
+            "descricao": descricao,
+            "valor": float(valor),
+            "dataTransacao": data_transacao.strftime("%Y-%m-%d"),
+            "tipoTransacao": tipo_transacao,
+            "statusTransacao": status_transacao,
+            "conta": {"nomeConta": nome_conta, "banco": banco},
+            "categoria": {"nomeCategoria": nome_categoria, "tipoCategoria": tipo_categoria},
+            "entidade": {"nome": nome_entidade, "tipoEntidade": tipo_entidade},
+        }
+        for (
+            id_transacao,
+            descricao,
+            tipo_transacao,
+            valor,
+            data_transacao,
+            status_transacao,
+            nome_conta,
+            banco,
+            nome_categoria,
+            tipo_categoria,
+            nome_entidade,
+            tipo_entidade,
+        ) in rows
+    ]
 
 
 def exportar_transacoes_csv(limite: int = 20) -> tuple[bytes, str]:

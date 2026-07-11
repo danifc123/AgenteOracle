@@ -13,8 +13,30 @@ export class Transacoes {
   private readonly http = inject(HttpClient);
 
   transacoes: Transacao[] = [];
+  carregando = signal(true);
+  erroCarregamento = signal<string | null>(null);
   exportando = signal(false);
   erroExportacao = signal<string | null>(null);
+
+  constructor() {
+    this.carregarTransacoes();
+  }
+
+  carregarTransacoes(): void {
+    this.carregando.set(true);
+    this.erroCarregamento.set(null);
+
+    this.http.get<Transacao[]>(`${MCP_API_BASE_URL}/api/transacoes`).subscribe({
+      next: (transacoes) => {
+        this.transacoes = transacoes;
+        this.carregando.set(false);
+      },
+      error: () => {
+        this.erroCarregamento.set('Não foi possível carregar as transações. Verifique se o servidor está em execução.');
+        this.carregando.set(false);
+      }
+    });
+  }
 
   exportarRelatorio(): void {
     this.exportando.set(true);

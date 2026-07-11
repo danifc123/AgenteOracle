@@ -83,9 +83,17 @@ h1 {
   font-style: italic;
 }
 
-.consulta-usada {
+.acoes-relatorio {
   margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.consulta-usada {
   font-size: 12px;
+  width: 100%;
 
   summary {
     cursor: pointer;
@@ -102,6 +110,28 @@ h1 {
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--color-text-muted);
+  }
+}
+
+.btn-baixar-relatorio {
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-primary);
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 }
 

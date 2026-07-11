@@ -72,6 +72,6 @@ export class Transacoes {
 
   private extrairNomeArquivo(contentDisposition: string | null): string {
     const match = contentDisposition?.match(/filename="?([^"]+)"?/);
-    return match?.[1] ?? 'transacoes_financeiras.csv';
+    return match?.[1] ?? 'transacoes_financeiras.xlsx';
   }
 }

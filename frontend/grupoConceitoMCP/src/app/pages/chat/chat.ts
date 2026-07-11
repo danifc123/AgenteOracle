@@ -32,6 +32,7 @@ export class Chat {
   entrada = signal('');
   enviando = signal(false);
   erro = signal<string | null>(null);
+  baixandoSql = signal<string | null>(null);
 
   constructor() {
     effect(() => {
@@ -82,5 +83,44 @@ export class Chat {
           this.enviando.set(false);
         }
       });
+  }
+
+  baixarRelatorio(sql: string): void {
+    if (this.baixandoSql()) {
+      return;
+    }
+
+    this.baixandoSql.set(sql);
+    this.erro.set(null);
+
+    this.http
+      .post(`${MCP_API_BASE_URL}/api/relatorio/exportar`, { sql }, { observe: 'response', responseType: 'blob' })
+      .subscribe({
+        next: (resposta) => {
+          const blob = resposta.body;
+          if (!blob) {
+            this.baixandoSql.set(null);
+            return;
+          }
+
+          const nomeArquivo = this.extrairNomeArquivo(resposta.headers.get('content-disposition'));
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = nomeArquivo;
+          link.click();
+          URL.revokeObjectURL(url);
+          this.baixandoSql.set(null);
+        },
+        error: () => {
+          this.erro.set('Não foi possível gerar o Excel do relatório.');
+          this.baixandoSql.set(null);
+        }
+      });
+  }
+
+  private extrairNomeArquivo(contentDisposition: string | null): string {
+    const match = contentDisposition?.match(/filename="?([^"]+)"?/);
+    return match?.[1] ?? 'relatorio.xlsx';
   }
 }

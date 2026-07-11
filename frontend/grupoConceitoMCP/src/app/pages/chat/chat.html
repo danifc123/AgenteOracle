@@ -26,10 +26,25 @@
           @if (mensagem.consultas?.length) {
             @for (consulta of mensagem.consultas; track $index) {
               @if (consulta.argumentos['sql']) {
-                <details class="consulta-usada">
-                  <summary>Ver consulta usada</summary>
-                  <pre>{{ consulta.argumentos['sql'] }}</pre>
-                </details>
+                <div class="acoes-relatorio">
+                  <details class="consulta-usada">
+                    <summary>Ver consulta usada</summary>
+                    <pre>{{ consulta.argumentos['sql'] }}</pre>
+                  </details>
+
+                  <button
+                    type="button"
+                    class="btn-baixar-relatorio"
+                    [disabled]="baixandoSql() === consulta.argumentos['sql']"
+                    (click)="baixarRelatorio($any(consulta.argumentos['sql']))"
+                  >
+                    @if (baixandoSql() === consulta.argumentos['sql']) {
+                      Gerando Excel...
+                    } @else {
+                      Baixar em Excel
+                    }
+                  </button>
+                </div>
               }
             }
           }

@@ -1,8 +1,7 @@
-import csv
-import io
 from datetime import datetime
 
 from agente_oracle.db.connection import get_connection
+from agente_oracle.relatorios import gerar_xlsx
 
 _QUERY = """
     SELECT
@@ -49,7 +48,7 @@ def _buscar_transacoes(limite: int) -> list[tuple]:
         return cursor.fetchall()
 
 
-def _linha_csv(row: tuple) -> list:
+def _linha_relatorio(row: tuple) -> list:
     (
         id_transacao,
         descricao,
@@ -70,7 +69,7 @@ def _linha_csv(row: tuple) -> list:
         tipo_transacao,
         status_transacao,
         descricao,
-        f"{valor:.2f}",
+        float(valor),
         nome_conta,
         banco,
         nome_categoria,
@@ -114,16 +113,11 @@ def listar_transacoes_json(limite: int = 20) -> list[dict]:
     ]
 
 
-def exportar_transacoes_csv(limite: int = 20) -> tuple[bytes, str]:
-    """Gera o mesmo relatório de transações em memória (bytes CSV, com BOM utf-8
-    para acentuação correta no Excel), para download direto pelo navegador."""
+def exportar_transacoes_xlsx(limite: int = 20) -> tuple[bytes, str]:
+    """Gera o mesmo relatório de transações em memória como um arquivo Excel
+    (.xlsx), no mesmo formato usado pelos relatórios gerados pela IA no chat,
+    para download direto pelo navegador."""
     rows = _buscar_transacoes(limite)
-
-    buffer = io.StringIO()
-    escritor = csv.writer(buffer, delimiter=";")
-    escritor.writerow(_CABECALHO)
-    for row in rows:
-        escritor.writerow(_linha_csv(row))
-
-    nome_arquivo = f"transacoes_financeiras_{datetime.now():%Y%m%d_%H%M%S}.csv"
-    return (b"\xef\xbb\xbf" + buffer.getvalue().encode("utf-8")), nome_arquivo
+    conteudo_xlsx = gerar_xlsx(_CABECALHO, [_linha_relatorio(row) for row in rows], titulo="Transações")
+    nome_arquivo = f"transacoes_financeiras_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    return conteudo_xlsx, nome_arquivo

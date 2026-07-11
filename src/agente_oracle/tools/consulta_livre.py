@@ -3,6 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from agente_oracle.db.connection import get_connection
+from agente_oracle.relatorios import gerar_xlsx
 
 TABELAS_PERMITIDAS = {
     "TRANSACOES",
@@ -83,6 +84,19 @@ def _serializar(valor):
     return valor
 
 
+def _executar_validada(sql: str) -> tuple[list[str], list[tuple]]:
+    sql_validado = _validar_consulta(sql)
+
+    with get_connection() as connection:
+        connection.call_timeout = TIMEOUT_MS
+        cursor = connection.cursor()
+        cursor.execute(sql_validado)
+        colunas = [descricao[0] for descricao in cursor.description]
+        linhas = cursor.fetchall()
+
+    return colunas, linhas
+
+
 def executar_consulta_financeira(sql: str) -> list[dict]:
     """Executa uma consulta SELECT sobre as tabelas financeiras do Oracle
     (TRANSACOES, CONTAS_BANCARIAS, CATEGORIAS_FINANCEIRAS, FORNECEDORES_CLIENTES,
@@ -94,13 +108,13 @@ def executar_consulta_financeira(sql: str) -> list[dict]:
     as tabelas financeiras listadas acima, combinando com JOIN quando precisar
     relacionar dados; nunca invente colunas ou tabelas fora do esquema conhecido.
     """
-    sql_validado = _validar_consulta(sql)
-
-    with get_connection() as connection:
-        connection.call_timeout = TIMEOUT_MS
-        cursor = connection.cursor()
-        cursor.execute(sql_validado)
-        colunas = [descricao[0] for descricao in cursor.description]
-        linhas = cursor.fetchall()
-
+    colunas, linhas = _executar_validada(sql)
     return [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
+
+
+def exportar_consulta_financeira_xlsx(sql: str) -> bytes:
+    """Roda a mesma consulta validada (SELECT, tabelas financeiras permitidas) e
+    monta um arquivo Excel (.xlsx) em memória com o resultado, para download."""
+    colunas, linhas = _executar_validada(sql)
+    linhas_serializadas = [[_serializar(valor) for valor in linha] for linha in linhas]
+    return gerar_xlsx(colunas, linhas_serializadas, titulo="Relatório")

@@ -1,0 +1,76 @@
+<header class="page-header">
+  <div>
+    <p class="breadcrumb">Assistente IA</p>
+    <h1>Converse com o Agente Oracle</h1>
+  </div>
+</header>
+
+<section class="chat-card">
+  <div class="mensagens" #listaMensagens>
+    @if (!mensagens().length) {
+      <div class="boas-vindas">
+        <p>Pergunte sobre transações, contas, categorias ou peça um relatório financeiro. Por exemplo:</p>
+        <ul>
+          <li>"Quais foram as últimas transações pagas?"</li>
+          <li>"Quanto foi gasto por categoria nos últimos meses?"</li>
+          <li>"Monte um relatório de receitas por cliente"</li>
+        </ul>
+      </div>
+    }
+
+    @for (mensagem of mensagens(); track $index) {
+      <div class="mensagem" [class.usuario]="mensagem.role === 'user'" [class.assistente]="mensagem.role === 'assistant'">
+        <div class="balao">
+          {{ mensagem.content }}
+
+          @if (mensagem.consultas?.length) {
+            @for (consulta of mensagem.consultas; track $index) {
+              @if (consulta.argumentos['sql']) {
+                <div class="acoes-relatorio">
+                  <details class="consulta-usada">
+                    <summary>Ver consulta usada</summary>
+                    <pre>{{ consulta.argumentos['sql'] }}</pre>
+                  </details>
+
+                  <button
+                    type="button"
+                    class="btn-baixar-relatorio"
+                    [disabled]="baixandoSql() === consulta.argumentos['sql']"
+                    (click)="baixarRelatorio($any(consulta.argumentos['sql']))"
+                  >
+                    @if (baixandoSql() === consulta.argumentos['sql']) {
+                      Gerando Excel...
+                    } @else {
+                      Baixar em Excel
+                    }
+                  </button>
+                </div>
+              }
+            }
+          }
+        </div>
+      </div>
+    }
+
+    @if (enviando()) {
+      <div class="mensagem assistente">
+        <div class="balao balao-carregando">Pensando...</div>
+      </div>
+    }
+  </div>
+
+  @if (erro()) {
+    <p class="erro">{{ erro() }}</p>
+  }
+
+  <form class="campo-envio" (submit)="enviar(); $event.preventDefault()">
+    <textarea
+      [value]="entrada()"
+      (input)="entrada.set($any($event.target).value)"
+      (keydown.enter)="aoPressionarEnter($event)"
+      placeholder="Digite sua pergunta..."
+      rows="1"
+    ></textarea>
+    <button type="submit" [disabled]="enviando() || !entrada().trim()">Enviar</button>
+  </form>
+</section>

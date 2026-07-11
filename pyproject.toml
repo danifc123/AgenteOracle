@@ -7,8 +7,10 @@ requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.6.0",
     "oracledb>=2.4.0",
+    "ollama>=0.4.0",
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.1",
+    "openpyxl>=3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -18,7 +20,8 @@ dev = [
 ]
 
 [project.scripts]
-agente-oracle = "agente_oracle.server:main"
+agente-oracle = "agente_oracle.server.server:main"
+agente-oracle-chat = "agente_oracle.agent.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

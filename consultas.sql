@@ -8,6 +8,8 @@
 --   3. FORNECEDORES_CLIENTES  -> entidades externas (fornecedores e clientes)
 --   4. TRANSACOES             -> lançamentos financeiros (entradas/saídas)
 --   5. FATURAS                -> faturas/documentos vinculados às transações
+--   6. CENTROS_CUSTO          -> áreas/departamentos internos que geram gasto
+--   7. ORCAMENTOS             -> valor previsto por categoria/mês (orçado x realizado)
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
@@ -15,8 +17,9 @@
 --------------------------------------------------------------------------------
 BEGIN
    FOR t IN (SELECT table_name FROM user_tables
-             WHERE table_name IN ('FATURAS','TRANSACOES','FORNECEDORES_CLIENTES',
-                                   'CATEGORIAS_FINANCEIRAS','CONTAS_BANCARIAS'))
+             WHERE table_name IN ('ORCAMENTOS','FATURAS','TRANSACOES','CENTROS_CUSTO',
+                                   'FORNECEDORES_CLIENTES','CATEGORIAS_FINANCEIRAS',
+                                   'CONTAS_BANCARIAS'))
    LOOP
       EXECUTE IMMEDIATE 'DROP TABLE ' || t.table_name || ' CASCADE CONSTRAINTS PURGE';
    END LOOP;
@@ -98,3 +101,38 @@ CREATE TABLE FATURAS (
     CONSTRAINT CK_FATURA_STATUS CHECK (STATUS_FATURA IN ('PAGA','EM_ABERTO','ATRASADA','CANCELADA')),
     CONSTRAINT FK_FATURA_TRANSACAO FOREIGN KEY (ID_TRANSACAO) REFERENCES TRANSACOES (ID_TRANSACAO)
 );
+
+--------------------------------------------------------------------------------
+-- 6. CENTROS_CUSTO
+--------------------------------------------------------------------------------
+CREATE TABLE CENTROS_CUSTO (
+    ID_CENTRO_CUSTO     NUMBER          GENERATED ALWAYS AS IDENTITY (START WITH 1) PRIMARY KEY,
+    NOME_CENTRO_CUSTO   VARCHAR2(60)    NOT NULL,
+    RESPONSAVEL         VARCHAR2(100),
+    ATIVO               CHAR(1)         DEFAULT 'S' NOT NULL,
+    CONSTRAINT CK_CENTRO_CUSTO_ATIVO CHECK (ATIVO IN ('S','N'))
+);
+
+--------------------------------------------------------------------------------
+-- 7. ORCAMENTOS (valor previsto por categoria/mês, opcionalmente por centro de custo)
+--------------------------------------------------------------------------------
+CREATE TABLE ORCAMENTOS (
+    ID_ORCAMENTO    NUMBER          GENERATED ALWAYS AS IDENTITY (START WITH 1) PRIMARY KEY,
+    ID_CATEGORIA    NUMBER          NOT NULL,
+    ID_CENTRO_CUSTO NUMBER,
+    ANO             NUMBER(4)       NOT NULL,
+    MES             NUMBER(2)       NOT NULL,
+    VALOR_PREVISTO  NUMBER(15,2)    NOT NULL,
+    CONSTRAINT CK_ORCAMENTO_MES CHECK (MES BETWEEN 1 AND 12),
+    CONSTRAINT CK_ORCAMENTO_VALOR CHECK (VALOR_PREVISTO >= 0),
+    CONSTRAINT UQ_ORCAMENTO UNIQUE (ID_CATEGORIA, ID_CENTRO_CUSTO, ANO, MES),
+    CONSTRAINT FK_ORCAMENTO_CATEGORIA FOREIGN KEY (ID_CATEGORIA) REFERENCES CATEGORIAS_FINANCEIRAS (ID_CATEGORIA),
+    CONSTRAINT FK_ORCAMENTO_CENTRO_CUSTO FOREIGN KEY (ID_CENTRO_CUSTO) REFERENCES CENTROS_CUSTO (ID_CENTRO_CUSTO)
+);
+
+--------------------------------------------------------------------------------
+-- 8. TRANSACOES -> relação opcional com CENTROS_CUSTO
+--------------------------------------------------------------------------------
+ALTER TABLE TRANSACOES ADD ID_CENTRO_CUSTO NUMBER;
+ALTER TABLE TRANSACOES ADD CONSTRAINT FK_TRANSACAO_CENTRO_CUSTO
+    FOREIGN KEY (ID_CENTRO_CUSTO) REFERENCES CENTROS_CUSTO (ID_CENTRO_CUSTO);

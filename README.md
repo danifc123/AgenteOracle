@@ -157,7 +157,3 @@ O DDL de referência está em [`consultas.sql`](consultas.sql). Tabelas:
 5. `FATURAS` — faturas vinculadas às transações
 6. `CENTROS_CUSTO` — áreas/departamentos internos que geram gasto
 7. `ORCAMENTOS` — valor previsto por categoria/mês (orçado x realizado)
-
-[`scripts/seed_dados_extra.py`](scripts/seed_dados_extra.py) popula o banco de teste
-com dados extras (é idempotente: cria tabelas/coluna só se não existirem, e não
-duplica dados se rodado de novo).

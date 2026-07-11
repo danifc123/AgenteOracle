@@ -60,6 +60,20 @@
           </div>
         }
       </div>
+
+      <a
+        class="nav-link"
+        routerLink="/chat"
+        routerLinkActive="active"
+        (click)="closeSidebar()"
+      >
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        <span class="nav-label">Assistente IA</span>
+      </a>
     </nav>
 
     <div class="sidebar-footer">

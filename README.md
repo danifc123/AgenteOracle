@@ -161,12 +161,3 @@ O DDL de referência está em [`consultas.sql`](consultas.sql). Tabelas:
 [`scripts/seed_dados_extra.py`](scripts/seed_dados_extra.py) popula o banco de teste
 com dados extras (é idempotente: cria tabelas/coluna só se não existirem, e não
 duplica dados se rodado de novo).
-
-## Roadmap
-
-- [x] Esqueleto do projeto + tool de teste de conectividade
-- [x] Consulta fixa de transações (JSON + Excel) com INNER JOIN
-- [x] Frontend Angular com menu lateral, tela de transações e chat
-- [x] Chat com IA local (Ollama) via MCP, com histórico e exportação de relatório
-- [x] SQL livre gerado pela IA, com validação de segurança
-- [x] Modelagem estendida (centros de custo, orçamentos)

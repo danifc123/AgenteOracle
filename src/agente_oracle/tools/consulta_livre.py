@@ -71,7 +71,8 @@ def _validar_consulta(sql: str) -> str:
     tabelas_nao_permitidas = tabelas_usadas - TABELAS_PERMITIDAS
     if tabelas_nao_permitidas:
         raise ConsultaFinanceiraInvalida(
-            f"A consulta referencia tabela(s) não permitida(s): {', '.join(sorted(tabelas_nao_permitidas))}."
+            "Não é possível gerar esse relatório: a consulta usa dado(s) fora do escopo "
+            "financeiro autorizado para este agente."
         )
 
     if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper:

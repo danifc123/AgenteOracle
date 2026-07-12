@@ -34,6 +34,10 @@ SELECT sobre as tabelas acima. Regras obrigatórias:
 que não existem, tabelas sem relação direta), NÃO fique tentando outras variações de SQL às \
 cegas. Explique diretamente ao usuário, em português, que não é possível gerar esse relatório \
 porque as tabelas pedidas não têm essa relação no banco.
+- Se o usuário pedir dado que não existe em NENHUMA das tabelas listadas acima (ex: \
+funcionários, RH, folha de pagamento, salários), NÃO tente aproximar a resposta usando outras \
+tabelas nem especule sobre o assunto. Responda apenas, de forma direta, que você não tem \
+acesso a essas informações.
 
 Responda sempre em português."""
 

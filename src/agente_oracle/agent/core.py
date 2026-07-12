@@ -30,6 +30,10 @@ SELECT sobre as tabelas acima. Regras obrigatórias:
 - Use apenas as tabelas listadas acima, com JOIN quando precisar combinar dados.
 - Nunca invente colunas ou tabelas fora do esquema acima.
 - Depois de rodar a consulta, explique o resultado em português, de forma direta e objetiva.
+- Se a ferramenta retornar um erro dizendo que a consulta não é possível (colunas ou junções \
+que não existem, tabelas sem relação direta), NÃO fique tentando outras variações de SQL às \
+cegas. Explique diretamente ao usuário, em português, que não é possível gerar esse relatório \
+porque as tabelas pedidas não têm essa relação no banco.
 
 Responda sempre em português."""
 
@@ -57,14 +61,20 @@ def _conteudo_do_resultado(resultado: CallToolResult) -> str:
     return "\n".join(partes) if partes else str(resultado)
 
 
-async def _executar_chamadas_de_ferramenta(session: ClientSession, tool_calls: list) -> list[dict[str, Any]]:
+async def _executar_chamadas_de_ferramenta(
+    session: ClientSession, tool_calls: list
+) -> tuple[list[dict[str, Any]], str | None]:
     mensagens_resultado = []
+    erro_tratado: str | None = None
     for chamada in tool_calls:
         nome = chamada.function.name
         argumentos = chamada.function.arguments or {}
         resultado = await session.call_tool(nome, argumentos)
-        mensagens_resultado.append({"role": "tool", "content": _conteudo_do_resultado(resultado)})
-    return mensagens_resultado
+        conteudo = _conteudo_do_resultado(resultado)
+        mensagens_resultado.append({"role": "tool", "content": conteudo})
+        if resultado.isError and erro_tratado is None:
+            erro_tratado = conteudo
+    return mensagens_resultado, erro_tratado
 
 
 def _mensagem_para_historico(mensagem: OllamaMessage) -> dict[str, Any]:
@@ -92,8 +102,15 @@ async def responder(
         for chamada in mensagem.tool_calls:
             eventos.append({"ferramenta": chamada.function.name, "argumentos": dict(chamada.function.arguments or {})})
 
-        resultados = await _executar_chamadas_de_ferramenta(session, mensagem.tool_calls)
+        resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, mensagem.tool_calls)
         messages.extend(resultados)
+
+        if erro_tratado:
+            # Devolve a mensagem de erro já tratada pela ferramenta direto pro usuário,
+            # em vez de deixar o modelo reformular (e às vezes inventar) por cima dela.
+            messages.append({"role": "assistant", "content": erro_tratado})
+            return messages, eventos
+
         resposta = await ollama_client.chat(model=modelo, messages=messages, tools=tools)
         mensagem = resposta.message
         messages.append(_mensagem_para_historico(mensagem))

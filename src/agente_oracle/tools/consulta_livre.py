@@ -2,6 +2,8 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
+import oracledb
+
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 
@@ -89,12 +91,24 @@ def _serializar(valor):
 def _executar_validada(sql: str) -> tuple[list[str], list[tuple]]:
     sql_validado = _validar_consulta(sql)
 
-    with get_connection() as connection:
-        connection.call_timeout = TIMEOUT_MS
-        cursor = connection.cursor()
-        cursor.execute(sql_validado)
-        colunas = [descricao[0] for descricao in cursor.description]
-        linhas = cursor.fetchall()
+    try:
+        with get_connection() as connection:
+            connection.call_timeout = TIMEOUT_MS
+            cursor = connection.cursor()
+            cursor.execute(sql_validado)
+            colunas = [descricao[0] for descricao in cursor.description]
+            linhas = cursor.fetchall()
+    except oracledb.DatabaseError as erro:
+        mensagem_oracle = str(erro).strip()
+        if "ORA-00904" in mensagem_oracle:
+            raise ConsultaFinanceiraInvalida(
+                "Não é possível gerar esse relatório: a consulta faz referência a uma coluna "
+                "ou junção que não existe no banco — as tabelas pedidas não têm uma relação "
+                "direta entre si."
+            ) from erro
+        raise ConsultaFinanceiraInvalida(
+            f"Não foi possível executar a consulta no banco ({mensagem_oracle})."
+        ) from erro
 
     return colunas, linhas
 

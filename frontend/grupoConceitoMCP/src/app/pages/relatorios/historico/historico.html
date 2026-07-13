@@ -1,0 +1,72 @@
+<header class="page-header">
+  <div>
+    <p class="breadcrumb">Relatórios / Histórico</p>
+    <h1>Histórico de relatórios</h1>
+  </div>
+</header>
+
+@if (erro()) {
+  <p class="erro-exportacao">{{ erro() }}</p>
+}
+
+@if (carregando()) {
+  <p class="carregando">Carregando histórico...</p>
+} @else if (relatorios().length === 0) {
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <h2>Nenhum relatório no histórico</h2>
+    <p>Relatórios gerados pelo Assistente IA aparecem aqui automaticamente, e não são refeitos no banco se você pedir o mesmo de novo.</p>
+  </div>
+} @else {
+  <div class="table-wrapper">
+    <table class="tabela-historico">
+      <thead>
+        <tr>
+          <th>Título</th>
+          <th>Gerado em</th>
+          <th class="text-right">Linhas</th>
+          <th>Consulta</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (relatorio of relatorios(); track relatorio.id) {
+          <tr>
+            <td>{{ relatorio.titulo }}</td>
+            <td>{{ relatorio.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td class="text-right">{{ relatorio.total_linhas }}</td>
+            <td class="sql-cell"><code>{{ relatorio.sql }}</code></td>
+            <td class="acoes">
+              <button
+                type="button"
+                class="btn-acao"
+                [disabled]="baixandoId() === relatorio.id"
+                (click)="baixarRelatorio(relatorio)"
+              >
+                @if (baixandoId() === relatorio.id) {
+                  Baixando...
+                } @else {
+                  Baixar Excel
+                }
+              </button>
+              <button
+                type="button"
+                class="btn-acao btn-apagar"
+                [disabled]="apagandoId() === relatorio.id"
+                (click)="apagarRelatorio(relatorio)"
+              >
+                @if (apagandoId() === relatorio.id) {
+                  Apagando...
+                } @else {
+                  Apagar
+                }
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

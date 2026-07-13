@@ -29,7 +29,13 @@ SELECT sobre as tabelas acima. Regras obrigatórias:
 - Gere sempre SQL Oracle válido, somente SELECT (nunca INSERT/UPDATE/DELETE ou DDL).
 - Use apenas as tabelas listadas acima, com JOIN quando precisar combinar dados.
 - Nunca invente colunas ou tabelas fora do esquema acima.
+- Sempre informe também um `titulo` curto e claro, em português, descrevendo o relatório \
+(ex: "Transações de fornecedor X em março de 2026") — ele fica salvo no histórico de relatórios.
 - Depois de rodar a consulta, explique o resultado em português, de forma direta e objetiva.
+- Todo relatório gerado é salvo no histórico. Se o mesmo SQL já tiver sido pedido antes, a \
+ferramenta NÃO roda de novo no banco: devolve `reutilizado=true` com o resultado salvo e a \
+data em `gerado_em`. Nesse caso, avise o usuário que esse relatório já tinha sido gerado \
+antes (informando a data) e que está sendo reaproveitado do histórico.
 - Se a ferramenta retornar um erro dizendo que a consulta não é possível (colunas ou junções \
 que não existem, tabelas sem relação direta), NÃO fique tentando outras variações de SQL às \
 cegas. Explique diretamente ao usuário, em português, que não é possível gerar esse relatório \

@@ -11,20 +11,22 @@ também navegue por telas fixas (transações) no navegador.
 
 ```
 Oracle DB  ←→  Backend Python (MCP + REST)  ←→  Agente de IA (Ollama local)
-                        ↑
+                        ↑    ↑
+                        │    └──→  MongoDB (histórico de relatórios gerados pela IA)
                         └──→  Frontend Angular (REST direto, sem IA)
 ```
 
 - **Transporte do agente:** [MCP](https://modelcontextprotocol.io/) via Streamable HTTP — servidor central expõe *tools* que qualquer cliente MCP (o chat deste projeto, ou outro agente) pode descobrir e chamar.
 - **Transporte do frontend:** rotas REST comuns (`/api/...`) no mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usadas para telas que não precisam de IA (tabela de transações, exportação).
 - **Banco:** Oracle, acesso via [`python-oracledb`](https://python-oracledb.readthedocs.io/) em modo *thin* (sem necessidade de Instant Client instalado).
+- **Histórico de relatórios:** MongoDB — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, e é usado para não repetir a mesma consulta no Oracle — veja [Histórico de relatórios](#histórico-de-relatórios-mongodb).
 - **LLM:** [Ollama](https://ollama.com/) rodando local (sem custo de API paga).
 - **Auth Oracle:** usuário de serviço único, banco de teste/desenvolvimento.
 
 ### Consultas fixas x consultas livres
 
 - **Tools/rotas fixas** (`listar_transacoes_json`, `/api/transacoes`, exportação): SQL pré-definido no código, sem participação da IA.
-- **`executar_consulta_financeira`**: a IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta (ex: "orçado x realizado por categoria"). Passa por validações de segurança antes de rodar no banco — veja [Segurança do SQL livre](#segurança-do-sql-livre).
+- **`executar_consulta_financeira`**: a IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta (ex: "orçado x realizado por categoria"). Passa por validações de segurança antes de rodar no banco — veja [Segurança do SQL livre](#segurança-do-sql-livre) — e o resultado é salvo/reaproveitado via o histórico em Mongo.
 
 ## Estrutura do projeto
 
@@ -36,15 +38,17 @@ src/agente_oracle/
 │   ├── core.py               # prompt de sistema + loop de tool-calling (compartilhado entre CLI e /api/chat)
 │   └── cli.py                 # chat interativo de terminal (agente-oracle-chat)
 ├── db/
-│   └── connection.py         # pool de conexões Oracle
+│   ├── connection.py         # pool de conexões Oracle
+│   └── mongo.py               # conexão com o MongoDB (histórico de relatórios)
 ├── server/
 │   └── server.py              # servidor MCP (FastMCP) + rotas REST (/api/...)
 └── tools/
     ├── connectivity.py       # teste de conexão com o Oracle
     ├── financeiro.py          # consultas fixas de transações (JSON e Excel)
-    └── consulta_livre.py      # SQL livre gerado pela IA, com validação de segurança
+    ├── consulta_livre.py      # SQL livre gerado pela IA, com validação de segurança
+    └── historico.py           # dedup e CRUD do histórico de relatórios no Mongo
 
-frontend/grupoConceitoMCP/    # Angular — menu lateral, tela de transações, chat
+frontend/grupoConceitoMCP/    # Angular — menu lateral, tela de transações, chat, histórico
 scripts/
 └── seed_dados_extra.py       # popula o banco de teste com dados extras
 
@@ -66,7 +70,8 @@ consultas.sql                 # modelagem/DDL de referência de todas as tabelas
    pip install -e ".[dev]"
    ```
 
-3. Copie o arquivo de variáveis de ambiente e preencha com as credenciais do Oracle de dev/teste:
+3. Copie o arquivo de variáveis de ambiente e preencha com as credenciais do Oracle de dev/teste.
+   Se seu MongoDB não estiver em `mongodb://localhost:27017` (padrão), ajuste também `MONGO_URI`/`MONGO_DB`:
 
    ```powershell
    copy .env.example .env
@@ -99,6 +104,7 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 - **Início** — página inicial.
 - **Financeiro → Transações** — tabela alimentada por `GET /api/transacoes`, com exportação em Excel.
 - **Assistente IA** — chat com o agente (usa `POST /api/chat`); respostas que rodaram SQL mostram a consulta usada e um botão para baixar o resultado em Excel.
+- **Histórico de relatórios** — lista os relatórios já gerados pela IA (`GET /api/relatorios/historico`), com botões para baixar em Excel (sem rodar de novo no Oracle) ou apagar do histórico.
 
 ## Rotas REST expostas pelo backend
 
@@ -108,6 +114,9 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 | `/api/transacoes/exportar` | GET | Baixa o relatório de transações em Excel |
 | `/api/chat` | POST | `{mensagem, historico}` → `{resposta, consultas}` — conversa com o agente |
 | `/api/relatorio/exportar` | POST | `{sql}` → arquivo Excel — reexecuta uma consulta (normalmente uma que a IA gerou) e baixa o resultado |
+| `/api/relatorios/historico` | GET | Lista os relatórios salvos no histórico (sem os dados das linhas) |
+| `/api/relatorios/historico/{id}/exportar` | GET | Baixa em Excel um relatório salvo, a partir do dado já armazenado no Mongo |
+| `/api/relatorios/historico/{id}` | DELETE | Apaga um relatório do histórico (ele volta a poder ser gerado de novo pela IA) |
 
 ## Agente local (Ollama)
 
@@ -145,6 +154,23 @@ SQL passa por validação antes de rodar (`tools/consulta_livre.py`):
 - Só permite as tabelas financeiras conhecidas (rejeita `USER_TABLES`, `V$...` ou qualquer tabela fora da whitelist).
 - Bloqueia múltiplas instruções encadeadas (`;`).
 - Aplica limite automático de linhas (`FETCH FIRST 200 ROWS ONLY`) e timeout de 10s na conexão.
+
+## Histórico de relatórios (MongoDB)
+
+Todo relatório que a IA gera pela tool `executar_consulta_financeira` é salvo no MongoDB
+(`tools/historico.py`), guardando SQL, título, colunas e linhas do resultado.
+
+- **Deduplicação:** antes de rodar uma consulta no Oracle, o backend calcula um hash do SQL
+  (normalizado) e verifica se já existe um relatório salvo com o mesmo hash. Se existir, o
+  Oracle **não é consultado de novo** — o resultado salvo é reaproveitado, e a IA avisa o
+  usuário que aquele relatório já tinha sido gerado antes. Esse cache não expira sozinho: um
+  relatório só volta a poder ser gerado de novo se for apagado do histórico (tela **Histórico
+  de relatórios**, ou `DELETE /api/relatorios/historico/{id}`).
+- **Importante:** como o cache é permanente, se os dados de origem no Oracle mudarem (novas
+  transações, por exemplo), um relatório já salvo **não é atualizado automaticamente** —
+  é preciso apagá-lo do histórico para que a IA gere uma versão nova.
+- O índice único em `hash_sql` (criado em `db/mongo.py`) garante que nunca existam dois
+  documentos para o mesmo SQL, mesmo com chamadas concorrentes.
 
 ## Modelagem do banco
 

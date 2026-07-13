@@ -6,6 +6,7 @@ import oracledb
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.tools import historico
 
 TABELAS_PERMITIDAS = {
     "TRANSACOES",
@@ -89,9 +90,7 @@ def _serializar(valor):
     return valor
 
 
-def _executar_validada(sql: str) -> tuple[list[str], list[tuple]]:
-    sql_validado = _validar_consulta(sql)
-
+def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
     try:
         with get_connection() as connection:
             connection.call_timeout = TIMEOUT_MS
@@ -114,7 +113,25 @@ def _executar_validada(sql: str) -> tuple[list[str], list[tuple]]:
     return colunas, linhas
 
 
-def executar_consulta_financeira(sql: str) -> list[dict]:
+def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
+    """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
+    (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
+    novo no Oracle. Caso contrário, executa e salva no histórico para a
+    próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
+    sql_validado = _validar_consulta(sql)
+
+    existente = historico.buscar_por_sql(sql_validado)
+    if existente is not None:
+        return existente["colunas"], existente["linhas"], existente["titulo"], True, existente["criado_em"]
+
+    colunas, linhas_brutas = _executar(sql_validado)
+    linhas = [[_serializar(valor) for valor in linha] for linha in linhas_brutas]
+
+    documento = historico.salvar(sql_validado, titulo, colunas, linhas)
+    return documento["colunas"], documento["linhas"], documento["titulo"], False, documento["criado_em"]
+
+
+def executar_consulta_financeira(sql: str, titulo: str) -> dict:
     """Executa uma consulta SELECT sobre as tabelas financeiras do Oracle
     (TRANSACOES, CONTAS_BANCARIAS, CATEGORIAS_FINANCEIRAS, FORNECEDORES_CLIENTES,
     FATURAS) e devolve as linhas encontradas.
@@ -124,14 +141,27 @@ def executar_consulta_financeira(sql: str) -> list[dict]:
     e somente SELECT; nunca use INSERT/UPDATE/DELETE ou comandos DDL; use apenas
     as tabelas financeiras listadas acima, combinando com JOIN quando precisar
     relacionar dados; nunca invente colunas ou tabelas fora do esquema conhecido.
+    Informe também um `titulo` curto e claro, em português, descrevendo o que o
+    relatório mostra (ex: "Transações de fornecedor X em março de 2026") — ele é
+    salvo no histórico de relatórios.
+
+    Se um relatório com exatamente o mesmo SQL já tiver sido gerado antes, esta
+    ferramenta NÃO roda a consulta de novo no banco: devolve o resultado salvo
+    no histórico, com `reutilizado=true` e `gerado_em` indicando quando foi
+    gerado originalmente.
     """
-    colunas, linhas = _executar_validada(sql)
-    return [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
+    colunas, linhas, titulo_final, reutilizado, criado_em = _executar_com_cache(sql, titulo)
+    return {
+        "reutilizado": reutilizado,
+        "titulo": titulo_final,
+        "gerado_em": criado_em.isoformat(),
+        "dados": [dict(zip(colunas, linha)) for linha in linhas],
+    }
 
 
 def exportar_consulta_financeira_xlsx(sql: str) -> bytes:
-    """Roda a mesma consulta validada (SELECT, tabelas financeiras permitidas) e
+    """Roda a mesma consulta validada (SELECT, tabelas financeiras permitidas) —
+    ou reaproveita o resultado do histórico, se já tiver sido gerada antes — e
     monta um arquivo Excel (.xlsx) em memória com o resultado, para download."""
-    colunas, linhas = _executar_validada(sql)
-    linhas_serializadas = [[_serializar(valor) for valor in linha] for linha in linhas]
-    return gerar_xlsx(colunas, linhas_serializadas, titulo="Relatório")
+    colunas, linhas, _titulo, _reutilizado, _criado_em = _executar_com_cache(sql, titulo="Relatório")
+    return gerar_xlsx(colunas, linhas, titulo="Relatório")

@@ -9,6 +9,8 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.agent.core import SYSTEM_PROMPT, mcp_url, responder, tools_para_ollama
 from agente_oracle.config import settings
+from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.tools import historico as historico_tools
 from agente_oracle.tools.connectivity import check_oracle_connection
 from agente_oracle.tools.consulta_livre import (
     ConsultaFinanceiraInvalida,
@@ -22,15 +24,22 @@ mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
 _CORS_HEADERS = {"Access-Control-Allow-Origin": "*"}
 
 
-def _resposta_preflight() -> JSONResponse:
+def _resposta_preflight(metodos: str = "POST, OPTIONS") -> JSONResponse:
     return JSONResponse(
         {},
         headers={
             **_CORS_HEADERS,
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Methods": metodos,
             "Access-Control-Allow-Headers": "Content-Type",
         },
     )
+
+
+def _historico_para_json(documento: dict) -> dict:
+    resultado = {chave: valor for chave, valor in documento.items() if chave not in {"_id", "hash_sql"}}
+    resultado["id"] = str(documento["_id"])
+    resultado["criado_em"] = documento["criado_em"].isoformat()
+    return resultado
 
 
 @mcp.tool()
@@ -89,6 +98,46 @@ async def exportar_relatorio_route(request: Request) -> Response:
             **_CORS_HEADERS,
         },
     )
+
+
+@mcp.custom_route("/api/relatorios/historico", methods=["GET"])
+async def listar_historico_route(request: Request) -> JSONResponse:
+    """Endpoint HTTP usado pela tela de histórico para listar os relatórios já gerados pela IA."""
+    documentos = historico_tools.listar()
+    return JSONResponse([_historico_para_json(doc) for doc in documentos], headers=_CORS_HEADERS)
+
+
+@mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET"])
+async def exportar_historico_route(request: Request) -> Response:
+    """Endpoint HTTP usado pela tela de histórico para baixar em Excel um
+    relatório já salvo, sem rodar a consulta de novo no Oracle."""
+    documento = historico_tools.obter(request.path_params["id"])
+    if documento is None:
+        return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=_CORS_HEADERS)
+
+    conteudo_xlsx = gerar_xlsx(documento["colunas"], documento["linhas"], titulo="Relatório")
+    nome_arquivo = f"relatorio_{documento['_id']}.xlsx"
+    return Response(
+        content=conteudo_xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome_arquivo}"',
+            **_CORS_HEADERS,
+        },
+    )
+
+
+@mcp.custom_route("/api/relatorios/historico/{id}", methods=["DELETE", "OPTIONS"])
+async def deletar_historico_route(request: Request) -> Response:
+    """Endpoint HTTP usado pela tela de histórico para apagar um relatório
+    salvo — depois de apagado, ele pode ser gerado de novo pela IA."""
+    if request.method == "OPTIONS":
+        return _resposta_preflight("DELETE, OPTIONS")
+
+    apagado = historico_tools.deletar(request.path_params["id"])
+    if not apagado:
+        return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=_CORS_HEADERS)
+    return JSONResponse({"ok": True}, headers=_CORS_HEADERS)
 
 
 @mcp.custom_route("/api/chat", methods=["POST", "OPTIONS"])

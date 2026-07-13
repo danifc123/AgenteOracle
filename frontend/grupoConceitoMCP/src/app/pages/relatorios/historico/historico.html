@@ -1,0 +1,97 @@
+<header class="page-header">
+  <div>
+    <p class="breadcrumb">Relatórios / Histórico</p>
+    <h1>Histórico de relatórios</h1>
+  </div>
+</header>
+
+@if (erro()) {
+  <p class="erro-exportacao">{{ erro() }}</p>
+}
+
+@if (carregando()) {
+  <p class="carregando">Carregando histórico...</p>
+} @else if (relatorios().length === 0) {
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <h2>Nenhum relatório no histórico</h2>
+    <p>Relatórios gerados pelo Assistente IA aparecem aqui automaticamente, e não são refeitos no banco se você pedir o mesmo de novo. Ficam disponíveis por 15 horas, a menos que sejam fixados.</p>
+  </div>
+} @else {
+  <div class="table-wrapper">
+    <table class="tabela-historico">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Título</th>
+          <th>Gerado em</th>
+          <th>Validade</th>
+          <th class="text-right">Linhas</th>
+          <th>Consulta</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (relatorio of relatorios(); track relatorio.id) {
+          <tr>
+            <td>
+              <button
+                type="button"
+                class="btn-fixar"
+                [class.fixado]="relatorio.fixado"
+                [disabled]="fixandoId() === relatorio.id"
+                (click)="alternarFixado(relatorio)"
+                [attr.aria-label]="relatorio.fixado ? 'Desfixar relatório' : 'Fixar relatório para não expirar'"
+                [title]="relatorio.fixado ? 'Fixado — não expira' : 'Fixar para não expirar em 15h'"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" [attr.fill]="relatorio.fixado ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8">
+                  <path d="M5 3v18M5 4h11l-2.5 4L16 12H5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span class="sr-only">{{ relatorio.fixado ? 'Desfixar relatório' : 'Fixar relatório para não expirar' }}</span>
+              </button>
+            </td>
+            <td>{{ relatorio.titulo }}</td>
+            <td>{{ relatorio.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              @if (relatorio.fixado) {
+                <span class="badge-fixado">Fixado</span>
+              } @else {
+                <span class="expira-em">até {{ relatorio.expira_em | date: 'dd/MM/yyyy HH:mm' }}</span>
+              }
+            </td>
+            <td class="text-right">{{ relatorio.total_linhas }}</td>
+            <td class="sql-cell"><code>{{ relatorio.sql }}</code></td>
+            <td class="acoes">
+              <button
+                type="button"
+                class="btn-acao"
+                [disabled]="baixandoId() === relatorio.id"
+                (click)="baixarRelatorio(relatorio)"
+              >
+                @if (baixandoId() === relatorio.id) {
+                  Baixando...
+                } @else {
+                  Baixar Excel
+                }
+              </button>
+              <button
+                type="button"
+                class="btn-acao btn-apagar"
+                [disabled]="apagandoId() === relatorio.id"
+                (click)="apagarRelatorio(relatorio)"
+              >
+                @if (apagandoId() === relatorio.id) {
+                  Apagando...
+                } @else {
+                  Apagar
+                }
+              </button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

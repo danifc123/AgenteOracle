@@ -1,9 +1,13 @@
+import json
+import re
 from typing import Any
 
 from mcp import ClientSession
 from mcp.types import CallToolResult, Tool
 from ollama import AsyncClient
 from ollama import Message as OllamaMessage
+
+_TOOL_CALL_TAG_REGEX = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
 
 ESQUEMA_FINANCEIRO = """
 Tabelas disponíveis no banco Oracle (todas somente leitura):
@@ -29,7 +33,23 @@ SELECT sobre as tabelas acima. Regras obrigatórias:
 - Gere sempre SQL Oracle válido, somente SELECT (nunca INSERT/UPDATE/DELETE ou DDL).
 - Use apenas as tabelas listadas acima, com JOIN quando precisar combinar dados.
 - Nunca invente colunas ou tabelas fora do esquema acima.
-- Depois de rodar a consulta, explique o resultado em português, de forma direta e objetiva.
+- Sempre informe também um `titulo` curto e claro, em português, descrevendo o relatório \
+(ex: "Transações de fornecedor X em março de 2026") — ele fica salvo no histórico de relatórios.
+- Depois de rodar a consulta, explique o resultado em português, de forma direta e objetiva, \
+usando SOMENTE os dados que a ferramenta devolveu. NUNCA invente, complete ou escreva \
+valores/linhas que não vieram na resposta da ferramenta — isso vale mesmo se você "lembrar" \
+de ter visto um relatório parecido antes: se não veio da ferramenta agora, não é real.
+- Se a mesma consulta já tiver sido rodada antes, a ferramenta detecta isso sozinha (comparando \
+o SQL) e devolve `reutilizado=true` com o resultado já salvo e a data em `gerado_em`, sem rodar \
+de novo no Oracle — nesse caso, avise o usuário que esse relatório já tinha sido gerado antes.
+- Se a ferramenta retornar um erro dizendo que a consulta não é possível (colunas ou junções \
+que não existem, tabelas sem relação direta), NÃO fique tentando outras variações de SQL às \
+cegas. Explique diretamente ao usuário, em português, que não é possível gerar esse relatório \
+porque as tabelas pedidas não têm essa relação no banco.
+- Se o usuário pedir dado que não existe em NENHUMA das tabelas listadas acima (ex: \
+funcionários, RH, folha de pagamento, salários), NÃO tente aproximar a resposta usando outras \
+tabelas nem especule sobre o assunto. Responda apenas, de forma direta, que você não tem \
+acesso a essas informações.
 
 Responda sempre em português."""
 
@@ -57,18 +77,49 @@ def _conteudo_do_resultado(resultado: CallToolResult) -> str:
     return "\n".join(partes) if partes else str(resultado)
 
 
-async def _executar_chamadas_de_ferramenta(session: ClientSession, tool_calls: list) -> list[dict[str, Any]]:
+def _chamadas_normalizadas(mensagem: OllamaMessage) -> list[dict[str, Any]]:
+    """Extrai as chamadas de ferramenta pedidas pelo modelo, cobrindo dois formatos:
+    o mecanismo estruturado do Ollama (`mensagem.tool_calls`) e, como reforço, o
+    formato em texto que o Qwen às vezes usa (`<tool_call>{"name":..,"arguments":..}</tool_call>`)
+    quando não aciona o mecanismo estruturado — sem esse reforço, essas chamadas
+    apareceriam como texto solto na resposta em vez de serem executadas."""
+    if mensagem.tool_calls:
+        return [
+            {"nome": chamada.function.name, "argumentos": dict(chamada.function.arguments or {})}
+            for chamada in mensagem.tool_calls
+        ]
+
+    chamadas = []
+    for bloco in _TOOL_CALL_TAG_REGEX.findall(mensagem.content or ""):
+        try:
+            dados = json.loads(bloco)
+        except json.JSONDecodeError:
+            continue
+        nome = dados.get("name")
+        if nome:
+            chamadas.append({"nome": nome, "argumentos": dados.get("arguments") or {}})
+    return chamadas
+
+
+async def _executar_chamadas_de_ferramenta(
+    session: ClientSession, chamadas: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], str | None]:
     mensagens_resultado = []
-    for chamada in tool_calls:
-        nome = chamada.function.name
-        argumentos = chamada.function.arguments or {}
-        resultado = await session.call_tool(nome, argumentos)
-        mensagens_resultado.append({"role": "tool", "content": _conteudo_do_resultado(resultado)})
-    return mensagens_resultado
+    erro_tratado: str | None = None
+    for chamada in chamadas:
+        resultado = await session.call_tool(chamada["nome"], chamada["argumentos"])
+        conteudo = _conteudo_do_resultado(resultado)
+        mensagens_resultado.append({"role": "tool", "content": conteudo})
+        if resultado.isError and erro_tratado is None:
+            erro_tratado = conteudo
+    return mensagens_resultado, erro_tratado
 
 
 def _mensagem_para_historico(mensagem: OllamaMessage) -> dict[str, Any]:
-    return mensagem.model_dump(exclude_none=True)
+    dados = mensagem.model_dump(exclude_none=True)
+    if dados.get("content"):
+        dados["content"] = _TOOL_CALL_TAG_REGEX.sub("", dados["content"]).strip()
+    return dados
 
 
 async def responder(
@@ -88,14 +139,23 @@ async def responder(
     mensagem = resposta.message
     messages.append(_mensagem_para_historico(mensagem))
 
-    while mensagem.tool_calls:
-        for chamada in mensagem.tool_calls:
-            eventos.append({"ferramenta": chamada.function.name, "argumentos": dict(chamada.function.arguments or {})})
+    chamadas = _chamadas_normalizadas(mensagem)
+    while chamadas:
+        for chamada in chamadas:
+            eventos.append({"ferramenta": chamada["nome"], "argumentos": chamada["argumentos"]})
 
-        resultados = await _executar_chamadas_de_ferramenta(session, mensagem.tool_calls)
+        resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, chamadas)
         messages.extend(resultados)
+
+        if erro_tratado:
+            # Devolve a mensagem de erro já tratada pela ferramenta direto pro usuário,
+            # em vez de deixar o modelo reformular (e às vezes inventar) por cima dela.
+            messages.append({"role": "assistant", "content": erro_tratado})
+            return messages, eventos
+
         resposta = await ollama_client.chat(model=modelo, messages=messages, tools=tools)
         mensagem = resposta.message
         messages.append(_mensagem_para_historico(mensagem))
+        chamadas = _chamadas_normalizadas(mensagem)
 
     return messages, eventos

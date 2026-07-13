@@ -160,17 +160,28 @@ SQL passa por validação antes de rodar (`tools/consulta_livre.py`):
 Todo relatório que a IA gera pela tool `executar_consulta_financeira` é salvo no MongoDB
 (`tools/historico.py`), guardando SQL, título, colunas e linhas do resultado.
 
-- **Deduplicação:** antes de rodar uma consulta no Oracle, o backend calcula um hash do SQL
-  (normalizado) e verifica se já existe um relatório salvo com o mesmo hash. Se existir, o
-  Oracle **não é consultado de novo** — o resultado salvo é reaproveitado, e a IA avisa o
-  usuário que aquele relatório já tinha sido gerado antes. Esse cache não expira sozinho: um
-  relatório só volta a poder ser gerado de novo se for apagado do histórico (tela **Histórico
-  de relatórios**, ou `DELETE /api/relatorios/historico/{id}`).
+- **Deduplicação semântica (camada principal):** antes de gerar SQL novo, a IA é instruída
+  (`SYSTEM_PROMPT` em `agent/core.py`) a chamar primeiro a tool `listar_relatorios_gerados`,
+  que devolve título, SQL e **dados completos** de todos os relatórios já salvos. A própria IA
+  compara o pedido do usuário com o que já existe — mesmo que o SQL de um pedido repetido saia
+  escrito de um jeito diferente (ordem de colunas, formatação) — e, se achar equivalente,
+  responde direto com os dados já salvos, sem rodar nada no Oracle. Essa comparação semântica é
+  feita pela IA porque dois SQLs com a mesma intenção nem sempre são textualmente idênticos.
+- **Deduplicação exata (rede de segurança):** independente da IA verificar o histórico antes,
+  `executar_consulta_financeira` também nunca roda no Oracle um SQL que já exista salvo com o
+  texto exatamente igual (comparado por hash, normalizando espaços) — protege contra o caso da
+  IA esquecer o passo acima ou gerar duas vezes o SQL idêntico.
+- Esse cache não expira sozinho: um relatório só volta a poder ser gerado de novo se for
+  apagado do histórico (tela **Histórico de relatórios**, ou `DELETE /api/relatorios/historico/{id}`).
 - **Importante:** como o cache é permanente, se os dados de origem no Oracle mudarem (novas
   transações, por exemplo), um relatório já salvo **não é atualizado automaticamente** —
   é preciso apagá-lo do histórico para que a IA gere uma versão nova.
 - O índice único em `hash_sql` (criado em `db/mongo.py`) garante que nunca existam dois
   documentos para o mesmo SQL, mesmo com chamadas concorrentes.
+- **Limite conhecido:** como `listar_relatorios_gerados` devolve os dados completos de todos os
+  relatórios salvos (para a IA conseguir responder sem uma segunda chamada), o histórico cresce
+  no contexto enviado ao modelo a cada pergunta. Funciona bem para o volume atual de relatórios;
+  se o histórico crescer muito, vale revisitar (ex: paginar ou resumir os mais antigos).
 
 ## Modelagem do banco
 

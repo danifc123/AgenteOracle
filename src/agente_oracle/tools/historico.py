@@ -65,3 +65,26 @@ def deletar(id_relatorio: str) -> bool:
         return False
     resultado = get_colecao_historico().delete_one({"_id": oid})
     return resultado.deleted_count > 0
+
+
+def listar_relatorios_gerados() -> list[dict]:
+    """Lista os relatórios que a IA já gerou e estão salvos no histórico —
+    título, SQL usado e os dados completos de cada um —, do mais recente
+    para o mais antigo.
+
+    Use esta ferramenta ANTES de chamar `executar_consulta_financeira`, para
+    checar se já existe um relatório equivalente ao que o usuário está
+    pedindo agora (mesmo tema, mesmos filtros/período — mesmo que o SQL fique
+    escrito de um jeito um pouco diferente). Se encontrar um equivalente, use
+    os `dados` já incluídos aqui para responder ao usuário — NÃO gere um SQL
+    novo e NÃO invente valores; os dados já estão nesta resposta.
+    """
+    return [
+        {
+            "titulo": documento["titulo"],
+            "sql": documento["sql"],
+            "gerado_em": documento["criado_em"].isoformat(),
+            "dados": [dict(zip(documento["colunas"], linha)) for linha in documento["linhas"]],
+        }
+        for documento in get_colecao_historico().find().sort("criado_em", -1)
+    ]

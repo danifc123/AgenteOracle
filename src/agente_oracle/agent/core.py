@@ -1,9 +1,13 @@
+import json
+import re
 from typing import Any
 
 from mcp import ClientSession
 from mcp.types import CallToolResult, Tool
 from ollama import AsyncClient
 from ollama import Message as OllamaMessage
+
+_TOOL_CALL_TAG_REGEX = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
 
 ESQUEMA_FINANCEIRO = """
 Tabelas disponíveis no banco Oracle (todas somente leitura):
@@ -24,18 +28,33 @@ banco Oracle quando o usuário pedir.
 {ESQUEMA_FINANCEIRO}
 
 Quando o usuário pedir um relatório ou dado que não é coberto por uma ferramenta \
-pronta, use a ferramenta `executar_consulta_financeira` para rodar uma consulta \
-SELECT sobre as tabelas acima. Regras obrigatórias:
-- Gere sempre SQL Oracle válido, somente SELECT (nunca INSERT/UPDATE/DELETE ou DDL).
-- Use apenas as tabelas listadas acima, com JOIN quando precisar combinar dados.
-- Nunca invente colunas ou tabelas fora do esquema acima.
-- Sempre informe também um `titulo` curto e claro, em português, descrevendo o relatório \
+pronta, siga sempre esta ordem:
+
+1. Chame `listar_relatorios_gerados` para ver os relatórios já salvos no histórico — a \
+resposta já vem com os dados completos de cada um.
+2. Compare o pedido do usuário com os títulos e SQLs listados — mesmo que o SQL fique \
+escrito de um jeito diferente, se o tema, os filtros e o período pedidos forem \
+essencialmente os mesmos de um relatório já existente, é o MESMO relatório.
+3. Se achou um equivalente, NÃO chame `executar_consulta_financeira` — os dados já estão no \
+campo `dados` do relatório encontrado em `listar_relatorios_gerados`. Responda direto ao \
+usuário usando exatamente esses dados, informando que esse relatório já tinha sido gerado \
+antes (cite a data em `gerado_em`). NUNCA escreva placeholders como "[valor]" ou invente \
+números — use somente os valores reais que vieram na ferramenta.
+4. Se não achou nada equivalente: use `executar_consulta_financeira` para rodar uma nova \
+consulta SELECT sobre as tabelas do esquema acima. Regras obrigatórias:
+   - Gere sempre SQL Oracle válido, somente SELECT (nunca INSERT/UPDATE/DELETE ou DDL).
+   - Use apenas as tabelas listadas acima, com JOIN quando precisar combinar dados.
+   - Nunca invente colunas ou tabelas fora do esquema acima.
+   - Sempre informe também um `titulo` curto e claro, em português, descrevendo o relatório \
 (ex: "Transações de fornecedor X em março de 2026") — ele fica salvo no histórico de relatórios.
-- Depois de rodar a consulta, explique o resultado em português, de forma direta e objetiva.
-- Todo relatório gerado é salvo no histórico. Se o mesmo SQL já tiver sido pedido antes, a \
-ferramenta NÃO roda de novo no banco: devolve `reutilizado=true` com o resultado salvo e a \
-data em `gerado_em`. Nesse caso, avise o usuário que esse relatório já tinha sido gerado \
-antes (informando a data) e que está sendo reaproveitado do histórico.
+
+Depois de rodar a consulta ou reaproveitar um relatório do histórico, explique o resultado \
+em português, de forma direta e objetiva.
+
+- Como reforço extra: mesmo que `listar_relatorios_gerados` não detecte a repetição, a \
+ferramenta `executar_consulta_financeira` também não roda de novo no banco se o SQL gerado \
+for idêntico a um já salvo — nesse caso ela devolve `reutilizado=true` com o resultado salvo \
+e a data em `gerado_em`; avise o usuário da mesma forma do passo 3.
 - Se a ferramenta retornar um erro dizendo que a consulta não é possível (colunas ou junções \
 que não existem, tabelas sem relação direta), NÃO fique tentando outras variações de SQL às \
 cegas. Explique diretamente ao usuário, em português, que não é possível gerar esse relatório \
@@ -71,15 +90,37 @@ def _conteudo_do_resultado(resultado: CallToolResult) -> str:
     return "\n".join(partes) if partes else str(resultado)
 
 
+def _chamadas_normalizadas(mensagem: OllamaMessage) -> list[dict[str, Any]]:
+    """Extrai as chamadas de ferramenta pedidas pelo modelo, cobrindo dois formatos:
+    o mecanismo estruturado do Ollama (`mensagem.tool_calls`) e, como reforço, o
+    formato em texto que o Qwen às vezes usa (`<tool_call>{"name":..,"arguments":..}</tool_call>`)
+    quando não aciona o mecanismo estruturado — sem esse reforço, essas chamadas
+    apareceriam como texto solto na resposta em vez de serem executadas."""
+    if mensagem.tool_calls:
+        return [
+            {"nome": chamada.function.name, "argumentos": dict(chamada.function.arguments or {})}
+            for chamada in mensagem.tool_calls
+        ]
+
+    chamadas = []
+    for bloco in _TOOL_CALL_TAG_REGEX.findall(mensagem.content or ""):
+        try:
+            dados = json.loads(bloco)
+        except json.JSONDecodeError:
+            continue
+        nome = dados.get("name")
+        if nome:
+            chamadas.append({"nome": nome, "argumentos": dados.get("arguments") or {}})
+    return chamadas
+
+
 async def _executar_chamadas_de_ferramenta(
-    session: ClientSession, tool_calls: list
+    session: ClientSession, chamadas: list[dict[str, Any]]
 ) -> tuple[list[dict[str, Any]], str | None]:
     mensagens_resultado = []
     erro_tratado: str | None = None
-    for chamada in tool_calls:
-        nome = chamada.function.name
-        argumentos = chamada.function.arguments or {}
-        resultado = await session.call_tool(nome, argumentos)
+    for chamada in chamadas:
+        resultado = await session.call_tool(chamada["nome"], chamada["argumentos"])
         conteudo = _conteudo_do_resultado(resultado)
         mensagens_resultado.append({"role": "tool", "content": conteudo})
         if resultado.isError and erro_tratado is None:
@@ -88,7 +129,10 @@ async def _executar_chamadas_de_ferramenta(
 
 
 def _mensagem_para_historico(mensagem: OllamaMessage) -> dict[str, Any]:
-    return mensagem.model_dump(exclude_none=True)
+    dados = mensagem.model_dump(exclude_none=True)
+    if dados.get("content"):
+        dados["content"] = _TOOL_CALL_TAG_REGEX.sub("", dados["content"]).strip()
+    return dados
 
 
 async def responder(
@@ -108,11 +152,12 @@ async def responder(
     mensagem = resposta.message
     messages.append(_mensagem_para_historico(mensagem))
 
-    while mensagem.tool_calls:
-        for chamada in mensagem.tool_calls:
-            eventos.append({"ferramenta": chamada.function.name, "argumentos": dict(chamada.function.arguments or {})})
+    chamadas = _chamadas_normalizadas(mensagem)
+    while chamadas:
+        for chamada in chamadas:
+            eventos.append({"ferramenta": chamada["nome"], "argumentos": chamada["argumentos"]})
 
-        resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, mensagem.tool_calls)
+        resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, chamadas)
         messages.extend(resultados)
 
         if erro_tratado:
@@ -124,5 +169,6 @@ async def responder(
         resposta = await ollama_client.chat(model=modelo, messages=messages, tools=tools)
         mensagem = resposta.message
         messages.append(_mensagem_para_historico(mensagem))
+        chamadas = _chamadas_normalizadas(mensagem)
 
     return messages, eventos

@@ -49,6 +49,7 @@ def testar_conexao_oracle() -> str:
 
 
 mcp.tool()(executar_consulta_financeira)
+mcp.tool()(historico_tools.listar_relatorios_gerados)
 
 
 @mcp.custom_route("/api/transacoes", methods=["GET"])

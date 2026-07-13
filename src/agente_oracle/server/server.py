@@ -39,6 +39,8 @@ def _historico_para_json(documento: dict) -> dict:
     resultado = {chave: valor for chave, valor in documento.items() if chave not in {"_id", "hash_sql"}}
     resultado["id"] = str(documento["_id"])
     resultado["criado_em"] = documento["criado_em"].isoformat()
+    expira_em = documento.get("expira_em")
+    resultado["expira_em"] = expira_em.isoformat() if expira_em else None
     return resultado
 
 
@@ -49,7 +51,6 @@ def testar_conexao_oracle() -> str:
 
 
 mcp.tool()(executar_consulta_financeira)
-mcp.tool()(historico_tools.listar_relatorios_gerados)
 
 
 @mcp.custom_route("/api/transacoes", methods=["GET"])
@@ -128,14 +129,25 @@ async def exportar_historico_route(request: Request) -> Response:
     )
 
 
-@mcp.custom_route("/api/relatorios/historico/{id}", methods=["DELETE", "OPTIONS"])
-async def deletar_historico_route(request: Request) -> Response:
-    """Endpoint HTTP usado pela tela de histórico para apagar um relatório
-    salvo — depois de apagado, ele pode ser gerado de novo pela IA."""
+@mcp.custom_route("/api/relatorios/historico/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
+async def atualizar_ou_deletar_historico_route(request: Request) -> Response:
+    """Endpoint HTTP usado pela tela de histórico para apagar (DELETE) um
+    relatório salvo, ou fixar/desfixar (PATCH `{"fixado": bool}`) — um
+    relatório fixado não expira pelo TTL de 15h."""
     if request.method == "OPTIONS":
-        return _resposta_preflight("DELETE, OPTIONS")
+        return _resposta_preflight("PATCH, DELETE, OPTIONS")
 
-    apagado = historico_tools.deletar(request.path_params["id"])
+    id_relatorio = request.path_params["id"]
+
+    if request.method == "PATCH":
+        corpo = await request.json()
+        fixado = bool(corpo.get("fixado"))
+        atualizado = historico_tools.fixar(id_relatorio) if fixado else historico_tools.desfixar(id_relatorio)
+        if not atualizado:
+            return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=_CORS_HEADERS)
+        return JSONResponse({"ok": True}, headers=_CORS_HEADERS)
+
+    apagado = historico_tools.deletar(id_relatorio)
     if not apagado:
         return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=_CORS_HEADERS)
     return JSONResponse({"ok": True}, headers=_CORS_HEADERS)

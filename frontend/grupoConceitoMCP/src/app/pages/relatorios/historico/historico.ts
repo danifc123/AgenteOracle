@@ -10,6 +10,8 @@ export interface RelatorioHistorico {
   colunas: string[];
   total_linhas: number;
   criado_em: string;
+  fixado: boolean;
+  expira_em: string | null;
 }
 
 @Component({
@@ -26,6 +28,7 @@ export class Historico {
   erro = signal<string | null>(null);
   baixandoId = signal<string | null>(null);
   apagandoId = signal<string | null>(null);
+  fixandoId = signal<string | null>(null);
 
   constructor() {
     this.carregarHistorico();
@@ -101,5 +104,28 @@ export class Historico {
         this.apagandoId.set(null);
       }
     });
+  }
+
+  alternarFixado(relatorio: RelatorioHistorico): void {
+    if (this.fixandoId()) {
+      return;
+    }
+
+    const novoFixado = !relatorio.fixado;
+    this.fixandoId.set(relatorio.id);
+    this.erro.set(null);
+
+    this.http
+      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, { fixado: novoFixado })
+      .subscribe({
+        next: () => {
+          this.fixandoId.set(null);
+          this.carregarHistorico();
+        },
+        error: () => {
+          this.erro.set('Não foi possível fixar/desfixar o relatório.');
+          this.fixandoId.set(null);
+        }
+      });
   }
 }

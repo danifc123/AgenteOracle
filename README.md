@@ -104,7 +104,7 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 - **Início** — página inicial.
 - **Financeiro → Transações** — tabela alimentada por `GET /api/transacoes`, com exportação em Excel.
 - **Assistente IA** — chat com o agente (usa `POST /api/chat`); respostas que rodaram SQL mostram a consulta usada e um botão para baixar o resultado em Excel.
-- **Histórico de relatórios** — lista os relatórios já gerados pela IA (`GET /api/relatorios/historico`), com botões para baixar em Excel (sem rodar de novo no Oracle) ou apagar do histórico.
+- **Histórico de relatórios** — lista os relatórios já gerados pela IA (`GET /api/relatorios/historico`), com botão de bandeira para fixar/desfixar (relatório fixado não expira), botão para baixar em Excel (sem rodar de novo no Oracle) e botão para apagar do histórico.
 
 ## Rotas REST expostas pelo backend
 
@@ -116,6 +116,7 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 | `/api/relatorio/exportar` | POST | `{sql}` → arquivo Excel — reexecuta uma consulta (normalmente uma que a IA gerou) e baixa o resultado |
 | `/api/relatorios/historico` | GET | Lista os relatórios salvos no histórico (sem os dados das linhas) |
 | `/api/relatorios/historico/{id}/exportar` | GET | Baixa em Excel um relatório salvo, a partir do dado já armazenado no Mongo |
+| `/api/relatorios/historico/{id}` | PATCH | `{fixado: bool}` → fixa/desfixa um relatório (fixado não expira pelo TTL) |
 | `/api/relatorios/historico/{id}` | DELETE | Apaga um relatório do histórico (ele volta a poder ser gerado de novo pela IA) |
 
 ## Agente local (Ollama)
@@ -160,28 +161,34 @@ SQL passa por validação antes de rodar (`tools/consulta_livre.py`):
 Todo relatório que a IA gera pela tool `executar_consulta_financeira` é salvo no MongoDB
 (`tools/historico.py`), guardando SQL, título, colunas e linhas do resultado.
 
-- **Deduplicação semântica (camada principal):** antes de gerar SQL novo, a IA é instruída
-  (`SYSTEM_PROMPT` em `agent/core.py`) a chamar primeiro a tool `listar_relatorios_gerados`,
-  que devolve título, SQL e **dados completos** de todos os relatórios já salvos. A própria IA
-  compara o pedido do usuário com o que já existe — mesmo que o SQL de um pedido repetido saia
-  escrito de um jeito diferente (ordem de colunas, formatação) — e, se achar equivalente,
-  responde direto com os dados já salvos, sem rodar nada no Oracle. Essa comparação semântica é
-  feita pela IA porque dois SQLs com a mesma intenção nem sempre são textualmente idênticos.
-- **Deduplicação exata (rede de segurança):** independente da IA verificar o histórico antes,
-  `executar_consulta_financeira` também nunca roda no Oracle um SQL que já exista salvo com o
-  texto exatamente igual (comparado por hash, normalizando espaços) — protege contra o caso da
-  IA esquecer o passo acima ou gerar duas vezes o SQL idêntico.
-- Esse cache não expira sozinho: um relatório só volta a poder ser gerado de novo se for
-  apagado do histórico (tela **Histórico de relatórios**, ou `DELETE /api/relatorios/historico/{id}`).
-- **Importante:** como o cache é permanente, se os dados de origem no Oracle mudarem (novas
-  transações, por exemplo), um relatório já salvo **não é atualizado automaticamente** —
-  é preciso apagá-lo do histórico para que a IA gere uma versão nova.
+- **Deduplicação:** a checagem é feita pelo código, não pela IA. `executar_consulta_financeira`
+  normaliza o SQL gerado para uma forma canônica (`hash_sql` em `tools/historico.py` —
+  maiúsculas, espaços colapsados, colunas do `SELECT` reordenadas) e nunca roda no Oracle um
+  SQL cujo hash já exista salvo; nesse caso devolve `reutilizado=true` com o resultado **real**
+  já salvo e a data em `gerado_em`. Como isso é uma comparação determinística no backend — não
+  uma decisão da IA —, o dado devolvido é sempre o que está no Mongo, nunca inventado.
+- **Por que não deixamos a IA decidir "isso já existe"?** Testamos dar à IA acesso ao histórico
+  completo para ela julgar semanticamente se um pedido repetia um relatório anterior. Com o
+  modelo local usado aqui (qwen2.5:7b), isso se mostrou arriscado: em teste, a IA chegou a
+  afirmar que um relatório sobre orçamento/centro de custo "já existia" reaproveitando um
+  relatório de receita por cliente completamente diferente, **inventando** os dados da tabela
+  mostrada. Por isso a decisão de reutilizar ficou só na camada determinística — mais segura
+  para dado financeiro, ao custo de não pegar duplicatas com SQL estruturalmente diferente
+  (ex: mesmo tema, mas com JOIN ou filtro escrito de outro jeito).
+- **Expiração automática (TTL):** por padrão, um relatório expira e é apagado sozinho 15h depois
+  de ser gerado (`TEMPO_EXPIRACAO` em `tools/historico.py`), via índice TTL nativo do MongoDB em
+  `expira_em` (criado em `db/mongo.py`) — não depende de nenhum job/cron nosso, o próprio Mongo
+  varre e apaga. Isso resolve, na prática, o mesmo problema que a deduplicação tenta resolver:
+  mesmo quando duas perguntas parecidas não batem no hash exato e geram entradas "duplicadas",
+  elas somem sozinhas depois de um tempo, em vez de acumular no histórico para sempre.
+- **Fixar (bandeira 🚩):** na tela **Histórico de relatórios**, o botão de bandeira fixa um
+  relatório — ele deixa de expirar (o TTL ignora documentos sem o campo `expira_em`, que é
+  removido ao fixar). Desfixar reinicia a contagem de 15h a partir daquele momento.
+- **Importante:** como o dado de um relatório salvo (fixado ou não, enquanto existir) não é
+  atualizado automaticamente se os dados de origem no Oracle mudarem (novas transações, por
+  exemplo), é preciso apagá-lo do histórico (ou esperar expirar) para que a IA gere uma versão nova.
 - O índice único em `hash_sql` (criado em `db/mongo.py`) garante que nunca existam dois
   documentos para o mesmo SQL, mesmo com chamadas concorrentes.
-- **Limite conhecido:** como `listar_relatorios_gerados` devolve os dados completos de todos os
-  relatórios salvos (para a IA conseguir responder sem uma segunda chamada), o histórico cresce
-  no contexto enviado ao modelo a cada pergunta. Funciona bem para o volume atual de relatórios;
-  se o histórico crescer muito, vale revisitar (ex: paginar ou resumir os mais antigos).
 
 ## Modelagem do banco
 

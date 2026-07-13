@@ -2,9 +2,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
-import oracledb
-
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import DatabaseError, eh_erro_coluna_invalida, get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.tools import historico
 
@@ -98,16 +96,16 @@ def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
             cursor.execute(sql_validado)
             colunas = [descricao[0] for descricao in cursor.description]
             linhas = cursor.fetchall()
-    except oracledb.DatabaseError as erro:
-        mensagem_oracle = str(erro).strip()
-        if "ORA-00904" in mensagem_oracle:
+    except DatabaseError as erro:
+        mensagem_erro = str(erro).strip()
+        if eh_erro_coluna_invalida(erro):
             raise ConsultaFinanceiraInvalida(
                 "Não é possível gerar esse relatório: a consulta faz referência a uma coluna "
                 "ou junção que não existe no banco — as tabelas pedidas não têm uma relação "
                 "direta entre si."
             ) from erro
         raise ConsultaFinanceiraInvalida(
-            f"Não foi possível executar a consulta no banco ({mensagem_oracle})."
+            f"Não foi possível executar a consulta no banco ({mensagem_erro})."
         ) from erro
 
     return colunas, linhas
@@ -132,13 +130,13 @@ def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], s
 
 
 def executar_consulta_financeira(sql: str, titulo: str) -> dict:
-    """Executa uma consulta SELECT sobre as tabelas financeiras do Oracle
+    """Executa uma consulta SELECT sobre as tabelas financeiras do banco configurado
     (TRANSACOES, CONTAS_BANCARIAS, CATEGORIAS_FINANCEIRAS, FORNECEDORES_CLIENTES,
     FATURAS) e devolve as linhas encontradas.
 
     Use esta ferramenta quando o usuário pedir um relatório ou dado que não é
-    coberto por nenhuma ferramenta pronta. Regras: gere sempre SQL Oracle válido
-    e somente SELECT; nunca use INSERT/UPDATE/DELETE ou comandos DDL; use apenas
+    coberto por nenhuma ferramenta pronta. Regras: gere sempre SQL válido para o
+    banco configurado e somente SELECT; nunca use INSERT/UPDATE/DELETE ou comandos DDL; use apenas
     as tabelas financeiras listadas acima, combinando com JOIN quando precisar
     relacionar dados; nunca invente colunas ou tabelas fora do esquema conhecido.
     Informe também um `titulo` curto e claro, em português, descrevendo o que o

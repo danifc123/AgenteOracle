@@ -53,8 +53,14 @@
 
       @if (financeiroOpen()) {
         <div class="nav-submenu">
-          <a class="nav-sublink" routerLink="/financeiro/transacoes" routerLinkActive="active" (click)="closeSidebar()">
-            Transações
+          <a class="nav-sublink" routerLink="/financeiro/cadastros" routerLinkActive="active" (click)="closeSidebar()">
+            Cadastros
+          </a>
+          <a class="nav-sublink" routerLink="/financeiro/movimentos" routerLinkActive="active" (click)="closeSidebar()">
+            Movimentos
+          </a>
+          <a class="nav-sublink" routerLink="/financeiro/especifico-grupo-conceito" routerLinkActive="active" (click)="closeSidebar()">
+            Específico Grupo Conceito
           </a>
         </div>
       }

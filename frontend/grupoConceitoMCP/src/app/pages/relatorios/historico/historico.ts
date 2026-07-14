@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
+import { Botao } from '../../../componentes/botao/botao';
 
 export interface RelatorioHistorico {
   id: string;
@@ -16,7 +17,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe],
+  imports: [DatePipe, Botao],
   templateUrl: './historico.html',
   styleUrl: './historico.scss'
 })

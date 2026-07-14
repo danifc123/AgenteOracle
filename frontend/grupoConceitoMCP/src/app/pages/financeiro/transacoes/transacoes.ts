@@ -1,11 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
+import { Botao } from '../../../componentes/botao/botao';
 import { TabelaTransacoes, Transacao } from '../../../componentes/tabela-transacoes/tabela-transacoes';
 
 @Component({
   selector: 'app-transacoes',
-  imports: [TabelaTransacoes],
+  imports: [TabelaTransacoes, Botao],
   templateUrl: './transacoes.html',
   styleUrl: './transacoes.scss'
 })

@@ -3,13 +3,14 @@
     <p class="breadcrumb">Financeiro / Transações</p>
     <h1>Transações</h1>
   </div>
-  <button type="button" class="btn-exportar" [disabled]="exportando()" (click)="exportarRelatorio()">
-    @if (exportando()) {
-      Gerando relatório...
-    } @else {
-      Exportar relatório
-    }
-  </button>
+  <app-botao
+    variant="primaria"
+    [loading]="exportando()"
+    loadingText="Gerando relatório..."
+    (clicked)="exportarRelatorio()"
+  >
+    Exportar relatório
+  </app-botao>
 </header>
 
 @if (erroExportacao()) {

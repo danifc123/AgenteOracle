@@ -37,20 +37,19 @@
         @for (relatorio of relatorios(); track relatorio.id) {
           <tr>
             <td>
-              <button
-                type="button"
-                class="btn-fixar"
-                [class.fixado]="relatorio.fixado"
+              <app-botao
+                variant="icone"
+                [pressed]="relatorio.fixado"
                 [disabled]="fixandoId() === relatorio.id"
-                (click)="alternarFixado(relatorio)"
-                [attr.aria-label]="relatorio.fixado ? 'Desfixar relatório' : 'Fixar relatório para não expirar'"
+                (clicked)="alternarFixado(relatorio)"
+                [ariaLabel]="relatorio.fixado ? 'Desfixar relatório' : 'Fixar relatório para não expirar'"
                 [title]="relatorio.fixado ? 'Fixado — não expira' : 'Fixar para não expirar em 15h'"
               >
                 <svg viewBox="0 0 24 24" width="18" height="18" [attr.fill]="relatorio.fixado ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8">
                   <path d="M5 3v18M5 4h11l-2.5 4L16 12H5" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
                 <span class="sr-only">{{ relatorio.fixado ? 'Desfixar relatório' : 'Fixar relatório para não expirar' }}</span>
-              </button>
+              </app-botao>
             </td>
             <td>{{ relatorio.titulo }}</td>
             <td>{{ relatorio.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
@@ -64,30 +63,22 @@
             <td class="text-right">{{ relatorio.total_linhas }}</td>
             <td class="sql-cell"><code>{{ relatorio.sql }}</code></td>
             <td class="acoes">
-              <button
-                type="button"
-                class="btn-acao"
-                [disabled]="baixandoId() === relatorio.id"
-                (click)="baixarRelatorio(relatorio)"
+              <app-botao
+                variant="acao"
+                [loading]="baixandoId() === relatorio.id"
+                loadingText="Baixando..."
+                (clicked)="baixarRelatorio(relatorio)"
               >
-                @if (baixandoId() === relatorio.id) {
-                  Baixando...
-                } @else {
-                  Baixar Excel
-                }
-              </button>
-              <button
-                type="button"
-                class="btn-acao btn-apagar"
-                [disabled]="apagandoId() === relatorio.id"
-                (click)="apagarRelatorio(relatorio)"
+                Baixar Excel
+              </app-botao>
+              <app-botao
+                variant="perigo"
+                [loading]="apagandoId() === relatorio.id"
+                loadingText="Apagando..."
+                (clicked)="apagarRelatorio(relatorio)"
               >
-                @if (apagandoId() === relatorio.id) {
-                  Apagando...
-                } @else {
-                  Apagar
-                }
-              </button>
+                Apagar
+              </app-botao>
             </td>
           </tr>
         }

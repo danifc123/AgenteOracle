@@ -20,6 +20,17 @@ env/
 wallet/
 *.pem
 
+# Imagens locais do frontend (fotos/logo real da empresa — nunca versionar)
+frontend/grupoConceitoMCP/public/imagens-locais/
+
+# Exportações locais de relatório (nunca commitar dado real da empresa)
+*.xlsx
+*.xls
+*.csv
+*.dmp
+*.dump
+*.bak
+
 # Testes / cobertura
 .pytest_cache/
 .coverage

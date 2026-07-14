@@ -1,0 +1,113 @@
+:host {
+  display: block;
+}
+
+.tela-login {
+  display: flex;
+  min-height: 100vh;
+}
+
+.login-media {
+  flex: 1;
+  display: none;
+}
+
+.login-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.login-formulario {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--color-bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 36px 32px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--color-primary);
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  color: var(--color-primary);
+}
+
+.subtitulo {
+  margin: 0 0 24px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+
+  input {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 400;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-primary-light);
+    }
+  }
+}
+
+.erro {
+  margin: 0 0 16px;
+  color: #9a2f2f;
+  font-size: 13px;
+}
+
+@media (min-width: 900px) {
+  .login-media {
+    display: block;
+  }
+}

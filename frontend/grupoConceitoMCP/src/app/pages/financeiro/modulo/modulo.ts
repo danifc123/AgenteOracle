@@ -1,8 +1,9 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 import { Busca } from '../../../componentes/busca/busca';
+import { Dialog } from '../../../componentes/dialog/dialog';
 import { MenuOpcoes } from '../../../componentes/menu-opcoes/menu-opcoes';
 import { MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
 
@@ -10,13 +11,12 @@ const LIMITE_FIXADOS = 3;
 
 @Component({
   selector: 'app-modulo-financeiro',
-  imports: [RouterLink, Busca, MenuOpcoes],
+  imports: [RouterLink, Busca, MenuOpcoes, Dialog],
   templateUrl: './modulo.html',
   styleUrl: './modulo.scss'
 })
 export class ModuloFinanceiro {
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
 
   private readonly moduloId = toSignal(
     this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
@@ -28,6 +28,7 @@ export class ModuloFinanceiro {
   );
 
   protected readonly termoBusca = signal('');
+  protected readonly rotinaEmVisualizacao = signal<RotinaFinanceira | null>(null);
   private readonly fixados = signal<string[]>([]);
 
   private readonly rotinasOrdenadas = computed(() => {
@@ -58,6 +59,7 @@ export class ModuloFinanceiro {
     effect(() => {
       this.moduloId();
       this.termoBusca.set('');
+      this.rotinaEmVisualizacao.set(null);
       this.carregarFixados();
     });
   }
@@ -86,9 +88,11 @@ export class ModuloFinanceiro {
   }
 
   protected visualizar(rotina: RotinaFinanceira): void {
-    if (rotina.rota) {
-      this.router.navigateByUrl(rotina.rota);
-    }
+    this.rotinaEmVisualizacao.set(rotina);
+  }
+
+  protected fecharVisualizacao(): void {
+    this.rotinaEmVisualizacao.set(null);
   }
 
   private carregarFixados(): void {

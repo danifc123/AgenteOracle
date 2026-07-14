@@ -87,7 +87,57 @@ h1 {
 .rotina-menu {
   flex-shrink: 0;
   margin-right: 10px;
-  font-size: 15px;
+}
+
+.item-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--color-bg);
+  }
+
+  &:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.item-menu--ativo {
+  color: #8a6d1a;
+
+  &:hover:not(:disabled) {
+    background: rgba(216, 168, 26, 0.12);
+  }
+}
+
+.icone-item {
+  flex-shrink: 0;
+}
+
+.indicadores {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.icone-fixado {
+  color: #d8a81a;
+  flex-shrink: 0;
 }
 
 .tag-em-breve {

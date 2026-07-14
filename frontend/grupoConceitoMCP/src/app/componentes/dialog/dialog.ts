@@ -9,6 +9,7 @@ import { Component, HostListener, input, output } from '@angular/core';
 export class Dialog {
   aberto = input(false);
   titulo = input('');
+  temRodape = input(false);
 
   fechar = output<void>();
 

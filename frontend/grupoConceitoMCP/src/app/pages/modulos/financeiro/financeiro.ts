@@ -2,6 +2,7 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
+import { Botao } from '../../../componentes/botao/botao';
 import { Busca } from '../../../componentes/busca/busca';
 import { Dialog } from '../../../componentes/dialog/dialog';
 import { MenuOpcoes } from '../../../componentes/menu-opcoes/menu-opcoes';
@@ -11,7 +12,7 @@ const LIMITE_FIXADOS = 3;
 
 @Component({
   selector: 'app-financeiro',
-  imports: [RouterLink, Busca, MenuOpcoes, Dialog],
+  imports: [RouterLink, Busca, MenuOpcoes, Dialog, Botao],
   templateUrl: './financeiro.html',
   styleUrl: './financeiro.scss'
 })

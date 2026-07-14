@@ -63,3 +63,12 @@
   padding: 22px;
   overflow-y: auto;
 }
+
+.rodape {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}

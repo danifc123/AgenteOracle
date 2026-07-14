@@ -1,0 +1,22 @@
+<button
+  [type]="type()"
+  class="botao"
+  [class.botao--primaria]="variant() === 'primaria'"
+  [class.botao--acao]="variant() === 'acao' || variant() === 'perigo'"
+  [class.botao--perigo]="variant() === 'perigo'"
+  [class.botao--icone]="variant() === 'icone'"
+  [class.botao--contorno]="variant() === 'contorno'"
+  [class.botao--enviar]="variant() === 'enviar'"
+  [class.botao--pressionado]="pressed()"
+  [disabled]="disabled() || loading()"
+  [attr.aria-label]="ariaLabel()"
+  [attr.aria-pressed]="variant() === 'icone' ? pressed() : null"
+  [title]="title()"
+  (click)="clicked.emit()"
+>
+  @if (loading()) {
+    {{ loadingText() }}
+  } @else {
+    <ng-content></ng-content>
+  }
+</button>

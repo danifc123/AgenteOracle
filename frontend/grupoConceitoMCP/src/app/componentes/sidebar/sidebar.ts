@@ -9,7 +9,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 })
 export class Sidebar {
   protected readonly sidebarOpen = signal(false);
-  protected readonly financeiroOpen = signal(true);
+  protected readonly financeiroOpen = signal(false);
 
   toggleSidebar(): void {
     this.sidebarOpen.update((value) => !value);

@@ -7,10 +7,14 @@ from mcp.types import CallToolResult, Tool
 from ollama import AsyncClient
 from ollama import Message as OllamaMessage
 
+from agente_oracle.config import settings
+
 _TOOL_CALL_TAG_REGEX = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL)
 
-ESQUEMA_FINANCEIRO = """
-Tabelas disponíveis no banco Oracle (todas somente leitura):
+NOME_BANCO = "Oracle" if settings.db_backend == "oracle" else "PostgreSQL"
+
+ESQUEMA_FINANCEIRO = f"""
+Tabelas disponíveis no banco {NOME_BANCO} (todas somente leitura):
 
 - CONTAS_BANCARIAS(ID_CONTA PK, NOME_CONTA, BANCO, AGENCIA, NUMERO_CONTA, TIPO_CONTA[CORRENTE|POUPANCA|INVESTIMENTO], SALDO_ATUAL, DATA_ABERTURA)
 - CATEGORIAS_FINANCEIRAS(ID_CATEGORIA PK, NOME_CATEGORIA, TIPO_CATEGORIA[RECEITA|DESPESA], DESCRICAO)
@@ -23,14 +27,14 @@ Tabelas disponíveis no banco Oracle (todas somente leitura):
 
 SYSTEM_PROMPT = f"""Você é o Agente Oracle, um assistente do departamento financeiro. \
 Use as ferramentas disponíveis para consultar dados e testar a conexão com o \
-banco Oracle quando o usuário pedir.
+banco {NOME_BANCO} quando o usuário pedir.
 
 {ESQUEMA_FINANCEIRO}
 
 Quando o usuário pedir um relatório ou dado que não é coberto por uma ferramenta \
 pronta, use a ferramenta `executar_consulta_financeira` para rodar uma consulta \
 SELECT sobre as tabelas acima. Regras obrigatórias:
-- Gere sempre SQL Oracle válido, somente SELECT (nunca INSERT/UPDATE/DELETE ou DDL).
+- Gere sempre SQL {NOME_BANCO} válido, somente SELECT (nunca INSERT/UPDATE/DELETE ou DDL).
 - Use apenas as tabelas listadas acima, com JOIN quando precisar combinar dados.
 - Nunca invente colunas ou tabelas fora do esquema acima.
 - Sempre informe também um `titulo` curto e claro, em português, descrevendo o relatório \
@@ -41,7 +45,7 @@ valores/linhas que não vieram na resposta da ferramenta — isso vale mesmo se 
 de ter visto um relatório parecido antes: se não veio da ferramenta agora, não é real.
 - Se a mesma consulta já tiver sido rodada antes, a ferramenta detecta isso sozinha (comparando \
 o SQL) e devolve `reutilizado=true` com o resultado já salvo e a data em `gerado_em`, sem rodar \
-de novo no Oracle — nesse caso, avise o usuário que esse relatório já tinha sido gerado antes.
+de novo no banco — nesse caso, avise o usuário que esse relatório já tinha sido gerado antes.
 - Se a ferramenta retornar um erro dizendo que a consulta não é possível (colunas ou junções \
 que não existem, tabelas sem relação direta), NÃO fique tentando outras variações de SQL às \
 cegas. Explique diretamente ao usuário, em português, que não é possível gerar esse relatório \

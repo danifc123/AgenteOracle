@@ -1,0 +1,112 @@
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
+import { Botao } from '../../../componentes/botao/botao';
+import { Busca } from '../../../componentes/busca/busca';
+import { Dialog } from '../../../componentes/dialog/dialog';
+import { MenuOpcoes } from '../../../componentes/menu-opcoes/menu-opcoes';
+import { MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
+
+const LIMITE_FIXADOS = 3;
+
+@Component({
+  selector: 'app-financeiro',
+  imports: [RouterLink, Busca, MenuOpcoes, Dialog, Botao],
+  templateUrl: './financeiro.html',
+  styleUrl: './financeiro.scss'
+})
+export class Financeiro {
+  private readonly route = inject(ActivatedRoute);
+
+  private readonly moduloId = toSignal(
+    this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
+    { initialValue: this.route.snapshot.paramMap.get('moduloId') ?? '' }
+  );
+
+  protected readonly modulo = computed(() =>
+    MODULOS_FINANCEIRO.find((item) => item.id === this.moduloId())
+  );
+
+  protected readonly termoBusca = signal('');
+  protected readonly rotinaEmVisualizacao = signal<RotinaFinanceira | null>(null);
+  private readonly fixados = signal<string[]>([]);
+
+  private readonly rotinasOrdenadas = computed(() => {
+    const rotinas = this.modulo()?.rotinas ?? [];
+    const fixados = this.fixados();
+
+    const fixadas = fixados
+      .map((nome) => rotinas.find((rotina) => rotina.nome === nome))
+      .filter((rotina): rotina is RotinaFinanceira => !!rotina);
+
+    const restantes = rotinas.filter((rotina) => !fixados.includes(rotina.nome));
+
+    return [...fixadas, ...restantes];
+  });
+
+  protected readonly rotinasFiltradas = computed(() => {
+    const rotinas = this.rotinasOrdenadas();
+    const termo = this.termoBusca().trim().toLowerCase();
+
+    if (!termo) {
+      return rotinas;
+    }
+
+    return rotinas.filter((rotina) => rotina.nome.toLowerCase().includes(termo));
+  });
+
+  constructor() {
+    effect(() => {
+      this.moduloId();
+      this.termoBusca.set('');
+      this.rotinaEmVisualizacao.set(null);
+      this.carregarFixados();
+    });
+  }
+
+  protected estaFixado(rotina: RotinaFinanceira): boolean {
+    return this.fixados().includes(rotina.nome);
+  }
+
+  protected limiteFixadosAtingido(): boolean {
+    return this.fixados().length >= LIMITE_FIXADOS;
+  }
+
+  protected alternarFixado(rotina: RotinaFinanceira): void {
+    const atual = this.fixados();
+
+    if (atual.includes(rotina.nome)) {
+      this.salvarFixados(atual.filter((nome) => nome !== rotina.nome));
+      return;
+    }
+
+    if (atual.length >= LIMITE_FIXADOS) {
+      return;
+    }
+
+    this.salvarFixados([rotina.nome, ...atual]);
+  }
+
+  protected visualizar(rotina: RotinaFinanceira): void {
+    this.rotinaEmVisualizacao.set(rotina);
+  }
+
+  protected fecharVisualizacao(): void {
+    this.rotinaEmVisualizacao.set(null);
+  }
+
+  private carregarFixados(): void {
+    const salvos = localStorage.getItem(this.chaveFixados());
+    this.fixados.set(salvos ? (JSON.parse(salvos) as string[]) : []);
+  }
+
+  private salvarFixados(nomes: string[]): void {
+    this.fixados.set(nomes);
+    localStorage.setItem(this.chaveFixados(), JSON.stringify(nomes));
+  }
+
+  private chaveFixados(): string {
+    return `financeiro:${this.moduloId()}:fixados`;
+  }
+}

@@ -1,0 +1,10 @@
+<form class="campo-envio" (submit)="enviar.emit(); $event.preventDefault()">
+  <textarea
+    [value]="entrada()"
+    (input)="entradaChange.emit($any($event.target).value)"
+    (keydown.enter)="aoPressionarEnter($event)"
+    placeholder="Digite sua pergunta..."
+    rows="1"
+  ></textarea>
+  <app-botao variant="enviar" type="submit" [disabled]="enviando() || !entrada().trim()">Enviar</app-botao>
+</form>

@@ -10,12 +10,12 @@ import { MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/m
 const LIMITE_FIXADOS = 3;
 
 @Component({
-  selector: 'app-modulo-financeiro',
+  selector: 'app-financeiro',
   imports: [RouterLink, Busca, MenuOpcoes, Dialog],
-  templateUrl: './modulo.html',
-  styleUrl: './modulo.scss'
+  templateUrl: './financeiro.html',
+  styleUrl: './financeiro.scss'
 })
-export class ModuloFinanceiro {
+export class Financeiro {
   private readonly route = inject(ActivatedRoute);
 
   private readonly moduloId = toSignal(

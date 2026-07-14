@@ -1,0 +1,60 @@
+@if (modulo(); as modulo) {
+<header class="page-header">
+  <div>
+    <p class="breadcrumb">Financeiro / {{ modulo.nome }}</p>
+    <h1>{{ modulo.nome }}</h1>
+  </div>
+</header>
+
+<p class="instrucao">{{ modulo.descricao }}</p>
+
+<app-busca class="busca"
+           placeholder="Buscar rotina..."
+           [(valor)]="termoBusca" />
+
+@if (rotinasFiltradas().length) {
+<ul class="lista-rotinas">
+  @for (rotina of rotinasFiltradas(); track rotina.nome) {
+  <li>
+    <div class="rotina"
+         [class.rotina--ativa]="!!rotina.rota"
+         [class.rotina--pendente]="!rotina.rota">
+      @if (rotina.rota) {
+      <a class="rotina-info"
+         [routerLink]="rotina.rota">
+        <span>{{ rotina.nome }}</span>
+        <svg class="seta"
+             viewBox="0 0 24 24"
+             width="18"
+             height="18"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="2">
+          <path d="m9 6 6 6-6 6"
+                stroke-linecap="round"
+                stroke-linejoin="round" />
+        </svg>
+      </a>
+      } @else {
+      <div class="rotina-info">
+        <span>{{ rotina.nome }}</span>
+        <span class="tag-em-breve">Em breve</span>
+      </div>
+      }
+
+      <app-botao variant="icone"
+                 class="rotina-menu"
+                 ariaLabel="Mais opções de {{ rotina.nome }}"
+                 title="Mais opções">
+        <i class="fa-solid fa-ellipsis-vertical"></i>
+      </app-botao>
+    </div>
+  </li>
+  }
+</ul>
+} @else {
+<p class="carregando">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
+}
+} @else {
+<p class="carregando">Módulo não encontrado.</p>
+}

@@ -15,6 +15,7 @@ export class Botao {
   loadingText = input('');
   disabled = input(false);
   pressed = input(false);
+  largura = input<'auto' | 'completa'>('auto');
   ariaLabel = input<string | null>(null);
   title = input<string | null>(null);
 

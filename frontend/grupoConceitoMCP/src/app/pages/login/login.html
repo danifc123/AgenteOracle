@@ -1,0 +1,47 @@
+<div class="tela-login">
+  <div class="login-media">
+    <img src="imagens-locais/conceito.png" alt="Fachada do Grupo Conceito" />
+  </div>
+
+  <div class="login-formulario">
+    <div class="login-card">
+      <div class="brand">
+        <span class="brand-mark">GC</span>
+        <span class="brand-name">Grupo Conceito</span>
+      </div>
+
+      <h1>Entrar</h1>
+      <p class="subtitulo">Acesse o painel financeiro do Grupo Conceito.</p>
+
+      <form (submit)="entrar(); $event.preventDefault()">
+        <label class="campo">
+          <span>Usuário</span>
+          <input
+            type="text"
+            [value]="usuario()"
+            (input)="usuario.set($any($event.target).value)"
+            autocomplete="username"
+            placeholder="seu.usuario"
+          />
+        </label>
+
+        <label class="campo">
+          <span>Senha</span>
+          <input
+            type="password"
+            [value]="senha()"
+            (input)="senha.set($any($event.target).value)"
+            autocomplete="current-password"
+            placeholder="••••••••"
+          />
+        </label>
+
+        @if (erro()) {
+          <p class="erro">{{ erro() }}</p>
+        }
+
+        <app-botao type="submit" variant="primaria" largura="completa">Entrar</app-botao>
+      </form>
+    </div>
+  </div>
+</div>

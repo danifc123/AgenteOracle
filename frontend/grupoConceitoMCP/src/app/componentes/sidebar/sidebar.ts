@@ -1,5 +1,6 @@
-import { Component, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Component, inject, signal } from '@angular/core';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { Sessao } from '../../servicos/sessao';
 
 @Component({
   selector: 'app-sidebar',
@@ -8,6 +9,9 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   styleUrl: './sidebar.scss'
 })
 export class Sidebar {
+  private readonly sessao = inject(Sessao);
+  private readonly router = inject(Router);
+
   protected readonly sidebarOpen = signal(false);
   protected readonly financeiroOpen = signal(false);
 
@@ -21,5 +25,10 @@ export class Sidebar {
 
   toggleFinanceiro(): void {
     this.financeiroOpen.update((value) => !value);
+  }
+
+  sair(): void {
+    this.sessao.sair();
+    this.router.navigateByUrl('/login');
   }
 }

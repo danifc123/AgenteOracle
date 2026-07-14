@@ -8,6 +8,7 @@
   [class.botao--contorno]="variant() === 'contorno'"
   [class.botao--enviar]="variant() === 'enviar'"
   [class.botao--pressionado]="pressed()"
+  [class.botao--completa]="largura() === 'completa'"
   [disabled]="disabled() || loading()"
   [attr.aria-label]="ariaLabel()"
   [attr.aria-pressed]="variant() === 'icone' ? pressed() : null"

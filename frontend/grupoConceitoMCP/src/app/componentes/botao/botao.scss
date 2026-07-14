@@ -11,6 +11,12 @@
   }
 }
 
+.botao--completa {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
 .botao--primaria {
   border: none;
   border-radius: var(--radius-sm);

@@ -1,17 +1,8 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
-
-interface ConsultaUsada {
-  ferramenta: string;
-  argumentos: Record<string, unknown>;
-}
-
-interface MensagemChat {
-  role: 'user' | 'assistant';
-  content: string;
-  consultas?: ConsultaUsada[];
-}
+import { ChatEntrada } from './entrada/chat-entrada';
+import { ChatMensagens, ConsultaUsada, MensagemChat } from './mensagens/chat-mensagens';
 
 interface RespostaChat {
   resposta: string;
@@ -20,40 +11,18 @@ interface RespostaChat {
 
 @Component({
   selector: 'app-chat',
-  imports: [],
+  imports: [ChatMensagens, ChatEntrada],
   templateUrl: './chat.html',
   styleUrl: './chat.scss'
 })
 export class Chat {
   private readonly http = inject(HttpClient);
-  private readonly listaMensagens = viewChild<ElementRef<HTMLDivElement>>('listaMensagens');
 
   mensagens = signal<MensagemChat[]>([]);
   entrada = signal('');
   enviando = signal(false);
   erro = signal<string | null>(null);
   baixandoSql = signal<string | null>(null);
-
-  constructor() {
-    effect(() => {
-      this.mensagens();
-      this.enviando();
-      queueMicrotask(() => {
-        const elemento = this.listaMensagens()?.nativeElement;
-        if (elemento) {
-          elemento.scrollTop = elemento.scrollHeight;
-        }
-      });
-    });
-  }
-
-  aoPressionarEnter(evento: Event): void {
-    const teclado = evento as KeyboardEvent;
-    if (!teclado.shiftKey) {
-      teclado.preventDefault();
-      this.enviar();
-    }
-  }
 
   enviar(): void {
     const texto = this.entrada().trim();

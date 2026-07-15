@@ -5,7 +5,7 @@ de um agente de IA (via MCP) e de um painel web (Angular).
 
 **Objetivo:** permitir que qualquer pessoa do time financeiro converse em português
 com o agente — peça relatórios prontos ou dados que ainda não têm tela pronta — e
-também navegue por telas fixas (transações) no navegador.
+também navegue pelos relatórios fixos do módulo Financeiro no navegador.
 
 ## Arquitetura
 
@@ -17,7 +17,7 @@ Oracle DB  ←→  Backend Python (MCP + REST)  ←→  Agente de IA (Ollama loc
 ```
 
 - **Transporte do agente:** [MCP](https://modelcontextprotocol.io/) via Streamable HTTP — servidor central expõe *tools* que qualquer cliente MCP (o chat deste projeto, ou outro agente) pode descobrir e chamar.
-- **Transporte do frontend:** rotas REST comuns (`/api/...`) no mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usadas para telas que não precisam de IA (tabela de transações, exportação).
+- **Transporte do frontend:** rotas REST comuns (`/api/...`) no mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usadas para telas que não precisam de IA.
 - **Banco:** Oracle, acesso via [`python-oracledb`](https://python-oracledb.readthedocs.io/) em modo *thin* (sem necessidade de Instant Client instalado).
 - **Histórico de relatórios:** MongoDB — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, e é usado para não repetir a mesma consulta no Oracle — veja [Histórico de relatórios](#histórico-de-relatórios-mongodb).
 - **LLM:** [Ollama](https://ollama.com/) rodando local (sem custo de API paga).
@@ -25,8 +25,8 @@ Oracle DB  ←→  Backend Python (MCP + REST)  ←→  Agente de IA (Ollama loc
 
 ### Consultas fixas x consultas livres
 
-- **Tools/rotas fixas** (`listar_transacoes_json`, `/api/transacoes`, exportação): SQL pré-definido no código, sem participação da IA.
-- **`executar_consulta_financeira`**: a IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta (ex: "orçado x realizado por categoria"). Passa por validações de segurança antes de rodar no banco — veja [Segurança do SQL livre](#segurança-do-sql-livre) — e o resultado é salvo/reaproveitado via o histórico em Mongo.
+- **Tools/rotas fixas**: SQL pré-definido no código para cada relatório do módulo Financeiro, sem participação da IA. Ainda a implementar — veja a lista de relatórios em `frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts`.
+- **`executar_consulta_financeira`**: a IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta. Passa por validações de segurança antes de rodar no banco — veja [Segurança do SQL livre](#segurança-do-sql-livre) — e o resultado é salvo/reaproveitado via o histórico em Mongo. Fica sem nenhuma tabela liberada até o schema real do banco (TOTVS) ser importado.
 
 ## Estrutura do projeto
 
@@ -44,15 +44,10 @@ src/agente_oracle/
 │   └── server.py              # servidor MCP (FastMCP) + rotas REST (/api/...)
 └── tools/
     ├── connectivity.py       # teste de conexão com o Oracle
-    ├── financeiro.py          # consultas fixas de transações (JSON e Excel)
     ├── consulta_livre.py      # SQL livre gerado pela IA, com validação de segurança
     └── historico.py           # dedup e CRUD do histórico de relatórios no Mongo
 
-frontend/grupoConceitoMCP/    # Angular — menu lateral, tela de transações, chat, histórico
-scripts/
-└── seed_dados_extra.py       # popula o banco de teste com dados extras
-
-consultas.sql                 # modelagem/DDL de referência de todas as tabelas
+frontend/grupoConceitoMCP/    # Angular — menu lateral, módulos financeiros, chat, histórico
 ```
 
 ## Setup do backend
@@ -88,7 +83,7 @@ consultas.sql                 # modelagem/DDL de referência de todas as tabelas
 5. Para validar a conexão, chame a tool `testar_conexao_oracle` a partir de um cliente MCP, ou teste a rota REST:
 
    ```powershell
-   curl http://127.0.0.1:8000/api/transacoes
+   curl http://127.0.0.1:8000/api/relatorios/historico
    ```
 
 ## Frontend (Angular)
@@ -102,7 +97,7 @@ npm start
 Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando para funcionar. Telas:
 
 - **Início** — página inicial.
-- **Financeiro → Transações** — tabela alimentada por `GET /api/transacoes`, com exportação em Excel.
+- **Financeiro → Específico Grupo Conceito** — lista os relatórios do módulo (ex: Fluxo de Caixa Realizado, Boleto, FINR10...); cada um aparece como "Em breve" até ter uma tool/rota fixa implementada.
 - **Assistente IA** — chat com o agente (usa `POST /api/chat`); respostas que rodaram SQL mostram a consulta usada e um botão para baixar o resultado em Excel.
 - **Histórico de relatórios** — lista os relatórios já gerados pela IA (`GET /api/relatorios/historico`), com botão de bandeira para fixar/desfixar (relatório fixado não expira), botão para baixar em Excel (sem rodar de novo no Oracle) e botão para apagar do histórico.
 
@@ -110,8 +105,6 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 
 | Rota | Método | Uso |
 |---|---|---|
-| `/api/transacoes` | GET | Lista transações em JSON, para a tabela do frontend |
-| `/api/transacoes/exportar` | GET | Baixa o relatório de transações em Excel |
 | `/api/chat` | POST | `{mensagem, historico}` → `{resposta, consultas}` — conversa com o agente |
 | `/api/relatorio/exportar` | POST | `{sql}` → arquivo Excel — reexecuta uma consulta (normalmente uma que a IA gerou) e baixa o resultado |
 | `/api/relatorios/historico` | GET | Lista os relatórios salvos no histórico (sem os dados das linhas) |
@@ -152,6 +145,6 @@ A tool `executar_consulta_financeira` deixa a IA gerar SQL dinamicamente, então
 SQL passa por validação antes de rodar (`tools/consulta_livre.py`):
 
 - Só aceita instruções `SELECT` (bloqueia `INSERT/UPDATE/DELETE/DROP/ALTER/CREATE`, blocos PL/SQL, `DBMS_*`/`UTL_*`, etc.).
-- Só permite as tabelas financeiras conhecidas (rejeita `USER_TABLES`, `V$...` ou qualquer tabela fora da whitelist).
+- Só permite as tabelas da whitelist (`TABELAS_PERMITIDAS`, em `tools/consulta_livre.py`) — hoje vazia, aguardando a importação do schema real do banco (TOTVS), então toda consulta é rejeitada até essa lista ser preenchida.
 - Bloqueia múltiplas instruções encadeadas (`;`).
 - Aplica limite automático de linhas (`FETCH FIRST 200 ROWS ONLY`) e timeout de 10s na conexão.

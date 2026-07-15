@@ -17,7 +17,6 @@ from agente_oracle.tools.consulta_livre import (
     executar_consulta_financeira,
     exportar_consulta_financeira_xlsx,
 )
-from agente_oracle.tools.financeiro import exportar_transacoes_xlsx, listar_transacoes_json
 
 mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
 
@@ -51,29 +50,6 @@ def testar_conexao_oracle() -> str:
 
 
 mcp.tool()(executar_consulta_financeira)
-
-
-@mcp.custom_route("/api/transacoes", methods=["GET"])
-async def listar_transacoes_route(request: Request) -> JSONResponse:
-    """Endpoint HTTP usado pelo frontend para preencher a tabela de transações."""
-    limite = int(request.query_params.get("limite", 20))
-    transacoes = listar_transacoes_json(limite)
-    return JSONResponse(transacoes, headers=_CORS_HEADERS)
-
-
-@mcp.custom_route("/api/transacoes/exportar", methods=["GET"])
-async def exportar_transacoes_route(request: Request) -> Response:
-    """Endpoint HTTP usado pelo frontend para baixar o relatório de transações em Excel."""
-    limite = int(request.query_params.get("limite", 20))
-    conteudo_xlsx, nome_arquivo = exportar_transacoes_xlsx(limite)
-    return Response(
-        content=conteudo_xlsx,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={
-            "Content-Disposition": f'attachment; filename="{nome_arquivo}"',
-            **_CORS_HEADERS,
-        },
-    )
 
 
 @mcp.custom_route("/api/relatorio/exportar", methods=["POST", "OPTIONS"])

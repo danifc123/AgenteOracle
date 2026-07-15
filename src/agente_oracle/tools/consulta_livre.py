@@ -6,15 +6,9 @@ from agente_oracle.db.connection import DatabaseError, eh_erro_coluna_invalida, 
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.tools import historico
 
-TABELAS_PERMITIDAS = {
-    "TRANSACOES",
-    "CONTAS_BANCARIAS",
-    "CATEGORIAS_FINANCEIRAS",
-    "FORNECEDORES_CLIENTES",
-    "FATURAS",
-    "CENTROS_CUSTO",
-    "ORCAMENTOS",
-}
+# Vazio até o schema real do banco (TOTVS) ser importado — nenhuma tabela fica
+# liberada pra IA consultar enquanto isso, então toda consulta é rejeitada.
+TABELAS_PERMITIDAS: set[str] = set()
 
 PALAVRAS_BLOQUEADAS = (
     "INSERT",
@@ -131,13 +125,12 @@ def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], s
 
 def executar_consulta_financeira(sql: str, titulo: str) -> dict:
     """Executa uma consulta SELECT sobre as tabelas financeiras do banco configurado
-    (TRANSACOES, CONTAS_BANCARIAS, CATEGORIAS_FINANCEIRAS, FORNECEDORES_CLIENTES,
-    FATURAS) e devolve as linhas encontradas.
+    e devolve as linhas encontradas.
 
     Use esta ferramenta quando o usuário pedir um relatório ou dado que não é
     coberto por nenhuma ferramenta pronta. Regras: gere sempre SQL válido para o
     banco configurado e somente SELECT; nunca use INSERT/UPDATE/DELETE ou comandos DDL; use apenas
-    as tabelas financeiras listadas acima, combinando com JOIN quando precisar
+    as tabelas financeiras liberadas para este agente, combinando com JOIN quando precisar
     relacionar dados; nunca invente colunas ou tabelas fora do esquema conhecido.
     Informe também um `titulo` curto e claro, em português, descrevendo o que o
     relatório mostra (ex: "Transações de fornecedor X em março de 2026") — ele é

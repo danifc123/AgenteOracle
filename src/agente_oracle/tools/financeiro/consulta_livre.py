@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from agente_oracle.db.connection import DatabaseError, eh_erro_coluna_invalida, get_connection
 from agente_oracle.relatorios import gerar_xlsx
-from agente_oracle.tools import historico
+from agente_oracle.tools.financeiro import historico
 
 # Vazio até o schema real do banco (TOTVS) ser importado — nenhuma tabela fica
 # liberada pra IA consultar enquanto isso, então toda consulta é rejeitada.

@@ -5,7 +5,8 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from ollama import AsyncClient
 
-from agente_oracle.agent.core import SYSTEM_PROMPT, mcp_url, responder, tools_para_ollama
+from agente_oracle.agent.core import mcp_url, responder, tools_para_ollama
+from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
 from agente_oracle.config import settings
 
 

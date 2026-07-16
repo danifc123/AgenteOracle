@@ -48,6 +48,7 @@ src/agente_oracle/
 │   └── financeiro/             # rotas HTTP do módulo Financeiro
 │       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04)
 │       │   ├── filiais.py            # lista as filiais (SA6010) pro seletor múltiplo da tela
+│       │   ├── cadastros.py           # lista clientes/lojas/vendedores/prefixos/tipos pros selects com busca dos filtros
 │       │   └── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores
 │       ├── historico.py           # rotas REST do histórico de relatórios gerados pela IA
 │       └── ia.py                   # registra as tools de IA + /api/chat + /api/relatorio/exportar

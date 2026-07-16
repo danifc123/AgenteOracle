@@ -89,7 +89,7 @@
               @case ('select') {
                 <app-select-busca class="campo-filtro"
                                    [placeholder]="campo.rotulo"
-                                   [opcoes]="campo.opcoes ?? []"
+                                   [opcoes]="opcoesDoCampo(campo)"
                                    [valor]="valorFiltro(campo.chave)"
                                    (valorChange)="definirValorFiltro(campo.chave, $event ?? '')" />
               }

@@ -13,6 +13,12 @@ export interface CampoFiltro {
   obrigatorio?: boolean;
   /** Só usado quando tipo === 'select' — lista fixa de opções. */
   opcoes?: OpcaoFiltro[];
+  /**
+   * Só usado quando tipo === 'select' e `opcoes` não é informado — sufixo da
+   * rota REST do backend (/api/financeiro/{apiEndpoint}) que devolve as
+   * opções já cadastradas no banco (ex: clientes, vendedores).
+   */
+  apiEndpoint?: string;
 }
 
 export interface RotinaFinanceira {
@@ -49,12 +55,12 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         nome: 'Duplicata Mercantil em Lote',
         apiEndpoint: 'duplicata-mercantil',
         filtros: [
-          { chave: 'cliente', rotulo: 'Cliente', tipo: 'texto' },
-          { chave: 'loja', rotulo: 'Loja', tipo: 'texto' },
+          { chave: 'cliente', rotulo: 'Cliente', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'loja', rotulo: 'Loja', tipo: 'select', apiEndpoint: 'lojas' },
           { chave: 'vencto', rotulo: 'Vencimento', tipo: 'periodo-data' },
-          { chave: 'prefixo', rotulo: 'Prefixo', tipo: 'texto' },
-          { chave: 'tipo', rotulo: 'Tipo', tipo: 'texto' },
-          { chave: 'vendedor', rotulo: 'Consultor', tipo: 'texto' },
+          { chave: 'prefixo', rotulo: 'Prefixo', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'tipo', rotulo: 'Tipo', tipo: 'select', apiEndpoint: 'tipos' },
+          { chave: 'vendedor', rotulo: 'Consultor', tipo: 'select', apiEndpoint: 'vendedores' },
           {
             chave: 'status_assinatura',
             rotulo: 'Status assinatura',

@@ -51,6 +51,7 @@ export class Financeiro {
   protected readonly filiaisSelecionadas = signal<string[]>([]);
   protected readonly valoresFiltros = signal<Record<string, string>>({});
   protected readonly filtroInvalido = signal(false);
+  private readonly opcoesCampos = signal<Record<string, OpcaoSelectBusca[]>>({});
 
   private readonly rotinasOrdenadas = computed(() => {
     const rotinas = this.modulo()?.rotinas ?? [];
@@ -128,6 +129,32 @@ export class Financeiro {
     if (!this.filiais().length) {
       this.carregarFiliais();
     }
+
+    for (const campo of rotina.filtros ?? []) {
+      this.carregarOpcoesCampo(campo);
+    }
+  }
+
+  protected opcoesDoCampo(campo: CampoFiltro): OpcaoSelectBusca[] {
+    return campo.opcoes ?? this.opcoesCampos()[campo.chave] ?? [];
+  }
+
+  private carregarOpcoesCampo(campo: CampoFiltro): void {
+    if (!campo.apiEndpoint || this.opcoesCampos()[campo.chave]) {
+      return;
+    }
+
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/${campo.apiEndpoint}`).subscribe({
+      next: (opcoes) => {
+        this.opcoesCampos.update((atual) => ({
+          ...atual,
+          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome }))
+        }));
+      },
+      error: () => {
+        this.opcoesCampos.update((atual) => ({ ...atual, [campo.chave]: [] }));
+      }
+    });
   }
 
   protected valorFiltro(chave: string): string {

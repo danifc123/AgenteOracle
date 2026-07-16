@@ -126,6 +126,36 @@ h1 {
   gap: 8px;
   padding: 8px;
   white-space: nowrap;
+  border-radius: var(--radius-sm);
+  transition: background 0.3s ease;
+}
+
+.painel-filtro-conteudo--invalido {
+  animation: tremida 0.4s ease-in-out;
+  background: rgba(201, 75, 75, 0.14);
+}
+
+@keyframes tremida {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+
+  30%,
+  50%,
+  70% {
+    transform: translateX(-5px);
+  }
+
+  40%,
+  60% {
+    transform: translateX(5px);
+  }
 }
 
 .select-filial {

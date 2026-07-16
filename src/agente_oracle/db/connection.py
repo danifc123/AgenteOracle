@@ -7,7 +7,9 @@ from psycopg_pool import ConnectionPool as PostgresPool
 
 from agente_oracle.config import settings
 
-_BIND_REGEX = re.compile(r":(\w+)\b")
+# O lookbehind negativo evita casar o segundo ":" de um cast Postgres
+# ("::varchar", "::int"), que senão seria confundido com um bind novo.
+_BIND_REGEX = re.compile(r"(?<!:):(\w+)\b")
 
 DatabaseError = (oracledb.DatabaseError, psycopg.Error)
 

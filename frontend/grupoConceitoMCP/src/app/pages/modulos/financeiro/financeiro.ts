@@ -51,6 +51,7 @@ export class Financeiro {
   protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
   protected readonly filialSelecionada = signal<string | null>(null);
   protected readonly anoSelecionado = signal(ANO_PADRAO);
+  protected readonly filtroInvalido = signal(false);
 
   private readonly rotinasOrdenadas = computed(() => {
     const rotinas = this.modulo()?.rotinas ?? [];
@@ -131,11 +132,17 @@ export class Financeiro {
 
   protected confirmarFiltro(rotina: RotinaFinanceira): void {
     if (!this.filialSelecionada()) {
+      this.sinalizarFiltroInvalido();
       return;
     }
 
     this.rotinaComFiltroAberto.set(null);
     this.buscarRelatorio(rotina);
+  }
+
+  private sinalizarFiltroInvalido(): void {
+    this.filtroInvalido.set(true);
+    setTimeout(() => this.filtroInvalido.set(false), 400);
   }
 
   protected visualizar(rotina: RotinaFinanceira): void {

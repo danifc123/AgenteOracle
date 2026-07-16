@@ -69,7 +69,8 @@
       <div class="painel-filtro"
            [class.painel-filtro--aberto]="filtroEstaAberto(rotina)">
         @if (filtroEstaAberto(rotina)) {
-        <div class="painel-filtro-conteudo">
+        <div class="painel-filtro-conteudo"
+             [class.painel-filtro-conteudo--invalido]="filtroInvalido()">
           <app-select-busca class="select-filial"
                              placeholder="Filial..."
                              [opcoes]="filiais()"
@@ -80,7 +81,6 @@
                  (input)="anoSelecionado.set($any($event.target).value)"
                  placeholder="Ano" />
           <app-botao variant="primaria"
-                     [disabled]="!filialSelecionada()"
                      (clicked)="confirmarFiltro(rotina)">
             Ver relatório
           </app-botao>
@@ -90,26 +90,6 @@
       }
 
       <app-menu-opcoes class="rotina-menu">
-        <button type="button"
-                class="item-menu"
-                (click)="visualizar(rotina)">
-          <svg class="icone-item"
-               viewBox="0 0 24 24"
-               width="16"
-               height="16"
-               fill="none"
-               stroke="currentColor"
-               stroke-width="1.8"
-               stroke-linecap="round"
-               stroke-linejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
-            <circle cx="12"
-                    cy="12"
-                    r="3" />
-          </svg>
-          Visualizar
-        </button>
-
         <button type="button"
                 class="item-menu"
                 [disabled]="!rotina.apiEndpoint || baixandoRelatorio()"

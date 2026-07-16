@@ -76,7 +76,9 @@
 }
 
 .opcao {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   border: none;
   background: none;
@@ -91,6 +93,20 @@
   &:hover {
     background: var(--color-bg);
   }
+}
+
+.opcao-checkbox {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.opcao-checkbox--marcada {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .opcao--selecionada {

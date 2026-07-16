@@ -24,7 +24,12 @@ export class SelectBusca {
 
   opcoes = input.required<OpcaoSelectBusca[]>();
   placeholder = input('Selecione...');
+  multiplo = input(false);
+
+  /** Usado quando multiplo() é false. */
   valor = model<string | null>(null);
+  /** Usado quando multiplo() é true. */
+  valores = model<string[]>([]);
 
   protected readonly aberto = signal(false);
   protected readonly termo = signal('');
@@ -42,6 +47,20 @@ export class SelectBusca {
   });
 
   protected readonly rotuloSelecionado = computed(() => {
+    if (this.multiplo()) {
+      const selecionadas = this.valores();
+
+      if (!selecionadas.length) {
+        return '';
+      }
+
+      if (selecionadas.length === 1) {
+        return this.opcoes().find((item) => item.valor === selecionadas[0])?.rotulo ?? selecionadas[0];
+      }
+
+      return `${selecionadas.length} selecionadas`;
+    }
+
     const opcao = this.opcoes().find((item) => item.valor === this.valor());
     return opcao?.rotulo ?? '';
   });
@@ -57,7 +76,20 @@ export class SelectBusca {
     this.aberto.set(true);
   }
 
+  protected estaSelecionada(opcao: OpcaoSelectBusca): boolean {
+    return this.multiplo() ? this.valores().includes(opcao.valor) : opcao.valor === this.valor();
+  }
+
   selecionar(opcao: OpcaoSelectBusca): void {
+    if (this.multiplo()) {
+      const atual = this.valores();
+      const novo = atual.includes(opcao.valor)
+        ? atual.filter((valor) => valor !== opcao.valor)
+        : [...atual, opcao.valor];
+      this.valores.set(novo);
+      return;
+    }
+
     this.valor.set(opcao.valor);
     this.aberto.set(false);
   }

@@ -6,7 +6,7 @@
     (click)="toggle()"
     [attr.aria-expanded]="aberto()"
   >
-    <span [class.placeholder]="!valor()">{{ rotuloSelecionado() || placeholder() }}</span>
+    <span [class.placeholder]="!rotuloSelecionado()">{{ rotuloSelecionado() || placeholder() }}</span>
     <svg class="chevron" [class.rotated]="aberto()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
       <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
@@ -32,9 +32,12 @@
               <button
                 type="button"
                 class="opcao"
-                [class.opcao--selecionada]="opcao.valor === valor()"
+                [class.opcao--selecionada]="estaSelecionada(opcao)"
                 (click)="selecionar(opcao)"
               >
+                @if (multiplo()) {
+                  <span class="opcao-checkbox" [class.opcao-checkbox--marcada]="estaSelecionada(opcao)"></span>
+                }
                 {{ opcao.rotulo }}
               </button>
             </li>

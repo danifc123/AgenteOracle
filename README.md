@@ -46,7 +46,9 @@ src/agente_oracle/
 │   ├── app.py                 # cria o servidor MCP (FastMCP), registra os módulos, entrypoint (agente-oracle)
 │   ├── cors.py                 # headers/preflight CORS compartilhados entre as rotas
 │   └── financeiro/             # rotas HTTP do módulo Financeiro
-│       ├── relatorios/           # 1 arquivo por relatório fixo (SQL + rotas) — só Fluxo de Caixa Realizado (FINR01) implementado até agora
+│       ├── filiais.py            # lista as filiais (SA6010) pro seletor múltiplo da tela
+│       ├── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores
+│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04)
 │       ├── historico.py           # rotas REST do histórico de relatórios gerados pela IA
 │       └── ia.py                   # registra as tools de IA + /api/chat + /api/relatorio/exportar
 └── tools/

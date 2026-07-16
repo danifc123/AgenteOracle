@@ -71,6 +71,7 @@
         <div class="painel-filtro-conteudo"
              [class.painel-filtro-conteudo--invalido]="filtroInvalido()">
           <app-select-busca class="campo-filtro select-filial"
+                             rotulo="Filial(is)"
                              placeholder="Filial(is)..."
                              [multiplo]="true"
                              [opcoes]="filiais()"
@@ -79,34 +80,80 @@
           @for (campo of rotina.filtros ?? []; track campo.chave) {
             @switch (campo.tipo) {
               @case ('texto') {
-                <input type="text"
-                       class="campo-filtro campo-texto"
-                       [value]="valorFiltro(campo.chave)"
-                       (input)="definirValorFiltro(campo.chave, $any($event.target).value)"
-                       [placeholder]="campo.rotulo"
-                       [attr.aria-label]="campo.rotulo" />
+                <div class="campo-grupo campo-filtro">
+                  <span class="campo-rotulo">{{ campo.rotulo }}</span>
+                  <div class="campo-controle">
+                    <input type="text"
+                           class="campo-texto"
+                           [class.campo-com-limpar]="!!valorFiltro(campo.chave)"
+                           [value]="valorFiltro(campo.chave)"
+                           (input)="definirValorFiltro(campo.chave, $any($event.target).value)"
+                           [placeholder]="campo.rotulo"
+                           [attr.aria-label]="campo.rotulo" />
+                    @if (valorFiltro(campo.chave)) {
+                      <button type="button"
+                              class="botao-limpar"
+                              aria-label="Limpar campo"
+                              (click)="definirValorFiltro(campo.chave, '')">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                      </button>
+                    }
+                  </div>
+                </div>
               }
               @case ('select') {
                 <app-select-busca class="campo-filtro"
+                                   [rotulo]="campo.rotulo"
                                    [placeholder]="campo.rotulo"
                                    [opcoes]="opcoesDoCampo(campo)"
                                    [valor]="valorFiltro(campo.chave)"
                                    (valorChange)="definirValorFiltro(campo.chave, $event ?? '')" />
               }
               @case ('periodo-data') {
-                <input type="date"
-                       class="campo-filtro campo-data"
-                       [value]="valorFiltro(campo.chave + '_ini')"
-                       (input)="definirValorFiltro(campo.chave + '_ini', $any($event.target).value)"
-                       [title]="campo.rotulo + ' - início'"
-                       [attr.aria-label]="campo.rotulo + ' - início'" />
-                <span class="separador-periodo">até</span>
-                <input type="date"
-                       class="campo-filtro campo-data"
-                       [value]="valorFiltro(campo.chave + '_fim')"
-                       (input)="definirValorFiltro(campo.chave + '_fim', $any($event.target).value)"
-                       [title]="campo.rotulo + ' - fim'"
-                       [attr.aria-label]="campo.rotulo + ' - fim'" />
+                <div class="campo-grupo campo-filtro campo-grupo--periodo">
+                  <span class="campo-rotulo">{{ campo.rotulo }}</span>
+                  <div class="campo-periodo">
+                    <div class="campo-controle">
+                      <input type="date"
+                             class="campo-data"
+                             [value]="valorFiltro(campo.chave + '_ini')"
+                             (input)="definirValorFiltro(campo.chave + '_ini', $any($event.target).value)"
+                             [title]="campo.rotulo + ' - início'"
+                             [attr.aria-label]="campo.rotulo + ' - início'" />
+                      @if (valorFiltro(campo.chave + '_ini')) {
+                        <button type="button"
+                                class="botao-limpar"
+                                aria-label="Limpar início"
+                                (click)="definirValorFiltro(campo.chave + '_ini', '')">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                        </button>
+                      }
+                    </div>
+                    <span class="separador-periodo">até</span>
+                    <div class="campo-controle">
+                      <input type="date"
+                             class="campo-data"
+                             [value]="valorFiltro(campo.chave + '_fim')"
+                             (input)="definirValorFiltro(campo.chave + '_fim', $any($event.target).value)"
+                             [title]="campo.rotulo + ' - fim'"
+                             [attr.aria-label]="campo.rotulo + ' - fim'" />
+                      @if (valorFiltro(campo.chave + '_fim')) {
+                        <button type="button"
+                                class="botao-limpar"
+                                aria-label="Limpar fim"
+                                (click)="definirValorFiltro(campo.chave + '_fim', '')">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                        </button>
+                      }
+                    </div>
+                  </div>
+                </div>
               }
             }
           }

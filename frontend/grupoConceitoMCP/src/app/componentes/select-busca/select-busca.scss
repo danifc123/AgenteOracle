@@ -1,5 +1,18 @@
 :host {
   display: block;
+}
+
+.campo-rotulo {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.campo-controle {
   position: relative;
 }
 
@@ -24,6 +37,10 @@
   }
 }
 
+.gatilho--com-limpar {
+  padding-right: 30px;
+}
+
 .placeholder {
   color: var(--color-text-muted);
 }
@@ -35,6 +52,29 @@
 
   &.rotated {
     transform: rotate(180deg);
+  }
+}
+
+.botao-limpar {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
   }
 }
 

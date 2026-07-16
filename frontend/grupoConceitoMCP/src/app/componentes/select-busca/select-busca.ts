@@ -25,6 +25,8 @@ export class SelectBusca {
   opcoes = input.required<OpcaoSelectBusca[]>();
   placeholder = input('Selecione...');
   multiplo = input(false);
+  /** Label pequeno mostrado acima do campo, pra identificar o que ele espera mesmo depois de preenchido. */
+  rotulo = input<string | null>(null);
 
   /** Usado quando multiplo() é false. */
   valor = model<string | null>(null);
@@ -44,6 +46,10 @@ export class SelectBusca {
     }
 
     return opcoes.filter((opcao) => opcao.rotulo.toLowerCase().includes(termo));
+  });
+
+  protected readonly temSelecao = computed(() => {
+    return this.multiplo() ? this.valores().length > 0 : !!this.valor();
   });
 
   protected readonly rotuloSelecionado = computed(() => {
@@ -91,6 +97,18 @@ export class SelectBusca {
     }
 
     this.valor.set(opcao.valor);
+    this.aberto.set(false);
+  }
+
+  limpar(evento: Event): void {
+    evento.stopPropagation();
+
+    if (this.multiplo()) {
+      this.valores.set([]);
+    } else {
+      this.valor.set(null);
+    }
+
     this.aberto.set(false);
   }
 

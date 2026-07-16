@@ -10,10 +10,9 @@ import { Dialog } from '../../../componentes/dialog/dialog';
 import { MenuOpcoes } from '../../../componentes/menu-opcoes/menu-opcoes';
 import { OpcaoSelectBusca, SelectBusca } from '../../../componentes/select-busca/select-busca';
 import { VisualizadorExcel } from '../../../componentes/visualizador-excel/visualizador-excel';
-import { MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
+import { CampoFiltro, MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
 
 const LIMITE_FIXADOS = 3;
-const ANO_PADRAO = '2023';
 
 interface Filial {
   codigo: string;
@@ -49,8 +48,8 @@ export class Financeiro {
 
   protected readonly rotinaComFiltroAberto = signal<RotinaFinanceira | null>(null);
   protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
-  protected readonly filialSelecionada = signal<string | null>(null);
-  protected readonly anoSelecionado = signal(ANO_PADRAO);
+  protected readonly filiaisSelecionadas = signal<string[]>([]);
+  protected readonly valoresFiltros = signal<Record<string, string>>({});
   protected readonly filtroInvalido = signal(false);
 
   private readonly rotinasOrdenadas = computed(() => {
@@ -83,7 +82,8 @@ export class Financeiro {
       this.termoBusca.set('');
       this.fecharVisualizacao();
       this.rotinaComFiltroAberto.set(null);
-      this.filialSelecionada.set(null);
+      this.filiaisSelecionadas.set([]);
+      this.valoresFiltros.set({});
       this.carregarFixados();
     });
   }
@@ -130,14 +130,35 @@ export class Financeiro {
     }
   }
 
+  protected valorFiltro(chave: string): string {
+    return this.valoresFiltros()[chave] ?? '';
+  }
+
+  protected definirValorFiltro(chave: string, valor: string): void {
+    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
+  }
+
   protected confirmarFiltro(rotina: RotinaFinanceira): void {
-    if (!this.filialSelecionada()) {
+    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
       this.sinalizarFiltroInvalido();
       return;
     }
 
     this.rotinaComFiltroAberto.set(null);
     this.buscarRelatorio(rotina);
+  }
+
+  private filtrosObrigatoriosPreenchidos(rotina: RotinaFinanceira): boolean {
+    const valores = this.valoresFiltros();
+    return (rotina.filtros ?? []).every((campo) => {
+      if (!campo.obrigatorio) {
+        return true;
+      }
+      if (campo.tipo === 'periodo-data') {
+        return !!valores[`${campo.chave}_ini`]?.trim() && !!valores[`${campo.chave}_fim`]?.trim();
+      }
+      return !!valores[campo.chave]?.trim();
+    });
   }
 
   private sinalizarFiltroInvalido(): void {
@@ -168,7 +189,7 @@ export class Financeiro {
     this.relatorioCarregando.set(true);
     this.http
       .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
-        params: this.parametrosRelatorio()
+        params: this.parametrosRelatorio(rotina)
       })
       .subscribe({
         next: (dados) => {
@@ -194,7 +215,7 @@ export class Financeiro {
       return;
     }
 
-    if (!this.filialSelecionada()) {
+    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
       this.alternarFiltro(rotina);
       return;
     }
@@ -203,7 +224,7 @@ export class Financeiro {
 
     this.http
       .get(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}/exportar`, {
-        params: this.parametrosRelatorio(),
+        params: this.parametrosRelatorio(rotina),
         observe: 'response',
         responseType: 'blob'
       })
@@ -237,10 +258,24 @@ export class Financeiro {
     }
   }
 
-  private parametrosRelatorio(): HttpParams {
-    return new HttpParams()
-      .set('filial', this.filialSelecionada() ?? '')
-      .set('ano', this.anoSelecionado());
+  private parametrosRelatorio(rotina: RotinaFinanceira): HttpParams {
+    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(','));
+
+    for (const campo of rotina.filtros ?? []) {
+      params = this.aplicarCampoNosParametros(params, campo);
+    }
+
+    return params;
+  }
+
+  private aplicarCampoNosParametros(params: HttpParams, campo: CampoFiltro): HttpParams {
+    if (campo.tipo === 'periodo-data') {
+      return params
+        .set(`${campo.chave}_ini`, this.valorFiltro(`${campo.chave}_ini`))
+        .set(`${campo.chave}_fim`, this.valorFiltro(`${campo.chave}_fim`));
+    }
+
+    return params.set(campo.chave, this.valorFiltro(campo.chave));
   }
 
   private carregarFiliais(): void {

@@ -4,8 +4,9 @@ relatórios previstos está em
 frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts.
 """
 
-from agente_oracle.server.financeiro.relatorios import fluxo_caixa_realizado
+from agente_oracle.server.financeiro.relatorios import duplicata_mercantil, fluxo_caixa_realizado
 
 
 def registrar(mcp) -> None:
     fluxo_caixa_realizado.registrar(mcp)
+    duplicata_mercantil.registrar(mcp)

@@ -71,15 +71,44 @@
         @if (filtroEstaAberto(rotina)) {
         <div class="painel-filtro-conteudo"
              [class.painel-filtro-conteudo--invalido]="filtroInvalido()">
-          <app-select-busca class="select-filial"
-                             placeholder="Filial..."
+          <app-select-busca class="campo-filtro select-filial"
+                             placeholder="Filial(is)..."
+                             [multiplo]="true"
                              [opcoes]="filiais()"
-                             [(valor)]="filialSelecionada" />
-          <input type="text"
-                 class="campo-ano"
-                 [value]="anoSelecionado()"
-                 (input)="anoSelecionado.set($any($event.target).value)"
-                 placeholder="Ano" />
+                             [(valores)]="filiaisSelecionadas" />
+
+          @for (campo of rotina.filtros ?? []; track campo.chave) {
+            @switch (campo.tipo) {
+              @case ('texto') {
+                <input type="text"
+                       class="campo-filtro campo-texto"
+                       [value]="valorFiltro(campo.chave)"
+                       (input)="definirValorFiltro(campo.chave, $any($event.target).value)"
+                       [placeholder]="campo.rotulo" />
+              }
+              @case ('select') {
+                <app-select-busca class="campo-filtro"
+                                   [placeholder]="campo.rotulo"
+                                   [opcoes]="campo.opcoes ?? []"
+                                   [valor]="valorFiltro(campo.chave)"
+                                   (valorChange)="definirValorFiltro(campo.chave, $event ?? '')" />
+              }
+              @case ('periodo-data') {
+                <input type="date"
+                       class="campo-filtro campo-data"
+                       [value]="valorFiltro(campo.chave + '_ini')"
+                       (input)="definirValorFiltro(campo.chave + '_ini', $any($event.target).value)"
+                       [title]="campo.rotulo + ' - início'" />
+                <span class="separador-periodo">até</span>
+                <input type="date"
+                       class="campo-filtro campo-data"
+                       [value]="valorFiltro(campo.chave + '_fim')"
+                       (input)="definirValorFiltro(campo.chave + '_fim', $any($event.target).value)"
+                       [title]="campo.rotulo + ' - fim'" />
+              }
+            }
+          }
+
           <app-botao variant="primaria"
                      (clicked)="confirmarFiltro(rotina)">
             Ver relatório

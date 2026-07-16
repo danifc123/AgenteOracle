@@ -1,17 +1,20 @@
 """RELATÓRIO: Fluxo de Caixa Realizado (FINR01)
 
 Tradução fiel do relatório ADVPL original (TOTVS Protheus), validada contra a
-saída real (.prt). Filial/grupo e ano agora são parâmetros escolhidos pelo
-usuário na tela (era fixo '0101'/'2023' na primeira versão) — o time
-financeiro pode ter acesso a mais de uma filial.
+saída real (.prt). Filial/grupo e ano são parâmetros escolhidos pelo usuário
+na tela (era fixo '0101'/'2023' na primeira versão).
 
-Dois ajustes feitos em cima do SQL originalmente validado, pra bater com os
+A filial agora aceita seleção múltipla (o time financeiro pode ter acesso a
+mais de uma filial e emitir o relatório de todas de uma vez). Como isso é
+usado tanto pra filtrar quanto pra rotular as linhas de resumo do BLOCO 2, o
+rótulo dessas linhas passou a mostrar as filiais escolhidas separadas por
+vírgula, em vez de uma filial só.
+
+Outros ajustes feitos em cima do SQL originalmente validado, pra bater com os
 dados do banco de teste (testeIA):
 - Filtro de "não deletado" (`d_e_l_e_t_ = ' '`) virou tolerante a NULL
   (`COALESCE(d_e_l_e_t_, ' ') = ' '`) — nesse banco de teste o campo vem NULL
   em vez de espaço em branco, e `NULL = ' '` nunca é verdadeiro em SQL.
-- Filial e ano, que estavam fixos em '0101'/'2023', viraram os binds
-  `:filial`/`:ano`, recebidos por querystring (`?filial=...&ano=...`).
 
 Atenção: esta consulta usa sintaxe exclusiva do PostgreSQL (`FILTER (WHERE
 ...)` e casts `::tipo`) — só roda com DB_BACKEND=postgres. Pra rodar contra o
@@ -27,12 +30,13 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.server.financeiro.filtros_sql import clausula_in
 
 _QUERY = """
 -- =====================================================================
 -- RELATORIO: Fluxo de Caixa Realizado (FINR01)
 -- Tradução fiel do ADVPL original, validada contra a saída real (.prt)
--- Parâmetros: :filial = filial (grupo), :ano = ano
+-- Parâmetros: __FILIAL_IN__ = filial(is) (grupo), :ano = ano
 -- =====================================================================
 
 WITH mensal AS (
@@ -53,7 +57,7 @@ WITH mensal AS (
         SUM(e5_valor) FILTER (WHERE mes = '12') AS dez_,
         SUM(e5_valor)                            AS tot_
     FROM vwpr_extrban
-    WHERE grupo = :filial AND ano = :ano
+    WHERE grupo IN __FILIAL_IN__ AND ano = :ano
     GROUP BY e5_naturez
 ),
 
@@ -61,7 +65,7 @@ detalhe AS (
     -- Linhas de natureza (hierárquicas: 1, 1001, 100101 ...)
     -- ED_COND: '1' = Entradas / '2' = Saídas -> define ordenação/bloco
     SELECT
-        :filial::varchar             AS filial,
+        :filiais_label::varchar      AS filial,
         sed.ed_codigo               AS codigo_naturezas,
         sed.ed_descric              AS naturezas_sinteticas,
         sed.ed_cond,
@@ -90,7 +94,7 @@ detalhe AS (
 contas AS (
     SELECT a6_filial, a6_agencia, a6_numcon
     FROM sa6010
-    WHERE COALESCE(d_e_l_e_t_, ' ') = ' ' AND a6_filial = :filial
+    WHERE COALESCE(d_e_l_e_t_, ' ') = ' ' AND a6_filial IN __FILIAL_IN__
 ),
 
 -- Réplica fiel da regra original: "ant" busca mês=12 do MESMO ano informado
@@ -136,7 +140,7 @@ saldos AS (
 
 saldo_banco AS (
     SELECT
-        a6_filial AS filial,
+        :filiais_label::varchar AS filial,
         SUM(saldo) FILTER (WHERE mes_label = 'ant') AS sldfn_ant,
         SUM(saldo) FILTER (WHERE mes_label = 'jan') AS sldfn_jan,
         SUM(saldo) FILTER (WHERE mes_label = 'fev') AS sldfn_fev,
@@ -151,7 +155,6 @@ saldo_banco AS (
         SUM(saldo) FILTER (WHERE mes_label = 'nov') AS sldfn_nov,
         SUM(saldo) FILTER (WHERE mes_label = 'dez') AS sldfn_dez
     FROM saldos
-    GROUP BY a6_filial
 )
 
 -- =====================================================================
@@ -176,7 +179,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 0, '1',
-    :filial::varchar,
+    sb.filial,
     NULL,
     'SALDO BANCARIO INICIAL DO PERIODO',
     sb.sldfn_ant, sb.sldfn_jan, sb.sldfn_fev, sb.sldfn_mar, sb.sldfn_abr,
@@ -192,7 +195,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 1, '2',
-    :filial::varchar, NULL, 'ENTRADAS',
+    :filiais_label::varchar, NULL, 'ENTRADAS',
     d.jan, d.fev, d.mar, d.abr, d.mai, d.jun,
     d.jul, d.ago, d.set_, d.out, d.nov, d.dez,
     d.total
@@ -206,7 +209,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 2, '3',
-    :filial::varchar, NULL, 'SAIDAS',
+    :filiais_label::varchar, NULL, 'SAIDAS',
     d.jan, d.fev, d.mar, d.abr, d.mai, d.jun,
     d.jul, d.ago, d.set_, d.out, d.nov, d.dez,
     d.total
@@ -220,7 +223,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 3, '4',
-    :filial::varchar, NULL,
+    sb.filial, NULL,
     'SALDO BANCARIO FINAL DO PERIODO',
     sb.sldfn_jan, sb.sldfn_fev, sb.sldfn_mar, sb.sldfn_abr, sb.sldfn_mai,
     sb.sldfn_jun, sb.sldfn_jul, sb.sldfn_ago, sb.sldfn_set, sb.sldfn_out,
@@ -236,21 +239,25 @@ def _serializar(valor):
     return float(valor) if isinstance(valor, Decimal) else valor
 
 
-def _buscar_fluxo_caixa_realizado(filial: str, ano: str) -> tuple[list[str], list[tuple]]:
+def _buscar_fluxo_caixa_realizado(filiais: list[str], ano: str) -> tuple[list[str], list[tuple]]:
+    clausula_filial, binds_filial = clausula_in("filial", filiais)
+    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial)
+
     with get_connection() as connection:
         cursor = connection.cursor()
-        cursor.execute(_QUERY, filial=filial, ano=ano)
+        cursor.execute(sql, ano=ano, filiais_label=", ".join(filiais), **binds_filial)
         colunas = [descricao[0] for descricao in cursor.description]
         linhas = cursor.fetchall()
     return colunas, linhas
 
 
-def _parametros_da_query(request: Request) -> tuple[str, str] | None:
-    filial = request.query_params.get("filial", "").strip()
+def _parametros_da_query(request: Request) -> tuple[list[str], str] | None:
+    filial_bruto = request.query_params.get("filial", "").strip()
     ano = request.query_params.get("ano", "").strip()
-    if not filial or not ano:
+    filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
+    if not filiais or not ano:
         return None
-    return filial, ano
+    return filiais, ano
 
 
 def registrar(mcp) -> None:
@@ -260,7 +267,7 @@ def registrar(mcp) -> None:
         parametros = _parametros_da_query(request)
         if parametros is None:
             return JSONResponse(
-                {"erro": "Informe filial e ano."}, status_code=400, headers=CORS_HEADERS
+                {"erro": "Informe ao menos uma filial e o ano."}, status_code=400, headers=CORS_HEADERS
             )
 
         colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)
@@ -273,7 +280,7 @@ def registrar(mcp) -> None:
         parametros = _parametros_da_query(request)
         if parametros is None:
             return JSONResponse(
-                {"erro": "Informe filial e ano."}, status_code=400, headers=CORS_HEADERS
+                {"erro": "Informe ao menos uma filial e o ano."}, status_code=400, headers=CORS_HEADERS
             )
 
         colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)

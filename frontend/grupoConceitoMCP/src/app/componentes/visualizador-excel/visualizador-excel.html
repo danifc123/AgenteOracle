@@ -1,0 +1,22 @@
+<div class="visualizador-excel">
+  <table class="planilha">
+    <thead>
+      <tr>
+        <th class="celula-canto"></th>
+        @for (coluna of colunas(); track coluna) {
+          <th>{{ coluna }}</th>
+        }
+      </tr>
+    </thead>
+    <tbody>
+      @for (linha of dados(); track $index) {
+        <tr>
+          <th class="numero-linha" scope="row">{{ $index + 1 }}</th>
+          @for (coluna of colunas(); track coluna) {
+            <td [class.numero]="ehNumero(linha[coluna])">{{ linha[coluna] }}</td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

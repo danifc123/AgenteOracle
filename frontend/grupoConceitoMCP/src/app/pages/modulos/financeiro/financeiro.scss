@@ -62,6 +62,13 @@ h1 {
   flex: 1;
   min-width: 0;
   padding: 14px 18px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .rotina--ativa {
@@ -72,11 +79,6 @@ h1 {
 
   .rotina-info {
     cursor: pointer;
-  }
-
-  .seta {
-    color: var(--color-primary-light);
-    flex-shrink: 0;
   }
 }
 
@@ -149,6 +151,12 @@ h1 {
   background: var(--color-bg);
   padding: 3px 10px;
   border-radius: 999px;
+}
+
+.erro-exportacao {
+  margin: 0;
+  color: #9a2f2f;
+  font-size: 14px;
 }
 
 .visualizacao-vazia {

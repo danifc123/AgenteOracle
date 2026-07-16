@@ -1,6 +1,7 @@
 export interface RotinaFinanceira {
   nome: string;
-  rota?: string;
+  /** Sufixo da rota REST do backend (financeiro/rotas.py): /api/financeiro/{apiEndpoint} */
+  apiEndpoint?: string;
 }
 
 export interface ModuloFinanceiroConfig {
@@ -16,7 +17,7 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
     nome: 'Específico Grupo Conceito',
     descricao: 'Selecione a rotina de cadastro na lista abaixo',
     rotinas: [
-      { nome: 'Fluxo de Caixa Realizado' },
+      { nome: 'Fluxo de Caixa Realizado', apiEndpoint: 'fluxo-caixa-realizado' },
       { nome: 'Boleto' },
       { nome: 'Duplicata Mercantil em Lote' },
       { nome: 'Assinar Dupl. em Lote' },

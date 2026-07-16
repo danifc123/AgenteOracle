@@ -17,26 +17,11 @@
   @for (rotina of rotinasFiltradas(); track rotina.nome) {
     <li>
     <div class="rotina"
-         [class.rotina--ativa]="!!rotina.rota"
-         [class.rotina--pendente]="!rotina.rota">
-      @if (rotina.rota) {
-      <a class="rotina-info"
-         [routerLink]="rotina.rota">
-        <span>{{ rotina.nome }}</span>
-        <svg class="seta"
-             viewBox="0 0 24 24"
-             width="18"
-             height="18"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="2">
-          <path d="m9 6 6 6-6 6"
-                stroke-linecap="round"
-                stroke-linejoin="round" />
-        </svg>
-      </a>
-      } @else {
-      <div class="rotina-info">
+         [class.rotina--ativa]="!!rotina.apiEndpoint"
+         [class.rotina--pendente]="!rotina.apiEndpoint">
+      <button type="button"
+              class="rotina-info"
+              (click)="visualizar(rotina)">
         <span>{{ rotina.nome }}</span>
         <span class="indicadores">
           @if (estaFixado(rotina)) {
@@ -56,10 +41,11 @@
                   fill="currentColor" />
           </svg>
           }
+          @if (!rotina.apiEndpoint) {
           <span class="tag-em-breve">Em breve</span>
+          }
         </span>
-      </div>
-      }
+      </button>
 
       <app-menu-opcoes class="rotina-menu">
         <button type="button"
@@ -84,8 +70,9 @@
 
         <button type="button"
                 class="item-menu"
-                disabled
-                title="Disponível quando o relatório estiver implementado">
+                [disabled]="!rotina.apiEndpoint || baixandoRelatorio()"
+                [title]="rotina.apiEndpoint ? '' : 'Disponível quando o relatório estiver implementado'"
+                (click)="baixar(rotina)">
           <svg class="icone-item"
                viewBox="0 0 24 24"
                width="16"
@@ -99,7 +86,7 @@
             <path d="M17 21v-8H7v8" />
             <path d="M7 3v5h8" />
           </svg>
-          Baixar
+          {{ baixandoRelatorio() ? 'Baixando...' : 'Baixar' }}
         </button>
 
         <button type="button"
@@ -137,8 +124,14 @@
             [titulo]="rotinaEmVisualizacao()?.nome ?? ''"
             [temRodape]="true"
             (fechar)="fecharVisualizacao()">
-  @if (rotinaEmVisualizacao()?.rota) {
-    <p>Conteúdo do relatório em construção.</p>
+  @if (relatorioCarregando()) {
+    <p class="carregando">Carregando relatório...</p>
+  } @else if (relatorioErro()) {
+    <p class="erro-exportacao">{{ relatorioErro() }}</p>
+  } @else if (relatorioDados() && relatorioDados()!.length) {
+    <app-visualizador-excel [dados]="relatorioDados()!" />
+  } @else if (rotinaEmVisualizacao()?.apiEndpoint) {
+    <p class="carregando">Nenhum dado encontrado para esse relatório.</p>
   } @else {
     <div class="visualizacao-vazia">
       <svg viewBox="0 0 24 24"
@@ -158,8 +151,8 @@
 
   <app-botao rodape
              variant="primaria"
-             [disabled]="true"
-             title="Disponível quando o relatório estiver implementado">
+             [disabled]="!rotinaEmVisualizacao()?.apiEndpoint || baixandoRelatorio()"
+             (clicked)="baixarRotinaEmVisualizacao()">
     <svg viewBox="0 0 24 24"
          width="16"
          height="16"
@@ -172,6 +165,6 @@
       <path d="M17 21v-8H7v8" />
       <path d="M7 3v5h8" />
     </svg>
-    Baixar
+    {{ baixandoRelatorio() ? 'Baixando...' : 'Baixar' }}
   </app-botao>
 </app-dialog>

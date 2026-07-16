@@ -30,7 +30,7 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.server.financeiro.filtros_sql import clausula_in
+from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _QUERY = """
 -- =====================================================================

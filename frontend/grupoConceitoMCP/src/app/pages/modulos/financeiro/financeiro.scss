@@ -113,7 +113,6 @@ h1 {
   flex-shrink: 0;
   max-width: 0;
   overflow: hidden;
-  transition: max-width 0.25s ease;
 }
 
 .painel-filtro--aberto {
@@ -122,12 +121,17 @@ h1 {
 
 .painel-filtro-conteudo {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   padding: 8px;
+  width: 100%;
   border-radius: var(--radius-sm);
   transition: background 0.3s ease;
+}
+
+.painel-filtro--aberto .painel-filtro-conteudo {
+  flex-wrap: wrap;
 }
 
 .painel-filtro-conteudo--invalido {

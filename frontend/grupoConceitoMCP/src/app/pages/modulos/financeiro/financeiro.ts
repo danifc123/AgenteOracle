@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
@@ -8,14 +8,21 @@ import { Botao } from '../../../componentes/botao/botao';
 import { Busca } from '../../../componentes/busca/busca';
 import { Dialog } from '../../../componentes/dialog/dialog';
 import { MenuOpcoes } from '../../../componentes/menu-opcoes/menu-opcoes';
+import { OpcaoSelectBusca, SelectBusca } from '../../../componentes/select-busca/select-busca';
 import { VisualizadorExcel } from '../../../componentes/visualizador-excel/visualizador-excel';
 import { MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
 
 const LIMITE_FIXADOS = 3;
+const ANO_PADRAO = '2023';
+
+interface Filial {
+  codigo: string;
+  nome: string;
+}
 
 @Component({
   selector: 'app-financeiro',
-  imports: [Busca, MenuOpcoes, Dialog, Botao, VisualizadorExcel],
+  imports: [Busca, MenuOpcoes, Dialog, Botao, VisualizadorExcel, SelectBusca],
   templateUrl: './financeiro.html',
   styleUrl: './financeiro.scss'
 })
@@ -39,6 +46,11 @@ export class Financeiro {
   protected readonly relatorioDados = signal<Record<string, unknown>[] | null>(null);
   protected readonly baixandoRelatorio = signal(false);
   private readonly fixados = signal<string[]>([]);
+
+  protected readonly rotinaComFiltroAberto = signal<RotinaFinanceira | null>(null);
+  protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
+  protected readonly filialSelecionada = signal<string | null>(null);
+  protected readonly anoSelecionado = signal(ANO_PADRAO);
 
   private readonly rotinasOrdenadas = computed(() => {
     const rotinas = this.modulo()?.rotinas ?? [];
@@ -69,6 +81,8 @@ export class Financeiro {
       this.moduloId();
       this.termoBusca.set('');
       this.fecharVisualizacao();
+      this.rotinaComFiltroAberto.set(null);
+      this.filialSelecionada.set(null);
       this.carregarFixados();
     });
   }
@@ -96,7 +110,46 @@ export class Financeiro {
     this.salvarFixados([rotina.nome, ...atual]);
   }
 
+  protected filtroEstaAberto(rotina: RotinaFinanceira): boolean {
+    return this.rotinaComFiltroAberto()?.nome === rotina.nome;
+  }
+
+  protected alternarFiltro(rotina: RotinaFinanceira, evento?: Event): void {
+    evento?.stopPropagation();
+
+    if (this.filtroEstaAberto(rotina)) {
+      this.rotinaComFiltroAberto.set(null);
+      return;
+    }
+
+    this.rotinaComFiltroAberto.set(rotina);
+
+    if (!this.filiais().length) {
+      this.carregarFiliais();
+    }
+  }
+
+  protected confirmarFiltro(rotina: RotinaFinanceira): void {
+    if (!this.filialSelecionada()) {
+      return;
+    }
+
+    this.rotinaComFiltroAberto.set(null);
+    this.buscarRelatorio(rotina);
+  }
+
   protected visualizar(rotina: RotinaFinanceira): void {
+    if (rotina.apiEndpoint) {
+      this.alternarFiltro(rotina);
+      return;
+    }
+
+    this.rotinaEmVisualizacao.set(rotina);
+    this.relatorioDados.set(null);
+    this.relatorioErro.set(null);
+  }
+
+  private buscarRelatorio(rotina: RotinaFinanceira): void {
     this.rotinaEmVisualizacao.set(rotina);
     this.relatorioDados.set(null);
     this.relatorioErro.set(null);
@@ -107,7 +160,9 @@ export class Financeiro {
 
     this.relatorioCarregando.set(true);
     this.http
-      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`)
+      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
+        params: this.parametrosRelatorio()
+      })
       .subscribe({
         next: (dados) => {
           this.relatorioDados.set(dados);
@@ -132,10 +187,16 @@ export class Financeiro {
       return;
     }
 
+    if (!this.filialSelecionada()) {
+      this.alternarFiltro(rotina);
+      return;
+    }
+
     this.baixandoRelatorio.set(true);
 
     this.http
       .get(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}/exportar`, {
+        params: this.parametrosRelatorio(),
         observe: 'response',
         responseType: 'blob'
       })
@@ -167,6 +228,23 @@ export class Financeiro {
     if (rotina) {
       this.baixar(rotina);
     }
+  }
+
+  private parametrosRelatorio(): HttpParams {
+    return new HttpParams()
+      .set('filial', this.filialSelecionada() ?? '')
+      .set('ano', this.anoSelecionado());
+  }
+
+  private carregarFiliais(): void {
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
+      next: (filiais) => {
+        this.filiais.set(filiais.map((filial) => ({ valor: filial.codigo, rotulo: filial.nome })));
+      },
+      error: () => {
+        this.filiais.set([]);
+      }
+    });
   }
 
   private extrairNomeArquivo(contentDisposition: string | null): string | undefined {

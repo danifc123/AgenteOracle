@@ -1,16 +1,17 @@
 """RELATÓRIO: Fluxo de Caixa Realizado (FINR01)
 
 Tradução fiel do relatório ADVPL original (TOTVS Protheus), validada contra a
-saída real (.prt). Filial/grupo ('0101') e ano ('2023') estão fixos dentro do
-SQL — parametrizar isso (receber filial/ano por querystring) fica pra quando
-for pedido.
+saída real (.prt). Filial/grupo e ano agora são parâmetros escolhidos pelo
+usuário na tela (era fixo '0101'/'2023' na primeira versão) — o time
+financeiro pode ter acesso a mais de uma filial.
 
 Dois ajustes feitos em cima do SQL originalmente validado, pra bater com os
 dados do banco de teste (testeIA):
-- Filial/grupo trocado de '04' para '0101' (código real usado nesse banco).
 - Filtro de "não deletado" (`d_e_l_e_t_ = ' '`) virou tolerante a NULL
   (`COALESCE(d_e_l_e_t_, ' ') = ' '`) — nesse banco de teste o campo vem NULL
   em vez de espaço em branco, e `NULL = ' '` nunca é verdadeiro em SQL.
+- Filial e ano, que estavam fixos em '0101'/'2023', viraram os binds
+  `:filial`/`:ano`, recebidos por querystring (`?filial=...&ano=...`).
 
 Atenção: esta consulta usa sintaxe exclusiva do PostgreSQL (`FILTER (WHERE
 ...)` e casts `::tipo`) — só roda com DB_BACKEND=postgres. Pra rodar contra o
@@ -31,7 +32,7 @@ _QUERY = """
 -- =====================================================================
 -- RELATORIO: Fluxo de Caixa Realizado (FINR01)
 -- Tradução fiel do ADVPL original, validada contra a saída real (.prt)
--- Parâmetros: '0101' = filial (grupo), '2023' = ano
+-- Parâmetros: :filial = filial (grupo), :ano = ano
 -- =====================================================================
 
 WITH mensal AS (
@@ -52,7 +53,7 @@ WITH mensal AS (
         SUM(e5_valor) FILTER (WHERE mes = '12') AS dez_,
         SUM(e5_valor)                            AS tot_
     FROM vwpr_extrban
-    WHERE grupo = '0101' AND ano = '2023'
+    WHERE grupo = :filial AND ano = :ano
     GROUP BY e5_naturez
 ),
 
@@ -60,7 +61,7 @@ detalhe AS (
     -- Linhas de natureza (hierárquicas: 1, 1001, 100101 ...)
     -- ED_COND: '1' = Entradas / '2' = Saídas -> define ordenação/bloco
     SELECT
-        '0101'::varchar              AS filial,
+        :filial::varchar             AS filial,
         sed.ed_codigo               AS codigo_naturezas,
         sed.ed_descric              AS naturezas_sinteticas,
         sed.ed_cond,
@@ -89,7 +90,7 @@ detalhe AS (
 contas AS (
     SELECT a6_filial, a6_agencia, a6_numcon
     FROM sa6010
-    WHERE COALESCE(d_e_l_e_t_, ' ') = ' ' AND a6_filial = '0101'
+    WHERE COALESCE(d_e_l_e_t_, ' ') = ' ' AND a6_filial = :filial
 ),
 
 -- Réplica fiel da regra original: "ant" busca mês=12 do MESMO ano informado
@@ -113,7 +114,7 @@ datas_ref AS (
            AND se8.e8_agencia = c.a6_agencia
            AND se8.e8_conta   = c.a6_numcon
            AND SUBSTR(se8.e8_dtsalat,5,2) = me.mes_num
-           AND SUBSTR(se8.e8_dtsalat,1,4) = '2023'
+           AND SUBSTR(se8.e8_dtsalat,1,4) = :ano
         ) AS data_final
     FROM contas c
     CROSS JOIN meses me
@@ -175,7 +176,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 0, '1',
-    '0101'::varchar,
+    :filial::varchar,
     NULL,
     'SALDO BANCARIO INICIAL DO PERIODO',
     sb.sldfn_ant, sb.sldfn_jan, sb.sldfn_fev, sb.sldfn_mar, sb.sldfn_abr,
@@ -191,7 +192,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 1, '2',
-    '0101'::varchar, NULL, 'ENTRADAS',
+    :filial::varchar, NULL, 'ENTRADAS',
     d.jan, d.fev, d.mar, d.abr, d.mai, d.jun,
     d.jul, d.ago, d.set_, d.out, d.nov, d.dez,
     d.total
@@ -205,7 +206,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 2, '3',
-    '0101'::varchar, NULL, 'SAIDAS',
+    :filial::varchar, NULL, 'SAIDAS',
     d.jan, d.fev, d.mar, d.abr, d.mai, d.jun,
     d.jul, d.ago, d.set_, d.out, d.nov, d.dez,
     d.total
@@ -219,7 +220,7 @@ UNION ALL
 -- =====================================================================
 SELECT
     2, 3, '4',
-    '0101'::varchar, NULL,
+    :filial::varchar, NULL,
     'SALDO BANCARIO FINAL DO PERIODO',
     sb.sldfn_jan, sb.sldfn_fev, sb.sldfn_mar, sb.sldfn_abr, sb.sldfn_mai,
     sb.sldfn_jun, sb.sldfn_jul, sb.sldfn_ago, sb.sldfn_set, sb.sldfn_out,
@@ -235,27 +236,47 @@ def _serializar(valor):
     return float(valor) if isinstance(valor, Decimal) else valor
 
 
-def _buscar_fluxo_caixa_realizado() -> tuple[list[str], list[tuple]]:
+def _buscar_fluxo_caixa_realizado(filial: str, ano: str) -> tuple[list[str], list[tuple]]:
     with get_connection() as connection:
         cursor = connection.cursor()
-        cursor.execute(_QUERY)
+        cursor.execute(_QUERY, filial=filial, ano=ano)
         colunas = [descricao[0] for descricao in cursor.description]
         linhas = cursor.fetchall()
     return colunas, linhas
+
+
+def _parametros_da_query(request: Request) -> tuple[str, str] | None:
+    filial = request.query_params.get("filial", "").strip()
+    ano = request.query_params.get("ano", "").strip()
+    if not filial or not ano:
+        return None
+    return filial, ano
 
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/fluxo-caixa-realizado", methods=["GET"])
     async def listar_fluxo_caixa_realizado_route(request: Request) -> JSONResponse:
         """RELATÓRIO: Fluxo de Caixa Realizado (FINR01) — endpoint JSON usado pela tela."""
-        colunas, linhas = _buscar_fluxo_caixa_realizado()
+        parametros = _parametros_da_query(request)
+        if parametros is None:
+            return JSONResponse(
+                {"erro": "Informe filial e ano."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)
         dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/fluxo-caixa-realizado/exportar", methods=["GET"])
     async def exportar_fluxo_caixa_realizado_route(request: Request) -> Response:
         """RELATÓRIO: Fluxo de Caixa Realizado (FINR01) — exportação em Excel."""
-        colunas, linhas = _buscar_fluxo_caixa_realizado()
+        parametros = _parametros_da_query(request)
+        if parametros is None:
+            return JSONResponse(
+                {"erro": "Informe filial e ano."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Fluxo de Caixa Realizado")
         return Response(
             content=conteudo_xlsx,

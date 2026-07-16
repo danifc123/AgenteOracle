@@ -47,6 +47,48 @@
         </span>
       </button>
 
+      @if (rotina.apiEndpoint) {
+      <button type="button"
+              class="rotina-seta"
+              [class.rotina-seta--aberta]="filtroEstaAberto(rotina)"
+              aria-label="Escolher filial e ano"
+              title="Escolher filial e ano"
+              (click)="alternarFiltro(rotina, $event)">
+        <svg viewBox="0 0 24 24"
+             width="18"
+             height="18"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="2">
+          <path d="m9 6 6 6-6 6"
+                stroke-linecap="round"
+                stroke-linejoin="round" />
+        </svg>
+      </button>
+
+      <div class="painel-filtro"
+           [class.painel-filtro--aberto]="filtroEstaAberto(rotina)">
+        @if (filtroEstaAberto(rotina)) {
+        <div class="painel-filtro-conteudo">
+          <app-select-busca class="select-filial"
+                             placeholder="Filial..."
+                             [opcoes]="filiais()"
+                             [(valor)]="filialSelecionada" />
+          <input type="text"
+                 class="campo-ano"
+                 [value]="anoSelecionado()"
+                 (input)="anoSelecionado.set($any($event.target).value)"
+                 placeholder="Ano" />
+          <app-botao variant="primaria"
+                     [disabled]="!filialSelecionada()"
+                     (clicked)="confirmarFiltro(rotina)">
+            Ver relatório
+          </app-botao>
+        </div>
+        }
+      </div>
+      }
+
       <app-menu-opcoes class="rotina-menu">
         <button type="button"
                 class="item-menu"

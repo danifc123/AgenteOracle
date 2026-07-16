@@ -16,7 +16,9 @@ valor vazio ('') aqui.
 
 Atenção: só roda com DB_BACKEND=postgres (mesma observação do Fluxo de Caixa
 Realizado — sintaxe de cast ::tipo). Os campos de data (vencimento) usam
-NULLIF pra aceitar vazio sem quebrar o cast ::date.
+NULLIF pra aceitar vazio sem quebrar o cast ::date. E1_VENCTO nesse banco de
+teste é VARCHAR (formato "YYYYMMDD"), por isso também precisa do ::date antes
+de comparar com os limites do período.
 """
 
 from decimal import Decimal
@@ -65,7 +67,7 @@ WHERE COALESCE(se1.d_e_l_e_t_, ' ') = ' '
   AND (:loja = '' OR TRIM(se1.e1_loja) = :loja)
   AND (
         :vencto_ini = '' OR :vencto_fim = ''
-     OR se1.e1_vencto BETWEEN NULLIF(:vencto_ini, '')::date AND NULLIF(:vencto_fim, '')::date
+     OR se1.e1_vencto::date BETWEEN NULLIF(:vencto_ini, '')::date AND NULLIF(:vencto_fim, '')::date
   )
   AND (:prefixo = '' OR TRIM(se1.e1_prefixo) = :prefixo)
   AND (:tipo = '' OR TRIM(se1.e1_tipo) = :tipo)

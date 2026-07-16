@@ -35,17 +35,28 @@ src/agente_oracle/
 ├── config.py               # configurações (lidas de .env)
 ├── relatorios.py            # gerador de Excel (.xlsx) compartilhado
 ├── agent/
-│   ├── core.py               # prompt de sistema + loop de tool-calling (compartilhado entre CLI e /api/chat)
-│   └── cli.py                 # chat interativo de terminal (agente-oracle-chat)
+│   ├── core.py               # loop de tool-calling genérico (sem prompt nem schema — reaproveitável por qualquer módulo)
+│   ├── cli.py                 # chat interativo de terminal (agente-oracle-chat) — hoje usa o prompt do Financeiro
+│   └── financeiro/
+│       └── prompt.py            # system prompt + schema conhecido pela IA, específicos do Financeiro
 ├── db/
 │   ├── connection.py         # pool de conexões Oracle
 │   └── mongo.py               # conexão com o MongoDB (histórico de relatórios)
 ├── server/
-│   └── server.py              # servidor MCP (FastMCP) + rotas REST (/api/...)
+│   ├── app.py                 # cria o servidor MCP (FastMCP), registra os módulos, entrypoint (agente-oracle)
+│   ├── cors.py                 # headers/preflight CORS compartilhados entre as rotas
+│   └── financeiro/             # rotas HTTP do módulo Financeiro
+│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04)
+│       │   ├── filiais.py            # lista as filiais (SA6010) pro seletor múltiplo da tela
+│       │   ├── cadastros.py           # lista clientes/lojas/vendedores/prefixos/tipos pros selects com busca dos filtros
+│       │   └── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores
+│       ├── historico.py           # rotas REST do histórico de relatórios gerados pela IA
+│       └── ia.py                   # registra as tools de IA + /api/chat + /api/relatorio/exportar
 └── tools/
-    ├── connectivity.py       # teste de conexão com o Oracle
-    ├── consulta_livre.py      # SQL livre gerado pela IA, com validação de segurança
-    └── historico.py           # dedup e CRUD do histórico de relatórios no Mongo
+    ├── connectivity.py       # teste de conexão com o Oracle (genérico, qualquer módulo pode usar)
+    └── financeiro/
+        ├── consulta_livre.py    # SQL livre gerado pela IA para dados financeiros, com validação de segurança
+        └── historico.py          # dedup e CRUD do histórico de relatórios do Financeiro no Mongo
 
 frontend/grupoConceitoMCP/    # Angular — menu lateral, módulos financeiros, chat, histórico
 ```
@@ -142,9 +153,9 @@ O LLM roda localmente, sem custo de API.
 ## Segurança do SQL livre
 
 A tool `executar_consulta_financeira` deixa a IA gerar SQL dinamicamente, então todo
-SQL passa por validação antes de rodar (`tools/consulta_livre.py`):
+SQL passa por validação antes de rodar (`tools/financeiro/consulta_livre.py`):
 
 - Só aceita instruções `SELECT` (bloqueia `INSERT/UPDATE/DELETE/DROP/ALTER/CREATE`, blocos PL/SQL, `DBMS_*`/`UTL_*`, etc.).
-- Só permite as tabelas da whitelist (`TABELAS_PERMITIDAS`, em `tools/consulta_livre.py`) — hoje vazia, aguardando a importação do schema real do banco (TOTVS), então toda consulta é rejeitada até essa lista ser preenchida.
+- Só permite as tabelas da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`) — hoje vazia, aguardando a importação do schema real do banco (TOTVS), então toda consulta é rejeitada até essa lista ser preenchida.
 - Bloqueia múltiplas instruções encadeadas (`;`).
 - Aplica limite automático de linhas (`FETCH FIRST 200 ROWS ONLY`) e timeout de 10s na conexão.

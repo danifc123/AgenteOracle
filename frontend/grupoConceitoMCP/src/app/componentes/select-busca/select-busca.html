@@ -1,0 +1,52 @@
+<div class="select-busca">
+  <button
+    #gatilho
+    type="button"
+    class="gatilho"
+    (click)="toggle()"
+    [attr.aria-expanded]="aberto()"
+  >
+    <span [class.placeholder]="!rotuloSelecionado()">{{ rotuloSelecionado() || placeholder() }}</span>
+    <svg class="chevron" [class.rotated]="aberto()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </button>
+
+  @if (aberto()) {
+    <div class="painel"
+         [style.top.px]="posicao().top"
+         [style.left.px]="posicao().left"
+         [style.width.px]="posicao().largura">
+      <div class="campo-busca">
+        <input
+          type="text"
+          [value]="termo()"
+          (input)="termo.set($any($event.target).value)"
+          placeholder="Buscar..."
+          aria-label="Buscar opção"
+        />
+      </div>
+      <ul class="opcoes">
+        @if (opcoesFiltradas().length) {
+          @for (opcao of opcoesFiltradas(); track opcao.valor) {
+            <li>
+              <button
+                type="button"
+                class="opcao"
+                [class.opcao--selecionada]="estaSelecionada(opcao)"
+                (click)="selecionar(opcao)"
+              >
+                @if (multiplo()) {
+                  <span class="opcao-checkbox" [class.opcao-checkbox--marcada]="estaSelecionada(opcao)"></span>
+                }
+                {{ opcao.rotulo }}
+              </button>
+            </li>
+          }
+        } @else {
+          <li class="opcoes-vazio">Nenhuma opção encontrada.</li>
+        }
+      </ul>
+    </div>
+  }
+</div>

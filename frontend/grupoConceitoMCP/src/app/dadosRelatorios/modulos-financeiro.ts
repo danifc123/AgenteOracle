@@ -1,6 +1,35 @@
+export type TipoFiltro = 'texto' | 'select' | 'periodo-data';
+
+export interface OpcaoFiltro {
+  valor: string;
+  rotulo: string;
+}
+
+export interface CampoFiltro {
+  /** Nome do parâmetro na URL (?chave=...). Em campos do tipo periodo-data, gera {chave}_ini e {chave}_fim. */
+  chave: string;
+  rotulo: string;
+  tipo: TipoFiltro;
+  obrigatorio?: boolean;
+  /** Só usado quando tipo === 'select' — lista fixa de opções. */
+  opcoes?: OpcaoFiltro[];
+  /**
+   * Só usado quando tipo === 'select' e `opcoes` não é informado — sufixo da
+   * rota REST do backend (/api/financeiro/{apiEndpoint}) que devolve as
+   * opções já cadastradas no banco (ex: clientes, vendedores).
+   */
+  apiEndpoint?: string;
+}
+
 export interface RotinaFinanceira {
   nome: string;
-  rota?: string;
+  /** Sufixo da rota REST do backend: /api/financeiro/{apiEndpoint} */
+  apiEndpoint?: string;
+  /**
+   * Filtros extras além da filial (que é sempre obrigatória, seleção múltipla,
+   * e tratada à parte no painel — não precisa ser declarada aqui).
+   */
+  filtros?: CampoFiltro[];
 }
 
 export interface ModuloFinanceiroConfig {
@@ -16,9 +45,34 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
     nome: 'Específico Grupo Conceito',
     descricao: 'Selecione a rotina de cadastro na lista abaixo',
     rotinas: [
-      { nome: 'Fluxo de Caixa Realizado' },
+      {
+        nome: 'Fluxo de Caixa Realizado',
+        apiEndpoint: 'fluxo-caixa-realizado',
+        filtros: [{ chave: 'ano', rotulo: 'Ano', tipo: 'texto', obrigatorio: true }]
+      },
       { nome: 'Boleto' },
-      { nome: 'Duplicata Mercantil em Lote' },
+      {
+        nome: 'Duplicata Mercantil em Lote',
+        apiEndpoint: 'duplicata-mercantil',
+        filtros: [
+          { chave: 'cliente', rotulo: 'Cliente', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'loja', rotulo: 'Loja', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'vencto', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          { chave: 'prefixo', rotulo: 'Prefixo', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'tipo', rotulo: 'Tipo', tipo: 'select', apiEndpoint: 'tipos' },
+          { chave: 'vendedor', rotulo: 'Consultor', tipo: 'select', apiEndpoint: 'vendedores' },
+          {
+            chave: 'status_assinatura',
+            rotulo: 'Status assinatura',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Ambas' },
+              { valor: '1', rotulo: 'Assinadas' },
+              { valor: '2', rotulo: 'Não assinadas' }
+            ]
+          }
+        ]
+      },
       { nome: 'Assinar Dupl. em Lote' },
       { nome: 'Recibo' },
       { nome: 'Relatório Baixa por Produtos' },

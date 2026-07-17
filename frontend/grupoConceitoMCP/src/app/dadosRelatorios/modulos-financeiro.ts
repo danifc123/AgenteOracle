@@ -249,7 +249,24 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           }
         ]
       },
-      { nome: 'FINR13 - Extrato Bancário' },
+      {
+        nome: 'FINR13 - Extrato Bancário',
+        apiEndpoint: 'extrato-bancario',
+        filtros: [
+          { chave: 'conta_bancaria', rotulo: 'Conta Bancária', tipo: 'select', obrigatorio: true, apiEndpoint: 'contas-bancarias' },
+          { chave: 'data', rotulo: 'Período', tipo: 'periodo-data', obrigatorio: true },
+          {
+            chave: 'saldo_tipo',
+            rotulo: 'Exibir',
+            tipo: 'select',
+            opcoes: [
+              { valor: '1', rotulo: 'Saldo Atual (todos)' },
+              { valor: '2', rotulo: 'Somente Conciliados' },
+              { valor: '3', rotulo: 'Somente Não Conciliados' }
+            ]
+          }
+        ]
+      },
       { nome: 'FINR14 - Relação de Títulos a Pagar com Retenção' },
       { nome: 'FIN32 - Movimento Financeiro Diário' }
     ]

@@ -12,6 +12,7 @@ from agente_oracle.server.financeiro.relatorios import (
     baixa_produtos,
     cadastros,
     duplicata_mercantil,
+    extrato_bancario,
     filiais,
     fluxo_caixa_realizado,
     posicao_titulos,
@@ -29,3 +30,4 @@ def registrar(mcp) -> None:
     posicao_titulos.registrar(mcp)
     posicao_titulos_pagar.registrar(mcp)
     relacao_baixas.registrar(mcp)
+    extrato_bancario.registrar(mcp)

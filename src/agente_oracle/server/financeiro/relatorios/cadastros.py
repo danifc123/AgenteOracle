@@ -66,6 +66,15 @@ _QUERY_NATUREZAS = """
     ORDER BY codigo
 """
 
+_QUERY_CONTAS_BANCARIAS = """
+    SELECT
+        TRIM(a6_cod) || '|' || TRIM(a6_agencia) || '|' || TRIM(a6_numcon) AS codigo,
+        TRIM(a6_nreduz) || ' - ' || TRIM(a6_cod) || '/' || TRIM(a6_agencia) || '/' || TRIM(a6_numcon) AS nome
+    FROM sa6010
+    WHERE COALESCE(d_e_l_e_t_, ' ') = ' '
+    ORDER BY nome
+"""
+
 
 def _buscar_com_nome(query: str) -> list[dict[str, str]]:
     with get_connection() as connection:
@@ -79,6 +88,14 @@ def _buscar_so_codigo(query: str) -> list[dict[str, str]]:
         cursor = connection.cursor()
         cursor.execute(query)
         return [{"codigo": linha[0], "nome": linha[0]} for linha in cursor.fetchall()]
+
+
+def _buscar_pronto(query: str) -> list[dict[str, str]]:
+    """Query já devolve codigo/nome formatados (ex: chave composta)."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(query)
+        return [{"codigo": codigo, "nome": nome} for codigo, nome in cursor.fetchall()]
 
 
 def registrar(mcp) -> None:
@@ -121,3 +138,8 @@ def registrar(mcp) -> None:
     async def listar_naturezas_route(request: Request) -> JSONResponse:
         """Naturezas financeiras (SED010) para os campos de filtro "Natureza De/Até"."""
         return JSONResponse(_buscar_com_nome(_QUERY_NATUREZAS), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/financeiro/contas-bancarias", methods=["GET"])
+    async def listar_contas_bancarias_route(request: Request) -> JSONResponse:
+        """Contas bancárias cadastradas (SA6010) para o campo de filtro "Conta Bancária" — código é "banco|agencia|conta"."""
+        return JSONResponse(_buscar_pronto(_QUERY_CONTAS_BANCARIAS), headers=CORS_HEADERS)

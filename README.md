@@ -46,9 +46,9 @@ src/agente_oracle/
 │   ├── app.py                 # cria o servidor MCP (FastMCP), registra os módulos, entrypoint (agente-oracle)
 │   ├── cors.py                 # headers/preflight CORS compartilhados entre as rotas
 │   └── financeiro/             # rotas HTTP do módulo Financeiro
-│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04), baixa_produtos.py (CAG06R04), posicao_titulos.py (FINR130/FINR10), posicao_titulos_pagar.py (FINR150/FINR11), relacao_baixas.py (FINR190/FINR12), extrato_bancario.py (FINR470/FINR13)
+│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04), baixa_produtos.py (CAG06R04), posicao_titulos.py (FINR130/FINR10), posicao_titulos_pagar.py (FINR150/FINR11), relacao_baixas.py (FINR190/FINR12), extrato_bancario.py (FINR470/FINR13), retencao_impostos.py (FINR865/FINR14), movimento_financeiro_diario.py (FINR530/FIN32)
 │       │   ├── filiais.py            # lista as filiais (SA6010) pro seletor múltiplo da tela
-│       │   ├── cadastros.py           # lista clientes/fornecedores/lojas/vendedores/prefixos/tipos/naturezas/produtos/contas bancárias pros selects com busca dos filtros
+│       │   ├── cadastros.py           # lista clientes/fornecedores/lojas/vendedores/prefixos/tipos/naturezas/produtos/contas bancárias pros selects com busca dos filtros (fornecedores também usados pelo FINR14)
 │       │   └── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores
 │       ├── historico.py           # rotas REST do histórico de relatórios gerados pela IA
 │       └── ia.py                   # registra as tools de IA + /api/chat + /api/relatorio/exportar

@@ -267,8 +267,62 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           }
         ]
       },
-      { nome: 'FINR14 - Relação de Títulos a Pagar com Retenção' },
-      { nome: 'FIN32 - Movimento Financeiro Diário' }
+      {
+        nome: 'FINR14 - Relação de Títulos a Pagar com Retenção',
+        apiEndpoint: 'retencao-impostos',
+        filtros: [
+          { chave: 'fornecedor_ini', rotulo: 'Fornecedor De', tipo: 'select', apiEndpoint: 'fornecedores' },
+          { chave: 'fornecedor_fim', rotulo: 'Fornecedor Até', tipo: 'select', apiEndpoint: 'fornecedores' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          {
+            chave: 'tipo_pessoa',
+            rotulo: 'Tipo de Fornecedor',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Todos' },
+              { valor: 'F', rotulo: 'Pessoa Física' },
+              { valor: 'J', rotulo: 'Pessoa Jurídica' }
+            ]
+          },
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
+          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          {
+            chave: 'considera_impostos',
+            rotulo: 'Impostos a Considerar',
+            tipo: 'select',
+            opcoes: [
+              { valor: '1', rotulo: 'Somente Retido' },
+              { valor: '2', rotulo: 'Retido + Calculado (Título em Aberto)' }
+            ]
+          },
+          {
+            chave: 'ordenar_por',
+            rotulo: 'Ordenar Por',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'codigo', rotulo: 'Código do Fornecedor' },
+              { valor: 'nome', rotulo: 'Nome do Fornecedor' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FIN32 - Movimento Financeiro Diário',
+        apiEndpoint: 'movimento-financeiro-diario',
+        filtros: [
+          { chave: 'data', rotulo: 'Data de Referência', tipo: 'periodo-data', obrigatorio: true },
+          {
+            chave: 'considera_limite',
+            rotulo: 'Considera Limite de Crédito',
+            tipo: 'select',
+            opcoes: [
+              { valor: '2', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
+            ]
+          }
+        ]
+      }
     ]
   }
 ];

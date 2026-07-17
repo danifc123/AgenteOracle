@@ -71,7 +71,7 @@
         <div class="painel-filtro-conteudo"
              [class.painel-filtro-conteudo--invalido]="filtroInvalido()">
           <app-select-busca class="campo-filtro select-filial"
-                             rotulo="Filial(is)"
+                             rotulo="Filial(is) *"
                              placeholder="Filial(is)..."
                              [multiplo]="true"
                              [opcoes]="filiais()"
@@ -81,7 +81,7 @@
             @switch (campo.tipo) {
               @case ('texto') {
                 <div class="campo-grupo campo-filtro">
-                  <span class="campo-rotulo">{{ campo.rotulo }}</span>
+                  <span class="campo-rotulo">{{ campo.rotulo }}{{ campo.obrigatorio ? ' *' : '' }}</span>
                   <div class="campo-controle">
                     <input type="text"
                            class="campo-texto"
@@ -105,7 +105,7 @@
               }
               @case ('select') {
                 <app-select-busca class="campo-filtro"
-                                   [rotulo]="campo.rotulo"
+                                   [rotulo]="campo.rotulo + (campo.obrigatorio ? ' *' : '')"
                                    [placeholder]="campo.rotulo"
                                    [opcoes]="opcoesDoCampo(campo)"
                                    [valor]="valorFiltro(campo.chave)"
@@ -113,7 +113,7 @@
               }
               @case ('periodo-data') {
                 <div class="campo-grupo campo-filtro campo-grupo--periodo">
-                  <span class="campo-rotulo">{{ campo.rotulo }}</span>
+                  <span class="campo-rotulo">{{ campo.rotulo }}{{ campo.obrigatorio ? ' *' : '' }}</span>
                   <div class="campo-periodo">
                     <div class="campo-controle">
                       <input type="date"

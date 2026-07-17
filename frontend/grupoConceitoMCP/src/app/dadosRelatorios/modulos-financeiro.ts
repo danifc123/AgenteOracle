@@ -75,7 +75,17 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
       },
       { nome: 'Assinar Dupl. em Lote' },
       { nome: 'Recibo' },
-      { nome: 'Relatório Baixa por Produtos' },
+      {
+        nome: 'Relatório Baixa por Produtos',
+        apiEndpoint: 'baixa-produtos',
+        filtros: [
+          { chave: 'titulo_ini', rotulo: 'Título De', tipo: 'texto' },
+          { chave: 'titulo_fim', rotulo: 'Título Até', tipo: 'texto' },
+          { chave: 'produto_ini', rotulo: 'Produto De', tipo: 'select', apiEndpoint: 'produtos' },
+          { chave: 'produto_fim', rotulo: 'Produto Até', tipo: 'select', apiEndpoint: 'produtos' },
+          { chave: 'data_baixa', rotulo: 'Data da Baixa', tipo: 'periodo-data' }
+        ]
+      },
       { nome: 'Manutenção de Provisionamento' },
       { nome: 'Contas a Receber com Descrição do Produto' },
       { nome: 'FINR10 - Posição dos Títulos' },

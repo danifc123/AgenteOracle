@@ -46,7 +46,7 @@ src/agente_oracle/
 │   ├── app.py                 # cria o servidor MCP (FastMCP), registra os módulos, entrypoint (agente-oracle)
 │   ├── cors.py                 # headers/preflight CORS compartilhados entre as rotas
 │   └── financeiro/             # rotas HTTP do módulo Financeiro
-│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04)
+│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04), baixa_produtos.py (CAG06R04)
 │       │   ├── filiais.py            # lista as filiais (SA6010) pro seletor múltiplo da tela
 │       │   ├── cadastros.py           # lista clientes/lojas/vendedores/prefixos/tipos pros selects com busca dos filtros
 │       │   └── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores

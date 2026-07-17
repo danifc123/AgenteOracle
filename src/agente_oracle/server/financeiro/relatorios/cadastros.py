@@ -17,6 +17,13 @@ _QUERY_CLIENTES = """
     ORDER BY nome
 """
 
+_QUERY_FORNECEDORES = """
+    SELECT DISTINCT TRIM(a2_cod) AS codigo, TRIM(a2_nome) AS nome
+    FROM sa2010
+    WHERE COALESCE(d_e_l_e_t_, ' ') = ' '
+    ORDER BY nome
+"""
+
 _QUERY_LOJAS = """
     SELECT DISTINCT TRIM(a1_loja) AS codigo
     FROM sa1010
@@ -52,6 +59,13 @@ _QUERY_PRODUTOS = """
     ORDER BY codigo
 """
 
+_QUERY_NATUREZAS = """
+    SELECT DISTINCT TRIM(ed_codigo) AS codigo, TRIM(ed_descric) AS nome
+    FROM sed010
+    WHERE COALESCE(d_e_l_e_t_, ' ') = ' '
+    ORDER BY codigo
+"""
+
 
 def _buscar_com_nome(query: str) -> list[dict[str, str]]:
     with get_connection() as connection:
@@ -72,6 +86,11 @@ def registrar(mcp) -> None:
     async def listar_clientes_route(request: Request) -> JSONResponse:
         """Clientes cadastrados (SA1010) para o campo de filtro "Cliente"."""
         return JSONResponse(_buscar_com_nome(_QUERY_CLIENTES), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/financeiro/fornecedores", methods=["GET"])
+    async def listar_fornecedores_route(request: Request) -> JSONResponse:
+        """Fornecedores cadastrados (SA2010) para o campo de filtro "Fornecedor"."""
+        return JSONResponse(_buscar_com_nome(_QUERY_FORNECEDORES), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/lojas", methods=["GET"])
     async def listar_lojas_route(request: Request) -> JSONResponse:
@@ -97,3 +116,8 @@ def registrar(mcp) -> None:
     async def listar_produtos_route(request: Request) -> JSONResponse:
         """Produtos cadastrados (SB1010) para os campos de filtro "Produto De/Até"."""
         return JSONResponse(_buscar_com_nome(_QUERY_PRODUTOS), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/financeiro/naturezas", methods=["GET"])
+    async def listar_naturezas_route(request: Request) -> JSONResponse:
+        """Naturezas financeiras (SED010) para os campos de filtro "Natureza De/Até"."""
+        return JSONResponse(_buscar_com_nome(_QUERY_NATUREZAS), headers=CORS_HEADERS)

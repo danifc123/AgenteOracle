@@ -16,6 +16,7 @@ from agente_oracle.server.financeiro.relatorios import (
     fluxo_caixa_realizado,
     posicao_titulos,
     posicao_titulos_pagar,
+    relacao_baixas,
 )
 
 
@@ -27,3 +28,4 @@ def registrar(mcp) -> None:
     baixa_produtos.registrar(mcp)
     posicao_titulos.registrar(mcp)
     posicao_titulos_pagar.registrar(mcp)
+    relacao_baixas.registrar(mcp)

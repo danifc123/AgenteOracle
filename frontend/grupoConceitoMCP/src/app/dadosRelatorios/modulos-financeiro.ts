@@ -204,7 +204,51 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           }
         ]
       },
-      { nome: 'FINR12 - Relação de Baixas' },
+      {
+        nome: 'FINR12 - Relação de Baixas',
+        apiEndpoint: 'relacao-baixas',
+        filtros: [
+          {
+            chave: 'tipo_movimento',
+            rotulo: 'Tipo',
+            tipo: 'select',
+            obrigatorio: true,
+            opcoes: [
+              { valor: 'R', rotulo: 'Recebimentos' },
+              { valor: 'P', rotulo: 'Pagamentos' }
+            ]
+          },
+          { chave: 'data_baixa', rotulo: 'Data da Baixa', tipo: 'periodo-data', obrigatorio: true },
+          { chave: 'banco_ini', rotulo: 'Banco De', tipo: 'texto' },
+          { chave: 'banco_fim', rotulo: 'Banco Até', tipo: 'texto' },
+          { chave: 'natureza_ini', rotulo: 'Natureza De', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'natureza_fim', rotulo: 'Natureza Até', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'clifor_ini', rotulo: 'Cliente/Fornecedor De', tipo: 'texto' },
+          { chave: 'clifor_fim', rotulo: 'Cliente/Fornecedor Até', tipo: 'texto' },
+          { chave: 'prefixo_ini', rotulo: 'Prefixo De', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'prefixo_fim', rotulo: 'Prefixo Até', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'lote_ini', rotulo: 'Lote De', tipo: 'texto' },
+          { chave: 'lote_fim', rotulo: 'Lote Até', tipo: 'texto' },
+          { chave: 'dt_digitacao', rotulo: 'Data de Digitação', tipo: 'periodo-data' },
+          { chave: 'vencimento', rotulo: 'Vencimento do Título', tipo: 'periodo-data' },
+          {
+            chave: 'ordenar_por',
+            rotulo: 'Ordenar por',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'data_baixa', rotulo: 'Data da Baixa' },
+              { valor: 'banco', rotulo: 'Banco' },
+              { valor: 'natureza', rotulo: 'Natureza' },
+              { valor: 'clifor', rotulo: 'Cliente/Fornecedor' },
+              { valor: 'numero', rotulo: 'Número do Título' },
+              { valor: 'dt_digitacao', rotulo: 'Data de Digitação' },
+              { valor: 'lote', rotulo: 'Lote' }
+            ]
+          }
+        ]
+      },
       { nome: 'FINR13 - Extrato Bancário' },
       { nome: 'FINR14 - Relação de Títulos a Pagar com Retenção' },
       { nome: 'FIN32 - Movimento Financeiro Diário' }

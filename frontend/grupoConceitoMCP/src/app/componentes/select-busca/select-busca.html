@@ -29,6 +29,7 @@
 
   @if (aberto()) {
     <div class="painel"
+         #painel
          [style.top.px]="posicao().top"
          [style.left.px]="posicao().left"
          [style.width.px]="posicao().largura">

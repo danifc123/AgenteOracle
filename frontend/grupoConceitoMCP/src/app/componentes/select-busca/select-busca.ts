@@ -21,6 +21,7 @@ export class SelectBusca {
   private readonly elementRef = inject(ElementRef);
 
   @ViewChild('gatilho') private readonly gatilhoRef!: ElementRef<HTMLButtonElement>;
+  @ViewChild('painel') private readonly painelRef?: ElementRef<HTMLDivElement>;
 
   opcoes = input.required<OpcaoSelectBusca[]>();
   placeholder = input('Selecione...');
@@ -80,6 +81,7 @@ export class SelectBusca {
     this.termo.set('');
     this.posicionarPainel();
     this.aberto.set(true);
+    requestAnimationFrame(() => this.ajustarDirecao());
   }
 
   protected estaSelecionada(opcao: OpcaoSelectBusca): boolean {
@@ -134,5 +136,27 @@ export class SelectBusca {
       left: retangulo.left,
       largura: retangulo.width
     });
+  }
+
+  /** Depois que o painel é renderizado (e sua altura real é conhecida), inverte
+   *  pra abrir para cima se não couber abaixo do gatilho mas couber acima. */
+  private ajustarDirecao(): void {
+    const painelEl = this.painelRef?.nativeElement;
+    if (!painelEl) {
+      return;
+    }
+
+    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
+    const alturaPainel = painelEl.offsetHeight;
+    const espacoAbaixo = window.innerHeight - retangulo.bottom;
+    const espacoAcima = retangulo.top;
+
+    if (espacoAbaixo < alturaPainel + 4 && espacoAcima > espacoAbaixo) {
+      this.posicao.set({
+        top: Math.max(4, retangulo.top - alturaPainel - 4),
+        left: retangulo.left,
+        largura: retangulo.width
+      });
+    }
   }
 }

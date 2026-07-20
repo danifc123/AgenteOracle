@@ -58,11 +58,24 @@ def _chamadas_normalizadas(mensagem: OllamaMessage) -> list[dict[str, Any]]:
 
 
 async def _executar_chamadas_de_ferramenta(
-    session: ClientSession, chamadas: list[dict[str, Any]]
+    session: ClientSession, chamadas: list[dict[str, Any]], nomes_permitidos: set[str]
 ) -> tuple[list[dict[str, Any]], str | None]:
+    """Executa as chamadas pedidas pelo modelo — mas só as que estão em
+    `nomes_permitidos` (as tools que de fato foram oferecidas a ele neste turno).
+    A sessão MCP em si enxerga as tools de todos os módulos registrados no
+    mesmo servidor, então essa checagem é o que garante, na prática, que o
+    agente de um módulo não acabe chamando a tool de outro — filtrar só a
+    lista mostrada ao modelo não seria suficiente por si só."""
     mensagens_resultado = []
     erro_tratado: str | None = None
     for chamada in chamadas:
+        if chamada["nome"] not in nomes_permitidos:
+            conteudo = f"Ferramenta '{chamada['nome']}' não está disponível neste contexto."
+            mensagens_resultado.append({"role": "tool", "content": conteudo})
+            if erro_tratado is None:
+                erro_tratado = conteudo
+            continue
+
         resultado = await session.call_tool(chamada["nome"], chamada["argumentos"])
         conteudo = _conteudo_do_resultado(resultado)
         mensagens_resultado.append({"role": "tool", "content": conteudo})
@@ -90,6 +103,7 @@ async def responder(
     com a resposta final do assistente, junto com a lista de ferramentas chamadas
     nesse turno (nome + argumentos, ex: o SQL usado em executar_consulta_financeira)."""
     eventos: list[dict[str, Any]] = []
+    nomes_permitidos = {tool["function"]["name"] for tool in tools}
 
     resposta = await ollama_client.chat(model=modelo, messages=messages, tools=tools)
     mensagem = resposta.message
@@ -100,7 +114,7 @@ async def responder(
         for chamada in chamadas:
             eventos.append({"ferramenta": chamada["nome"], "argumentos": chamada["argumentos"]})
 
-        resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, chamadas)
+        resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, chamadas, nomes_permitidos)
         messages.extend(resultados)
 
         if erro_tratado:

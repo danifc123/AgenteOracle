@@ -2,13 +2,16 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
+from agente_oracle.agent.financeiro.schema import NOMES_VIEWS_PERMITIDAS
 from agente_oracle.db.connection import DatabaseError, eh_erro_coluna_invalida, get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.tools.financeiro import historico
 
-# Vazio até o schema real do banco (TOTVS) ser importado — nenhuma tabela fica
-# liberada pra IA consultar enquanto isso, então toda consulta é rejeitada.
-TABELAS_PERMITIDAS: set[str] = set()
+# Mesma lista de views usada no prompt do agente (agent/financeiro/schema.py) —
+# fonte única, pra nunca ficar um SQL que o prompt promete mas a validação
+# rejeita (ou o contrário). Vazio até as views financeiras existirem no banco,
+# então toda consulta é rejeitada enquanto isso.
+TABELAS_PERMITIDAS: frozenset[str] = NOMES_VIEWS_PERMITIDAS
 
 PALAVRAS_BLOQUEADAS = (
     "INSERT",

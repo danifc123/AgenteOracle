@@ -7,6 +7,7 @@ from ollama import AsyncClient
 
 from agente_oracle.agent.core import mcp_url, responder, tools_para_ollama
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
+from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
 
 
@@ -17,7 +18,8 @@ async def executar_chat() -> None:
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
             tools_result = await session.list_tools()
-            tools = tools_para_ollama(tools_result.tools)
+            tools_do_modulo = [tool for tool in tools_result.tools if tool.name.startswith(PREFIXO_TOOL)]
+            tools = tools_para_ollama(tools_do_modulo)
 
             print(f"Agente Oracle pronto (modelo: {settings.ollama_model}). Digite 'sair' para encerrar.\n")
 

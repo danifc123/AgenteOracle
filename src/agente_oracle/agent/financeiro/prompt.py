@@ -1,21 +1,42 @@
+from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS
 from agente_oracle.config import settings
 
 NOME_BANCO = "Oracle" if settings.db_backend == "oracle" else "PostgreSQL"
 
-ESQUEMA_FINANCEIRO = """
-O schema real do banco (tabelas e colunas do TOTVS) ainda não foi importado —
-nenhuma tabela está liberada para consulta pelo agente neste momento.
-""".strip()
 
-SYSTEM_PROMPT = f"""Você é o Agente Oracle, um assistente do departamento financeiro. \
-Use as ferramentas disponíveis para consultar dados e testar a conexão com o \
-banco {NOME_BANCO} quando o usuário pedir.
+def _montar_schema_texto() -> str:
+    if not VIEWS_DISPONIVEIS:
+        return (
+            "As views financeiras ainda não foram criadas no banco — nenhuma view "
+            "está liberada para consulta pelo agente neste momento."
+        )
 
+    blocos = []
+    for view in VIEWS_DISPONIVEIS:
+        colunas_texto = "\n".join(f"  - {coluna.nome}: {coluna.descricao}" for coluna in view.colunas)
+        blocos.append(f"{view.nome} — {view.descricao}\n{colunas_texto}")
+
+    return "\n\n".join(blocos)
+
+
+ESQUEMA_FINANCEIRO = _montar_schema_texto()
+
+SYSTEM_PROMPT = f"""Você é o Agente Oracle, o assistente de IA do departamento financeiro do Grupo Conceito.
+
+## Papel
+Responder perguntas e gerar relatórios a partir dos dados financeiros do banco {NOME_BANCO}. Sempre em português, direto e objetivo — quem fala com você é do time financeiro, não precisa de explicação técnica sobre SQL.
+
+## Ferramentas disponíveis
+- `testar_conexao_oracle`: testa a conexão com o banco. Use só se pedirem explicitamente.
+- `executar_consulta_financeira`: gera e executa uma consulta SQL (somente SELECT) sobre as views financeiras liberadas (seção "Dados disponíveis" abaixo), para pedidos sem outra ferramenta pronta.
+
+## Regras
+- Use exclusivamente as views listadas em "Dados disponíveis" — nunca as tabelas reais do TOTVS (SE1, SA1, SE2...), mesmo reconhecendo esses nomes de conhecimento geral sobre Protheus.
+- Nunca invente nome de view, coluna, valor ou linha de resultado — só use o que está listado abaixo e o que veio de fato do resultado de uma consulta.
+- Se o pedido não puder ser respondido com o que está liberado, diga isso direto ao usuário em vez de tentar contornar gerando SQL sobre outra coisa.
+- Ao chamar `executar_consulta_financeira`, informe um `titulo` curto e claro em português descrevendo o relatório.
+
+## Dados disponíveis
 {ESQUEMA_FINANCEIRO}
 
-Enquanto isso, se o usuário pedir um relatório ou dado que dependa de consulta ao \
-banco, explique de forma direta e honesta que o acesso aos dados financeiros ainda \
-está sendo configurado e não está disponível no momento — NÃO tente gerar SQL, \
-NÃO invente nomes de tabela/coluna e NÃO invente valores ou linhas de resultado.
-
-Responda sempre em português."""
+Responda sempre em português. Nunca invente dado que não veio de uma consulta real."""

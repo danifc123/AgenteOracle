@@ -112,7 +112,13 @@ async def responder(
     chamadas = _chamadas_normalizadas(mensagem)
     while chamadas:
         for chamada in chamadas:
-            eventos.append({"ferramenta": chamada["nome"], "argumentos": chamada["argumentos"]})
+            evento = {"ferramenta": chamada["nome"], "argumentos": chamada["argumentos"]}
+            # O modelo às vezes repete a mesma chamada (mesmo nome + mesmos
+            # argumentos) em mais de uma rodada antes de finalizar a resposta.
+            # Sem essa checagem, o front mostraria um botão "Baixar em Excel"
+            # duplicado pra cada repetição, mesmo gerando o mesmo relatório.
+            if evento not in eventos:
+                eventos.append(evento)
 
         resultados, erro_tratado = await _executar_chamadas_de_ferramenta(session, chamadas, nomes_permitidos)
         messages.extend(resultados)

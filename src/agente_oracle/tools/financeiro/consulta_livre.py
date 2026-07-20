@@ -71,7 +71,10 @@ def _validar_consulta(sql: str) -> str:
             "financeiro autorizado para este agente."
         )
 
-    if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper:
+    # "LIMIT" cobre o SQL que o modelo gera quando sabe que o backend é Postgres
+    # (NOME_BANCO no prompt) — sem isso, uma consulta que já veio com LIMIT
+    # ganhava um FETCH FIRST em cima, e as duas cláusulas juntas são SQL inválido.
+    if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper and "LIMIT" not in sql_upper:
         sql_limpo = f"{sql_limpo}\nFETCH FIRST {LIMITE_MAXIMO_LINHAS} ROWS ONLY"
 
     return sql_limpo
@@ -111,7 +114,7 @@ def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
 def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
     """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
     (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
-    novo no Oracle. Caso contrário, executa e salva no histórico para a
+    novo no banco. Caso contrário, executa e salva no histórico para a
     próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
     sql_validado = _validar_consulta(sql)
 

@@ -24,14 +24,18 @@
                   <pre>{{ consulta.argumentos['sql'] }}</pre>
                 </details>
 
-                <app-botao
-                  variant="contorno"
-                  [loading]="baixandoSql() === consulta.argumentos['sql']"
-                  loadingText="Gerando Excel..."
-                  (clicked)="baixarRelatorio.emit($any(consulta.argumentos['sql']))"
-                >
-                  Baixar em Excel
-                </app-botao>
+                @if (consulta.linhas_retornadas === 0) {
+                  <p class="aviso-relatorio-vazio">Nenhum dado encontrado para esse relatório — não há Excel para baixar.</p>
+                } @else {
+                  <app-botao
+                    variant="contorno"
+                    [loading]="baixandoSql() === consulta.argumentos['sql']"
+                    loadingText="Gerando Excel..."
+                    (clicked)="baixarRelatorio.emit($any(consulta.argumentos['sql']))"
+                  >
+                    Baixar em Excel
+                  </app-botao>
+                }
               </div>
             }
           }

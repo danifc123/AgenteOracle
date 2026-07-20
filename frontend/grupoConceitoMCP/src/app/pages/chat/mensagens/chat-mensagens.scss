@@ -90,6 +90,13 @@
   }
 }
 
+.aviso-relatorio-vazio {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
 @media (max-width: 720px) {
   .balao {
     max-width: 85%;

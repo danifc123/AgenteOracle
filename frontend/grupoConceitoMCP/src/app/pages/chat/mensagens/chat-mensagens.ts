@@ -4,6 +4,7 @@ import { Botao } from '../../../componentes/botao/botao';
 export interface ConsultaUsada {
   ferramenta: string;
   argumentos: Record<string, unknown>;
+  linhas_retornadas?: number | null;
 }
 
 export interface MensagemChat {

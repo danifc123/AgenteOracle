@@ -35,6 +35,11 @@ PALAVRAS_BLOQUEADAS = (
 
 _TABELA_REGEX = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
 
+# Nomes definidos em CTEs ("WITH nome AS (" ou ", nome AS (" pra CTEs
+# encadeadas) não são tabelas reais — são apelidos montados em cima das views
+# já validadas, então não devem ser cobrados na whitelist de tabelas.
+_CTE_REGEX = re.compile(r"(?:^\s*WITH\s+|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(", re.IGNORECASE)
+
 LIMITE_MAXIMO_LINHAS = 200
 TIMEOUT_MS = 10_000
 
@@ -52,15 +57,20 @@ def _validar_consulta(sql: str) -> str:
     if ";" in sql_limpo:
         raise ConsultaFinanceiraInvalida("Apenas uma única instrução é permitida (sem ';' no meio da consulta).")
 
-    if not re.match(r"^\s*SELECT\b", sql_limpo, re.IGNORECASE):
-        raise ConsultaFinanceiraInvalida("Somente instruções SELECT são permitidas.")
+    # "WITH" cobre consultas com CTE (ex: "WITH ranking AS (...) SELECT ..."),
+    # usadas para perguntas compostas (top N + mais recente de cada grupo) —
+    # continuam somente-leitura, a checagem de palavras bloqueadas abaixo
+    # cobre o resto da instrução independente de como ela começa.
+    if not re.match(r"^\s*(SELECT|WITH)\b", sql_limpo, re.IGNORECASE):
+        raise ConsultaFinanceiraInvalida("Somente instruções SELECT (ou WITH ... SELECT) são permitidas.")
 
     sql_upper = sql_limpo.upper()
     for palavra in PALAVRAS_BLOQUEADAS:
         if palavra in sql_upper:
             raise ConsultaFinanceiraInvalida(f"A consulta contém um termo não permitido: '{palavra.strip()}'.")
 
-    tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)}
+    nomes_cte = {nome.upper() for nome in _CTE_REGEX.findall(sql_limpo)}
+    tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)} - nomes_cte
     if not tabelas_usadas:
         raise ConsultaFinanceiraInvalida("Não foi possível identificar as tabelas usadas na consulta.")
 

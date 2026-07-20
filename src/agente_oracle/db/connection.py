@@ -52,6 +52,10 @@ class _CursorAdapter:
     def description(self):
         return self._cursor.description
 
+    @property
+    def rowcount(self) -> int:
+        return self._cursor.rowcount
+
 
 class _ConnectionAdapter:
     def __init__(self, connection, backend: str):
@@ -68,8 +72,12 @@ class _ConnectionAdapter:
     @call_timeout.setter
     def call_timeout(self, milissegundos: int):
         if self._backend == "postgres":
+            # SET não aceita bind parameter no Postgres (precisa ser um literal na
+            # própria instrução) — seguro fazer format direto aqui porque o valor
+            # vem sempre de uma constante interna (TIMEOUT_MS), nunca de entrada
+            # do usuário/IA.
             with self._connection.cursor() as cursor:
-                cursor.execute("SET statement_timeout = %s", (milissegundos,))
+                cursor.execute(f"SET statement_timeout = {int(milissegundos)}")
         else:
             self._connection.call_timeout = milissegundos
 

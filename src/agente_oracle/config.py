@@ -30,8 +30,5 @@ class Settings(BaseSettings):
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
 
-    mongo_uri: str = "mongodb://localhost:27017"
-    mongo_db: str = "agente_oracle"
-
 
 settings = Settings()

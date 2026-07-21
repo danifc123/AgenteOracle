@@ -25,6 +25,15 @@ def eh_erro_coluna_invalida(erro: Exception) -> bool:
     return "ORA-00904" in str(erro)
 
 
+def eh_erro_valor_duplicado(erro: Exception) -> bool:
+    """Detecta, de forma independente do banco, se o erro é uma violação de
+    constraint única/chave duplicada (ORA-00001 no Oracle, sqlstate 23505 no
+    Postgres)."""
+    if isinstance(erro, psycopg.Error):
+        return getattr(erro, "sqlstate", None) == "23505"
+    return "ORA-00001" in str(erro)
+
+
 class _CursorAdapter:
     """Uniformiza a chamada `cursor.execute(sql, **binds)` (estilo oracledb,
     com binds nomeados `:nome`) para os dois bancos: no Oracle passa direto;

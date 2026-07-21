@@ -7,6 +7,8 @@ export interface DadosSessao {
   usuario: string;
   nome: string;
   papeis: string[];
+  administrador: boolean;
+  modulos: string[];
 }
 
 function carregarSessaoSalva(): DadosSessao | null {
@@ -29,6 +31,8 @@ export class Sessao {
   readonly token = () => this._dados()?.token ?? null;
   readonly nome = () => this._dados()?.nome ?? '';
   readonly papeis = () => this._dados()?.papeis ?? [];
+  readonly administrador = () => this._dados()?.administrador ?? false;
+  readonly modulos = () => this._dados()?.modulos ?? [];
 
   entrar(dados: DadosSessao): void {
     localStorage.setItem(CHAVE_SESSAO, JSON.stringify(dados));

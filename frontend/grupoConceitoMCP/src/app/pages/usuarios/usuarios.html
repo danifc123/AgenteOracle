@@ -1,0 +1,104 @@
+<header class="page-header">
+  <div>
+    <p class="breadcrumb">Administração</p>
+    <h1>Usuários</h1>
+  </div>
+  <app-botao variant="primaria" (clicked)="abrirDialog()">Novo usuário</app-botao>
+</header>
+
+@if (erro()) {
+  <p class="erro-carregamento">{{ erro() }}</p>
+}
+
+@if (carregando()) {
+  <p class="carregando">Carregando usuários...</p>
+} @else if (usuarios().length === 0) {
+  <div class="empty-state">
+    <h2>Nenhum usuário cadastrado</h2>
+    <p>Use o botão "Novo usuário" pra cadastrar o primeiro.</p>
+  </div>
+} @else {
+  <div class="table-wrapper">
+    <table class="tabela-usuarios">
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>Nome</th>
+          <th>Papéis</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (usuario of usuarios(); track usuario.id) {
+          <tr>
+            <td>{{ usuario.usuario }}</td>
+            <td>{{ usuario.nome }}</td>
+            <td>{{ rotuloPapeis(usuario.papeis) }}</td>
+            <td>
+              @if (usuario.ativo) {
+                <span class="badge-ativo">Ativo</span>
+              } @else {
+                <span class="badge-inativo">Inativo</span>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<app-dialog [aberto]="dialogAberto()" titulo="Novo usuário" [temRodape]="true" (fechar)="fecharDialog()">
+  <form class="form-usuario" (submit)="criarUsuario(); $event.preventDefault()">
+    <label class="campo">
+      <span>Usuário (login)</span>
+      <input
+        type="text"
+        [value]="formUsuario()"
+        (input)="formUsuario.set($any($event.target).value)"
+        autocomplete="off"
+        placeholder="nome.sobrenome"
+      />
+    </label>
+
+    <label class="campo">
+      <span>Nome completo</span>
+      <input
+        type="text"
+        [value]="formNome()"
+        (input)="formNome.set($any($event.target).value)"
+        autocomplete="off"
+      />
+    </label>
+
+    <label class="campo">
+      <span>Senha</span>
+      <input
+        type="password"
+        [value]="formSenha()"
+        (input)="formSenha.set($any($event.target).value)"
+        autocomplete="new-password"
+        placeholder="••••••••"
+      />
+    </label>
+
+    <app-select-busca
+      rotulo="Papéis"
+      placeholder="Selecione os papéis"
+      [multiplo]="true"
+      [opcoes]="opcoesPapeis()"
+      [(valores)]="formPapeis"
+    />
+
+    @if (erroForm()) {
+      <p class="erro">{{ erroForm() }}</p>
+    }
+  </form>
+
+  <div rodape>
+    <app-botao variant="contorno" [disabled]="criando()" (clicked)="fecharDialog()">Cancelar</app-botao>
+    <app-botao variant="primaria" [loading]="criando()" loadingText="Criando..." (clicked)="criarUsuario()">
+      Criar usuário
+    </app-botao>
+  </div>
+</app-dialog>

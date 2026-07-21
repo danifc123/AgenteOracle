@@ -9,7 +9,7 @@ import { Sessao } from '../../servicos/sessao';
   styleUrl: './sidebar.scss'
 })
 export class Sidebar {
-  private readonly sessao = inject(Sessao);
+  protected readonly sessao = inject(Sessao);
   private readonly router = inject(Router);
 
   protected readonly sidebarOpen = signal(false);

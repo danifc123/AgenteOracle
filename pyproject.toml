@@ -13,6 +13,8 @@ dependencies = [
     "openpyxl>=3.1.0",
     "psycopg[binary]>=3.1.0",
     "psycopg-pool>=3.2.0",
+    "bcrypt>=4.2.0",
+    "pyjwt>=2.9.0",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +26,7 @@ dev = [
 [project.scripts]
 agente-oracle = "agente_oracle.server.app:main"
 agente-oracle-chat = "agente_oracle.agent.cli:main"
+agente-oracle-criar-usuario = "agente_oracle.tools.auth.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -5,6 +5,8 @@ import { Financeiro } from './pages/modulos/financeiro/financeiro';
 import { Chat } from './pages/chat/chat';
 import { Login } from './pages/login/login';
 import { Historico } from './pages/relatorios/historico/historico';
+import { Usuarios } from './pages/usuarios/usuarios';
+import { adminGuard } from './servicos/admin.guard';
 import { authGuard } from './servicos/auth.guard';
 
 export const routes: Routes = [
@@ -17,7 +19,8 @@ export const routes: Routes = [
       { path: '', component: Home },
       { path: 'financeiro/:moduloId', component: Financeiro },
       { path: 'chat', component: Chat },
-      { path: 'relatorios/historico', component: Historico }
+      { path: 'relatorios/historico', component: Historico },
+      { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] }
     ]
   },
   { path: '**', redirectTo: '' }

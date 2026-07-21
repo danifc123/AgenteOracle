@@ -122,7 +122,7 @@ h1 {
 .painel-filtro-conteudo {
   display: flex;
   flex-wrap: nowrap;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   padding: 8px;
   width: 100%;
@@ -167,9 +167,33 @@ app-select-busca.campo-filtro {
   width: 170px;
 }
 
+.campo-grupo {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.campo-rotulo {
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.campo-controle {
+  position: relative;
+}
+
+.campo-periodo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .campo-texto,
 .campo-data {
-  flex-shrink: 0;
   width: 130px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -184,8 +208,37 @@ app-select-busca.campo-filtro {
   }
 }
 
+.campo-com-limpar {
+  padding-right: 28px;
+}
+
+.botao-limpar {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+}
+
 .separador-periodo {
   flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 8px;
   color: var(--color-text-muted);
   font-size: 13px;
 }

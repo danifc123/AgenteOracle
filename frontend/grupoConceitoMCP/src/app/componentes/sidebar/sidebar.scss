@@ -14,6 +14,7 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  transition: width 0.2s ease, padding 0.2s ease;
 }
 
 .brand {
@@ -21,6 +22,27 @@
   align-items: center;
   gap: 10px;
   padding: 6px 10px 22px;
+}
+
+.colapsar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
 }
 
 .brand-mark {
@@ -174,6 +196,45 @@
   }
 }
 
+.sidebar.colapsado {
+  width: 72px;
+  padding: 20px 10px;
+
+  .brand {
+    padding: 6px 0 22px;
+    justify-content: center;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .colapsar-toggle {
+    margin-left: 0;
+    transform: rotate(180deg);
+  }
+
+  .nav-link {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .nav-label,
+  .chevron {
+    display: none;
+  }
+
+  .sidebar-footer {
+    justify-content: center;
+    padding: 14px 0 4px;
+  }
+
+  .user-info,
+  .sair {
+    display: none;
+  }
+}
+
 .menu-toggle {
   display: none;
   position: fixed;
@@ -208,6 +269,47 @@
 
   .sidebar.open {
     transform: translateX(0);
+  }
+
+  .sidebar.colapsado {
+    width: 260px;
+    padding: 20px 14px;
+
+    .brand {
+      padding: 6px 10px 22px;
+      justify-content: flex-start;
+    }
+
+    .brand-name,
+    .nav-label {
+      display: inline;
+    }
+
+    .chevron {
+      display: block;
+    }
+
+    .user-info {
+      display: flex;
+    }
+
+    .sair {
+      display: inline-flex;
+    }
+
+    .nav-link {
+      justify-content: flex-start;
+      padding: 10px 12px;
+    }
+
+    .sidebar-footer {
+      justify-content: flex-start;
+      padding: 14px 10px 4px;
+    }
+  }
+
+  .colapsar-toggle {
+    display: none;
   }
 
   .menu-toggle {

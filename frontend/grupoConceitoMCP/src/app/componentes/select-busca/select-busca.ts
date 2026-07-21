@@ -21,10 +21,13 @@ export class SelectBusca {
   private readonly elementRef = inject(ElementRef);
 
   @ViewChild('gatilho') private readonly gatilhoRef!: ElementRef<HTMLButtonElement>;
+  @ViewChild('painel') private readonly painelRef?: ElementRef<HTMLDivElement>;
 
   opcoes = input.required<OpcaoSelectBusca[]>();
   placeholder = input('Selecione...');
   multiplo = input(false);
+  /** Label pequeno mostrado acima do campo, pra identificar o que ele espera mesmo depois de preenchido. */
+  rotulo = input<string | null>(null);
 
   /** Usado quando multiplo() é false. */
   valor = model<string | null>(null);
@@ -44,6 +47,10 @@ export class SelectBusca {
     }
 
     return opcoes.filter((opcao) => opcao.rotulo.toLowerCase().includes(termo));
+  });
+
+  protected readonly temSelecao = computed(() => {
+    return this.multiplo() ? this.valores().length > 0 : !!this.valor();
   });
 
   protected readonly rotuloSelecionado = computed(() => {
@@ -74,6 +81,7 @@ export class SelectBusca {
     this.termo.set('');
     this.posicionarPainel();
     this.aberto.set(true);
+    requestAnimationFrame(() => this.ajustarDirecao());
   }
 
   protected estaSelecionada(opcao: OpcaoSelectBusca): boolean {
@@ -91,6 +99,18 @@ export class SelectBusca {
     }
 
     this.valor.set(opcao.valor);
+    this.aberto.set(false);
+  }
+
+  limpar(evento: Event): void {
+    evento.stopPropagation();
+
+    if (this.multiplo()) {
+      this.valores.set([]);
+    } else {
+      this.valor.set(null);
+    }
+
     this.aberto.set(false);
   }
 
@@ -116,5 +136,27 @@ export class SelectBusca {
       left: retangulo.left,
       largura: retangulo.width
     });
+  }
+
+  /** Depois que o painel é renderizado (e sua altura real é conhecida), inverte
+   *  pra abrir para cima se não couber abaixo do gatilho mas couber acima. */
+  private ajustarDirecao(): void {
+    const painelEl = this.painelRef?.nativeElement;
+    if (!painelEl) {
+      return;
+    }
+
+    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
+    const alturaPainel = painelEl.offsetHeight;
+    const espacoAbaixo = window.innerHeight - retangulo.bottom;
+    const espacoAcima = retangulo.top;
+
+    if (espacoAbaixo < alturaPainel + 4 && espacoAcima > espacoAbaixo) {
+      this.posicao.set({
+        top: Math.max(4, retangulo.top - alturaPainel - 4),
+        left: retangulo.left,
+        largura: retangulo.width
+      });
+    }
   }
 }

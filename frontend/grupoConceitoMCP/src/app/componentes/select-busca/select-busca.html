@@ -1,19 +1,35 @@
 <div class="select-busca">
-  <button
-    #gatilho
-    type="button"
-    class="gatilho"
-    (click)="toggle()"
-    [attr.aria-expanded]="aberto()"
-  >
-    <span [class.placeholder]="!rotuloSelecionado()">{{ rotuloSelecionado() || placeholder() }}</span>
-    <svg class="chevron" [class.rotated]="aberto()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
-  </button>
+  @if (rotulo()) {
+    <span class="campo-rotulo">{{ rotulo() }}</span>
+  }
+
+  <div class="campo-controle">
+    <button
+      #gatilho
+      type="button"
+      class="gatilho"
+      [class.gatilho--com-limpar]="temSelecao()"
+      (click)="toggle()"
+      [attr.aria-expanded]="aberto()"
+    >
+      <span [class.placeholder]="!rotuloSelecionado()">{{ rotuloSelecionado() || placeholder() }}</span>
+      <svg class="chevron" [class.rotated]="aberto()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </button>
+
+    @if (temSelecao()) {
+      <button type="button" class="botao-limpar" aria-label="Limpar campo" (click)="limpar($event)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    }
+  </div>
 
   @if (aberto()) {
     <div class="painel"
+         #painel
          [style.top.px]="posicao().top"
          [style.left.px]="posicao().left"
          [style.width.px]="posicao().largura">

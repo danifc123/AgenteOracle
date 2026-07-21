@@ -6,9 +6,12 @@ from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.agent.core import mcp_url, responder, tools_para_ollama
+from agente_oracle.agent.core import mcp_url
+from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
+from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
+from agente_oracle.server.auth.dependencia import exigir_usuario
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.connectivity import check_oracle_connection
 from agente_oracle.tools.financeiro.consulta_livre import (
@@ -19,12 +22,12 @@ from agente_oracle.tools.financeiro.consulta_livre import (
 
 
 def registrar(mcp) -> None:
-    @mcp.tool()
+    @mcp.tool(name=f"{PREFIXO_TOOL}testar_conexao_oracle")
     def testar_conexao_oracle() -> str:
         """Testa a conexão com o banco Oracle configurado e retorna a versão do servidor."""
         return check_oracle_connection()
 
-    mcp.tool()(executar_consulta_financeira)
+    mcp.tool(name=f"{PREFIXO_TOOL}executar_consulta_financeira")(executar_consulta_financeira)
 
     @mcp.custom_route("/api/relatorio/exportar", methods=["POST", "OPTIONS"])
     async def exportar_relatorio_route(request: Request) -> Response:
@@ -32,6 +35,10 @@ def registrar(mcp) -> None:
         gerado pelo Agente Oracle no chat (roda de novo a mesma consulta validada)."""
         if request.method == "OPTIONS":
             return resposta_preflight()
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
 
         corpo = await request.json()
         sql = str(corpo.get("sql", "")).strip()
@@ -57,6 +64,10 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight()
 
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
         corpo = await request.json()
         mensagem_usuario = str(corpo.get("mensagem", "")).strip()
         historico = corpo.get("historico", [])
@@ -75,9 +86,14 @@ def registrar(mcp) -> None:
         async with streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                tools_result = await session.list_tools()
-                tools = tools_para_ollama(tools_result.tools)
-                messages, eventos = await responder(ollama_client, settings.ollama_model, session, tools, messages)
+                messages, eventos = await responder(
+                    ollama_client,
+                    settings.ollama_model,
+                    session,
+                    f"{PREFIXO_TOOL}executar_consulta_financeira",
+                    f"{PREFIXO_TOOL}testar_conexao_oracle",
+                    messages,
+                )
 
         return JSONResponse(
             {"resposta": messages[-1].get("content", ""), "consultas": eventos},

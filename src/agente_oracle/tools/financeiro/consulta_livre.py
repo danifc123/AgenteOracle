@@ -2,13 +2,16 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 
+from agente_oracle.agent.financeiro.schema import NOMES_VIEWS_PERMITIDAS
 from agente_oracle.db.connection import DatabaseError, eh_erro_coluna_invalida, get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.tools.financeiro import historico
 
-# Vazio até o schema real do banco (TOTVS) ser importado — nenhuma tabela fica
-# liberada pra IA consultar enquanto isso, então toda consulta é rejeitada.
-TABELAS_PERMITIDAS: set[str] = set()
+# Mesma lista de views usada no prompt do agente (agent/financeiro/schema.py) —
+# fonte única, pra nunca ficar um SQL que o prompt promete mas a validação
+# rejeita (ou o contrário). Vazio até as views financeiras existirem no banco,
+# então toda consulta é rejeitada enquanto isso.
+TABELAS_PERMITIDAS: frozenset[str] = NOMES_VIEWS_PERMITIDAS
 
 PALAVRAS_BLOQUEADAS = (
     "INSERT",
@@ -32,6 +35,11 @@ PALAVRAS_BLOQUEADAS = (
 
 _TABELA_REGEX = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
 
+# Nomes definidos em CTEs ("WITH nome AS (" ou ", nome AS (" pra CTEs
+# encadeadas) não são tabelas reais — são apelidos montados em cima das views
+# já validadas, então não devem ser cobrados na whitelist de tabelas.
+_CTE_REGEX = re.compile(r"(?:^\s*WITH\s+|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(", re.IGNORECASE)
+
 LIMITE_MAXIMO_LINHAS = 200
 TIMEOUT_MS = 10_000
 
@@ -49,15 +57,20 @@ def _validar_consulta(sql: str) -> str:
     if ";" in sql_limpo:
         raise ConsultaFinanceiraInvalida("Apenas uma única instrução é permitida (sem ';' no meio da consulta).")
 
-    if not re.match(r"^\s*SELECT\b", sql_limpo, re.IGNORECASE):
-        raise ConsultaFinanceiraInvalida("Somente instruções SELECT são permitidas.")
+    # "WITH" cobre consultas com CTE (ex: "WITH ranking AS (...) SELECT ..."),
+    # usadas para perguntas compostas (top N + mais recente de cada grupo) —
+    # continuam somente-leitura, a checagem de palavras bloqueadas abaixo
+    # cobre o resto da instrução independente de como ela começa.
+    if not re.match(r"^\s*(SELECT|WITH)\b", sql_limpo, re.IGNORECASE):
+        raise ConsultaFinanceiraInvalida("Somente instruções SELECT (ou WITH ... SELECT) são permitidas.")
 
     sql_upper = sql_limpo.upper()
     for palavra in PALAVRAS_BLOQUEADAS:
         if palavra in sql_upper:
             raise ConsultaFinanceiraInvalida(f"A consulta contém um termo não permitido: '{palavra.strip()}'.")
 
-    tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)}
+    nomes_cte = {nome.upper() for nome in _CTE_REGEX.findall(sql_limpo)}
+    tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)} - nomes_cte
     if not tabelas_usadas:
         raise ConsultaFinanceiraInvalida("Não foi possível identificar as tabelas usadas na consulta.")
 
@@ -68,7 +81,10 @@ def _validar_consulta(sql: str) -> str:
             "financeiro autorizado para este agente."
         )
 
-    if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper:
+    # "LIMIT" cobre o SQL que o modelo gera quando sabe que o backend é Postgres
+    # (NOME_BANCO no prompt) — sem isso, uma consulta que já veio com LIMIT
+    # ganhava um FETCH FIRST em cima, e as duas cláusulas juntas são SQL inválido.
+    if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper and "LIMIT" not in sql_upper:
         sql_limpo = f"{sql_limpo}\nFETCH FIRST {LIMITE_MAXIMO_LINHAS} ROWS ONLY"
 
     return sql_limpo
@@ -91,12 +107,15 @@ def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
             colunas = [descricao[0] for descricao in cursor.description]
             linhas = cursor.fetchall()
     except DatabaseError as erro:
-        mensagem_erro = str(erro).strip()
+        # Primeira linha só, sem o "LINE 1: ..." com o SQL inteiro repetido
+        # embaixo (ruído pra quem lê, seja o modelo tentando se corrigir ou o
+        # usuário se as tentativas de correção se esgotarem).
+        mensagem_erro = str(erro).strip().splitlines()[0]
         if eh_erro_coluna_invalida(erro):
             raise ConsultaFinanceiraInvalida(
                 "Não é possível gerar esse relatório: a consulta faz referência a uma coluna "
                 "ou junção que não existe no banco — as tabelas pedidas não têm uma relação "
-                "direta entre si."
+                f"direta entre si. Detalhe técnico do erro: {mensagem_erro}"
             ) from erro
         raise ConsultaFinanceiraInvalida(
             f"Não foi possível executar a consulta no banco ({mensagem_erro})."
@@ -108,7 +127,7 @@ def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
 def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
     """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
     (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
-    novo no Oracle. Caso contrário, executa e salva no histórico para a
+    novo no banco. Caso contrário, executa e salva no histórico para a
     próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
     sql_validado = _validar_consulta(sql)
 

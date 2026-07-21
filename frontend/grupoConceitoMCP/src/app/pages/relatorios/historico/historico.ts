@@ -1,8 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
+import { Dialog } from '../../../componentes/dialog/dialog';
+import { formatarSql } from '../../../servicos/formatar-sql';
 
 export interface RelatorioHistorico {
   id: string;
@@ -17,7 +19,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe, Botao],
+  imports: [DatePipe, Botao, Dialog],
   templateUrl: './historico.html',
   styleUrl: './historico.scss'
 })
@@ -30,6 +32,14 @@ export class Historico {
   baixandoId = signal<string | null>(null);
   apagandoId = signal<string | null>(null);
   fixandoId = signal<string | null>(null);
+
+  relatorioSelecionado = signal<RelatorioHistorico | null>(null);
+  copiado = signal(false);
+
+  sqlFormatado = computed(() => {
+    const relatorio = this.relatorioSelecionado();
+    return relatorio ? formatarSql(relatorio.sql) : '';
+  });
 
   constructor() {
     this.carregarHistorico();
@@ -104,6 +114,27 @@ export class Historico {
         this.erro.set('Não foi possível apagar o relatório.');
         this.apagandoId.set(null);
       }
+    });
+  }
+
+  verConsulta(relatorio: RelatorioHistorico): void {
+    this.copiado.set(false);
+    this.relatorioSelecionado.set(relatorio);
+  }
+
+  fecharConsulta(): void {
+    this.relatorioSelecionado.set(null);
+  }
+
+  copiarConsulta(): void {
+    const sql = this.sqlFormatado();
+    if (!sql) {
+      return;
+    }
+
+    navigator.clipboard.writeText(sql).then(() => {
+      this.copiado.set(true);
+      setTimeout(() => this.copiado.set(false), 2000);
     });
   }
 

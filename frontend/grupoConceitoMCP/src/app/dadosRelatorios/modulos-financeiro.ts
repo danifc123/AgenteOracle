@@ -50,7 +50,6 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         apiEndpoint: 'fluxo-caixa-realizado',
         filtros: [{ chave: 'ano', rotulo: 'Ano', tipo: 'texto', obrigatorio: true }]
       },
-      { nome: 'Boleto' },
       {
         nome: 'Duplicata Mercantil em Lote',
         apiEndpoint: 'duplicata-mercantil',
@@ -73,17 +72,257 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           }
         ]
       },
-      { nome: 'Assinar Dupl. em Lote' },
-      { nome: 'Recibo' },
-      { nome: 'Relatório Baixa por Produtos' },
-      { nome: 'Manutenção de Provisionamento' },
+      {
+        nome: 'Relatório Baixa por Produtos',
+        apiEndpoint: 'baixa-produtos',
+        filtros: [
+          { chave: 'titulo_ini', rotulo: 'Título De', tipo: 'texto' },
+          { chave: 'titulo_fim', rotulo: 'Título Até', tipo: 'texto' },
+          { chave: 'produto_ini', rotulo: 'Produto De', tipo: 'select', apiEndpoint: 'produtos' },
+          { chave: 'produto_fim', rotulo: 'Produto Até', tipo: 'select', apiEndpoint: 'produtos' },
+          { chave: 'data_baixa', rotulo: 'Data da Baixa', tipo: 'periodo-data' }
+        ]
+      },
       { nome: 'Contas a Receber com Descrição do Produto' },
-      { nome: 'FINR10 - Posição dos Títulos' },
-      { nome: 'FINR11 - Posição dos Títulos a Pagar' },
-      { nome: 'FINR12 - Relação de Baixas' },
-      { nome: 'FINR13 - Extrato Bancário' },
-      { nome: 'FINR14 - Relação de Títulos a Pagar com Retenção' },
-      { nome: 'FIN32 - Movimento Financeiro Diário' }
+      {
+        nome: 'FINR10 - Posição dos Títulos',
+        apiEndpoint: 'posicao-titulos',
+        filtros: [
+          { chave: 'cliente_ini', rotulo: 'Cliente De', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'cliente_fim', rotulo: 'Cliente Até', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'prefixo_ini', rotulo: 'Prefixo De', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'prefixo_fim', rotulo: 'Prefixo Até', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'titulo_ini', rotulo: 'Título De', tipo: 'texto' },
+          { chave: 'titulo_fim', rotulo: 'Título Até', tipo: 'texto' },
+          { chave: 'banco_ini', rotulo: 'Banco De', tipo: 'texto' },
+          { chave: 'banco_fim', rotulo: 'Banco Até', tipo: 'texto' },
+          { chave: 'natureza_ini', rotulo: 'Natureza De', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'natureza_fim', rotulo: 'Natureza Até', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
+          {
+            chave: 'saldo_retroativo',
+            rotulo: 'Saldo Retroativo',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
+            ]
+          },
+          {
+            chave: 'considerar_excluidos',
+            rotulo: 'Considerar Excluídos',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
+            ]
+          },
+          {
+            chave: 'abatimentos',
+            rotulo: 'Abatimentos',
+            tipo: 'select',
+            opcoes: [
+              { valor: '1', rotulo: 'Lista' },
+              { valor: '2', rotulo: 'Não lista' },
+              { valor: '3', rotulo: 'Despreza' }
+            ]
+          },
+          {
+            chave: 'ordenar_por',
+            rotulo: 'Ordenar por',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'cliente', rotulo: 'Cliente' },
+              { valor: 'numero', rotulo: 'Número' },
+              { valor: 'vencimento', rotulo: 'Vencimento' },
+              { valor: 'natureza', rotulo: 'Natureza' },
+              { valor: 'banco', rotulo: 'Banco' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FINR11 - Posição dos Títulos a Pagar',
+        apiEndpoint: 'posicao-titulos-pagar',
+        filtros: [
+          { chave: 'fornecedor_ini', rotulo: 'Fornecedor De', tipo: 'select', apiEndpoint: 'fornecedores' },
+          { chave: 'fornecedor_fim', rotulo: 'Fornecedor Até', tipo: 'select', apiEndpoint: 'fornecedores' },
+          { chave: 'prefixo_ini', rotulo: 'Prefixo De', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'prefixo_fim', rotulo: 'Prefixo Até', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'titulo_ini', rotulo: 'Título De', tipo: 'texto' },
+          { chave: 'titulo_fim', rotulo: 'Título Até', tipo: 'texto' },
+          { chave: 'banco_ini', rotulo: 'Banco De', tipo: 'texto' },
+          { chave: 'banco_fim', rotulo: 'Banco Até', tipo: 'texto' },
+          { chave: 'natureza_ini', rotulo: 'Natureza De', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'natureza_fim', rotulo: 'Natureza Até', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
+          {
+            chave: 'saldo_retroativo',
+            rotulo: 'Saldo Retroativo',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
+            ]
+          },
+          {
+            chave: 'considerar_excluidos',
+            rotulo: 'Considerar Excluídos',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
+            ]
+          },
+          {
+            chave: 'abatimentos',
+            rotulo: 'Abatimentos',
+            tipo: 'select',
+            opcoes: [
+              { valor: '1', rotulo: 'Lista' },
+              { valor: '2', rotulo: 'Não lista' },
+              { valor: '3', rotulo: 'Despreza' }
+            ]
+          },
+          {
+            chave: 'ordenar_por',
+            rotulo: 'Ordenar por',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'fornecedor', rotulo: 'Fornecedor' },
+              { valor: 'numero', rotulo: 'Número' },
+              { valor: 'vencimento', rotulo: 'Vencimento' },
+              { valor: 'natureza', rotulo: 'Natureza' },
+              { valor: 'banco', rotulo: 'Banco' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FINR12 - Relação de Baixas',
+        apiEndpoint: 'relacao-baixas',
+        filtros: [
+          {
+            chave: 'tipo_movimento',
+            rotulo: 'Tipo',
+            tipo: 'select',
+            obrigatorio: true,
+            opcoes: [
+              { valor: 'R', rotulo: 'Recebimentos' },
+              { valor: 'P', rotulo: 'Pagamentos' }
+            ]
+          },
+          { chave: 'data_baixa', rotulo: 'Data da Baixa', tipo: 'periodo-data', obrigatorio: true },
+          { chave: 'banco_ini', rotulo: 'Banco De', tipo: 'texto' },
+          { chave: 'banco_fim', rotulo: 'Banco Até', tipo: 'texto' },
+          { chave: 'natureza_ini', rotulo: 'Natureza De', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'natureza_fim', rotulo: 'Natureza Até', tipo: 'select', apiEndpoint: 'naturezas' },
+          { chave: 'clifor_ini', rotulo: 'Cliente/Fornecedor De', tipo: 'texto' },
+          { chave: 'clifor_fim', rotulo: 'Cliente/Fornecedor Até', tipo: 'texto' },
+          { chave: 'prefixo_ini', rotulo: 'Prefixo De', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'prefixo_fim', rotulo: 'Prefixo Até', tipo: 'select', apiEndpoint: 'prefixos' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'lote_ini', rotulo: 'Lote De', tipo: 'texto' },
+          { chave: 'lote_fim', rotulo: 'Lote Até', tipo: 'texto' },
+          { chave: 'dt_digitacao', rotulo: 'Data de Digitação', tipo: 'periodo-data' },
+          { chave: 'vencimento', rotulo: 'Vencimento do Título', tipo: 'periodo-data' },
+          {
+            chave: 'ordenar_por',
+            rotulo: 'Ordenar por',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'data_baixa', rotulo: 'Data da Baixa' },
+              { valor: 'banco', rotulo: 'Banco' },
+              { valor: 'natureza', rotulo: 'Natureza' },
+              { valor: 'clifor', rotulo: 'Cliente/Fornecedor' },
+              { valor: 'numero', rotulo: 'Número do Título' },
+              { valor: 'dt_digitacao', rotulo: 'Data de Digitação' },
+              { valor: 'lote', rotulo: 'Lote' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FINR13 - Extrato Bancário',
+        apiEndpoint: 'extrato-bancario',
+        filtros: [
+          { chave: 'conta_bancaria', rotulo: 'Conta Bancária', tipo: 'select', obrigatorio: true, apiEndpoint: 'contas-bancarias' },
+          { chave: 'data', rotulo: 'Período', tipo: 'periodo-data', obrigatorio: true },
+          {
+            chave: 'saldo_tipo',
+            rotulo: 'Exibir',
+            tipo: 'select',
+            opcoes: [
+              { valor: '1', rotulo: 'Saldo Atual (todos)' },
+              { valor: '2', rotulo: 'Somente Conciliados' },
+              { valor: '3', rotulo: 'Somente Não Conciliados' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FINR14 - Relação de Títulos a Pagar com Retenção',
+        apiEndpoint: 'retencao-impostos',
+        filtros: [
+          { chave: 'fornecedor_ini', rotulo: 'Fornecedor De', tipo: 'select', apiEndpoint: 'fornecedores' },
+          { chave: 'fornecedor_fim', rotulo: 'Fornecedor Até', tipo: 'select', apiEndpoint: 'fornecedores' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          {
+            chave: 'tipo_pessoa',
+            rotulo: 'Tipo de Fornecedor',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Todos' },
+              { valor: 'F', rotulo: 'Pessoa Física' },
+              { valor: 'J', rotulo: 'Pessoa Jurídica' }
+            ]
+          },
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
+          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          {
+            chave: 'considera_impostos',
+            rotulo: 'Impostos a Considerar',
+            tipo: 'select',
+            opcoes: [
+              { valor: '1', rotulo: 'Somente Retido' },
+              { valor: '2', rotulo: 'Retido + Calculado (Título em Aberto)' }
+            ]
+          },
+          {
+            chave: 'ordenar_por',
+            rotulo: 'Ordenar Por',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'codigo', rotulo: 'Código do Fornecedor' },
+              { valor: 'nome', rotulo: 'Nome do Fornecedor' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FIN32 - Movimento Financeiro Diário',
+        apiEndpoint: 'movimento-financeiro-diario',
+        filtros: [
+          { chave: 'data', rotulo: 'Data de Referência', tipo: 'periodo-data', obrigatorio: true },
+          {
+            chave: 'considera_limite',
+            rotulo: 'Considera Limite de Crédito',
+            tipo: 'select',
+            opcoes: [
+              { valor: '2', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
+            ]
+          }
+        ]
+      }
     ]
   }
 ];

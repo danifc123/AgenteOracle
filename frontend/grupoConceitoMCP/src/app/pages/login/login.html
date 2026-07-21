@@ -40,7 +40,14 @@
           <p class="erro">{{ erro() }}</p>
         }
 
-        <app-botao type="submit" variant="primaria" largura="completa">Entrar</app-botao>
+        <app-botao
+          type="submit"
+          variant="primaria"
+          largura="completa"
+          [loading]="entrando()"
+          [disabled]="entrando()"
+          loadingText="Entrando..."
+        >Entrar</app-botao>
       </form>
     </div>
   </div>

@@ -25,6 +25,15 @@ def eh_erro_coluna_invalida(erro: Exception) -> bool:
     return "ORA-00904" in str(erro)
 
 
+def eh_erro_valor_duplicado(erro: Exception) -> bool:
+    """Detecta, de forma independente do banco, se o erro é uma violação de
+    constraint única/chave duplicada (ORA-00001 no Oracle, sqlstate 23505 no
+    Postgres)."""
+    if isinstance(erro, psycopg.Error):
+        return getattr(erro, "sqlstate", None) == "23505"
+    return "ORA-00001" in str(erro)
+
+
 class _CursorAdapter:
     """Uniformiza a chamada `cursor.execute(sql, **binds)` (estilo oracledb,
     com binds nomeados `:nome`) para os dois bancos: no Oracle passa direto;
@@ -52,6 +61,10 @@ class _CursorAdapter:
     def description(self):
         return self._cursor.description
 
+    @property
+    def rowcount(self) -> int:
+        return self._cursor.rowcount
+
 
 class _ConnectionAdapter:
     def __init__(self, connection, backend: str):
@@ -68,8 +81,12 @@ class _ConnectionAdapter:
     @call_timeout.setter
     def call_timeout(self, milissegundos: int):
         if self._backend == "postgres":
+            # SET não aceita bind parameter no Postgres (precisa ser um literal na
+            # própria instrução) — seguro fazer format direto aqui porque o valor
+            # vem sempre de uma constante interna (TIMEOUT_MS), nunca de entrada
+            # do usuário/IA.
             with self._connection.cursor() as cursor:
-                cursor.execute("SET statement_timeout = %s", (milissegundos,))
+                cursor.execute(f"SET statement_timeout = {int(milissegundos)}")
         else:
             self._connection.call_timeout = milissegundos
 

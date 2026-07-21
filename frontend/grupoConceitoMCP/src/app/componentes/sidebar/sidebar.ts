@@ -2,6 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Sessao } from '../../servicos/sessao';
 
+const CHAVE_COLAPSADO = 'sidebar:colapsado';
+
 @Component({
   selector: 'app-sidebar',
   imports: [RouterLink, RouterLinkActive],
@@ -9,11 +11,12 @@ import { Sessao } from '../../servicos/sessao';
   styleUrl: './sidebar.scss'
 })
 export class Sidebar {
-  private readonly sessao = inject(Sessao);
+  protected readonly sessao = inject(Sessao);
   private readonly router = inject(Router);
 
   protected readonly sidebarOpen = signal(false);
   protected readonly financeiroOpen = signal(false);
+  protected readonly colapsado = signal(localStorage.getItem(CHAVE_COLAPSADO) === 'true');
 
   toggleSidebar(): void {
     this.sidebarOpen.update((value) => !value);
@@ -23,7 +26,18 @@ export class Sidebar {
     this.sidebarOpen.set(false);
   }
 
+  alternarColapsado(): void {
+    const novoValor = !this.colapsado();
+    this.colapsado.set(novoValor);
+    this.financeiroOpen.set(false);
+    localStorage.setItem(CHAVE_COLAPSADO, String(novoValor));
+  }
+
   toggleFinanceiro(): void {
+    if (this.colapsado()) {
+      this.router.navigateByUrl('/financeiro/especifico-grupo-conceito');
+      return;
+    }
     this.financeiroOpen.update((value) => !value);
   }
 

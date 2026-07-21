@@ -29,7 +29,7 @@
           <th>Gerado em</th>
           <th>Validade</th>
           <th class="text-right">Linhas</th>
-          <th>Consulta</th>
+          <th><span class="sr-only">Ver consulta</span></th>
           <th></th>
         </tr>
       </thead>
@@ -61,7 +61,21 @@
               }
             </td>
             <td class="text-right">{{ relatorio.total_linhas }}</td>
-            <td class="sql-cell"><code>{{ relatorio.sql }}</code></td>
+            <td>
+              <app-botao
+                variant="icone"
+                (clicked)="verConsulta(relatorio)"
+                ariaLabel="Ver consulta usada"
+                title="Ver consulta usada"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v5" stroke-linecap="round" />
+                  <circle cx="12" cy="16.2" r="0.15" fill="currentColor" stroke-width="2.4" />
+                </svg>
+                <span class="sr-only">Ver consulta usada</span>
+              </app-botao>
+            </td>
             <td class="acoes">
               <app-botao
                 variant="acao"
@@ -86,3 +100,17 @@
     </table>
   </div>
 }
+
+<app-dialog
+  [aberto]="!!relatorioSelecionado()"
+  [titulo]="relatorioSelecionado()?.titulo ?? 'Consulta usada'"
+  [temRodape]="true"
+  (fechar)="fecharConsulta()"
+>
+  <pre class="consulta-sql"><code>{{ sqlFormatado() }}</code></pre>
+
+  <div rodape class="rodape-consulta">
+    <app-botao variant="contorno" (clicked)="fecharConsulta()">Fechar</app-botao>
+    <app-botao variant="primaria" (clicked)="copiarConsulta()">{{ copiado() ? 'Copiado!' : 'Copiar consulta' }}</app-botao>
+  </div>
+</app-dialog>

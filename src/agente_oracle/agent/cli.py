@@ -5,8 +5,10 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from ollama import AsyncClient
 
-from agente_oracle.agent.core import mcp_url, responder, tools_para_ollama
+from agente_oracle.agent.core import mcp_url
+from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
+from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
 
 
@@ -16,8 +18,6 @@ async def executar_chat() -> None:
     async with streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (read_stream, write_stream, _):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
-            tools_result = await session.list_tools()
-            tools = tools_para_ollama(tools_result.tools)
 
             print(f"Agente Oracle pronto (modelo: {settings.ollama_model}). Digite 'sair' para encerrar.\n")
 
@@ -31,7 +31,14 @@ async def executar_chat() -> None:
                     continue
 
                 messages.append({"role": "user", "content": entrada})
-                messages, eventos = await responder(ollama_client, settings.ollama_model, session, tools, messages)
+                messages, eventos = await responder(
+                    ollama_client,
+                    settings.ollama_model,
+                    session,
+                    f"{PREFIXO_TOOL}executar_consulta_financeira",
+                    f"{PREFIXO_TOOL}testar_conexao_oracle",
+                    messages,
+                )
 
                 for evento in eventos:
                     print(f"  [ferramenta] {evento['ferramenta']}({evento['argumentos']})")

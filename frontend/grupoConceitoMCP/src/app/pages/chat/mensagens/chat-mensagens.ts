@@ -1,9 +1,11 @@
 import { Component, ElementRef, effect, input, output, viewChild } from '@angular/core';
 import { Botao } from '../../../componentes/botao/botao';
+import { formatarSql } from '../../../servicos/formatar-sql';
 
 export interface ConsultaUsada {
   ferramenta: string;
   argumentos: Record<string, unknown>;
+  linhas_retornadas?: number | null;
 }
 
 export interface MensagemChat {
@@ -20,6 +22,8 @@ export interface MensagemChat {
 })
 export class ChatMensagens {
   private readonly listaMensagens = viewChild<ElementRef<HTMLDivElement>>('listaMensagens');
+
+  protected readonly formatarSql = formatarSql;
 
   mensagens = input<MensagemChat[]>([]);
   enviando = input(false);

@@ -104,6 +104,15 @@ def listar_usuarios() -> list[dict]:
     ]
 
 
+def deletar_usuario(id_usuario: int) -> bool:
+    """Apaga um usuário. Devolve False se o id não existir."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute("DELETE FROM usuarios WHERE id = :id", id=id_usuario)
+        return cursor.rowcount > 0
+
+
 def autenticar(usuario: str, senha: str) -> dict | None:
     """Confere usuário/senha contra o hash salvo. Devolve os dados do usuário
     (sem o hash) em caso de sucesso, ou None se usuário não existir, estiver

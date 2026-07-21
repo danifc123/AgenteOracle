@@ -5,7 +5,7 @@ from agente_oracle.server.auth.dependencia import exigir_administrador
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.auth import papeis
 from agente_oracle.tools.auth.token import gerar_token
-from agente_oracle.tools.auth.usuarios import UsuarioJaExiste, autenticar, criar_usuario, listar_usuarios
+from agente_oracle.tools.auth.usuarios import UsuarioJaExiste, autenticar, criar_usuario, deletar_usuario, listar_usuarios
 
 
 def registrar(mcp) -> None:
@@ -102,3 +102,31 @@ def registrar(mcp) -> None:
             status_code=201,
             headers=CORS_HEADERS,
         )
+
+    @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
+    async def apagar_usuario_route(request: Request) -> Response:
+        """Endpoint HTTP usado pela tela de administração de usuários pra
+        apagar um usuário — restrito a administradores."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("DELETE, OPTIONS")
+
+        usuario_ou_erro = exigir_administrador(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
+        id_usuario = request.path_params["id"]
+        if id_usuario == usuario_ou_erro.get("sub"):
+            return JSONResponse(
+                {"erro": "Você não pode apagar o seu próprio usuário."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        try:
+            id_numerico = int(id_usuario)
+        except ValueError:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        apagado = deletar_usuario(id_numerico)
+        if not apagado:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)

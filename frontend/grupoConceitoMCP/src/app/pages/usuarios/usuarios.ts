@@ -39,6 +39,7 @@ export class Usuarios {
   dialogAberto = signal(false);
   criando = signal(false);
   erroForm = signal<string | null>(null);
+  apagandoId = signal<number | null>(null);
 
   formUsuario = signal('');
   formNome = signal('');
@@ -124,5 +125,25 @@ export class Usuarios {
           this.criando.set(false);
         }
       });
+  }
+
+  apagarUsuario(usuario: Usuario): void {
+    if (this.apagandoId() || !confirm(`Apagar o usuário "${usuario.usuario}"? Essa ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    this.apagandoId.set(usuario.id);
+    this.erro.set(null);
+
+    this.http.delete(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}`).subscribe({
+      next: () => {
+        this.usuarios.update((atual) => atual.filter((item) => item.id !== usuario.id));
+        this.apagandoId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erro.set(mensagemErro(erro, 'Não foi possível apagar o usuário.'));
+        this.apagandoId.set(null);
+      }
+    });
   }
 }

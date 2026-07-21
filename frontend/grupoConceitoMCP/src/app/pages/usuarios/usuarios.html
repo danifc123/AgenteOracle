@@ -26,6 +26,7 @@
           <th>Nome</th>
           <th>Papéis</th>
           <th>Status</th>
+          <th><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody>
@@ -41,6 +42,16 @@
                 <span class="badge-inativo">Inativo</span>
               }
             </td>
+            <td class="acoes">
+              <app-botao
+                variant="perigo"
+                [loading]="apagandoId() === usuario.id"
+                loadingText="Apagando..."
+                (clicked)="apagarUsuario(usuario)"
+              >
+                Apagar
+              </app-botao>
+            </td>
           </tr>
         }
       </tbody>
@@ -50,6 +61,14 @@
 
 <app-dialog [aberto]="dialogAberto()" titulo="Novo usuário" [temRodape]="true" (fechar)="fecharDialog()">
   <form class="form-usuario" (submit)="criarUsuario(); $event.preventDefault()">
+    <app-select-busca
+      rotulo="Papéis"
+      placeholder="Selecione os papéis"
+      [multiplo]="true"
+      [opcoes]="opcoesPapeis()"
+      [(valores)]="formPapeis"
+    />
+
     <label class="campo">
       <span>Usuário (login)</span>
       <input
@@ -82,20 +101,12 @@
       />
     </label>
 
-    <app-select-busca
-      rotulo="Papéis"
-      placeholder="Selecione os papéis"
-      [multiplo]="true"
-      [opcoes]="opcoesPapeis()"
-      [(valores)]="formPapeis"
-    />
-
     @if (erroForm()) {
       <p class="erro">{{ erroForm() }}</p>
     }
   </form>
 
-  <div rodape>
+  <div rodape class="rodape-form">
     <app-botao variant="contorno" [disabled]="criando()" (clicked)="fecharDialog()">Cancelar</app-botao>
     <app-botao variant="primaria" [loading]="criando()" loadingText="Criando..." (clicked)="criarUsuario()">
       Criar usuário

@@ -102,7 +102,13 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
             ColunaView("cnpj_cpf", "CNPJ ou CPF"),
             ColunaView("tipo_pessoa", "F = pessoa física, J = pessoa jurídica"),
-            ColunaView("estado", "UF"),
+            ColunaView(
+                "estado",
+                "sigla de 2 letras do estado (UF), ex: 'MT', 'SP', 'MG' — nunca o nome "
+                "completo. Se o usuário mencionar o nome completo do estado (ex: "
+                "'Mato Grosso', 'São Paulo'), converta você mesmo para a sigla "
+                "correspondente antes de montar o WHERE (ex: estado = 'MT').",
+            ),
         ),
     ),
     ViewFinanceira(
@@ -116,7 +122,13 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
             ColunaView("cnpj_cpf", "CNPJ ou CPF"),
             ColunaView("tipo_pessoa", "F = pessoa física, J = pessoa jurídica"),
-            ColunaView("estado", "UF"),
+            ColunaView(
+                "estado",
+                "sigla de 2 letras do estado (UF), ex: 'MT', 'SP', 'MG' — nunca o nome "
+                "completo. Se o usuário mencionar o nome completo do estado (ex: "
+                "'Mato Grosso', 'São Paulo'), converta você mesmo para a sigla "
+                "correspondente antes de montar o WHERE (ex: estado = 'MT').",
+            ),
         ),
     ),
     ViewFinanceira(

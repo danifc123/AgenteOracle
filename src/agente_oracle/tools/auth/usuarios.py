@@ -14,11 +14,17 @@ from datetime import datetime, timezone
 
 import bcrypt
 
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_connection
 
 _COLUNAS = "id, usuario, senha_hash, nome, papeis, ativo"
 
 _tabela_garantida = False
+
+
+class UsuarioJaExiste(Exception):
+    """Levantada quando `criar_usuario` recebe um `usuario` que já existe
+    (constraint única) — traduzida pra uma resposta HTTP amigável na rota,
+    em vez de deixar o erro cru do banco subir como 500."""
 
 
 def _garantir_tabela(cursor) -> None:
@@ -58,24 +64,44 @@ def _linha_para_usuario(linha: tuple) -> dict:
 def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dict:
     senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
+    try:
+        with get_connection() as connection:
+            cursor = connection.cursor()
+            _garantir_tabela(cursor)
+            cursor.execute(
+                f"""
+                INSERT INTO usuarios (usuario, senha_hash, nome, papeis, ativo, criado_em)
+                VALUES (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em)
+                RETURNING {_COLUNAS}
+                """,
+                usuario=usuario,
+                senha_hash=senha_hash,
+                nome=nome,
+                papeis=json.dumps(papeis),
+                criado_em=datetime.now(timezone.utc),
+            )
+            linha = cursor.fetchone()
+    except DatabaseError as erro:
+        if eh_erro_valor_duplicado(erro):
+            raise UsuarioJaExiste(f"Já existe um usuário com o login '{usuario}'.") from erro
+        raise
+
+    return _linha_para_usuario(linha)
+
+
+def listar_usuarios() -> list[dict]:
+    """Lista os usuários cadastrados (sem o hash de senha), pra tela de
+    administração — mais recentes primeiro."""
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute(
-            f"""
-            INSERT INTO usuarios (usuario, senha_hash, nome, papeis, ativo, criado_em)
-            VALUES (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em)
-            RETURNING {_COLUNAS}
-            """,
-            usuario=usuario,
-            senha_hash=senha_hash,
-            nome=nome,
-            papeis=json.dumps(papeis),
-            criado_em=datetime.now(timezone.utc),
-        )
-        linha = cursor.fetchone()
+        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios ORDER BY id DESC")
+        linhas = cursor.fetchall()
 
-    return _linha_para_usuario(linha)
+    return [
+        {chave: valor for chave, valor in _linha_para_usuario(linha).items() if chave != "senha_hash"}
+        for linha in linhas
+    ]
 
 
 def autenticar(usuario: str, senha: str) -> dict | None:

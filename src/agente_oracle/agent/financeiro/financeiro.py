@@ -63,6 +63,15 @@ _AGREGACAO_SQL_REGEX = re.compile(r"\b(COUNT|SUM|AVG|MAX|MIN)\s*\(", re.IGNORECA
 # realmente vieram do resultado de uma consulta (ver `_resposta_fundamentada`).
 _VALOR_MONETARIO_REGEX = re.compile(r"R\$\s*([\d][\d.,]*\d)")
 
+# Usada quando a consulta falha e não sobra mais chance de correção (ver as
+# duas saídas do loop em `responder`) — o erro técnico real (`conteudo`) é
+# importante pro modelo tentar se corrigir, mas não deve vazar cru pro
+# usuário final quando as tentativas se esgotam.
+_RESPOSTA_CONSULTA_FALHOU = (
+    "Não consegui montar esse relatório — a pergunta pode estar pedindo uma "
+    "combinação de dados que não existe no sistema. Pode tentar reformular?"
+)
+
 
 def _linhas_retornadas(conteudo: str) -> int | None:
     """Extrai quantas linhas de dado vieram no resultado da ferramenta, quando
@@ -187,9 +196,69 @@ async def responder(
     if acao == "consultar_dados" and decisao.get("sql"):
         sql = decisao["sql"]
         titulo = decisao.get("titulo") or "Relatório"
-        resultado = await session.call_tool(nome_tool_consulta, {"sql": sql, "titulo": titulo})
-        conteudo = conteudo_do_resultado(resultado)
-        linhas = _linhas_retornadas(conteudo)
+
+        for tentativa in range(3):  # tentativa original + 2 chances de correção
+            resultado = await session.call_tool(nome_tool_consulta, {"sql": sql, "titulo": titulo})
+            conteudo = conteudo_do_resultado(resultado)
+            linhas = _linhas_retornadas(conteudo)
+
+            if not resultado.isError:
+                break
+
+            if tentativa == 2:
+                eventos.append(
+                    {
+                        "ferramenta": nome_tool_consulta,
+                        "argumentos": {"sql": sql, "titulo": titulo},
+                        "linhas_retornadas": linhas,
+                    }
+                )
+                # `conteudo` aqui tem o detalhe técnico do erro (útil pras
+                # tentativas de correção acima, que já se esgotaram) — pro
+                # usuário final, uma explicação simples é mais honesta que um
+                # erro de banco cru.
+                messages.append({"role": "assistant", "content": _RESPOSTA_CONSULTA_FALHOU})
+                return messages, eventos
+
+            # Dá uma chance do modelo corrigir o SQL vendo o erro real do
+            # banco — cobre qualquer tipo de erro (coluna errada, JOIN
+            # errado, etc.) de forma genérica, sem precisar prever cada
+            # cenário no prompt.
+            messages.append({"role": "tool", "content": conteudo})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"A consulta falhou com este erro: {conteudo} Corrija o SQL usando só as "
+                        "views/colunas de 'Dados disponíveis' e os relacionamentos descritos, e tente de novo."
+                    ),
+                }
+            )
+            resposta_correcao = await ollama_client.chat(
+                model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=_OPCOES_OLLAMA
+            )
+            try:
+                nova_decisao = json.loads(resposta_correcao.message.content or "{}")
+            except json.JSONDecodeError:
+                nova_decisao = {}
+
+            if nova_decisao.get("acao") != "consultar_dados" or not nova_decisao.get("sql"):
+                # O modelo desistiu (não pediu pra tentar de novo) em vez de
+                # corrigir — mesmo caso do "esgotou tentativas" acima: mostra
+                # explicação simples, não o erro técnico cru.
+                eventos.append(
+                    {
+                        "ferramenta": nome_tool_consulta,
+                        "argumentos": {"sql": sql, "titulo": titulo},
+                        "linhas_retornadas": linhas,
+                    }
+                )
+                messages.append({"role": "assistant", "content": _RESPOSTA_CONSULTA_FALHOU})
+                return messages, eventos
+
+            sql = nova_decisao["sql"]
+            titulo = nova_decisao.get("titulo") or titulo
+
         eventos.append(
             {
                 "ferramenta": nome_tool_consulta,
@@ -198,15 +267,20 @@ async def responder(
             }
         )
 
-        if resultado.isError:
-            messages.append({"role": "assistant", "content": conteudo})
-            return messages, eventos
-
         if not linhas:
             messages.append({"role": "assistant", "content": "Não encontrei nenhum registro com esses critérios."})
             return messages, eventos
 
-        if _AGREGACAO_SQL_REGEX.search(sql):
+        # Só trata como "pergunta direta" (uma frase respondendo) quando o
+        # resultado é pequeno o bastante pra resumir com segurança — uma
+        # agregação com poucas linhas (ex: "top 3") ainda cabe numa frase,
+        # mas uma quebra por grupo com muitas linhas (ex: "quantos títulos
+        # CADA fornecedor tem", uma linha por fornecedor) não cabe: pedir pro
+        # modelo resumir isso em uma frase só já produziu resposta errada
+        # (generalizou "cada um tem 1" sem checar os outros 14). Nesse caso é
+        # melhor tratar como listagem — o Excel já tem a quebra completa e
+        # correta por grupo, sem risco de resumo errado.
+        if linhas <= 5 and _AGREGACAO_SQL_REGEX.search(sql):
             # Pergunta direta (ex: "quantos..."): pede uma segunda resposta,
             # agora com o resultado real na mão, num formato ainda mais
             # simples e travado (só um campo de texto) — sem chance de vazar

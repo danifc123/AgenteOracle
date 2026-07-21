@@ -30,6 +30,22 @@ class ColunaView:
 
 
 @dataclass(frozen=True)
+class RelacionamentoView:
+    """Uma relação de chave estrangeira entre views: as colunas desta view
+    (`colunas_locais`) correspondem às colunas (`colunas_destino`, na mesma
+    ordem) da view referenciada (`view_destino`) — usado pra montar JOIN.
+    Declarar aqui, junto das colunas, é o que faz o texto de relacionamentos
+    do prompt (`agent/financeiro/prompt.py`) se gerar sozinho — sem isso, a
+    IA não sabe como cruzar dado de uma view com outra e ou inventa nome de
+    coluna, ou recusa um pedido que na verdade é só um JOIN."""
+
+    view_destino: str
+    colunas_locais: tuple[str, ...]
+    colunas_destino: tuple[str, ...]
+    descricao: str = ""
+
+
+@dataclass(frozen=True)
 class ViewFinanceira:
     """Uma view liberada para o agente consultar. `nome` precisa bater exatamente
     com o nome real da view no banco (Oracle deixa identificadores em maiúsculas
@@ -38,6 +54,7 @@ class ViewFinanceira:
     nome: str
     descricao: str
     colunas: tuple[ColunaView, ...]
+    relacionamentos: tuple[RelacionamentoView, ...] = ()
 
 
 VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
@@ -65,6 +82,17 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "(use 'saldo_aberto > 0', nunca 'saldo_aberto = 1')",
             ),
         ),
+        relacionamentos=(
+            RelacionamentoView(
+                view_destino="vw_fornecedores",
+                colunas_locais=("fornecedor_codigo", "fornecedor_loja"),
+                colunas_destino=("codigo", "loja"),
+                descricao=(
+                    "Dado de fornecedor que não está aqui (cnpj_cpf, tipo_pessoa, "
+                    "nome_reduzido, estado) só existe em vw_fornecedores."
+                ),
+            ),
+        ),
     ),
     ViewFinanceira(
         nome="vw_titulos_receber",
@@ -90,14 +118,33 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "(use 'saldo_aberto > 0', nunca 'saldo_aberto = 1')",
             ),
         ),
+        relacionamentos=(
+            RelacionamentoView(
+                view_destino="vw_clientes",
+                colunas_locais=("cliente_codigo", "cliente_loja"),
+                colunas_destino=("codigo", "loja"),
+                descricao=(
+                    "Dado de cliente que não está aqui (cnpj_cpf, tipo_pessoa, "
+                    "nome_reduzido, estado) só existe em vw_clientes."
+                ),
+            ),
+        ),
     ),
     ViewFinanceira(
         nome="vw_fornecedores",
         descricao="Cadastro de fornecedores.",
         colunas=(
             ColunaView("filial", "código da filial"),
-            ColunaView("codigo", "código do fornecedor"),
-            ColunaView("loja", "loja do fornecedor"),
+            ColunaView(
+                "codigo",
+                "código do fornecedor — aqui o nome da coluna é `codigo`, NUNCA "
+                "`fornecedor_codigo` (esse nome com prefixo só existe em vw_titulos_pagar).",
+            ),
+            ColunaView(
+                "loja",
+                "loja do fornecedor — aqui o nome da coluna é `loja`, NUNCA "
+                "`fornecedor_loja` (esse nome com prefixo só existe em vw_titulos_pagar).",
+            ),
             ColunaView("nome", "razão social / nome completo"),
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
             ColunaView("cnpj_cpf", "CNPJ ou CPF"),
@@ -116,8 +163,16 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         descricao="Cadastro de clientes.",
         colunas=(
             ColunaView("filial", "código da filial"),
-            ColunaView("codigo", "código do cliente"),
-            ColunaView("loja", "loja do cliente"),
+            ColunaView(
+                "codigo",
+                "código do cliente — aqui o nome da coluna é `codigo`, NUNCA "
+                "`cliente_codigo` (esse nome com prefixo só existe em vw_titulos_receber).",
+            ),
+            ColunaView(
+                "loja",
+                "loja do cliente — aqui o nome da coluna é `loja`, NUNCA "
+                "`cliente_loja` (esse nome com prefixo só existe em vw_titulos_receber).",
+            ),
             ColunaView("nome", "razão social / nome completo"),
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
             ColunaView("cnpj_cpf", "CNPJ ou CPF"),

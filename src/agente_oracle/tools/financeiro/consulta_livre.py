@@ -107,12 +107,15 @@ def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
             colunas = [descricao[0] for descricao in cursor.description]
             linhas = cursor.fetchall()
     except DatabaseError as erro:
-        mensagem_erro = str(erro).strip()
+        # Primeira linha só, sem o "LINE 1: ..." com o SQL inteiro repetido
+        # embaixo (ruído pra quem lê, seja o modelo tentando se corrigir ou o
+        # usuário se as tentativas de correção se esgotarem).
+        mensagem_erro = str(erro).strip().splitlines()[0]
         if eh_erro_coluna_invalida(erro):
             raise ConsultaFinanceiraInvalida(
                 "Não é possível gerar esse relatório: a consulta faz referência a uma coluna "
                 "ou junção que não existe no banco — as tabelas pedidas não têm uma relação "
-                "direta entre si."
+                f"direta entre si. Detalhe técnico do erro: {mensagem_erro}"
             ) from erro
         raise ConsultaFinanceiraInvalida(
             f"Não foi possível executar a consulta no banco ({mensagem_erro})."

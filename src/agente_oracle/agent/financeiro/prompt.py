@@ -19,7 +19,47 @@ def _montar_schema_texto() -> str:
     return "\n\n".join(blocos)
 
 
+def _montar_relacionamentos_texto() -> str:
+    """Gera o texto de relacionamentos entre views direto do que está
+    declarado em `schema.py` (`ViewFinanceira.relacionamentos`) — uma view
+    nova só precisa declarar o relacionamento junto das colunas dela pra
+    aparecer aqui sozinha, sem precisar escrever/lembrar de atualizar texto
+    nenhum à mão neste arquivo."""
+    linhas = []
+    for view in VIEWS_DISPONIVEIS:
+        for relacionamento in view.relacionamentos:
+            condicoes = " AND ".join(
+                f"{view.nome}.{local} = {relacionamento.view_destino}.{destino}"
+                for local, destino in zip(relacionamento.colunas_locais, relacionamento.colunas_destino)
+            )
+            linha = f"- {view.nome} ↔ {relacionamento.view_destino}: `{condicoes}`."
+            if relacionamento.descricao:
+                linha += f" {relacionamento.descricao}"
+
+            # Avisa automaticamente quando o nome da coluna muda entre as
+            # duas views (ex: fornecedor_codigo aqui = codigo lá) — sem isso,
+            # o modelo tende a usar o nome prefixado (o desta view) também
+            # dentro da view referenciada, onde ele não existe.
+            nomes_diferentes = [
+                (local, destino)
+                for local, destino in zip(relacionamento.colunas_locais, relacionamento.colunas_destino)
+                if local != destino
+            ]
+            if nomes_diferentes:
+                local_exemplo, destino_exemplo = nomes_diferentes[0]
+                linha += (
+                    f" Atenção: dentro de {relacionamento.view_destino} o nome da coluna É "
+                    f"`{destino_exemplo}`, NUNCA `{local_exemplo}` — esse nome prefixado só existe em {view.nome}."
+                )
+            linhas.append(linha)
+
+    if not linhas:
+        return "Nenhuma view tem relacionamento declarado com outra — nenhum JOIN é necessário hoje."
+    return "\n".join(linhas)
+
+
 ESQUEMA_FINANCEIRO = _montar_schema_texto()
+RELACIONAMENTOS_FINANCEIRO = _montar_relacionamentos_texto()
 
 SYSTEM_PROMPT = f"""Você é o Agente Oracle, o assistente de IA do departamento financeiro do Grupo Conceito.
 
@@ -35,6 +75,7 @@ Toda resposta sua é um objeto com 4 campos: `acao`, `sql`, `titulo`, `resposta_
 ## Regras essenciais
 - Use só as views/colunas listadas em "Dados disponíveis" no seu SQL. Nunca invente nome de view ou coluna.
 - Fornecedor e cliente são empresas/pessoas que a empresa paga ou recebe — NUNCA são a mesma coisa que funcionário, colaborador ou vendedor (não existe essa informação aqui). Se o pedido não corresponder a nenhuma view/coluna listada, use `"responder_direto"` dizendo que não tem essa informação — não reaproveite uma coluna de outro conceito só porque o nome parece parecido.
+- Nunca reinterprete o propósito de uma view pra tentar responder um conceito que ela não registra (ex: usar vw_movimento_bancario, que é sobre lançamentos bancários, pra tentar responder sobre "vendas de produtos" ou "estoque" — não existe isso aqui, mesmo que algum filtro pareça combinar por acaso). Se o conceito pedido não é claramente o que a descrição da view diz que ela guarda, use `"responder_direto"` dizendo que não tem essa informação.
 - Cada pergunta é independente: se uma resposta sua anterior nesta conversa não deu certo, isso não impede você de tentar `"consultar_dados"` normalmente na pergunta atual.
 - Seja literal com quantidades pedidas (ex: "as 5 contas com mais movimentações" precisa trazer 5, não 1) — veja o exemplo de "Perguntas compostas" abaixo pra esse tipo de caso.
 
@@ -62,6 +103,12 @@ SELECT * FROM mais_recente_por_conta WHERE posicao_recente = 1
 ```
 
 Use esse padrão (CTE de ranking com `ROW_NUMBER()` + CTE de "melhor/mais recente por grupo") sempre que a pergunta combinar um "top N" com "o mais recente/maior/menor de cada".
+
+## Relacionamentos entre as views (pra montar JOIN)
+Cada view só tem as colunas listadas nela mesma em "Dados disponíveis" — pra pegar dado de outra entidade, sempre faça JOIN, nunca assuma que a coluna "deveria" existir. Views que não aparecem na lista abaixo não têm relacionamento declarado com nenhuma outra:
+{RELACIONAMENTOS_FINANCEIRO}
+
+Nunca invente nome de coluna parecido com o que você precisa (ex: "fornecedor_cnpj") — use exatamente o nome de coluna listado em "Dados disponíveis", com o prefixo da view/alias certa (ex: `cnpj_cpf` vem de vw_fornecedores, não de vw_titulos_pagar).
 
 ## Pedidos de "adicionar algo a um relatório existente" ou variações de um relatório conhecido
 Quando o usuário pedir pra adicionar uma informação a um relatório que já existe no sistema, ou uma variação de um relatório conhecido, parta da view que sustenta aquele relatório e monte um novo SQL (`acao: "consultar_dados"`) incluindo a coluna pedida — não reinvente a lógica do zero. Relatórios conhecidos e a view de cada um:

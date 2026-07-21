@@ -11,6 +11,7 @@ from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
 from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
+from agente_oracle.server.auth.dependencia import exigir_usuario
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.connectivity import check_oracle_connection
 from agente_oracle.tools.financeiro.consulta_livre import (
@@ -35,6 +36,10 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight()
 
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
         corpo = await request.json()
         sql = str(corpo.get("sql", "")).strip()
 
@@ -58,6 +63,10 @@ def registrar(mcp) -> None:
         """Endpoint HTTP usado pelo frontend para conversar com o Agente Oracle."""
         if request.method == "OPTIONS":
             return resposta_preflight()
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
 
         corpo = await request.json()
         mensagem_usuario = str(corpo.get("mensagem", "")).strip()

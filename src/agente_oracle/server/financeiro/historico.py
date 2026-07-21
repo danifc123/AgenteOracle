@@ -2,6 +2,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.server.auth.dependencia import exigir_usuario
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.financeiro import historico as historico_tools
 
@@ -16,16 +17,30 @@ def _historico_para_json(documento: dict) -> dict:
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/relatorios/historico", methods=["GET"])
-    async def listar_historico_route(request: Request) -> JSONResponse:
+    @mcp.custom_route("/api/relatorios/historico", methods=["GET", "OPTIONS"])
+    async def listar_historico_route(request: Request) -> Response:
         """Endpoint HTTP usado pela tela de histórico para listar os relatórios já gerados pela IA."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("GET, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
         documentos = historico_tools.listar()
         return JSONResponse([_historico_para_json(doc) for doc in documentos], headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET"])
+    @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])
     async def exportar_historico_route(request: Request) -> Response:
         """Endpoint HTTP usado pela tela de histórico para baixar em Excel um
         relatório já salvo, sem rodar a consulta de novo no Oracle."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("GET, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
         documento = historico_tools.obter(request.path_params["id"])
         if documento is None:
             return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS)
@@ -48,6 +63,10 @@ def registrar(mcp) -> None:
         relatório fixado não expira pelo TTL de 15h."""
         if request.method == "OPTIONS":
             return resposta_preflight("PATCH, DELETE, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
 
         id_relatorio = request.path_params["id"]
 

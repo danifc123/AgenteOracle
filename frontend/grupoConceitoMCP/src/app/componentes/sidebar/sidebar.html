@@ -37,7 +37,7 @@
       <span class="nav-label">Início</span>
     </a>
 
-    @if (sessao.papeis().includes('financeiro')) {
+    @if (sessao.modulos().includes('financeiro')) {
       <div class="nav-group">
         <button type="button" class="nav-link nav-parent" (click)="toggleFinanceiro()">
           <span class="nav-icon">
@@ -90,6 +90,24 @@
       </span>
       <span class="nav-label">Histórico de relatórios</span>
     </a>
+
+    @if (sessao.administrador()) {
+      <a
+        class="nav-link"
+        routerLink="/usuarios"
+        routerLinkActive="active"
+        (click)="closeSidebar()"
+      >
+        <span class="nav-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="9" cy="8" r="3.2" />
+            <path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" />
+            <path d="M16 9.5a2.7 2.7 0 1 0 0-5.4M18.5 19c0-2.4-1.7-4.4-4-5" stroke-linecap="round" />
+          </svg>
+        </span>
+        <span class="nav-label">Usuários</span>
+      </a>
+    }
   </nav>
 
   <div class="sidebar-footer">

@@ -6,7 +6,8 @@ from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.agent.core import mcp_url, responder, tools_para_ollama
+from agente_oracle.agent.core import mcp_url
+from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
 from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
@@ -76,10 +77,14 @@ def registrar(mcp) -> None:
         async with streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
-                tools_result = await session.list_tools()
-                tools_do_modulo = [tool for tool in tools_result.tools if tool.name.startswith(PREFIXO_TOOL)]
-                tools = tools_para_ollama(tools_do_modulo)
-                messages, eventos = await responder(ollama_client, settings.ollama_model, session, tools, messages)
+                messages, eventos = await responder(
+                    ollama_client,
+                    settings.ollama_model,
+                    session,
+                    f"{PREFIXO_TOOL}executar_consulta_financeira",
+                    f"{PREFIXO_TOOL}testar_conexao_oracle",
+                    messages,
+                )
 
         return JSONResponse(
             {"resposta": messages[-1].get("content", ""), "consultas": eventos},

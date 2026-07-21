@@ -21,7 +21,7 @@
               <div class="acoes-relatorio">
                 <details class="consulta-usada">
                   <summary>Ver consulta usada</summary>
-                  <pre>{{ consulta.argumentos['sql'] }}</pre>
+                  <pre>{{ formatarSql($any(consulta.argumentos['sql'])) }}</pre>
                 </details>
 
                 @if (consulta.linhas_retornadas === 0) {

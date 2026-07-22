@@ -11,6 +11,7 @@ seletor da tela, montagem de cláusula IN), não relatórios em si.
 from agente_oracle.server.financeiro.relatorios import (
     baixa_produtos,
     cadastros,
+    contas_receber_produto,
     duplicata_mercantil,
     extrato_bancario,
     filiais,
@@ -18,6 +19,7 @@ from agente_oracle.server.financeiro.relatorios import (
     movimento_financeiro_diario,
     posicao_titulos,
     posicao_titulos_pagar,
+    posicao_titulos_vendedor,
     relacao_baixas,
     retencao_impostos,
 )
@@ -31,6 +33,8 @@ def registrar(mcp) -> None:
     baixa_produtos.registrar(mcp)
     posicao_titulos.registrar(mcp)
     posicao_titulos_pagar.registrar(mcp)
+    posicao_titulos_vendedor.registrar(mcp)
+    contas_receber_produto.registrar(mcp)
     relacao_baixas.registrar(mcp)
     extrato_bancario.registrar(mcp)
     retencao_impostos.registrar(mcp)

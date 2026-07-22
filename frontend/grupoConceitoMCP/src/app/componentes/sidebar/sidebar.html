@@ -39,7 +39,7 @@
       routerLinkActive="active"
       [routerLinkActiveOptions]="{ exact: true }"
       [title]="colapsado() ? 'Início' : null"
-      (click)="closeSidebar()"
+      (click)="navegarParaFora()"
     >
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -97,7 +97,7 @@
       routerLink="/chat"
       routerLinkActive="active"
       [title]="colapsado() ? 'Assistente IA' : null"
-      (click)="closeSidebar()"
+      (click)="navegarParaFora()"
     >
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -112,7 +112,7 @@
       routerLink="/relatorios/historico"
       routerLinkActive="active"
       [title]="colapsado() ? 'Histórico de relatórios' : null"
-      (click)="closeSidebar()"
+      (click)="navegarParaFora()"
     >
       <span class="nav-icon">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -129,7 +129,7 @@
         routerLink="/usuarios"
         routerLinkActive="active"
         [title]="colapsado() ? 'Usuários' : null"
-        (click)="closeSidebar()"
+        (click)="navegarParaFora()"
       >
         <span class="nav-icon">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">

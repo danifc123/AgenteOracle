@@ -31,6 +31,13 @@ export class Sidebar {
     this.sidebarOpen.set(false);
   }
 
+  /** Usado pelos links FORA do grupo Financeiro — navegar pra outra área
+   * fecha o submenu dele, já que deixou de fazer sentido continuar aberto. */
+  navegarParaFora(): void {
+    this.financeiroOpen.set(false);
+    this.closeSidebar();
+  }
+
   alternarColapsado(): void {
     const novoValor = !this.colapsado();
     this.colapsado.set(novoValor);

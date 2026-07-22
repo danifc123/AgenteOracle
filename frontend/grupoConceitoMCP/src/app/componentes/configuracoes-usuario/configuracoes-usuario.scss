@@ -27,6 +27,32 @@
   margin-bottom: 18px;
 }
 
+.avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.remover-foto {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: #9a2f2f;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: #7a2323;
+  }
+}
+
 .avatar-preview {
   width: 56px;
   height: 56px;
@@ -39,6 +65,14 @@
   font-size: 18px;
   flex-shrink: 0;
   overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 0 0 0 var(--color-accent);
+  transition: box-shadow 0.15s ease;
+
+  &:hover,
+  &:focus-within {
+    box-shadow: 0 0 0 3px var(--color-accent);
+  }
 
   img {
     width: 100%;

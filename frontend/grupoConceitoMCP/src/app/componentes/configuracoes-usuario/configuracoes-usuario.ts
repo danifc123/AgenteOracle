@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
+import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
 import { Botao } from '../botao/botao';
 import { Dialog } from '../dialog/dialog';
@@ -20,6 +21,7 @@ function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
 export class ConfiguracoesUsuario {
   private readonly http = inject(HttpClient);
   protected readonly sessao = inject(Sessao);
+  protected readonly iniciais = iniciais;
 
   protected readonly aberto = signal(false);
 
@@ -74,6 +76,15 @@ export class ConfiguracoesUsuario {
     const leitor = new FileReader();
     leitor.onload = () => this.fotoPreview.set(leitor.result as string);
     leitor.readAsDataURL(arquivo);
+  }
+
+  removerFoto(evento: Event): void {
+    evento.preventDefault();
+    evento.stopPropagation();
+    // String vazia (não null) sinaliza "apagar a foto que já existe" pro
+    // backend — null significa "não mexer no que já está salvo".
+    this.fotoPreview.set('');
+    this.erroPerfil.set(null);
   }
 
   salvarPerfil(): void {

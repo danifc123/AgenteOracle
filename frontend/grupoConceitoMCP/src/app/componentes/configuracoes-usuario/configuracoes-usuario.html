@@ -3,11 +3,22 @@
     <h3>Perfil</h3>
 
     <div class="foto-linha">
-      <div class="avatar-preview">
+      <div class="avatar-wrapper">
+        <label class="avatar-preview" title="Trocar foto">
+          @if (fotoPreview()) {
+            <img [src]="fotoPreview()" alt="Foto de perfil" />
+          } @else {
+            <span>{{ iniciais(nome()) || 'GC' }}</span>
+          }
+          <input type="file" accept="image/*" (change)="selecionarFoto($event)" hidden />
+        </label>
+
         @if (fotoPreview()) {
-          <img [src]="fotoPreview()" alt="Foto de perfil" />
-        } @else {
-          <span>{{ nome().slice(0, 2).toUpperCase() || 'GC' }}</span>
+          <button type="button" class="remover-foto" (click)="removerFoto($event)" aria-label="Remover foto" title="Remover foto">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         }
       </div>
       <label class="botao-arquivo">

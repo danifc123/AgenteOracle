@@ -1,18 +1,21 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ViewChild, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Sessao } from '../../servicos/sessao';
+import { ConfiguracoesUsuario } from '../configuracoes-usuario/configuracoes-usuario';
 
 const CHAVE_COLAPSADO = 'sidebar:colapsado';
 
 @Component({
   selector: 'app-sidebar',
-  imports: [RouterLink, RouterLinkActive],
+  imports: [RouterLink, RouterLinkActive, ConfiguracoesUsuario],
   templateUrl: './sidebar.html',
   styleUrl: './sidebar.scss'
 })
 export class Sidebar {
   protected readonly sessao = inject(Sessao);
   private readonly router = inject(Router);
+
+  @ViewChild(ConfiguracoesUsuario) private readonly configuracoes!: ConfiguracoesUsuario;
 
   protected readonly sidebarOpen = signal(false);
   protected readonly financeiroOpen = signal(false);
@@ -39,6 +42,10 @@ export class Sidebar {
       return;
     }
     this.financeiroOpen.update((value) => !value);
+  }
+
+  abrirConfiguracoes(): void {
+    this.configuracoes.abrir();
   }
 
   sair(): void {

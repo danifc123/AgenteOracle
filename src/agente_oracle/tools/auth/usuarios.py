@@ -16,7 +16,7 @@ import bcrypt
 
 from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_connection
 
-_COLUNAS = "id, usuario, senha_hash, nome, papeis, ativo"
+_COLUNAS = "id, usuario, senha_hash, nome, papeis, ativo, foto"
 
 _tabela_garantida = False
 
@@ -42,6 +42,10 @@ def _garantir_tabela(cursor) -> None:
             criado_em TIMESTAMPTZ NOT NULL
         )
     """)
+    # ADD COLUMN IF NOT EXISTS é idempotente — instalações que já tinham a
+    # tabela criada antes da foto existir ganham a coluna sozinhas aqui,
+    # sem precisar de uma migração separada.
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto TEXT")
     _tabela_garantida = True
 
 
@@ -50,7 +54,7 @@ def _carregar_papeis(valor) -> list[str]:
 
 
 def _linha_para_usuario(linha: tuple) -> dict:
-    id_, usuario, senha_hash, nome, papeis, ativo = linha
+    id_, usuario, senha_hash, nome, papeis, ativo, foto = linha
     return {
         "id": id_,
         "usuario": usuario,
@@ -58,6 +62,7 @@ def _linha_para_usuario(linha: tuple) -> dict:
         "nome": nome,
         "papeis": _carregar_papeis(papeis),
         "ativo": ativo,
+        "foto": foto,
     }
 
 
@@ -90,8 +95,9 @@ def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dic
 
 
 def listar_usuarios() -> list[dict]:
-    """Lista os usuários cadastrados (sem o hash de senha), pra tela de
-    administração — mais recentes primeiro."""
+    """Lista os usuários cadastrados (sem hash de senha nem foto — a tela de
+    administração não mexe em foto de ninguém, só a própria pessoa mexe na
+    dela via `/api/auth/perfil`), mais recentes primeiro."""
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
@@ -99,7 +105,7 @@ def listar_usuarios() -> list[dict]:
         linhas = cursor.fetchall()
 
     return [
-        {chave: valor for chave, valor in _linha_para_usuario(linha).items() if chave != "senha_hash"}
+        {chave: valor for chave, valor in _linha_para_usuario(linha).items() if chave not in ("senha_hash", "foto")}
         for linha in linhas
     ]
 
@@ -134,3 +140,48 @@ def autenticar(usuario: str, senha: str) -> dict | None:
         return None
 
     return {chave: valor for chave, valor in dados.items() if chave != "senha_hash"}
+
+
+def atualizar_perfil(usuario: str, nome: str | None = None, foto: str | None = None) -> dict:
+    """Autoatendimento: atualiza nome e/ou foto do PRÓPRIO usuário (só os
+    campos informados). Devolve o perfil atualizado, sem o hash de senha."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        if nome is not None:
+            cursor.execute("UPDATE usuarios SET nome = :nome WHERE usuario = :usuario", nome=nome, usuario=usuario)
+        if foto is not None:
+            cursor.execute("UPDATE usuarios SET foto = :foto WHERE usuario = :usuario", foto=foto, usuario=usuario)
+        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
+        linha = cursor.fetchone()
+
+    dados = _linha_para_usuario(linha)
+    return {chave: valor for chave, valor in dados.items() if chave != "senha_hash"}
+
+
+def alterar_senha(usuario: str, senha_atual: str, senha_nova: str) -> bool:
+    """Autoatendimento: troca a senha do PRÓPRIO usuário, conferindo a senha
+    atual antes. Devolve False se a senha atual não bater (usuário
+    inexistente conta como não bater, mesma resposta pra não vazar
+    informação)."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
+        linha = cursor.fetchone()
+
+        if linha is None:
+            return False
+
+        dados = _linha_para_usuario(linha)
+        if not bcrypt.checkpw(senha_atual.encode("utf-8"), dados["senha_hash"].encode("utf-8")):
+            return False
+
+        novo_hash = bcrypt.hashpw(senha_nova.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        cursor.execute(
+            "UPDATE usuarios SET senha_hash = :senha_hash WHERE usuario = :usuario",
+            senha_hash=novo_hash,
+            usuario=usuario,
+        )
+
+    return True

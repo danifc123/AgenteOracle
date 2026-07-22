@@ -1,11 +1,24 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.server.auth.dependencia import exigir_administrador
+from agente_oracle.server.auth.dependencia import exigir_administrador, exigir_usuario
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.auth import papeis
 from agente_oracle.tools.auth.token import gerar_token
-from agente_oracle.tools.auth.usuarios import UsuarioJaExiste, autenticar, criar_usuario, deletar_usuario, listar_usuarios
+from agente_oracle.tools.auth.usuarios import (
+    UsuarioJaExiste,
+    alterar_senha,
+    atualizar_perfil,
+    autenticar,
+    criar_usuario,
+    deletar_usuario,
+    listar_usuarios,
+)
+
+# Limite de tamanho da foto (string base64, já com o prefixo "data:...;base64,")
+# — generoso o bastante pra uma foto de perfil comum, sem deixar a tabela
+# crescer sem controle.
+_TAMANHO_MAXIMO_FOTO = 2_000_000
 
 
 def registrar(mcp) -> None:
@@ -29,6 +42,7 @@ def registrar(mcp) -> None:
                 "token": token,
                 "usuario": dados["usuario"],
                 "nome": dados["nome"],
+                "foto": dados.get("foto"),
                 "papeis": dados["papeis"],
                 # Calculados aqui só pra UI decidir o que mostrar (sidebar) — a
                 # autorização de verdade em cada rota é sempre recalculada a
@@ -102,6 +116,64 @@ def registrar(mcp) -> None:
             status_code=201,
             headers=CORS_HEADERS,
         )
+
+    @mcp.custom_route("/api/auth/perfil", methods=["PATCH", "OPTIONS"])
+    async def atualizar_perfil_route(request: Request) -> Response:
+        """Autoatendimento: usuário logado atualiza o próprio nome e/ou foto
+        — nunca o de outra pessoa (o alvo é sempre quem está no token)."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("PATCH, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
+        corpo = await request.json()
+        nome = corpo.get("nome")
+        foto = corpo.get("foto")
+
+        nome = nome.strip() if isinstance(nome, str) else None
+        if nome == "":
+            return JSONResponse({"erro": "Nome não pode ficar em branco."}, status_code=400, headers=CORS_HEADERS)
+
+        if isinstance(foto, str) and len(foto) > _TAMANHO_MAXIMO_FOTO:
+            return JSONResponse({"erro": "Imagem muito grande."}, status_code=400, headers=CORS_HEADERS)
+        foto = foto if isinstance(foto, str) else None
+
+        if nome is None and foto is None:
+            return JSONResponse({"erro": "Nada pra atualizar."}, status_code=400, headers=CORS_HEADERS)
+
+        perfil = atualizar_perfil(usuario_ou_erro["usuario"], nome=nome, foto=foto)
+        return JSONResponse(
+            {"usuario": perfil["usuario"], "nome": perfil["nome"], "foto": perfil.get("foto")},
+            headers=CORS_HEADERS,
+        )
+
+    @mcp.custom_route("/api/auth/senha", methods=["PATCH", "OPTIONS"])
+    async def alterar_senha_route(request: Request) -> Response:
+        """Autoatendimento: usuário logado troca a própria senha, confirmando
+        a senha atual antes."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("PATCH, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
+        corpo = await request.json()
+        senha_atual = str(corpo.get("senha_atual", ""))
+        senha_nova = str(corpo.get("senha_nova", ""))
+
+        if not senha_nova or senha_nova == senha_atual:
+            return JSONResponse(
+                {"erro": "Informe uma senha nova diferente da atual."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        sucesso = alterar_senha(usuario_ou_erro["usuario"], senha_atual, senha_nova)
+        if not sucesso:
+            return JSONResponse({"erro": "Senha atual incorreta."}, status_code=400, headers=CORS_HEADERS)
+
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
     async def apagar_usuario_route(request: Request) -> Response:

@@ -1,0 +1,77 @@
+<app-dialog [aberto]="aberto()" titulo="Configurações" (fechar)="fechar()">
+  <section class="secao">
+    <h3>Perfil</h3>
+
+    <div class="foto-linha">
+      <div class="avatar-preview">
+        @if (fotoPreview()) {
+          <img [src]="fotoPreview()" alt="Foto de perfil" />
+        } @else {
+          <span>{{ nome().slice(0, 2).toUpperCase() || 'GC' }}</span>
+        }
+      </div>
+      <label class="botao-arquivo">
+        Escolher foto
+        <input type="file" accept="image/*" (change)="selecionarFoto($event)" hidden />
+      </label>
+    </div>
+
+    <label class="campo">
+      <span>Nome</span>
+      <input type="text" [value]="nome()" (input)="nome.set($any($event.target).value)" autocomplete="off" />
+    </label>
+
+    @if (erroPerfil()) {
+      <p class="erro">{{ erroPerfil() }}</p>
+    }
+
+    <app-botao variant="primaria" [loading]="salvandoPerfil()" loadingText="Salvando..." (clicked)="salvarPerfil()">
+      Salvar perfil
+    </app-botao>
+  </section>
+
+  <section class="secao">
+    <h3>Senha</h3>
+
+    <label class="campo">
+      <span>Senha atual</span>
+      <input
+        type="password"
+        [value]="senhaAtual()"
+        (input)="senhaAtual.set($any($event.target).value)"
+        autocomplete="current-password"
+      />
+    </label>
+
+    <label class="campo">
+      <span>Nova senha</span>
+      <input
+        type="password"
+        [value]="senhaNova()"
+        (input)="senhaNova.set($any($event.target).value)"
+        autocomplete="new-password"
+      />
+    </label>
+
+    <label class="campo">
+      <span>Confirmar nova senha</span>
+      <input
+        type="password"
+        [value]="senhaConfirmacao()"
+        (input)="senhaConfirmacao.set($any($event.target).value)"
+        autocomplete="new-password"
+      />
+    </label>
+
+    @if (erroSenha()) {
+      <p class="erro">{{ erroSenha() }}</p>
+    }
+    @if (senhaAlterada()) {
+      <p class="sucesso">Senha alterada com sucesso.</p>
+    }
+
+    <app-botao variant="primaria" [loading]="salvandoSenha()" loadingText="Alterando..." (clicked)="alterarSenha()">
+      Alterar senha
+    </app-botao>
+  </section>
+</app-dialog>

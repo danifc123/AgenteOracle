@@ -83,7 +83,16 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           { chave: 'data_baixa', rotulo: 'Data da Baixa', tipo: 'periodo-data' }
         ]
       },
-      { nome: 'Contas a Receber com Descrição do Produto' },
+      {
+        nome: 'Contas a Receber com Descrição do Produto',
+        apiEndpoint: 'contas-receber-produto',
+        filtros: [
+          { chave: 'cliente', rotulo: 'Cliente', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
+          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          { chave: 'tipos_excluir', rotulo: 'Tipos a não considerar (separe por ;)', tipo: 'texto' }
+        ]
+      },
       {
         nome: 'FINR10 - Posição dos Títulos',
         apiEndpoint: 'posicao-titulos',
@@ -140,6 +149,31 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
               { valor: 'vencimento', rotulo: 'Vencimento' },
               { valor: 'natureza', rotulo: 'Natureza' },
               { valor: 'banco', rotulo: 'Banco' }
+            ]
+          }
+        ]
+      },
+      {
+        nome: 'FINR137 - Posição dos Títulos a Receber por Vendedor',
+        apiEndpoint: 'posicao-titulos-vendedor',
+        filtros: [
+          { chave: 'cliente_ini', rotulo: 'Cliente De', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'cliente_fim', rotulo: 'Cliente Até', tipo: 'select', apiEndpoint: 'clientes' },
+          { chave: 'loja_ini', rotulo: 'Loja De', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'loja_fim', rotulo: 'Loja Até', tipo: 'select', apiEndpoint: 'lojas' },
+          { chave: 'vendedor_ini', rotulo: 'Vendedor De', tipo: 'select', apiEndpoint: 'vendedores' },
+          { chave: 'vendedor_fim', rotulo: 'Vendedor Até', tipo: 'select', apiEndpoint: 'vendedores' },
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
+          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
+          { chave: 'tipos_incluir', rotulo: 'Tipos a considerar (separe por ;)', tipo: 'texto' },
+          { chave: 'tipos_excluir', rotulo: 'Tipos a não considerar (separe por ;)', tipo: 'texto' },
+          {
+            chave: 'saldo_retroativo',
+            rotulo: 'Saldo Retroativo',
+            tipo: 'select',
+            opcoes: [
+              { valor: '', rotulo: 'Não' },
+              { valor: '1', rotulo: 'Sim' }
             ]
           }
         ]

@@ -1,0 +1,135 @@
+:host {
+  display: contents;
+}
+
+.secao {
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+  }
+
+  h3 {
+    margin: 0 0 14px;
+    font-size: 14.5px;
+    color: var(--color-primary);
+  }
+}
+
+.foto-linha {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.remover-foto {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: #9a2f2f;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: #7a2323;
+  }
+}
+
+.avatar-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 0 0 0 var(--color-accent);
+  transition: box-shadow 0.15s ease;
+
+  &:hover,
+  &:focus-within {
+    box-shadow: 0 0 0 3px var(--color-accent);
+  }
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.botao-arquivo {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-primary-light);
+  }
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+
+  input {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 400;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-primary-light);
+    }
+  }
+}
+
+.erro {
+  margin: 0 0 12px;
+  color: #9a2f2f;
+  font-size: 13px;
+}
+
+.sucesso {
+  margin: 0 0 12px;
+  color: #1f7a4a;
+  font-size: 13px;
+}

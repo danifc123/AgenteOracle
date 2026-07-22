@@ -59,7 +59,8 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
-from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _TIPODOC_EXCLUIDOS_IN = "('DC','JR','MT','CM','D2','J2','M2','V2','C2','CP','TL','BA','I2','EI','VA')"
@@ -175,9 +176,16 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/financeiro/extrato-bancario", methods=["GET"])
+    @mcp.custom_route("/api/financeiro/extrato-bancario", methods=["GET", "OPTIONS"])
     async def listar_extrato_bancario_route(request: Request) -> JSONResponse:
         """RELATÓRIO: Extrato Bancário (FINR470) — endpoint JSON usado pela tela."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("GET, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
         parametros = _parametros_da_query(request)
         if parametros is None:
             return JSONResponse({"erro": "Informe filial, conta bancária e a faixa de data."}, status_code=400, headers=CORS_HEADERS)
@@ -186,9 +194,16 @@ def registrar(mcp) -> None:
         dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/financeiro/extrato-bancario/exportar", methods=["GET"])
+    @mcp.custom_route("/api/financeiro/extrato-bancario/exportar", methods=["GET", "OPTIONS"])
     async def exportar_extrato_bancario_route(request: Request) -> Response:
         """RELATÓRIO: Extrato Bancário (FINR470) — exportação em Excel."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("GET, OPTIONS")
+
+        usuario_ou_erro = exigir_usuario(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
         parametros = _parametros_da_query(request)
         if parametros is None:
             return JSONResponse({"erro": "Informe filial, conta bancária e a faixa de data."}, status_code=400, headers=CORS_HEADERS)

@@ -89,8 +89,8 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         filtros: [
           { chave: 'cliente', rotulo: 'Cliente', tipo: 'select', apiEndpoint: 'clientes' },
           { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
-          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
-          { chave: 'tipos_excluir', rotulo: 'Tipos a não considerar (separe por ;)', tipo: 'texto' }
+          { chave: 'entrega', rotulo: 'Data de Entrega', tipo: 'periodo-data' },
+          { chave: 'naturezas', rotulo: 'Natureza (separe por ;)', tipo: 'texto' }
         ]
       },
       {

@@ -2,72 +2,68 @@
 
 Tradução direta de uma consulta SQL já pronta, enviada pelo desenvolvedor
 sênior de ADVPL da empresa (não um `.prx`/`.prw` de tela como os outros
-relatórios) — junta cada título a receber (SE1010) com os itens da nota
-fiscal de saída que o originou (SD2010 + SB1010 pra descrição do produto),
-distribuindo o saldo em aberto do título proporcionalmente entre os produtos
-da nota.
+relatórios) — pega os itens de pedido de venda (SC6010) de pedidos "normais"
+(SC5010, C5_TIPO='N'), com a descrição do produto (SB1010) e o status de
+faturamento de cada pedido (`statusped`), calculado a partir da comparação
+entre a quantidade vendida e a quantidade já entregue/faturada do pedido
+inteiro (não só do item).
+
+Nota de histórico: a primeira versão desse relatório foi feita em cima de
+outra consulta (baseada em SE1010, títulos a receber) que o dev sênior tinha
+mandado antes — depois foi confirmado que aquela consulta não era essa,
+e sim a que está implementada aqui (SC5010/SC6010), então essa versão
+substitui a anterior por completo.
 
 Fidelidade ao SQL enviado:
-- Inversão de sinal pra títulos do tipo NCC/RA (nota de crédito/devolução):
-  valor, saldo, acréscimo e decréscimo saem negativos — mesma lógica do
-  `CASE WHEN E1_TIPO IN ('NCC','RA') THEN -1 ELSE 1 END` original.
-- `valor_pago` = valor - saldo (com o mesmo sinal invertido acima).
-- `totapagar1` e `totapagar`: duas colunas com a mesma fórmula (saldo +
-  acréscimo - decréscimo) — mantidas as duas, como vieram na consulta
-  original (parecem redundantes, mas replicamos por fidelidade).
-- Split proporcional por item da nota: cada item recebe uma fatia do saldo
-  em aberto do título proporcional ao peso dele na nota (`d2_total/e1_valor`),
-  daí `qtd_a_rec`, `qtd_receb`, `vlr_a_pagar`, `vlr_pago`.
-- `soma_d2_quant`: soma da quantidade de todos os itens da mesma nota
-  (window function particionada por filial+documento+cliente+loja) — vem na
-  consulta original mas não é usada em nenhum outro cálculo; mantida como
-  coluna informativa mesmo assim, por fidelidade.
-- O JOIN com SF2010 (cabeçalho da nota) está na consulta original mas
-  nenhuma coluna dele é usada — mantido só pra não alterar o conjunto de
-  linhas retornado (é 1:1 com o item da SD2010, não deveria multiplicar
-  linha nenhuma).
+- `c6sqtdven`/`c6sqtdent`: subconsultas correlacionadas que somam a
+  quantidade vendida/entregue de TODOS os itens do mesmo pedido (não just
+  do item da linha) — usadas pra decidir o status do pedido como um todo.
+- `statusped`: réplica exata da árvore de CASE original — combina
+  `c5_liberok`/`c5_nota`/`c5_blq` (liberação, nota gerada, bloqueio) com a
+  comparação de quantidade vendida x entregue pra decidir entre
+  "AGUARDANDO LIBERAÇÃO", "LIBERADO", "FATURADO TOTAL"/"PARCIAL",
+  "CANCELADO", "DEVOLUÇÃO - ENCERRADO", "ELIMINADO RESÍDUO",
+  "BLOQUEADO POR REGRA"/"POR VERBA".
+- Conversão de moeda (`mult_vlr` = 1 se `C5_MOEDA='1'`, senão `C5_TXMOEDA`)
+  aplicada em preço/valor/quantidade-entregue-valorizada, igual ao original.
+- As somas `SUM(...) OVER(PARTITION BY ...)` (totais por pedido e por
+  cliente+safra) são calculadas DEPOIS do filtro de `statusped`/`qtdaent`
+  (mesma ordem de avaliação do SQL original: WHERE do bloco filtra as
+  linhas antes das window functions do mesmo SELECT serem computadas) —
+  ou seja, os totais somam só os itens ainda pendentes, não o pedido
+  inteiro.
+- Filtro final fixo, igual ao original: `statusped NOT IN ('CANCELADO',
+  'DEVOLUÇÃO - ENCERRADO', 'ELIMINADO RESÍDUO', 'FATURADO TOTAL')` e
+  `qtdaent <> 0` — ou seja, o relatório só traz o que ainda está pendente
+  de entrega/faturamento.
 
 Diferenças em relação à consulta literal enviada (generalização necessária
 pra virar um relatório com filtro, não uma consulta com valor fixo):
-- A consulta original veio com os filtros já resolvidos em valores literais
-  (`E1_FILIAL IN ('0101')`, `A1_COD IN ('150391378')`, datas fixas, e uma
-  sequência de `( 1=1 )` nos filtros que não estavam em uso naquela consulta
-  específica). Só os filtros que apareciam ativos foram parametrizados aqui:
-  filial (seleção múltipla, igual aos outros relatórios), cliente, emissão
-  (faixa de datas), vencimento (faixa de datas) e tipo a não considerar
-  (na consulta original vinha fixo em `NOT IN ('RA','NCC')`; aqui virou
-  filtro configurável — texto com códigos separados por `;`, mesmo padrão já
-  usado no relatório de Títulos a Receber por Vendedor). `E1_SALDO <> 0`
-  ficou fixo (sempre só título em aberto), igual na consulta original.
-  Os `(1=1)` restantes não foram identificados (não sabemos a que campo
-  cada um correspondia na tela original) — se depois for preciso adicionar
-  algum filtro extra (natureza, prefixo etc.), é só entrar em contato.
-- "Cliente" virou um único campo de seleção (não faixa De/Até como nos
-  outros relatórios) porque a consulta original usa `IN (...)`, não
-  `BETWEEN` — a rota aceita mais de um código separado por vírgula
-  (`?cliente=COD1,COD2`), mas a tela por enquanto só permite escolher um.
-- Divisões protegidas com `NULLIF(..., 0)`: a consulta original divide por
-  `e1_valor` e por `d2_prcven` sem proteção — no Postgres (diferente de
-  outros bancos), dividir por zero é erro, não NULL. Título/item com valor
-  zero agora vira NULL nessas colunas em vez de derrubar a consulta inteira.
+- A consulta original veio com os filtros já resolvidos (`C5_EMISSAO
+  BETWEEN ...`, `C5_DATA1 BETWEEN ...`, `C5_NATUREZ IN ('10010109')`) e uma
+  sequência de `(1=1)` nos filtros que não estavam em uso naquela consulta
+  específica (inclusive um que provavelmente seria filial/cliente). Viraram
+  parâmetros: filial (seleção múltipla, igual aos outros relatórios),
+  cliente (`A1_COD`, seleção múltipla), emissão (faixa de datas), entrega
+  (faixa de datas sobre `C5_DATA1`) e natureza (texto com códigos separados
+  por `;`, mesmo padrão já usado nos outros relatórios pra listas).
 - `d_e_l_e_t_ = ' '` virou `COALESCE(d_e_l_e_t_, ' ') = ' '` em todos os
   JOINs/WHERE — mesmo ajuste já feito em todos os outros relatórios desse
   módulo, porque nesse banco de teste esse campo às vezes vem `NULL` em vez
-  de espaço (ex: SB1010 tem produto com `d_e_l_e_t_` nulo — sem o COALESCE,
-  a comparação com `' '` dá falso e o produto nunca casa no JOIN).
-- `E1_ACRESC`/`E1_DECRESC` protegidos com `COALESCE(..., 0)`: em Protheus
-  real esses campos numéricos nunca vêm nulos (SX3 garante default 0), mas
-  nesse banco de teste alguns títulos têm `NULL` — sem a proteção, qualquer
-  conta em cima deles (`totapagar`/`totapagar1`) vira `NULL` também.
+  de espaço.
 
-Atenção: só roda com DB_BACKEND=postgres (cast ::date). Datas em SE1010
+Atenção: só roda com DB_BACKEND=postgres (cast ::date). Datas em SC5010
 nesse banco de teste são VARCHAR (formato "YYYYMMDD").
 
-Particularidade do dado de teste: SD2010 já existia no banco (20 linhas),
-mas nenhuma delas tinha as chaves (filial+prefixo/série+número/doc+cliente+
-loja) batendo com nenhum título de SE1010 — sem isso o JOIN nunca traz
-produto nenhum. Criei algumas linhas de SD2010 ligadas a títulos reais de
-SE1010 só pra dar algo pra validar (veja o script que rodei na conversa).
+Particularidade do dado de teste: as tabelas SC5010/SC6010/SF4010 não
+existiam no banco `testeIA` (só SA1010/SB1010, com todos os campos reais do
+Protheus). Criei versões mínimas dessas 3 tabelas, só com as colunas usadas
+nesta consulta, e populei com 3 pedidos de teste (dois pendentes de
+faturamento — um parcial, um aguardando liberação — e um totalmente
+faturado, pra validar que o filtro final de `statusped` exclui esse
+último). Se um dia as tabelas completas forem importadas do Protheus real,
+essas versões mínimas podem ser substituídas sem qualquer mudança no SQL
+acima (os nomes de coluna são os mesmos).
 """
 
 from decimal import Decimal
@@ -87,61 +83,120 @@ _QUERY = """
 -- (consulta enviada pronta pelo dev senior de ADVPL, generalizada em filtro)
 -- =====================================================================
 SELECT
-    vw.*,
-    (vw.e1_valor - vw.valor_pago + vw.e1_acresc - vw.e1_decresc) AS totapagar1,
-    (vw.e1_acresc - vw.e1_decresc + vw.e1_saldo) AS totapagar,
-    (vw.d2_quant - ROUND((vw.d2_total * vw.e1_saldo / NULLIF(vw.e1_valor, 0)) / NULLIF(vw.d2_prcven, 0), 0)) AS qtd_receb,
-    ROUND((vw.d2_total * vw.e1_saldo / NULLIF(vw.e1_valor, 0)) / NULLIF(vw.d2_prcven, 0), 0) AS qtd_a_rec,
-    ROUND((vw.d2_total * vw.e1_saldo / NULLIF(vw.e1_valor, 0)), 2) AS vlr_a_pagar,
-    ROUND((vw.d2_total - (vw.d2_total * vw.e1_saldo / NULLIF(vw.e1_valor, 0))), 2) AS vlr_pago
+    vw2.*,
+    SUM(vw2.c6_qtdven) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpc6_qtdven,
+    SUM(vw2.c6_prcven) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpc6_prcven,
+    SUM(vw2.c6_valor) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpc6_valor,
+    SUM(vw2.c6_qtdent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpc6_qtdent,
+    SUM(vw2.qtdaent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpqtdaent,
+    SUM(vw2.vlrent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpvlrent,
+    SUM(vw2.vlraent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf, vw2.c6_num) AS tpvlraent,
+    SUM(vw2.c6_qtdven) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflc6_qtdven,
+    SUM(vw2.c6_prcven) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflc6_prcven,
+    SUM(vw2.c6_valor) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflc6_valor,
+    SUM(vw2.c6_qtdent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflc6_qtdent,
+    SUM(vw2.qtdaent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflqtdaent,
+    SUM(vw2.vlrent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflvlrent,
+    SUM(vw2.vlraent) OVER (PARTITION BY vw2.a1_cod, vw2.a1_loja, vw2.c5_filial, vw2.c5_codsaf) AS tflvlraent
 FROM (
     SELECT
-        se1.e1_filial,
-        sa1.a1_cod, sa1.a1_loja, sa1.a1_nome, sa1.a1_nreduz,
-        sa1.a1_tel, sa1.a1_cgc, sa1.a1_inscr, sa1.a1_mun, sa1.a1_est, sa1.a1_email,
-        se1.e1_xsafra, se1.e1_naturez, se1.e1_tipo, se1.e1_prefixo, se1.e1_num, se1.e1_parcela,
-        se1.e1_emissao, se1.e1_vencto, se1.e1_vencrea,
-        se1.e1_valor * (CASE WHEN se1.e1_tipo IN ('NCC', 'RA') THEN -1 ELSE 1 END) AS e1_valor,
-        (se1.e1_valor - se1.e1_saldo) * (CASE WHEN se1.e1_tipo IN ('NCC', 'RA') THEN -1 ELSE 1 END) AS valor_pago,
-        COALESCE(se1.e1_acresc, 0) * (CASE WHEN se1.e1_tipo IN ('NCC', 'RA') THEN -1 ELSE 1 END) AS e1_acresc,
-        COALESCE(se1.e1_decresc, 0) * (CASE WHEN se1.e1_tipo IN ('NCC', 'RA') THEN -1 ELSE 1 END) AS e1_decresc,
-        se1.e1_saldo * (CASE WHEN se1.e1_tipo IN ('NCC', 'RA') THEN -1 ELSE 1 END) AS e1_saldo,
-        se1.e1_hist,
-        sd2.d2_doc, sd2.d2_serie, sd2.d2_item, sd2.d2_cf, sd2.d2_cod,
-        sb1.b1_desc, sd2.d2_prcven, sd2.d2_quant,
-        SUM(sd2.d2_quant) OVER (PARTITION BY se1.e1_filial, sd2.d2_doc, sd2.d2_serie, sd2.d2_cliente, sd2.d2_loja) AS soma_d2_quant,
-        sd2.d2_total
-    FROM se1010 se1
-    LEFT JOIN sa1010 sa1
-        ON COALESCE(sa1.d_e_l_e_t_, ' ') = ' ' AND sa1.a1_cod = se1.e1_cliente AND sa1.a1_loja = se1.e1_loja
-    LEFT JOIN sd2010 sd2
-        ON COALESCE(sd2.d_e_l_e_t_, ' ') = ' '
-       AND se1.e1_filial = sd2.d2_filial AND se1.e1_prefixo = sd2.d2_serie AND se1.e1_num = sd2.d2_doc
-       AND se1.e1_cliente = sd2.d2_cliente AND se1.e1_loja = sd2.d2_loja
-    LEFT JOIN sf2010 sf2
-        ON COALESCE(sf2.d_e_l_e_t_, ' ') = ' '
-       AND sf2.f2_filial = sd2.d2_filial AND sf2.f2_doc = sd2.d2_doc AND sf2.f2_serie = sd2.d2_serie
-       AND sf2.f2_cliente = sd2.d2_cliente AND sf2.f2_loja = sd2.d2_loja
-    LEFT JOIN sb1010 sb1
-        ON COALESCE(sb1.d_e_l_e_t_, ' ') = ' ' AND sb1.b1_cod = sd2.d2_cod
-    WHERE COALESCE(se1.d_e_l_e_t_, ' ') = ' '
-      AND TRIM(se1.e1_filial) IN __FILIAL_IN__
-      AND (:cliente_lista = '' OR se1.e1_cliente IN __CLIENTE_IN__)
-      AND (
-            :emissao_ini = '' OR :emissao_fim = ''
-         OR se1.e1_emissao::date BETWEEN NULLIF(:emissao_ini, '')::date AND NULLIF(:emissao_fim, '')::date
-      )
-      AND (
-            :vencimento_ini = '' OR :vencimento_fim = ''
-         OR se1.e1_vencto::date BETWEEN NULLIF(:vencimento_ini, '')::date AND NULLIF(:vencimento_fim, '')::date
-      )
-      AND se1.e1_saldo <> 0
-      AND (:tipos_excluir = '' OR NOT (TRIM(se1.e1_tipo) = ANY (string_to_array(:tipos_excluir, ';'))))
-) vw
-ORDER BY vw.e1_filial, vw.a1_cod, vw.a1_loja, vw.d2_doc, vw.d2_serie, vw.d2_item
+        vw.*
+    FROM (
+        SELECT
+            base.*,
+            CASE
+                WHEN base.c5_liberok = ' ' AND base.c5_nota = ' ' AND base.c5_blq = ' ' THEN (
+                    CASE
+                        WHEN base.c6sqtdent = 0 THEN 'AGUARDANDO LIBERACAO'
+                        WHEN base.c6sqtdent > 0 AND base.c6sqtdent = base.c6sqtdven THEN 'FATURADO TOTAL'
+                        WHEN base.c6sqtdent > 0 AND base.c6sqtdent < base.c6sqtdven THEN 'FATURADO PARCIAL'
+                        ELSE '*'
+                    END
+                )
+                WHEN base.c5_nota <> ' ' OR (base.c5_liberok = 'E' AND base.c5_blq = ' ') THEN (
+                    CASE
+                        WHEN base.c6sqtdven = 0 AND base.c6sqtdent = 0 AND base.c5_tipo = 'D' THEN 'DEVOLUCAO - ENCERRADO'
+                        WHEN base.c6sqtdven > 0 AND base.c6sqtdent > 0 AND base.c6sqtdent < base.c6sqtdven THEN 'ELIMINADO RESIDUO'
+                        WHEN base.c6sqtdven > 0 AND base.c6sqtdent = 0 THEN 'CANCELADO'
+                        WHEN base.c6sqtdent > 0 AND base.c6sqtdent = base.c6sqtdven THEN 'FATURADO TOTAL'
+                        WHEN base.c6sqtdent > 0 AND base.c6sqtdent < base.c6sqtdven THEN 'FATURADO PARCIAL'
+                        ELSE '**'
+                    END
+                )
+                WHEN base.c5_liberok <> ' ' AND base.c5_nota = ' ' AND base.c5_blq = ' ' THEN (
+                    CASE
+                        WHEN base.c6sqtdent = 0 THEN 'LIBERADO'
+                        WHEN base.c6sqtdent > 0 AND base.c6sqtdent = base.c6sqtdven THEN 'FATURADO TOTAL'
+                        WHEN base.c6sqtdent > 0 AND base.c6sqtdent < base.c6sqtdven THEN 'FATURADO PARCIAL'
+                        ELSE '*'
+                    END
+                )
+                WHEN base.c5_blq = '1' THEN 'BLOQUEADO POR REGRA'
+                WHEN base.c5_blq = '2' THEN 'BLOQUEADO POR VERBA'
+                ELSE ' '
+            END AS statusped
+        FROM (
+            SELECT
+                sc5.c5_filial,
+                sa1.a1_cod, sa1.a1_loja, sa1.a1_nome, sa1.a1_nreduz,
+                sa1.a1_tel, sa1.a1_cgc, sa1.a1_inscr, sa1.a1_mun, sa1.a1_est, sa1.a1_email,
+                sc5.c5_codsaf, sc5.c5_emissao, sc5.c5_data1, sc5.c5_naturez,
+                sc5.c5_nota, sc5.c5_liberok, sc5.c5_blq, sc5.c5_tipo,
+                sc5.c5_cliente, sc5.c5_lojacli,
+                sc6.c6_cf, sc6.c6_num, sc6.c6_item, sc6.c6_produto,
+                sb1.b1_cod, sb1.b1_desc,
+                (
+                    SELECT SUM(sc6b.c6_qtdven) FROM sc6010 sc6b
+                    WHERE COALESCE(sc6b.d_e_l_e_t_, ' ') = ' '
+                      AND sc6b.c6_filial = sc5.c5_filial AND sc6b.c6_num = sc5.c5_num
+                ) AS c6sqtdven,
+                (
+                    SELECT SUM(sc6b.c6_qtdent) FROM sc6010 sc6b
+                    WHERE COALESCE(sc6b.d_e_l_e_t_, ' ') = ' '
+                      AND sc6b.c6_filial = sc5.c5_filial AND sc6b.c6_num = sc5.c5_num
+                ) AS c6sqtdent,
+                sc6.c6_qtdven,
+                (sc6.c6_prcven * (CASE WHEN sc5.c5_moeda = '1' THEN 1 ELSE sc5.c5_txmoeda END)) AS c6_prcven,
+                (sc6.c6_valor * (CASE WHEN sc5.c5_moeda = '1' THEN 1 ELSE sc5.c5_txmoeda END)) AS c6_valor,
+                sc6.c6_qtdent,
+                (sc6.c6_qtdven - sc6.c6_qtdent) AS qtdaent,
+                (sc6.c6_qtdent * sc6.c6_prcven) * (CASE WHEN sc5.c5_moeda = '1' THEN 1 ELSE sc5.c5_txmoeda END) AS vlrent,
+                ((sc6.c6_qtdven - sc6.c6_qtdent) * sc6.c6_prcven) * (CASE WHEN sc5.c5_moeda = '1' THEN 1 ELSE sc5.c5_txmoeda END) AS vlraent,
+                sc5.c5_moeda,
+                (CASE WHEN sc5.c5_moeda = '1' THEN 1 ELSE sc5.c5_txmoeda END) AS mult_vlr
+            FROM sc5010 sc5
+            JOIN sa1010 sa1
+                ON COALESCE(sa1.d_e_l_e_t_, ' ') = ' ' AND sc5.c5_cliente = sa1.a1_cod AND sc5.c5_lojacli = sa1.a1_loja
+            JOIN sc6010 sc6
+                ON COALESCE(sc6.d_e_l_e_t_, ' ') = ' ' AND sc6.c6_filial = sc5.c5_filial AND sc6.c6_num = sc5.c5_num
+            JOIN sb1010 sb1
+                ON COALESCE(sb1.d_e_l_e_t_, ' ') = ' ' AND sb1.b1_cod = sc6.c6_produto
+            JOIN sf4010 sf4
+                ON COALESCE(sf4.d_e_l_e_t_, ' ') = ' '
+               AND SUBSTR(sc6.c6_filial, 1, 2) = SUBSTR(sf4.f4_filial, 1, 2) AND sc6.c6_tes = sf4.f4_codigo
+            WHERE COALESCE(sc5.d_e_l_e_t_, ' ') = ' '
+              AND COALESCE(sc6.d_e_l_e_t_, ' ') = ' '
+              AND sc5.c5_tipo = 'N'
+              AND TRIM(sc5.c5_filial) IN __FILIAL_IN__
+              AND (:cliente_lista = '' OR sc5.c5_cliente IN __CLIENTE_IN__)
+              AND (
+                    :emissao_ini = '' OR :emissao_fim = ''
+                 OR sc5.c5_emissao::date BETWEEN NULLIF(:emissao_ini, '')::date AND NULLIF(:emissao_fim, '')::date
+              )
+              AND (
+                    :entrega_ini = '' OR :entrega_fim = ''
+                 OR sc5.c5_data1::date BETWEEN NULLIF(:entrega_ini, '')::date AND NULLIF(:entrega_fim, '')::date
+              )
+              AND (:naturezas = '' OR TRIM(sc5.c5_naturez) = ANY (string_to_array(:naturezas, ';')))
+        ) base
+    ) vw
+    WHERE vw.statusped NOT IN ('CANCELADO', 'DEVOLUCAO - ENCERRADO', 'ELIMINADO RESIDUO', 'FATURADO TOTAL')
+      AND vw.qtdaent <> 0
+) vw2
+ORDER BY vw2.c5_filial, vw2.a1_cod, vw2.a1_loja, vw2.c6_num, vw2.c6_item
 """
 
-_CAMPOS_OPCIONAIS = ("emissao_ini", "emissao_fim", "vencimento_ini", "vencimento_fim", "tipos_excluir")
+_CAMPOS_OPCIONAIS = ("emissao_ini", "emissao_fim", "entrega_ini", "entrega_fim", "naturezas")
 
 
 def _serializar(valor):
@@ -150,7 +205,7 @@ def _serializar(valor):
     return valor
 
 
-def _buscar_titulos(filiais: list[str], clientes: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
+def _buscar_pedidos(filiais: list[str], clientes: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     clausula_cliente, binds_cliente = clausula_in("cliente", clientes) if clientes else ("('')", {})
 
@@ -194,7 +249,7 @@ def registrar(mcp) -> None:
         if parametros is None:
             return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
 
-        colunas, linhas = _buscar_titulos(*parametros)
+        colunas, linhas = _buscar_pedidos(*parametros)
         dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
@@ -212,7 +267,7 @@ def registrar(mcp) -> None:
         if parametros is None:
             return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
 
-        colunas, linhas = _buscar_titulos(*parametros)
+        colunas, linhas = _buscar_pedidos(*parametros)
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Contas a Receber com Descrição do Produto")
         return Response(
             content=conteudo_xlsx,

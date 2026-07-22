@@ -52,7 +52,13 @@
 
     @if (sessao.modulos().includes('financeiro')) {
       <div class="nav-group">
-        <button type="button" class="nav-link nav-parent" [title]="colapsado() ? 'Financeiro' : null" (click)="toggleFinanceiro()">
+        <button
+          type="button"
+          class="nav-link nav-parent"
+          [class.aberto]="financeiroOpen()"
+          [title]="colapsado() ? 'Financeiro' : null"
+          (click)="toggleFinanceiro()"
+        >
           <span class="nav-icon">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="3" y="6" width="18" height="13" rx="2" />
@@ -65,13 +71,24 @@
           </svg>
         </button>
 
-        @if (financeiroOpen() && !colapsado()) {
-          <div class="nav-submenu">
-            <a class="nav-sublink" routerLink="/financeiro/especifico-grupo-conceito" routerLinkActive="active" (click)="closeSidebar()">
-              Específico Grupo Conceito
-            </a>
-          </div>
-        }
+        <div class="nav-submenu" [class.aberto]="financeiroOpen()">
+          <a
+            class="nav-sublink"
+            routerLink="/financeiro/especifico-grupo-conceito"
+            routerLinkActive="active"
+            [title]="colapsado() ? 'Específico Grupo Conceito' : null"
+            (click)="closeSidebar()"
+          >
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M7 3h7l4 4v14H7V3Z" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M14 3v4h4" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M9.5 13h5M9.5 16.5h5" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="nav-label">Específico Grupo Conceito</span>
+          </a>
+        </div>
       </div>
     }
 
@@ -131,26 +148,28 @@
       @if (sessao.foto()) {
         <img [src]="sessao.foto()" alt="" />
       } @else {
-        {{ sessao.nome().slice(0, 2).toUpperCase() || 'GC' }}
+        {{ iniciais(sessao.nome()) || 'GC' }}
       }
     </div>
     <div class="user-info">
       <span class="user-name">{{ sessao.nome() || 'Usuário' }}</span>
       <span class="user-role">{{ sessao.papeis().join(', ') || 'Sem papel' }}</span>
     </div>
-    <button type="button" class="config" (click)="abrirConfiguracoes()" aria-label="Configurações" title="Configurações">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-      </svg>
-    </button>
-    <button type="button" class="sair" (click)="sair()" aria-label="Sair" title="Sair">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-        <path d="M16 17l5-5-5-5" />
-        <path d="M21 12H9" />
-      </svg>
-    </button>
+    <div class="acoes-footer">
+      <button type="button" class="config" (click)="abrirConfiguracoes()" aria-label="Configurações" title="Configurações">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+        </svg>
+      </button>
+      <button type="button" class="sair" (click)="sair()" aria-label="Sair" title="Sair">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
+    </div>
   </div>
 </aside>
 

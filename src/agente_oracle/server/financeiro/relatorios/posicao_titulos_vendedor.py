@@ -31,13 +31,6 @@ O que TEM fidelidade real com o ADVPL original:
   aos outros dois relatórios — o VALOR do VA (`FValAcess()`) é externo e
   desconhecido, fica sempre 0.
 
-Uma diferença deliberada em relação ao ADVPL original: o nome do cliente vem
-de um JOIN em SA1010 (`sa1.a1_nome`), não do campo cru `E1_NOMCLI` que o
-TRCell original usa — E1_NOMCLI é um campo "cache" desnormalizado que está
-sempre vazio nesse banco de teste (e não é incomum estar desatualizado em
-Protheus real também); SA1010 é a fonte de verdade, mesma solução já usada
-em `posicao_titulos.py`.
-
 O que ficou de fora (documentado, não escondido):
 - **Cadeia de liquidação** (`TitPrinc`/`Vendedor137` do original, via
   FK1/FK7): quando um título já foi liquidado (E1_NUMLIQ preenchido) e o
@@ -81,7 +74,7 @@ _QUERY = """
 WITH titulos_base AS (
     SELECT
         se1.e1_filial, se1.e1_prefixo, se1.e1_num, se1.e1_parcela, se1.e1_tipo,
-        se1.e1_cliente AS cliente_codigo, se1.e1_loja AS cliente_loja,
+        se1.e1_cliente AS cliente_codigo, se1.e1_loja AS cliente_loja, se1.e1_nomcli,
         se1.e1_naturez, se1.e1_emissao, se1.e1_vencto,
         se1.e1_valor, se1.e1_saldo, se1.e1_sdacres, se1.e1_sddecre,
         se1.e1_porcjur, se1.e1_valjur, se1.e1_multa, se1.e1_numliq,
@@ -126,7 +119,7 @@ SELECT
     tv.e1_tipo,
     tv.cliente_codigo,
     tv.cliente_loja,
-    sa1.a1_nome AS nome_cliente,
+    tv.e1_nomcli AS nome_cliente,
     tv.e1_emissao,
     tv.e1_vencto,
     tv.e1_valor,
@@ -161,7 +154,6 @@ SELECT
     0 AS valor_acessorio
 FROM titulos_vendedor tv
 LEFT JOIN sa3 ON sa3.a3_cod = tv.vendedor_codigo
-LEFT JOIN sa1010 sa1 ON sa1.a1_cod = tv.cliente_codigo AND sa1.a1_loja = tv.cliente_loja
 LEFT JOIN sed010 sed ON sed.ed_codigo = tv.e1_naturez
 WHERE (:vendedor_ini = '' OR tv.vendedor_codigo >= :vendedor_ini)
   AND (:vendedor_fim = '' OR tv.vendedor_codigo <= :vendedor_fim)

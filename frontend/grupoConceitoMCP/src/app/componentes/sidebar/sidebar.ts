@@ -1,5 +1,6 @@
 import { Component, ViewChild, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
 import { ConfiguracoesUsuario } from '../configuracoes-usuario/configuracoes-usuario';
 
@@ -13,6 +14,7 @@ const CHAVE_COLAPSADO = 'sidebar:colapsado';
 })
 export class Sidebar {
   protected readonly sessao = inject(Sessao);
+  protected readonly iniciais = iniciais;
   private readonly router = inject(Router);
 
   @ViewChild(ConfiguracoesUsuario) private readonly configuracoes!: ConfiguracoesUsuario;
@@ -37,10 +39,6 @@ export class Sidebar {
   }
 
   toggleFinanceiro(): void {
-    if (this.colapsado()) {
-      this.router.navigateByUrl('/financeiro/especifico-grupo-conceito');
-      return;
-    }
     this.financeiroOpen.update((value) => !value);
   }
 

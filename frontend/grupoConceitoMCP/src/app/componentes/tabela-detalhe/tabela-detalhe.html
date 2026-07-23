@@ -15,20 +15,11 @@
     </div>
 
     <div class="detalhe-corpo">
-      @for (grupo of gruposSelecionados(); track grupo.view.nome) {
-        <span class="secao-titulo">{{ grupo.view.descricao }}</span>
-        <div class="colunas-chips">
-          @for (rotulo of grupo.rotulos; track rotulo) {
-            <span class="chip-coluna">{{ rotulo }}</span>
-          }
-        </div>
-      }
-
-      <span class="secao-titulo secao-titulo--filtros">
+      <span class="secao-titulo">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
         </svg>
-        Filtro
+        Filial
       </span>
 
       <div class="campos-grid" [class.campos-grid--invalido]="filtroInvalido()">
@@ -38,6 +29,28 @@
                            [opcoes]="filiais()"
                            [(valores)]="filiaisSelecionadas" />
       </div>
+
+      @for (grupo of gruposSelecionados(); track grupo.view.nome) {
+        <span class="secao-titulo secao-titulo--filtros">{{ grupo.view.descricao }}</span>
+        <div class="campos-grid">
+          @for (campo of grupo.campos; track campo.chave) {
+            @if (campo.tipo === 'texto') {
+              <app-select-busca [rotulo]="campo.rotulo"
+                                 placeholder="Todos"
+                                 [multiplo]="true"
+                                 [opcoes]="opcoesDaColuna(campo.chave)"
+                                 [valores]="valoresSelecionados(campo.chave)"
+                                 (valoresChange)="definirValoresFiltro(campo.chave, $event)" />
+            } @else {
+              <app-campo-filtro-dinamico [campo]="campo"
+                                          [valorIni]="valorFiltro(campo.chave + '_ini')"
+                                          [valorFim]="valorFiltro(campo.chave + '_fim')"
+                                          (valorIniChange)="definirValorFiltro.emit({ chave: campo.chave + '_ini', valor: $event })"
+                                          (valorFimChange)="definirValorFiltro.emit({ chave: campo.chave + '_fim', valor: $event })" />
+            }
+          }
+        </div>
+      }
     </div>
 
     <div class="detalhe-rodape">

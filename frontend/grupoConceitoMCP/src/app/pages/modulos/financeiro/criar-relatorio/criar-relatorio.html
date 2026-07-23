@@ -1,0 +1,76 @@
+<app-modulo-header breadcrumb="Financeiro / Criar Relatório"
+                   titulo="Criar Relatório"
+                   descricao="Escolha uma ou mais tabelas relacionadas, marque as colunas desejadas e preencha a filial para montar seu próprio relatório." />
+
+<div class="filtros-topo">
+  <app-busca class="busca"
+             placeholder="Buscar tabela..."
+             [(valor)]="termoBusca" />
+</div>
+
+<div class="conteudo-relatorios">
+  <div class="painel-lista">
+    <div class="painel-lista-cabecalho">
+      <span>Tabelas</span>
+      <span class="contagem">{{ viewsFiltradas().length }} {{ viewsFiltradas().length === 1 ? 'item' : 'itens' }}</span>
+    </div>
+
+    <div class="painel-lista-corpo">
+      @if (viewsFiltradas().length) {
+      @for (tabela of viewsFiltradas(); track tabela.nome) {
+      <app-tabela-item [tabela]="tabela"
+                       [aberta]="estaAberta(tabela)"
+                       [colunasSelecionadas]="colunasDaView(tabela)"
+                       (alternarAberta)="alternarTabela(tabela)"
+                       (alternarColuna)="alternarColuna(tabela.nome, $event)" />
+      }
+      } @else if (views().length) {
+      <p class="lista-vazia">Nenhuma tabela encontrada para "{{ termoBusca() }}".</p>
+      } @else {
+      <p class="carregando">Carregando tabelas disponíveis...</p>
+      }
+    </div>
+  </div>
+
+  <app-tabela-detalhe [views]="views()"
+                      [colunasSelecionadas]="colunasSelecionadas()"
+                      [filtroInvalido]="filtroInvalido()"
+                      [filiais]="filiais()"
+                      [(filiaisSelecionadas)]="filiaisSelecionadas"
+                      (confirmarFiltro)="confirmarFiltroSelecionada()"
+                      (limparFiltros)="limparFiltrosSelecionados()" />
+</div>
+
+<app-dialog [aberto]="relatorioAberto()"
+            titulo="Relatório personalizado"
+            [temRodape]="true"
+            (fechar)="fecharVisualizacao()">
+  @if (relatorioCarregando()) {
+  <p class="carregando">Carregando relatório...</p>
+  } @else if (relatorioErro()) {
+  <p class="erro-exportacao">{{ relatorioErro() }}</p>
+  } @else if (relatorioDados() && relatorioDados()!.length) {
+  <app-visualizador-excel [dados]="relatorioDados()!" />
+  } @else {
+  <p class="carregando">Nenhum dado encontrado para os filtros informados.</p>
+  }
+
+  <app-botao rodape
+             variant="primaria"
+             [disabled]="baixandoRelatorio() || !relatorioDados()?.length"
+             (clicked)="baixarRelatorio()">
+    <svg viewBox="0 0 24 24"
+         width="16"
+         height="16"
+         fill="none"
+         stroke="currentColor"
+         stroke-width="1.8"
+         stroke-linecap="round"
+         stroke-linejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+      <path d="M17 21v-8H7v8" />
+      <path d="M7 3v5h8" />
+    </svg>
+    {{ baixandoRelatorio() ? 'Baixando...' : 'Baixar' }}
+  </app-botao>
+</app-dialog>

@@ -328,3 +328,20 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
 )
 
 NOMES_VIEWS_PERMITIDAS: frozenset[str] = frozenset(view.nome.upper() for view in VIEWS_DISPONIVEIS)
+
+_PALAVRAS_NUMERICAS = ("valor", "quantidade", "saldo", "preco", "preço", "custo")
+
+
+def inferir_tipo_filtro(nome_coluna: str) -> str:
+    """Infere o tipo de filtro mais provável pra uma coluna a partir do nome —
+    usado tanto pra escolher o widget certo na tela "Criar Relatório" quanto
+    pra montar a cláusula certa no backend (`relatorio_customizado.py`).
+    Convenção simples e previsível, não uma análise real de tipo de dado:
+    colunas "data_*" viram filtro de período, colunas com palavras que
+    indicam valor numérico viram filtro de faixa (min/máx), o resto vira
+    filtro de texto (contém)."""
+    if nome_coluna.startswith("data_"):
+        return "periodo-data"
+    if any(palavra in nome_coluna for palavra in _PALAVRAS_NUMERICAS):
+        return "numero"
+    return "texto"

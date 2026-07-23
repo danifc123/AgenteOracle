@@ -187,6 +187,128 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         ),
     ),
     ViewFinanceira(
+        nome="vw_pedidos_venda",
+        descricao=(
+            "Posição de pedidos de venda, um registro por item de pedido — inclui pedidos "
+            "ainda não faturados (saldo pendente > 0)."
+        ),
+        colunas=(
+            ColunaView("filial", "código da filial"),
+            ColunaView("numero_pedido", "número do pedido de venda"),
+            ColunaView("item", "número do item dentro do pedido"),
+            ColunaView("cliente_codigo", "código do cliente"),
+            ColunaView("cliente_loja", "loja do cliente"),
+            ColunaView("cliente_nome", "razão social / nome completo do cliente"),
+            ColunaView("data_emissao", "data de emissão do pedido"),
+            ColunaView("tipo_pedido", "tipo do pedido de venda"),
+            ColunaView("codigo_safra", "código da safra vinculada ao pedido"),
+            ColunaView("natureza_codigo", "código da natureza financeira do pedido"),
+            ColunaView("moeda", "código da moeda do pedido"),
+            ColunaView("produto_codigo", "código do produto"),
+            ColunaView("produto_descricao", "descrição do produto"),
+            ColunaView("grupo_produto_codigo", "código do grupo do produto"),
+            ColunaView("tes_codigo", "código do tipo de entrada/saída (TES) do item"),
+            ColunaView("quantidade_pedida", "quantidade total pedida no item"),
+            ColunaView("quantidade_atendida", "quantidade já entregue/faturada do item"),
+            ColunaView(
+                "saldo_pendente",
+                "quantidade ainda não entregue (quantidade_pedida - quantidade_atendida) — "
+                "0 quando o item já foi totalmente atendido",
+            ),
+            ColunaView("preco_unitario", "preço unitário de venda do item"),
+            ColunaView("valor_total", "valor total do item (quantidade x preço)"),
+            ColunaView(
+                "status_pedido",
+                "status calculado do item: AGUARDANDO LIBERACAO, LIBERADO, BLOQUEADO POR REGRA, "
+                "BLOQUEADO POR VERBA, CANCELADO, FATURADO PARCIAL ou FATURADO TOTAL",
+            ),
+        ),
+        relacionamentos=(
+            RelacionamentoView(
+                view_destino="vw_clientes",
+                colunas_locais=("cliente_codigo", "cliente_loja"),
+                colunas_destino=("codigo", "loja"),
+                descricao="Dado de cliente que não está aqui (cnpj_cpf, estado etc.) só existe em vw_clientes.",
+            ),
+            RelacionamentoView(
+                view_destino="vw_faturamento",
+                colunas_locais=("filial", "numero_pedido", "item"),
+                colunas_destino=("filial", "pedido", "item_pedido"),
+                descricao=(
+                    "Notas fiscais que faturaram este item de pedido — um pedido pode ter várias "
+                    "notas (faturamento parcial) ou nenhuma ainda (saldo_pendente > 0)."
+                ),
+            ),
+        ),
+    ),
+    ViewFinanceira(
+        nome="vw_faturamento",
+        descricao=(
+            "Faturamento detalhado, um registro por item de nota fiscal de saída já emitida "
+            "(pedidos ainda não faturados não aparecem aqui — veja vw_pedidos_venda)."
+        ),
+        colunas=(
+            ColunaView("filial", "código da filial"),
+            ColunaView("nota_fiscal", "número da nota fiscal"),
+            ColunaView("serie", "série da nota fiscal"),
+            ColunaView("item_nota", "número do item dentro da nota fiscal"),
+            ColunaView("pedido", "número do pedido de venda que originou esta nota"),
+            ColunaView("item_pedido", "número do item do pedido que originou este item de nota"),
+            ColunaView("cliente_codigo", "código do cliente (ou fornecedor, se a nota for de devolução)"),
+            ColunaView("cliente_loja", "loja do cliente"),
+            ColunaView("cliente_nome", "razão social / nome completo do cliente"),
+            ColunaView("cliente_cnpj_cpf", "CNPJ ou CPF do cliente"),
+            ColunaView("cliente_municipio", "município do cliente"),
+            ColunaView("cliente_uf", "sigla do estado (UF) do cliente"),
+            ColunaView("data_emissao", "data de emissão da nota fiscal"),
+            ColunaView("tipo_nota", "tipo da nota fiscal (ex: normal, devolução)"),
+            ColunaView("chave_nfe", "chave de acesso da NF-e"),
+            ColunaView("vendedor_codigo", "código do vendedor"),
+            ColunaView("vendedor_nome", "nome do vendedor"),
+            ColunaView("tipo_frete", "código do tipo de frete (CIF/FOB/etc.)"),
+            ColunaView("veiculo", "placa do veículo de transporte"),
+            ColunaView("produto_codigo", "código do produto"),
+            ColunaView("produto_descricao", "descrição do produto"),
+            ColunaView("grupo_produto_codigo", "código do grupo do produto"),
+            ColunaView("tes_codigo", "código do tipo de entrada/saída (TES) do item"),
+            ColunaView("centro_custo_codigo", "código do centro de custo do item"),
+            ColunaView("codigo_safra", "código da safra vinculada ao pedido de origem"),
+            ColunaView("natureza_codigo", "código da natureza financeira do pedido de origem"),
+            ColunaView("natureza_descricao", "descrição da natureza financeira"),
+            ColunaView("quantidade", "quantidade faturada no item"),
+            ColunaView("valor_unitario", "valor unitário de venda do item"),
+            ColunaView("valor_total", "valor total do item (quantidade x valor unitário)"),
+            ColunaView("custo", "custo do item na data do faturamento"),
+            ColunaView("valor_frete", "valor de frete rateado no item"),
+            ColunaView("quantidade_devolvida", "quantidade já devolvida deste item"),
+            ColunaView("valor_devolvido", "valor já devolvido deste item"),
+            ColunaView("valor_liquido", "valor_total menos valor_devolvido"),
+        ),
+        relacionamentos=(
+            RelacionamentoView(
+                view_destino="vw_clientes",
+                colunas_locais=("cliente_codigo", "cliente_loja"),
+                colunas_destino=("codigo", "loja"),
+                descricao="Dado de cliente que não está aqui (cnpj_cpf duplicado, estado etc.) também existe em vw_clientes.",
+            ),
+            RelacionamentoView(
+                view_destino="vw_pedidos_venda",
+                colunas_locais=("filial", "pedido", "item_pedido"),
+                colunas_destino=("filial", "numero_pedido", "item"),
+                descricao="Pedido de venda que originou esta nota fiscal.",
+            ),
+            RelacionamentoView(
+                view_destino="vw_titulos_receber",
+                colunas_locais=("filial", "nota_fiscal", "serie", "cliente_codigo", "cliente_loja"),
+                colunas_destino=("filial", "numero", "prefixo", "cliente_codigo", "cliente_loja"),
+                descricao=(
+                    "Títulos a receber gerados por esta nota fiscal (considere apenas os títulos "
+                    "com tipo = 'NF' em vw_titulos_receber)."
+                ),
+            ),
+        ),
+    ),
+    ViewFinanceira(
         nome="vw_movimento_bancario",
         descricao="Movimentações bancárias (recebimentos, pagamentos e baixas) por conta.",
         colunas=(

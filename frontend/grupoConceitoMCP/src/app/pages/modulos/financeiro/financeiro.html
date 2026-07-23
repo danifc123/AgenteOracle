@@ -1,7 +1,7 @@
 @if (modulo(); as modulo) {
 <app-modulo-header [breadcrumb]="'Financeiro / ' + modulo.nome"
-                    [titulo]="modulo.nome"
-                    [descricao]="modulo.descricao" />
+                   [titulo]="modulo.nome"
+                   [descricao]="modulo.descricao" />
 
 <div class="filtros-topo">
   <app-busca class="busca"
@@ -9,7 +9,7 @@
              [(valor)]="termoBusca" />
 
   <app-filtro-categorias [categorias]="categoriasDisponiveis()"
-                          [(selecionada)]="categoriaSelecionada" />
+                         [(selecionada)]="categoriaSelecionada" />
 </div>
 
 <div class="conteudo-relatorios">
@@ -21,38 +21,41 @@
 
     <div class="painel-lista-corpo">
       @if (gruposFiltrados().length) {
-        @for (grupo of gruposFiltrados(); track grupo.categoria) {
-          <div class="grupo-categoria">
-            <p class="grupo-titulo">
-              <span class="categoria-dot" [style.background]="grupo.cor"></span>
-              {{ grupo.categoria.toUpperCase() }} ({{ grupo.rotinas.length }})
-            </p>
-            @for (rotina of grupo.rotinas; track rotina.nome) {
-              <app-rotina-item [rotina]="rotina"
-                                [selecionada]="rotinaSelecionada()?.nome === rotina.nome"
-                                (selecionar)="selecionarRotina(rotina)" />
-            }
-          </div>
+      @for (grupo of gruposFiltrados(); track grupo.categoria) {
+      <div class="grupo-categoria">
+        <p class="grupo-titulo">
+          <span class="categoria-dot"
+                [style.background]="grupo.cor"></span>
+          {{ grupo.categoria.toUpperCase() }} ({{ grupo.rotinas.length }})
+        </p>
+        @for (rotina of grupo.rotinas; track rotina.nome) {
+        <app-rotina-item [rotina]="rotina"
+                         [selecionada]="rotinaSelecionada()?.nome === rotina.nome"
+                         (selecionar)="selecionarRotina(rotina)" />
         }
+      </div>
+      }
       } @else {
-        <p class="lista-vazia">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
+      <p class="lista-vazia">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
       }
     </div>
   </div>
 
   <app-rotina-detalhe [rotina]="rotinaSelecionada()"
-                       [fixado]="estaFixado(rotinaSelecionada())"
-                       [limiteFixadosAtingido]="limiteFixadosAtingido()"
-                       [filtroInvalido]="filtroInvalido()"
-                       [filiais]="filiais()"
-                       [opcoesCampos]="opcoesCampos()"
-                       [valoresFiltros]="valoresFiltros()"
-                       [(filiaisSelecionadas)]="filiaisSelecionadas"
-                       (confirmarFiltro)="confirmarFiltroSelecionada()"
-                       (limparFiltros)="limparFiltrosSelecionados()"
-                       (alternarFixado)="alternarFixadoSelecionada()"
-                       (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)" />
+                      [fixado]="estaFixado(rotinaSelecionada())"
+                      [limiteFixadosAtingido]="limiteFixadosAtingido()"
+                      [filtroInvalido]="filtroInvalido()"
+                      [filiais]="filiais()"
+                      [opcoesCampos]="opcoesCampos()"
+                      [valoresFiltros]="valoresFiltros()"
+                      [(filiaisSelecionadas)]="filiaisSelecionadas"
+                      (confirmarFiltro)="confirmarFiltroSelecionada()"
+                      (limparFiltros)="limparFiltrosSelecionados()"
+                      (alternarFixado)="alternarFixadoSelecionada()"
+                      (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)" />
 </div>
+
+
 } @else {
 <p class="carregando">Módulo não encontrado.</p>
 }
@@ -62,28 +65,28 @@
             [temRodape]="true"
             (fechar)="fecharVisualizacao()">
   @if (relatorioCarregando()) {
-    <p class="carregando">Carregando relatório...</p>
+  <p class="carregando">Carregando relatório...</p>
   } @else if (relatorioErro()) {
-    <p class="erro-exportacao">{{ relatorioErro() }}</p>
+  <p class="erro-exportacao">{{ relatorioErro() }}</p>
   } @else if (relatorioDados() && relatorioDados()!.length) {
-    <app-visualizador-excel [dados]="relatorioDados()!" />
+  <app-visualizador-excel [dados]="relatorioDados()!" />
   } @else if (rotinaEmVisualizacao()?.apiEndpoint) {
-    <p class="carregando">Nenhum dado encontrado para esse relatório.</p>
+  <p class="carregando">Nenhum dado encontrado para esse relatório.</p>
   } @else {
-    <div class="visualizacao-vazia">
-      <svg viewBox="0 0 24 24"
-           width="40"
-           height="40"
-           fill="none"
-           stroke="currentColor"
-           stroke-width="1.5">
-        <path d="M4 5h16v11H8l-4 4V5Z"
-              stroke-linecap="round"
-              stroke-linejoin="round" />
-      </svg>
-      <h3>Relatório ainda não disponível</h3>
-      <p>Assim que essa rotina for implementada, o conteúdo aparecerá aqui.</p>
-    </div>
+  <div class="visualizacao-vazia">
+    <svg viewBox="0 0 24 24"
+         width="40"
+         height="40"
+         fill="none"
+         stroke="currentColor"
+         stroke-width="1.5">
+      <path d="M4 5h16v11H8l-4 4V5Z"
+            stroke-linecap="round"
+            stroke-linejoin="round" />
+    </svg>
+    <h3>Relatório ainda não disponível</h3>
+    <p>Assim que essa rotina for implementada, o conteúdo aparecerá aqui.</p>
+  </div>
   }
 
   <app-botao rodape

@@ -1,4 +1,4 @@
-# Agente para o banco da TOTVS
+# Agente para o banco da Conceito Agricola - Engenheiro de Software Daniel Faria
 
 Sistema para o departamento financeiro consultar o banco Oracle da empresa através
 de um agente de IA (via MCP) e de um painel web (Angular).

@@ -1,220 +1,58 @@
 @if (modulo(); as modulo) {
-<header class="page-header">
-  <div>
-    <p class="breadcrumb">Financeiro / {{ modulo.nome }}</p>
-    <h1>{{ modulo.nome }}</h1>
-  </div>
-</header>
+<app-modulo-header [breadcrumb]="'Financeiro / ' + modulo.nome"
+                    [titulo]="modulo.nome"
+                    [descricao]="modulo.descricao" />
 
-<p class="instrucao">{{ modulo.descricao }}</p>
+<div class="filtros-topo">
+  <app-busca class="busca"
+             placeholder="Buscar rotina..."
+             [(valor)]="termoBusca" />
 
-<app-busca class="busca"
-           placeholder="Buscar rotina..."
-           [(valor)]="termoBusca" />
+  <app-filtro-categorias [categorias]="categoriasDisponiveis()"
+                          [(selecionada)]="categoriaSelecionada" />
+</div>
 
-@if (rotinasFiltradas().length) {
-  <ul class="lista-rotinas">
-  @for (rotina of rotinasFiltradas(); track rotina.nome) {
-    <li>
-    <div class="rotina"
-         [class.rotina--ativa]="!!rotina.apiEndpoint"
-         [class.rotina--pendente]="!rotina.apiEndpoint">
-      <button type="button"
-              class="rotina-info"
-              (click)="visualizar(rotina)">
-        <span>{{ rotina.nome }}</span>
-        <span class="indicadores">
-          @if (estaFixado(rotina)) {
-          <svg class="icone-fixado"
-               role="img"
-               aria-label="Fixado"
-               viewBox="0 0 24 24"
-               width="14"
-               height="14">
-            <rect x="4"
-                  y="2"
-                  width="2"
-                  height="20"
-                  rx="1"
-                  fill="currentColor" />
-            <path d="M6 4h13l-3.2 4L19 12H6Z"
-                  fill="currentColor" />
-          </svg>
-          }
-          @if (!rotina.apiEndpoint) {
-          <span class="tag-em-breve">Em breve</span>
-          }
-        </span>
-      </button>
-
-      @if (rotina.apiEndpoint) {
-      <button type="button"
-              class="rotina-seta"
-              [class.rotina-seta--aberta]="filtroEstaAberto(rotina)"
-              aria-label="Escolher filial e ano"
-              title="Escolher filial e ano"
-              (click)="alternarFiltro(rotina, $event)">
-        <svg viewBox="0 0 24 24"
-             width="18"
-             height="18"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="2">
-          <path d="m9 6 6 6-6 6"
-                stroke-linecap="round"
-                stroke-linejoin="round" />
-        </svg>
-      </button>
-
-      <div class="painel-filtro"
-           [class.painel-filtro--aberto]="filtroEstaAberto(rotina)">
-        <div class="painel-filtro-conteudo"
-             [class.painel-filtro-conteudo--invalido]="filtroInvalido()">
-          <app-select-busca class="campo-filtro select-filial"
-                             rotulo="Filial(is) *"
-                             placeholder="Filial(is)..."
-                             [multiplo]="true"
-                             [opcoes]="filiais()"
-                             [(valores)]="filiaisSelecionadas" />
-
-          @for (campo of rotina.filtros ?? []; track campo.chave) {
-            @switch (campo.tipo) {
-              @case ('texto') {
-                <div class="campo-grupo campo-filtro">
-                  <span class="campo-rotulo">{{ campo.rotulo }}{{ campo.obrigatorio ? ' *' : '' }}</span>
-                  <div class="campo-controle">
-                    <input type="text"
-                           class="campo-texto"
-                           [class.campo-com-limpar]="!!valorFiltro(campo.chave)"
-                           [value]="valorFiltro(campo.chave)"
-                           (input)="definirValorFiltro(campo.chave, $any($event.target).value)"
-                           [placeholder]="campo.rotulo"
-                           [attr.aria-label]="campo.rotulo" />
-                    @if (valorFiltro(campo.chave)) {
-                      <button type="button"
-                              class="botao-limpar"
-                              aria-label="Limpar campo"
-                              (click)="definirValorFiltro(campo.chave, '')">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </button>
-                    }
-                  </div>
-                </div>
-              }
-              @case ('select') {
-                <app-select-busca class="campo-filtro"
-                                   [rotulo]="campo.rotulo + (campo.obrigatorio ? ' *' : '')"
-                                   [placeholder]="campo.rotulo"
-                                   [opcoes]="opcoesDoCampo(campo)"
-                                   [valor]="valorFiltro(campo.chave)"
-                                   (valorChange)="definirValorFiltro(campo.chave, $event ?? '')" />
-              }
-              @case ('periodo-data') {
-                <div class="campo-grupo campo-filtro campo-grupo--periodo">
-                  <span class="campo-rotulo">{{ campo.rotulo }}{{ campo.obrigatorio ? ' *' : '' }}</span>
-                  <div class="campo-periodo">
-                    <div class="campo-controle">
-                      <input type="date"
-                             class="campo-data"
-                             [value]="valorFiltro(campo.chave + '_ini')"
-                             (input)="definirValorFiltro(campo.chave + '_ini', $any($event.target).value)"
-                             [title]="campo.rotulo + ' - início'"
-                             [attr.aria-label]="campo.rotulo + ' - início'" />
-                      @if (valorFiltro(campo.chave + '_ini')) {
-                        <button type="button"
-                                class="botao-limpar"
-                                aria-label="Limpar início"
-                                (click)="definirValorFiltro(campo.chave + '_ini', '')">
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-                          </svg>
-                        </button>
-                      }
-                    </div>
-                    <span class="separador-periodo">até</span>
-                    <div class="campo-controle">
-                      <input type="date"
-                             class="campo-data"
-                             [value]="valorFiltro(campo.chave + '_fim')"
-                             (input)="definirValorFiltro(campo.chave + '_fim', $any($event.target).value)"
-                             [title]="campo.rotulo + ' - fim'"
-                             [attr.aria-label]="campo.rotulo + ' - fim'" />
-                      @if (valorFiltro(campo.chave + '_fim')) {
-                        <button type="button"
-                                class="botao-limpar"
-                                aria-label="Limpar fim"
-                                (click)="definirValorFiltro(campo.chave + '_fim', '')">
-                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-                          </svg>
-                        </button>
-                      }
-                    </div>
-                  </div>
-                </div>
-              }
-            }
-          }
-
-          <app-botao variant="primaria"
-                     (clicked)="confirmarFiltro(rotina)">
-            Ver relatório
-          </app-botao>
-        </div>
-      </div>
-      }
-
-      <app-menu-opcoes class="rotina-menu">
-        <button type="button"
-                class="item-menu"
-                [disabled]="!rotina.apiEndpoint || baixandoRelatorio()"
-                [title]="rotina.apiEndpoint ? '' : 'Disponível quando o relatório estiver implementado'"
-                (click)="baixar(rotina)">
-          <svg class="icone-item"
-               viewBox="0 0 24 24"
-               width="16"
-               height="16"
-               fill="none"
-               stroke="currentColor"
-               stroke-width="1.8"
-               stroke-linecap="round"
-               stroke-linejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
-            <path d="M17 21v-8H7v8" />
-            <path d="M7 3v5h8" />
-          </svg>
-          {{ baixandoRelatorio() ? 'Baixando...' : 'Baixar' }}
-        </button>
-
-        <button type="button"
-                class="item-menu"
-                [class.item-menu--ativo]="estaFixado(rotina)"
-                [disabled]="!estaFixado(rotina) && limiteFixadosAtingido()"
-                [title]="!estaFixado(rotina) && limiteFixadosAtingido() ? 'Máximo de 3 relatórios fixados' : ''"
-                (click)="alternarFixado(rotina)">
-          <svg class="icone-item"
-               viewBox="0 0 24 24"
-               width="16"
-               height="16"
-               [attr.fill]="estaFixado(rotina) ? 'currentColor' : 'none'"
-               stroke="currentColor"
-               stroke-width="1.8">
-            <path d="M5 3v18M5 4h11l-2.5 4L16 12H5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round" />
-          </svg>
-          {{ estaFixado(rotina) ? 'Desafixar' : 'Fixar' }}
-        </button>
-      </app-menu-opcoes>
+<div class="conteudo-relatorios">
+  <div class="painel-lista">
+    <div class="painel-lista-cabecalho">
+      <span>Relatórios</span>
+      <span class="contagem">{{ rotinasFiltradas().length }} {{ rotinasFiltradas().length === 1 ? 'item' : 'itens' }}</span>
     </div>
-  </li>
-  }
-</ul>
-} @else {
-<p class="carregando">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
-}
+
+    <div class="painel-lista-corpo">
+      @if (gruposFiltrados().length) {
+        @for (grupo of gruposFiltrados(); track grupo.categoria) {
+          <div class="grupo-categoria">
+            <p class="grupo-titulo">
+              <span class="categoria-dot" [style.background]="grupo.cor"></span>
+              {{ grupo.categoria.toUpperCase() }} ({{ grupo.rotinas.length }})
+            </p>
+            @for (rotina of grupo.rotinas; track rotina.nome) {
+              <app-rotina-item [rotina]="rotina"
+                                [selecionada]="rotinaSelecionada()?.nome === rotina.nome"
+                                (selecionar)="selecionarRotina(rotina)" />
+            }
+          </div>
+        }
+      } @else {
+        <p class="lista-vazia">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
+      }
+    </div>
+  </div>
+
+  <app-rotina-detalhe [rotina]="rotinaSelecionada()"
+                       [fixado]="estaFixado(rotinaSelecionada())"
+                       [limiteFixadosAtingido]="limiteFixadosAtingido()"
+                       [filtroInvalido]="filtroInvalido()"
+                       [filiais]="filiais()"
+                       [opcoesCampos]="opcoesCampos()"
+                       [valoresFiltros]="valoresFiltros()"
+                       [(filiaisSelecionadas)]="filiaisSelecionadas"
+                       (confirmarFiltro)="confirmarFiltroSelecionada()"
+                       (limparFiltros)="limparFiltrosSelecionados()"
+                       (alternarFixado)="alternarFixadoSelecionada()"
+                       (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)" />
+</div>
 } @else {
 <p class="carregando">Módulo não encontrado.</p>
 }

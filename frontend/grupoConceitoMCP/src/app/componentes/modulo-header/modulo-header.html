@@ -1,0 +1,11 @@
+<header class="page-header" [class.page-header--sem-descricao]="!descricao()">
+  <div>
+    <p class="breadcrumb">{{ breadcrumb() }}</p>
+    <h1>{{ titulo() }}</h1>
+  </div>
+  <ng-content select="[acoes]"></ng-content>
+</header>
+
+@if (descricao()) {
+  <p class="instrucao">{{ descricao() }}</p>
+}

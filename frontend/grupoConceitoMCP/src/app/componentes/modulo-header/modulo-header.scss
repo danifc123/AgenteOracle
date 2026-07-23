@@ -1,0 +1,28 @@
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+
+  &--sem-descricao {
+    margin-bottom: 24px;
+  }
+}
+
+.breadcrumb {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+h1 {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 24px;
+}
+
+.instrucao {
+  margin: 0 0 20px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}

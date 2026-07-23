@@ -87,16 +87,11 @@ export class CriarRelatorio {
     return this.colunasSelecionadas()[view.nome] ?? [];
   }
 
+  /** Acordeão: só uma tabela expandida por vez — abrir outra fecha a
+   * anterior. As colunas já marcadas em tabelas fechadas continuam
+   * selecionadas normalmente, só a exibição da lista de colunas fecha. */
   protected alternarTabela(view: ViewFinanceira): void {
-    this.tabelasAbertas.update((atual) => {
-      const novo = new Set(atual);
-      if (novo.has(view.nome)) {
-        novo.delete(view.nome);
-      } else {
-        novo.add(view.nome);
-      }
-      return novo;
-    });
+    this.tabelasAbertas.update((atual) => (atual.has(view.nome) ? new Set() : new Set([view.nome])));
   }
 
   protected alternarColuna(nomeView: string, nomeColuna: string): void {

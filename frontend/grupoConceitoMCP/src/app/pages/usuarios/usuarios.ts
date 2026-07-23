@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { Dialog } from '../../componentes/dialog/dialog';
+import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
 
 interface Usuario {
@@ -24,7 +25,7 @@ function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
 
 @Component({
   selector: 'app-usuarios',
-  imports: [Botao, Dialog, SelectBusca],
+  imports: [Botao, Dialog, ModuloHeader, SelectBusca],
   templateUrl: './usuarios.html',
   styleUrl: './usuarios.scss'
 })

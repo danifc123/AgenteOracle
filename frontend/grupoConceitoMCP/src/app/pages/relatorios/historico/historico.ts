@@ -4,6 +4,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
 import { Dialog } from '../../../componentes/dialog/dialog';
+import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { formatarSql } from '../../../servicos/formatar-sql';
 
 export interface RelatorioHistorico {
@@ -19,7 +20,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe, Botao, Dialog],
+  imports: [DatePipe, Botao, Dialog, ModuloHeader],
   templateUrl: './historico.html',
   styleUrl: './historico.scss'
 })

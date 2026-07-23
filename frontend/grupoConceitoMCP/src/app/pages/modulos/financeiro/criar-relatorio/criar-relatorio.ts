@@ -38,6 +38,8 @@ export class CriarRelatorio {
 
   protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
   protected readonly filiaisSelecionadas = signal<string[]>([]);
+  protected readonly valoresFiltros = signal<Record<string, string>>({});
+  protected readonly opcoesColunas = signal<Record<string, OpcaoSelectBusca[]>>({});
   protected readonly filtroInvalido = signal(false);
 
   protected readonly viewsFiltradas = computed(() => {
@@ -98,9 +100,11 @@ export class CriarRelatorio {
   }
 
   protected alternarColuna(nomeView: string, nomeColuna: string): void {
+    const jaSelecionada = (this.colunasSelecionadas()[nomeView] ?? []).includes(nomeColuna);
+
     this.colunasSelecionadas.update((atual) => {
       const colunasAtuais = atual[nomeView] ?? [];
-      const novasColunas = colunasAtuais.includes(nomeColuna)
+      const novasColunas = jaSelecionada
         ? colunasAtuais.filter((coluna) => coluna !== nomeColuna)
         : [...colunasAtuais, nomeColuna];
 
@@ -112,11 +116,42 @@ export class CriarRelatorio {
       }
       return novo;
     });
+
+    if (!jaSelecionada) {
+      const tipo = this.views()
+        .find((view) => view.nome === nomeView)
+        ?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo;
+      if (tipo === 'texto') {
+        this.carregarOpcoesColuna(`${nomeView}.${nomeColuna}`);
+      }
+    }
+  }
+
+  /** Valores distintos da coluna, pro select multiplo do filtro dela — busca
+   * uma vez só e guarda em cache (não muda enquanto a tela estiver aberta). */
+  private carregarOpcoesColuna(chave: string): void {
+    if (this.opcoesColunas()[chave]) {
+      return;
+    }
+
+    this.http
+      .get<OpcaoSelectBusca[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/opcoes-coluna`, {
+        params: { coluna: chave }
+      })
+      .subscribe({
+        next: (opcoes) => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: opcoes })),
+        error: () => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: [] }))
+      });
+  }
+
+  protected definirValorFiltro(chave: string, valor: string): void {
+    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
   }
 
   protected limparFiltrosSelecionados(): void {
     this.filiaisSelecionadas.set([]);
     this.colunasSelecionadas.set({});
+    this.valoresFiltros.set({});
   }
 
   protected confirmarFiltroSelecionada(): void {
@@ -138,7 +173,67 @@ export class CriarRelatorio {
       nomesColunas.map((nomeColuna) => `${nomeView}.${nomeColuna}`)
     );
 
-    return new HttpParams().set('filial', this.filiaisSelecionadas().join(',')).set('colunas', colunas.join(','));
+    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(',')).set('colunas', colunas.join(','));
+
+    const filtros = this.filtrosPorColuna();
+    if (Object.keys(filtros).length) {
+      params = params.set('filtros', JSON.stringify(filtros));
+    }
+
+    return params;
+  }
+
+  /** Monta {"view.coluna": {...}} a partir de valoresFiltros(), no formato
+   * que cada tipo de coluna espera (texto: valores, lista de valores exatos
+   * escolhidos no select multiplo — guardados aqui como string separada por
+   * vírgula; numero: min/max; periodo-data: ini/fim) — só entram colunas com
+   * algum valor preenchido. */
+  private filtrosPorColuna(): Record<string, Record<string, string | string[]>> {
+    const valores = this.valoresFiltros();
+    const views = this.views();
+    const filtros: Record<string, Record<string, string | string[]>> = {};
+
+    for (const [nomeView, nomesColunas] of Object.entries(this.colunasSelecionadas())) {
+      const view = views.find((item) => item.nome === nomeView);
+
+      for (const nomeColuna of nomesColunas) {
+        const chave = `${nomeView}.${nomeColuna}`;
+        const tipo = view?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo ?? 'texto';
+
+        if (tipo === 'periodo-data') {
+          const entrada = this.entradaFaixa(valores, chave, 'ini', 'fim');
+          if (entrada) {
+            filtros[chave] = entrada;
+          }
+        } else if (tipo === 'numero') {
+          const entrada = this.entradaFaixa(valores, chave, 'min', 'max');
+          if (entrada) {
+            filtros[chave] = entrada;
+          }
+        } else if (valores[chave]) {
+          const selecionados = valores[chave].split(',').filter(Boolean);
+          if (selecionados.length) {
+            filtros[chave] = { valores: selecionados };
+          }
+        }
+      }
+    }
+
+    return filtros;
+  }
+
+  private entradaFaixa(
+    valores: Record<string, string>,
+    chave: string,
+    chaveMin: string,
+    chaveMax: string
+  ): Record<string, string> | null {
+    const min = valores[`${chave}_ini`];
+    const max = valores[`${chave}_fim`];
+    if (!min && !max) {
+      return null;
+    }
+    return { ...(min ? { [chaveMin]: min } : {}), ...(max ? { [chaveMax]: max } : {}) };
   }
 
   private buscarRelatorio(): void {

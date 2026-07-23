@@ -1,4 +1,4 @@
-export type TipoFiltro = 'texto' | 'select' | 'periodo-data';
+export type TipoFiltro = 'texto' | 'select' | 'periodo-data' | 'numero';
 
 export interface OpcaoFiltro {
   valor: string;
@@ -6,7 +6,7 @@ export interface OpcaoFiltro {
 }
 
 export interface CampoFiltro {
-  /** Nome do parâmetro na URL (?chave=...). Em campos do tipo periodo-data, gera {chave}_ini e {chave}_fim. */
+  /** Nome do parâmetro na URL (?chave=...). Em campos do tipo periodo-data e numero, gera {chave}_ini e {chave}_fim (numero usa _ini/_fim como mínimo/máximo). */
   chave: string;
   rotulo: string;
   tipo: TipoFiltro;

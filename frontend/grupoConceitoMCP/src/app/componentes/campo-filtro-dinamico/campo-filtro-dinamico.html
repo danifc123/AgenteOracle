@@ -74,4 +74,48 @@
       </div>
     </div>
   }
+  @case ('numero') {
+    <div class="campo-grupo">
+      <span class="campo-rotulo">{{ campo().rotulo }} mínimo{{ campo().obrigatorio ? ' *' : '' }}</span>
+      <div class="campo-controle">
+        <input type="number"
+               class="campo-data"
+               [value]="valorIni()"
+               (input)="valorIniChange.emit($any($event.target).value)"
+               [title]="campo().rotulo + ' - mínimo'"
+               [attr.aria-label]="campo().rotulo + ' - mínimo'" />
+        @if (valorIni()) {
+          <button type="button"
+                  class="botao-limpar"
+                  aria-label="Limpar mínimo"
+                  (click)="valorIniChange.emit('')">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        }
+      </div>
+    </div>
+    <div class="campo-grupo">
+      <span class="campo-rotulo">{{ campo().rotulo }} máximo{{ campo().obrigatorio ? ' *' : '' }}</span>
+      <div class="campo-controle">
+        <input type="number"
+               class="campo-data"
+               [value]="valorFim()"
+               (input)="valorFimChange.emit($any($event.target).value)"
+               [title]="campo().rotulo + ' - máximo'"
+               [attr.aria-label]="campo().rotulo + ' - máximo'" />
+        @if (valorFim()) {
+          <button type="button"
+                  class="botao-limpar"
+                  aria-label="Limpar máximo"
+                  (click)="valorFimChange.emit('')">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        }
+      </div>
+    </div>
+  }
 }

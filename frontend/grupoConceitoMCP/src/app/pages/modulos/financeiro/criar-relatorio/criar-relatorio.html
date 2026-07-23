@@ -34,11 +34,14 @@
 
   <app-tabela-detalhe [views]="views()"
                       [colunasSelecionadas]="colunasSelecionadas()"
+                      [valoresFiltros]="valoresFiltros()"
+                      [opcoesColunas]="opcoesColunas()"
                       [filtroInvalido]="filtroInvalido()"
                       [filiais]="filiais()"
                       [(filiaisSelecionadas)]="filiaisSelecionadas"
                       (confirmarFiltro)="confirmarFiltroSelecionada()"
-                      (limparFiltros)="limparFiltrosSelecionados()" />
+                      (limparFiltros)="limparFiltrosSelecionados()"
+                      (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)" />
 </div>
 
 <app-dialog [aberto]="relatorioAberto()"

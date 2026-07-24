@@ -11,7 +11,7 @@ from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
 from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
-from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.connectivity import check_oracle_connection
 from agente_oracle.tools.financeiro.consulta_livre import (
@@ -36,7 +36,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight()
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -64,7 +64,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight()
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 

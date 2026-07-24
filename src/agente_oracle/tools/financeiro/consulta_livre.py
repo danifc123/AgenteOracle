@@ -40,6 +40,18 @@ _TABELA_REGEX = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGN
 # já validadas, então não devem ser cobrados na whitelist de tabelas.
 _CTE_REGEX = re.compile(r"(?:^\s*WITH\s+|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(", re.IGNORECASE)
 
+# `_TABELA_REGEX` só pega o identificador logo depois de FROM/JOIN — uma
+# junção estilo ANSI-89 ("FROM a, b") teria a segunda tabela ignorada pela
+# whitelist acima, deixando ler qualquer tabela do banco (ex: `usuarios`,
+# com hash de senha) sem passar pela checagem. Em vez de tentar capturar
+# corretamente todo identificador separado por vírgula (frágil com alias,
+# subconsultas etc.), simplesmente proibimos essa sintaxe: toda junção tem
+# que ser um JOIN explícito, que a regex acima já cobre.
+_FROM_CLAUSULA_REGEX = re.compile(
+    r"\bFROM\s+(.*?)(?=\b(?:WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|UNION|FETCH\s+FIRST|LIMIT)\b|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
 LIMITE_MAXIMO_LINHAS = 200
 TIMEOUT_MS = 10_000
 
@@ -68,6 +80,12 @@ def _validar_consulta(sql: str) -> str:
     for palavra in PALAVRAS_BLOQUEADAS:
         if palavra in sql_upper:
             raise ConsultaFinanceiraInvalida(f"A consulta contém um termo não permitido: '{palavra.strip()}'.")
+
+    for clausula in _FROM_CLAUSULA_REGEX.findall(sql_limpo):
+        if "," in clausula:
+            raise ConsultaFinanceiraInvalida(
+                "Junção no estilo 'FROM a, b' não é permitida — relacione tabelas com JOIN."
+            )
 
     nomes_cte = {nome.upper() for nome in _CTE_REGEX.findall(sql_limpo)}
     tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)} - nomes_cte

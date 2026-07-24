@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts';
+import { CoresCategoria } from '../../servicos/cores-categoria';
 import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
 import { Botao } from '../botao/botao';
@@ -22,6 +23,7 @@ function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
 export class ConfiguracoesUsuario {
   private readonly http = inject(HttpClient);
   protected readonly sessao = inject(Sessao);
+  protected readonly coresCategoria = inject(CoresCategoria);
   protected readonly iniciais = iniciais;
 
   protected readonly aberto = signal(false);
@@ -45,6 +47,11 @@ export class ConfiguracoesUsuario {
   protected readonly salvandoLayoutId = signal<number | null>(null);
   protected readonly apagandoLayoutId = signal<number | null>(null);
   protected readonly erroLayouts = signal<string | null>(null);
+  protected readonly layoutsColapsado = signal(false);
+
+  protected readonly salvandoCorCategoria = signal<string | null>(null);
+  protected readonly erroCores = signal<string | null>(null);
+  protected readonly coresColapsado = signal(false);
 
   abrir(): void {
     this.nome.set(this.sessao.nome());
@@ -227,6 +234,38 @@ export class ConfiguracoesUsuario {
       error: (erro: HttpErrorResponse) => {
         this.erroLayouts.set(mensagemErro(erro, 'Não foi possível apagar o layout.'));
         this.apagandoLayoutId.set(null);
+      }
+    });
+  }
+
+  protected alterarCor(categoria: string, cor: string): void {
+    this.salvandoCorCategoria.set(categoria);
+    this.erroCores.set(null);
+
+    this.coresCategoria.definirCor(categoria, cor).subscribe({
+      next: () => {
+        this.coresCategoria.aplicarCorLocal(categoria, cor);
+        this.salvandoCorCategoria.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCores.set(mensagemErro(erro, 'Não foi possível salvar a cor.'));
+        this.salvandoCorCategoria.set(null);
+      }
+    });
+  }
+
+  protected redefinirCor(categoria: string): void {
+    this.salvandoCorCategoria.set(categoria);
+    this.erroCores.set(null);
+
+    this.coresCategoria.redefinirCor(categoria).subscribe({
+      next: () => {
+        this.coresCategoria.removerCorLocal(categoria);
+        this.salvandoCorCategoria.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCores.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
+        this.salvandoCorCategoria.set(null);
       }
     });
   }

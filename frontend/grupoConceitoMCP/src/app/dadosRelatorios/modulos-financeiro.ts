@@ -36,13 +36,10 @@ export interface RotinaFinanceira {
   filtros?: CampoFiltro[];
 }
 
-/** Cor do indicador de categoria de relatório (bolinha nos chips e nos grupos
- * da lista) — a mesma cor de destaque (laranja) do site pra todas as categorias. */
-const COR_CATEGORIA = '#e8871e';
-
-export function corCategoria(_categoria: string): string {
-  return COR_CATEGORIA;
-}
+/** Cor padrão do indicador de categoria de relatório (bolinha nos chips e nos
+ * grupos da lista) — usada quando o usuário não personalizou a categoria em
+ * Configurações (ver serviço `CoresCategoria`). */
+export const COR_CATEGORIA_PADRAO = '#e8871e';
 
 export interface ModuloFinanceiroConfig {
   id: string;

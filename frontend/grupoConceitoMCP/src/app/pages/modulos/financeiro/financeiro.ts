@@ -13,7 +13,8 @@ import { RotinaDetalhe } from '../../../componentes/rotina-detalhe/rotina-detalh
 import { RotinaItem } from '../../../componentes/rotina-item/rotina-item';
 import { OpcaoSelectBusca } from '../../../componentes/select-busca/select-busca';
 import { VisualizadorExcel } from '../../../componentes/visualizador-excel/visualizador-excel';
-import { CampoFiltro, MODULOS_FINANCEIRO, RotinaFinanceira, corCategoria } from '../../../dadosRelatorios/modulos-financeiro';
+import { CampoFiltro, MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
+import { CoresCategoria } from '../../../servicos/cores-categoria';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';
@@ -39,6 +40,7 @@ interface GrupoRotinas {
 export class Financeiro {
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
+  private readonly coresCategoria = inject(CoresCategoria);
 
   private readonly moduloId = toSignal(
     this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
@@ -77,7 +79,7 @@ export class Financeiro {
     for (const rotina of rotinas) {
       if (!vistas.has(rotina.categoria)) {
         vistas.add(rotina.categoria);
-        categorias.push({ nome: rotina.categoria, cor: corCategoria(rotina.categoria) });
+        categorias.push({ nome: rotina.categoria, cor: this.coresCategoria.obterCor(rotina.categoria) });
       }
     }
 
@@ -128,7 +130,7 @@ export class Financeiro {
     }
 
     for (const [categoria, rotinas] of mapa) {
-      grupos.push({ categoria, cor: corCategoria(categoria), rotinas });
+      grupos.push({ categoria, cor: this.coresCategoria.obterCor(categoria), rotinas });
     }
 
     return grupos;

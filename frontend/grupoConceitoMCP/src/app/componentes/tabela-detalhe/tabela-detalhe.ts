@@ -1,8 +1,10 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, effect, input, model, output, signal } from '@angular/core';
 import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro';
 import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras';
 import { Botao } from '../botao/botao';
 import { CampoFiltroDinamico } from '../campo-filtro-dinamico/campo-filtro-dinamico';
+import { Dialog } from '../dialog/dialog';
 import { OpcaoSelectBusca, SelectBusca } from '../select-busca/select-busca';
 
 interface GrupoColunasSelecionadas {
@@ -11,15 +13,14 @@ interface GrupoColunasSelecionadas {
 }
 
 /** A partir de quantos filtros selecionados oferece o botão de expandir o
- * painel em tela cheia — abaixo disso o painel normal já cabe tranquilo. */
+ * painel num dialog — abaixo disso o painel normal já cabe tranquilo. */
 const LIMITE_FILTROS_PARA_EXPANDIR = 7;
 
 @Component({
   selector: 'app-tabela-detalhe',
-  imports: [SelectBusca, CampoFiltroDinamico, Botao],
+  imports: [SelectBusca, CampoFiltroDinamico, Botao, Dialog, NgTemplateOutlet],
   templateUrl: './tabela-detalhe.html',
-  styleUrl: './tabela-detalhe.scss',
-  host: { '[class.expandido]': 'expandido()' }
+  styleUrl: './tabela-detalhe.scss'
 })
 export class TabelaDetalhe {
   views = input<ViewFinanceira[]>([]);
@@ -99,7 +100,21 @@ export class TabelaDetalhe {
     this.definirValorFiltro.emit({ chave, valor: valores.join(',') });
   }
 
-  protected alternarExpandido(): void {
-    this.expandido.update((atual) => !atual);
+  protected abrirExpandido(): void {
+    this.expandido.set(true);
+  }
+
+  protected fecharExpandido(): void {
+    this.expandido.set(false);
+  }
+
+  protected confirmar(): void {
+    this.fecharExpandido();
+    this.confirmarFiltro.emit();
+  }
+
+  protected salvar(): void {
+    this.fecharExpandido();
+    this.salvarLayout.emit();
   }
 }

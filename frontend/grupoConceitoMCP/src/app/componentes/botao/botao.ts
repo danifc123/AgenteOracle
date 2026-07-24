@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+ import { Component, input, output } from '@angular/core';
 
 export type BotaoVariant = 'primaria' | 'acao' | 'perigo' | 'icone' | 'contorno' | 'enviar';
 

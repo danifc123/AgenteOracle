@@ -23,7 +23,6 @@ com texto livre digitado pelo usuário).
 
 import json
 from collections import deque
-from decimal import Decimal
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -33,6 +32,7 @@ from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.financeiro.relatorios import _comum
 
 LIMITE_MAXIMO_LINHAS = 1000
 LIMITE_OPCOES_COLUNA = 500
@@ -288,10 +288,6 @@ def _montar_sql(
     return "\n".join(sql), binds
 
 
-def _serializar(valor):
-    return float(valor) if isinstance(valor, Decimal) else valor
-
-
 def _buscar_relatorio_customizado(
     colunas_por_view: dict[str, list[str]], filiais: list[str], filtros: dict[str, dict[str, str | list[str]]]
 ) -> tuple[list[str], list[tuple]]:
@@ -404,7 +400,7 @@ def registrar(mcp) -> None:
         except RelatorioCustomizadoInvalido as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
-        dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar", methods=["GET", "OPTIONS"])

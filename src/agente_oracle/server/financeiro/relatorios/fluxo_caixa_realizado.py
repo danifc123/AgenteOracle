@@ -22,8 +22,6 @@ Oracle de produção, precisa ser reescrita (FILTER -> CASE WHEN, `::tipo` ->
 CAST(... AS tipo)).
 """
 
-from decimal import Decimal
-
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -31,6 +29,7 @@ from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _QUERY = """
@@ -236,10 +235,6 @@ ORDER BY ordem_bloco, ordem_grupo, ordem_item
 """
 
 
-def _serializar(valor):
-    return float(valor) if isinstance(valor, Decimal) else valor
-
-
 def _buscar_fluxo_caixa_realizado(filiais: list[str], ano: str) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = _QUERY.replace("__FILIAL_IN__", clausula_filial)
@@ -253,10 +248,9 @@ def _buscar_fluxo_caixa_realizado(filiais: list[str], ano: str) -> tuple[list[st
 
 
 def _parametros_da_query(request: Request) -> tuple[list[str], str] | None:
-    filial_bruto = request.query_params.get("filial", "").strip()
+    filiais = _comum.filiais_da_query(request)
     ano = request.query_params.get("ano", "").strip()
-    filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
-    if not filiais or not ano:
+    if filiais is None or not ano:
         return None
     return filiais, ano
 
@@ -279,7 +273,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)
-        dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/fluxo-caixa-realizado/exportar", methods=["GET", "OPTIONS"])

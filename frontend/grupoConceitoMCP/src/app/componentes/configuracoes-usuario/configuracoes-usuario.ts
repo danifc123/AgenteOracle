@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
+import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts';
 import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
 import { Botao } from '../botao/botao';
@@ -37,6 +38,14 @@ export class ConfiguracoesUsuario {
   protected readonly erroSenha = signal<string | null>(null);
   protected readonly senhaAlterada = signal(false);
 
+  protected readonly layouts = signal<LayoutRelatorio[]>([]);
+  protected readonly carregandoLayouts = signal(false);
+  protected readonly editandoLayoutId = signal<number | null>(null);
+  protected readonly nomeEdicaoLayout = signal('');
+  protected readonly salvandoLayoutId = signal<number | null>(null);
+  protected readonly apagandoLayoutId = signal<number | null>(null);
+  protected readonly erroLayouts = signal<string | null>(null);
+
   abrir(): void {
     this.nome.set(this.sessao.nome());
     this.fotoPreview.set(this.sessao.foto());
@@ -47,6 +56,7 @@ export class ConfiguracoesUsuario {
     this.erroSenha.set(null);
     this.senhaAlterada.set(false);
     this.aberto.set(true);
+    this.carregarLayouts();
   }
 
   fechar(): void {
@@ -146,5 +156,78 @@ export class ConfiguracoesUsuario {
           this.salvandoSenha.set(false);
         }
       });
+  }
+
+  protected totalColunasLayout(layout: LayoutRelatorio): number {
+    return Object.values(layout.colunas_selecionadas).reduce((total, colunas) => total + colunas.length, 0);
+  }
+
+  private carregarLayouts(): void {
+    this.carregandoLayouts.set(true);
+    this.erroLayouts.set(null);
+
+    this.http.get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`).subscribe({
+      next: (layouts) => {
+        this.layouts.set(layouts);
+        this.carregandoLayouts.set(false);
+      },
+      error: () => {
+        this.layouts.set([]);
+        this.carregandoLayouts.set(false);
+      }
+    });
+  }
+
+  protected iniciarEdicaoLayout(layout: LayoutRelatorio): void {
+    this.editandoLayoutId.set(layout.id);
+    this.nomeEdicaoLayout.set(layout.nome);
+    this.erroLayouts.set(null);
+  }
+
+  protected cancelarEdicaoLayout(): void {
+    this.editandoLayoutId.set(null);
+  }
+
+  protected salvarEdicaoLayout(layout: LayoutRelatorio): void {
+    const nome = this.nomeEdicaoLayout().trim();
+    if (!nome) {
+      this.erroLayouts.set('Nome não pode ficar em branco.');
+      return;
+    }
+
+    this.salvandoLayoutId.set(layout.id);
+    this.erroLayouts.set(null);
+
+    this.http.patch<LayoutRelatorio>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`, { nome }).subscribe({
+      next: (atualizado) => {
+        this.layouts.update((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
+        this.editandoLayoutId.set(null);
+        this.salvandoLayoutId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroLayouts.set(mensagemErro(erro, 'Não foi possível renomear o layout.'));
+        this.salvandoLayoutId.set(null);
+      }
+    });
+  }
+
+  protected apagarLayout(layout: LayoutRelatorio): void {
+    if (this.apagandoLayoutId() || !confirm(`Apagar o layout "${layout.nome}"? Essa ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    this.apagandoLayoutId.set(layout.id);
+    this.erroLayouts.set(null);
+
+    this.http.delete(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`).subscribe({
+      next: () => {
+        this.layouts.update((atual) => atual.filter((item) => item.id !== layout.id));
+        this.apagandoLayoutId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroLayouts.set(mensagemErro(erro, 'Não foi possível apagar o layout.'));
+        this.apagandoLayoutId.set(null);
+      }
+    });
   }
 }

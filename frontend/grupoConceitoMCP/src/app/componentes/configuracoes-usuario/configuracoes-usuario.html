@@ -85,4 +85,70 @@
       Alterar senha
     </app-botao>
   </section>
+
+  <section class="secao">
+    <h3>Layouts salvos</h3>
+
+    @if (carregandoLayouts()) {
+      <p class="carregando">Carregando layouts...</p>
+    } @else if (!layouts().length) {
+      <p class="carregando">Nenhum layout salvo ainda.</p>
+    } @else {
+      <ul class="lista-layouts">
+        @for (layout of layouts(); track layout.id) {
+          <li class="layout-item">
+            @if (editandoLayoutId() === layout.id) {
+              <input
+                type="text"
+                class="input-edicao-layout"
+                [value]="nomeEdicaoLayout()"
+                (input)="nomeEdicaoLayout.set($any($event.target).value)"
+                autocomplete="off"
+                aria-label="Nome do layout"
+              />
+              <app-botao
+                variant="icone"
+                [loading]="salvandoLayoutId() === layout.id"
+                (clicked)="salvarEdicaoLayout(layout)"
+                ariaLabel="Salvar nome"
+                title="Salvar nome"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </app-botao>
+              <app-botao variant="icone" [disabled]="salvandoLayoutId() === layout.id" (clicked)="cancelarEdicaoLayout()" ariaLabel="Cancelar" title="Cancelar">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </app-botao>
+            } @else {
+              <div class="layout-info">
+                <span class="layout-nome">{{ layout.nome }}</span>
+                <span class="layout-resumo">{{ totalColunasLayout(layout) }} coluna(s)</span>
+              </div>
+              <app-botao variant="icone" (clicked)="iniciarEdicaoLayout(layout)" ariaLabel="Renomear layout" title="Renomear">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              </app-botao>
+              <app-botao
+                variant="perigo"
+                [loading]="apagandoLayoutId() === layout.id"
+                loadingText="Apagando..."
+                (clicked)="apagarLayout(layout)"
+              >
+                Apagar
+              </app-botao>
+            }
+          </li>
+        }
+      </ul>
+    }
+
+    @if (erroLayouts()) {
+      <p class="erro">{{ erroLayouts() }}</p>
+    }
+  </section>
 </app-dialog>

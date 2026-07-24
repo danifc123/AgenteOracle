@@ -29,6 +29,7 @@ export class TabelaDetalhe {
 
   confirmarFiltro = output<void>();
   limparFiltros = output<void>();
+  salvarLayout = output<void>();
   definirValorFiltro = output<{ chave: string; valor: string }>();
 
   protected readonly totalColunas = computed(() =>

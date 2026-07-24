@@ -6,6 +6,13 @@
   <app-busca class="busca"
              placeholder="Buscar tabela..."
              [(valor)]="termoBusca" />
+
+  <app-select-busca class="select-layout"
+                     rotulo="Layout"
+                     placeholder="Nenhum layout"
+                     [opcoes]="opcoesLayouts()"
+                     [valor]="layoutSelecionadoId()"
+                     (valorChange)="aplicarLayout($event)" />
 </div>
 
 <div class="conteudo-relatorios">
@@ -41,6 +48,7 @@
                       [(filiaisSelecionadas)]="filiaisSelecionadas"
                       (confirmarFiltro)="confirmarFiltroSelecionada()"
                       (limparFiltros)="limparFiltrosSelecionados()"
+                      (salvarLayout)="abrirSalvarLayout()"
                       (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)" />
 </div>
 
@@ -76,4 +84,29 @@
     </svg>
     {{ baixandoRelatorio() ? 'Baixando...' : 'Baixar' }}
   </app-botao>
+</app-dialog>
+
+<app-dialog [aberto]="salvarLayoutAberto()"
+            titulo="Salvar layout"
+            [temRodape]="true"
+            (fechar)="fecharSalvarLayout()">
+  <label class="campo">
+    <span>Nome do layout</span>
+    <input type="text"
+           [value]="nomeNovoLayout()"
+           (input)="nomeNovoLayout.set($any($event.target).value)"
+           autocomplete="off"
+           placeholder="Ex: Faturamento mensal" />
+  </label>
+
+  @if (erroSalvarLayout()) {
+  <p class="erro">{{ erroSalvarLayout() }}</p>
+  }
+
+  <div rodape class="rodape-form">
+    <app-botao variant="contorno" [disabled]="salvandoLayout()" (clicked)="fecharSalvarLayout()">Cancelar</app-botao>
+    <app-botao variant="primaria" [loading]="salvandoLayout()" loadingText="Salvando..." (clicked)="confirmarSalvarLayout()">
+      Salvar
+    </app-botao>
+  </div>
 </app-dialog>

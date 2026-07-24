@@ -129,11 +129,8 @@ h2 {
 .detalhe-acoes {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
-
-  .botao--completa {
-    flex: 1;
-  }
 }
 
 .detalhe-ajuda {

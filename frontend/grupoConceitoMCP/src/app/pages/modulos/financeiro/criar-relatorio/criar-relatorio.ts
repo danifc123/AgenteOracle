@@ -5,10 +5,11 @@ import { Botao } from '../../../../componentes/botao/botao';
 import { Busca } from '../../../../componentes/busca/busca';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import { OpcaoSelectBusca } from '../../../../componentes/select-busca/select-busca';
+import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { TabelaDetalhe } from '../../../../componentes/tabela-detalhe/tabela-detalhe';
 import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
+import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
 import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
 
 interface Filial {
@@ -16,9 +17,13 @@ interface Filial {
   nome: string;
 }
 
+function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
+  return erro.error?.erro || mensagemPadrao;
+}
+
 @Component({
   selector: 'app-criar-relatorio',
-  imports: [Busca, Dialog, Botao, VisualizadorExcel, ModuloHeader, TabelaItem, TabelaDetalhe],
+  imports: [Busca, Dialog, Botao, VisualizadorExcel, ModuloHeader, TabelaItem, TabelaDetalhe, SelectBusca],
   templateUrl: './criar-relatorio.html',
   styleUrl: './criar-relatorio.scss'
 })
@@ -42,6 +47,13 @@ export class CriarRelatorio {
   protected readonly opcoesColunas = signal<Record<string, OpcaoSelectBusca[]>>({});
   protected readonly filtroInvalido = signal(false);
 
+  protected readonly layouts = signal<LayoutRelatorio[]>([]);
+  protected readonly layoutSelecionadoId = signal<string | null>(null);
+  protected readonly salvarLayoutAberto = signal(false);
+  protected readonly nomeNovoLayout = signal('');
+  protected readonly salvandoLayout = signal(false);
+  protected readonly erroSalvarLayout = signal<string | null>(null);
+
   protected readonly viewsFiltradas = computed(() => {
     const termo = this.termoBusca().trim().toLowerCase();
     if (!termo) {
@@ -56,9 +68,14 @@ export class CriarRelatorio {
     Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0)
   );
 
+  protected readonly opcoesLayouts = computed<OpcaoSelectBusca[]>(() =>
+    this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome }))
+  );
+
   constructor() {
     this.carregarViews();
     this.carregarFiliais();
+    this.carregarLayouts();
   }
 
   private carregarViews(): void {
@@ -76,6 +93,13 @@ export class CriarRelatorio {
       error: () => {
         this.filiais.set([]);
       }
+    });
+  }
+
+  private carregarLayouts(): void {
+    this.http.get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`).subscribe({
+      next: (layouts) => this.layouts.set(layouts),
+      error: () => this.layouts.set([])
     });
   }
 
@@ -139,6 +163,83 @@ export class CriarRelatorio {
       });
   }
 
+  /** Chamado ao escolher um layout salvo no select do topo — null (usuário
+   * limpou o select) volta o painel de detalhe pro estado vazio, igual o
+   * botão "Limpar". */
+  protected aplicarLayout(id: string | null): void {
+    this.layoutSelecionadoId.set(id);
+    if (!id) {
+      this.limparFiltrosSelecionados();
+      return;
+    }
+
+    const layout = this.layouts().find((item) => String(item.id) === id);
+    if (!layout) {
+      return;
+    }
+
+    this.colunasSelecionadas.set(layout.colunas_selecionadas);
+    this.valoresFiltros.set(layout.valores_filtros);
+    this.filiaisSelecionadas.set(layout.filiais_selecionadas);
+
+    for (const [nomeView, colunas] of Object.entries(layout.colunas_selecionadas)) {
+      const view = this.views().find((item) => item.nome === nomeView);
+      for (const nomeColuna of colunas) {
+        const tipo = view?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo;
+        if (tipo === 'texto') {
+          this.carregarOpcoesColuna(`${nomeView}.${nomeColuna}`);
+        }
+      }
+    }
+  }
+
+  protected abrirSalvarLayout(): void {
+    if (!this.totalColunasSelecionadas()) {
+      return;
+    }
+    this.nomeNovoLayout.set('');
+    this.erroSalvarLayout.set(null);
+    this.salvarLayoutAberto.set(true);
+  }
+
+  protected fecharSalvarLayout(): void {
+    if (this.salvandoLayout()) {
+      return;
+    }
+    this.salvarLayoutAberto.set(false);
+  }
+
+  protected confirmarSalvarLayout(): void {
+    const nome = this.nomeNovoLayout().trim();
+    if (!nome) {
+      this.erroSalvarLayout.set('Dê um nome pro layout.');
+      return;
+    }
+
+    this.salvandoLayout.set(true);
+    this.erroSalvarLayout.set(null);
+
+    this.http
+      .post<LayoutRelatorio>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`, {
+        nome,
+        colunas_selecionadas: this.colunasSelecionadas(),
+        valores_filtros: this.valoresFiltros(),
+        filiais_selecionadas: this.filiaisSelecionadas()
+      })
+      .subscribe({
+        next: (layout) => {
+          this.layouts.update((atual) => [...atual, layout].sort((a, b) => a.nome.localeCompare(b.nome)));
+          this.layoutSelecionadoId.set(String(layout.id));
+          this.salvandoLayout.set(false);
+          this.salvarLayoutAberto.set(false);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erroSalvarLayout.set(mensagemErro(erro, 'Não foi possível salvar o layout.'));
+          this.salvandoLayout.set(false);
+        }
+      });
+  }
+
   protected definirValorFiltro(chave: string, valor: string): void {
     this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
   }
@@ -147,6 +248,7 @@ export class CriarRelatorio {
     this.filiaisSelecionadas.set([]);
     this.colunasSelecionadas.set({});
     this.valoresFiltros.set({});
+    this.layoutSelecionadoId.set(null);
   }
 
   protected confirmarFiltroSelecionada(): void {

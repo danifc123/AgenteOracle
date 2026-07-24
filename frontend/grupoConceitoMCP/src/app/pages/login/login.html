@@ -43,7 +43,7 @@
                      variant="primaria"
                      largura="completa"
                      [loading]="entrando()"
-                     [disabled]="entrando()"
+                     [disabled]="entrando() || segundosEspera() !== null"
                      loadingText="Entrando...">Entrar</app-botao>
         </form>
       </div>

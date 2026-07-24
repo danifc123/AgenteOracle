@@ -36,19 +36,12 @@ export interface RotinaFinanceira {
   filtros?: CampoFiltro[];
 }
 
-/** Cor do indicador de cada categoria de relatório (bolinha nos chips e nos grupos da lista). */
-export const CORES_CATEGORIA: Record<string, string> = {
-  Caixa: '#2f9e58',
-  'Contas a Receber': '#3b6fd6',
-  Estoque: '#e8871e',
-  Vendas: '#8a4fd6',
-  Compras: '#c47f1a',
-  'Contas a Pagar': '#c94b4b',
-  Gerencial: '#6b7280'
-};
+/** Cor do indicador de categoria de relatório (bolinha nos chips e nos grupos
+ * da lista) — a mesma cor de destaque (laranja) do site pra todas as categorias. */
+const COR_CATEGORIA = '#e8871e';
 
-export function corCategoria(categoria: string): string {
-  return CORES_CATEGORIA[categoria] ?? '#6b7280';
+export function corCategoria(_categoria: string): string {
+  return COR_CATEGORIA;
 }
 
 export interface ModuloFinanceiroConfig {

@@ -96,28 +96,23 @@ h1 {
   color: var(--color-primary-light);
 }
 
-.suporte {
-  margin-top: 24px;
+.aviso {
+  margin-top: 20px;
   padding: 18px 24px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(216, 168, 26, 0.1);
+  border: 1px solid rgba(216, 168, 26, 0.35);
   border-radius: var(--radius-md);
   text-align: center;
 
   p {
     margin: 0;
-    color: var(--color-text-muted);
+    color: var(--color-text);
     font-size: 13.5px;
     line-height: 1.5;
   }
 
-  a {
-    color: var(--color-primary);
-    font-weight: 600;
-
-    &:hover {
-      text-decoration: underline;
-    }
+  strong {
+    color: #8a6d1a;
   }
 }
 

@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { Sessao } from '../../servicos/sessao';
 
 @Component({
   selector: 'app-home',
@@ -7,4 +8,6 @@ import { RouterLink } from '@angular/router';
   templateUrl: './home.html',
   styleUrl: './home.scss'
 })
-export class Home {}
+export class Home {
+  protected readonly sessao = inject(Sessao);
+}

@@ -4,12 +4,22 @@
       <tr>
         <th class="celula-canto"></th>
         @for (coluna of colunas(); track coluna) {
-          <th>{{ coluna }}</th>
+          <th class="ordenavel" (click)="ordenarPor(coluna)">
+            <span class="cabecalho-coluna">
+              {{ coluna }}
+              <svg class="icone-ordenacao"
+                   [class.ativo]="colunaOrdenada() === coluna"
+                   [class.invertido]="colunaOrdenada() === coluna && direcaoOrdenacao() === 'desc'"
+                   viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </th>
         }
       </tr>
     </thead>
     <tbody>
-      @for (linha of dados(); track $index) {
+      @for (linha of dadosOrdenados(); track $index) {
         <tr>
           <th class="numero-linha" scope="row">{{ $index + 1 }}</th>
           @for (coluna of colunas(); track coluna) {

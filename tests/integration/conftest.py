@@ -6,6 +6,8 @@ esse banco não estiver acessível, para o resto da suíte continuar utilizável
 sem depender de infraestrutura externa.
 """
 
+import uuid
+
 import psycopg
 import pytest
 
@@ -44,3 +46,28 @@ def mcp_app():
 
     app = mcp.streamable_http_app()
     return TestClient(app)
+
+
+@pytest.fixture
+def usuario_teste():
+    """Cria um usuário com papel `financeiro` no banco de teste, com login
+    aleatório (não colide com contas reais), e apaga no fim do teste."""
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    login = f"teste_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    criado = usuarios_tools.criar_usuario(login, senha, "Usuário de Teste (integração)", ["financeiro"])
+
+    yield {"usuario": login, "senha": senha, "id": criado["id"]}
+
+    usuarios_tools.deletar_usuario(criado["id"])
+
+
+@pytest.fixture
+def token_teste(mcp_app, usuario_teste):
+    """Token JWT válido para `usuario_teste`, via login real (mesma rota que o frontend usa)."""
+    resposta = mcp_app.post(
+        "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": usuario_teste["senha"]}
+    )
+    assert resposta.status_code == 200
+    return resposta.json()["token"]

@@ -14,13 +14,16 @@
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  transition: width 0.2s ease, padding 0.2s ease;
+  transition:
+    width 0.2s ease,
+    padding 0.2s ease;
 }
 
 .brand {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 6px 10px 22px;
 }
 
@@ -28,16 +31,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: flex-end;
   flex-shrink: 0;
   width: 28px;
   height: 28px;
-  margin-left: auto;
   border: none;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.2s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.2s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.16);
@@ -45,22 +51,13 @@
   }
 }
 
-.brand-mark {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: var(--color-primary-light);
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.brand-name {
-  font-weight: 600;
-  font-size: 17px;
-  letter-spacing: 0.2px;
+.brand-logo {
+  max-height: 110px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
 }
 
 .nav {
@@ -130,7 +127,10 @@
   margin: 0;
   overflow: hidden;
   opacity: 0;
-  transition: max-height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+  transition:
+    max-height 0.25s ease,
+    opacity 0.2s ease,
+    margin 0.25s ease;
 
   &.aberto {
     max-height: 240px;
@@ -233,7 +233,9 @@
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.16);
@@ -247,15 +249,15 @@
 
   .brand {
     padding: 6px 0 22px;
-    justify-content: center;
+    align-items: center;
   }
 
-  .brand-name {
+  .brand-logo {
     display: none;
   }
 
   .colapsar-toggle {
-    margin-left: 0;
+    align-self: center;
     transform: rotate(180deg);
   }
 
@@ -270,7 +272,7 @@
   }
 
   .nav-parent::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 6px;
     right: 10px;
@@ -306,7 +308,8 @@
     display: none;
   }
 
-  .sair {
+  .sair,
+  .config {
     display: none;
   }
 }
@@ -353,10 +356,13 @@
 
     .brand {
       padding: 6px 10px 22px;
-      justify-content: flex-start;
+      align-items: stretch;
     }
 
-    .brand-name,
+    .brand-logo {
+      display: block;
+    }
+
     .nav-label {
       display: inline;
     }
@@ -373,7 +379,8 @@
       display: flex;
     }
 
-    .sair {
+    .sair,
+    .config {
       display: inline-flex;
     }
 

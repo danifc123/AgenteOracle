@@ -37,6 +37,37 @@
     letter-spacing: 0.02em;
   }
 
+  thead th.ordenavel {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+
+  .cabecalho-coluna {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .icone-ordenacao {
+    flex-shrink: 0;
+    opacity: 0.35;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+
+    &.ativo {
+      opacity: 1;
+      color: var(--color-primary-light);
+    }
+
+    &.invertido {
+      transform: rotate(180deg);
+    }
+  }
+
   tbody th {
     position: sticky;
     left: 0;

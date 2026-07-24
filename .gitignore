@@ -45,3 +45,8 @@ Thumbs.db
 # Notas pessoais locais (não versionar)
 COMO_INICIAR.md
 Proposta_Infraestrutura_IA_Agente_Oracle.docx
+
+# DDL das views financeiras (lógica de negócio/schema do ERP do cliente —
+# fica só local, nunca versionado). As views já existem de verdade no banco;
+# isto aqui é só a definição em SQL usada pra criá-las.
+src/agente_oracle/db/views/

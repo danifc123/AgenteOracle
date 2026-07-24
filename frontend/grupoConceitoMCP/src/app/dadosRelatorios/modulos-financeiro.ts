@@ -1,4 +1,4 @@
-export type TipoFiltro = 'texto' | 'select' | 'periodo-data';
+export type TipoFiltro = 'texto' | 'select' | 'periodo-data' | 'numero';
 
 export interface OpcaoFiltro {
   valor: string;
@@ -6,7 +6,7 @@ export interface OpcaoFiltro {
 }
 
 export interface CampoFiltro {
-  /** Nome do parâmetro na URL (?chave=...). Em campos do tipo periodo-data, gera {chave}_ini e {chave}_fim. */
+  /** Nome do parâmetro na URL (?chave=...). Em campos do tipo periodo-data e numero, gera {chave}_ini e {chave}_fim (numero usa _ini/_fim como mínimo/máximo). */
   chave: string;
   rotulo: string;
   tipo: TipoFiltro;
@@ -23,6 +23,10 @@ export interface CampoFiltro {
 
 export interface RotinaFinanceira {
   nome: string;
+  /** Sigla do relatório no ERP de origem (ex: FINR10), exibida como etiqueta separada do nome. */
+  codigo?: string;
+  categoria: string;
+  descricao: string;
   /** Sufixo da rota REST do backend: /api/financeiro/{apiEndpoint} */
   apiEndpoint?: string;
   /**
@@ -31,6 +35,11 @@ export interface RotinaFinanceira {
    */
   filtros?: CampoFiltro[];
 }
+
+/** Cor padrão do indicador de categoria de relatório (bolinha nos chips e nos
+ * grupos da lista) — usada quando o usuário não personalizou a categoria em
+ * Configurações (ver serviço `CoresCategoria`). */
+export const COR_CATEGORIA_PADRAO = '#e8871e';
 
 export interface ModuloFinanceiroConfig {
   id: string;
@@ -47,11 +56,15 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
     rotinas: [
       {
         nome: 'Fluxo de Caixa Realizado',
+        categoria: 'Caixa',
+        descricao: 'Entradas e saídas de caixa já realizadas, agrupadas por período.',
         apiEndpoint: 'fluxo-caixa-realizado',
         filtros: [{ chave: 'ano', rotulo: 'Ano', tipo: 'texto', obrigatorio: true }]
       },
       {
         nome: 'Duplicata Mercantil em Lote',
+        categoria: 'Contas a Receber',
+        descricao: 'Emissão de duplicatas mercantis em lote para os títulos selecionados.',
         apiEndpoint: 'duplicata-mercantil',
         filtros: [
           { chave: 'cliente', rotulo: 'Cliente', tipo: 'select', apiEndpoint: 'clientes' },
@@ -74,6 +87,8 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
       },
       {
         nome: 'Relatório Baixa por Produtos',
+        categoria: 'Estoque',
+        descricao: 'Movimentações de baixa de estoque filtradas por produto e período.',
         apiEndpoint: 'baixa-produtos',
         filtros: [
           { chave: 'titulo_ini', rotulo: 'Título De', tipo: 'texto' },
@@ -85,16 +100,21 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
       },
       {
         nome: 'Contas a Receber com Descrição do Produto',
+        categoria: 'Contas a Receber',
+        descricao: 'Títulos a receber detalhados com a descrição do produto de origem.',
         apiEndpoint: 'contas-receber-produto',
         filtros: [
           { chave: 'cliente', rotulo: 'Cliente', tipo: 'select', apiEndpoint: 'clientes' },
           { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data' },
-          { chave: 'vencimento', rotulo: 'Vencimento', tipo: 'periodo-data' },
-          { chave: 'tipos_excluir', rotulo: 'Tipos a não considerar (separe por ;)', tipo: 'texto' }
+          { chave: 'entrega', rotulo: 'Data de Entrega', tipo: 'periodo-data' },
+          { chave: 'naturezas', rotulo: 'Natureza (separe por ;)', tipo: 'texto' }
         ]
       },
       {
-        nome: 'FINR10 - Posição dos Títulos',
+        nome: 'Posição dos Títulos',
+        codigo: 'FINR10',
+        categoria: 'Contas a Receber',
+        descricao: 'Posição consolidada dos títulos a receber por cliente e período.',
         apiEndpoint: 'posicao-titulos',
         filtros: [
           { chave: 'cliente_ini', rotulo: 'Cliente De', tipo: 'select', apiEndpoint: 'clientes' },
@@ -154,7 +174,10 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         ]
       },
       {
-        nome: 'FINR137 - Posição dos Títulos a Receber por Vendedor',
+        nome: 'Posição dos Títulos a Receber por Vendedor',
+        codigo: 'FINR137',
+        categoria: 'Contas a Receber',
+        descricao: 'Posição dos títulos a receber agrupada por vendedor/consultor.',
         apiEndpoint: 'posicao-titulos-vendedor',
         filtros: [
           { chave: 'cliente_ini', rotulo: 'Cliente De', tipo: 'select', apiEndpoint: 'clientes' },
@@ -179,7 +202,10 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         ]
       },
       {
-        nome: 'FINR11 - Posição dos Títulos a Pagar',
+        nome: 'Posição dos Títulos a Pagar',
+        codigo: 'FINR11',
+        categoria: 'Contas a Pagar',
+        descricao: 'Posição consolidada dos títulos a pagar por fornecedor e período.',
         apiEndpoint: 'posicao-titulos-pagar',
         filtros: [
           { chave: 'fornecedor_ini', rotulo: 'Fornecedor De', tipo: 'select', apiEndpoint: 'fornecedores' },
@@ -239,7 +265,10 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         ]
       },
       {
-        nome: 'FINR12 - Relação de Baixas',
+        nome: 'Relação de Baixas',
+        codigo: 'FINR12',
+        categoria: 'Contas a Receber',
+        descricao: 'Relação de baixas de recebimentos e pagamentos por data e banco.',
         apiEndpoint: 'relacao-baixas',
         filtros: [
           {
@@ -284,7 +313,10 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         ]
       },
       {
-        nome: 'FINR13 - Extrato Bancário',
+        nome: 'Extrato Bancário',
+        codigo: 'FINR13',
+        categoria: 'Caixa',
+        descricao: 'Extrato detalhado de movimentações bancárias por conta e período.',
         apiEndpoint: 'extrato-bancario',
         filtros: [
           { chave: 'conta_bancaria', rotulo: 'Conta Bancária', tipo: 'select', obrigatorio: true, apiEndpoint: 'contas-bancarias' },
@@ -302,7 +334,10 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         ]
       },
       {
-        nome: 'FINR14 - Relação de Títulos a Pagar com Retenção',
+        nome: 'Relação de Títulos a Pagar com Retenção',
+        codigo: 'FINR14',
+        categoria: 'Contas a Pagar',
+        descricao: 'Títulos a pagar com destaque de impostos retidos por fornecedor.',
         apiEndpoint: 'retencao-impostos',
         filtros: [
           { chave: 'fornecedor_ini', rotulo: 'Fornecedor De', tipo: 'select', apiEndpoint: 'fornecedores' },
@@ -342,7 +377,10 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
         ]
       },
       {
-        nome: 'FIN32 - Movimento Financeiro Diário',
+        nome: 'Movimento Financeiro Diário',
+        codigo: 'FIN32',
+        categoria: 'Gerencial',
+        descricao: 'Visão diária consolidada do movimento financeiro, considerando limite de crédito.',
         apiEndpoint: 'movimento-financeiro-diario',
         filtros: [
           { chave: 'data', rotulo: 'Data de Referência', tipo: 'periodo-data', obrigatorio: true },

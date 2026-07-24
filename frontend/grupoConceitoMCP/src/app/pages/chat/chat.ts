@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
+import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { ChatEntrada } from './entrada/chat-entrada';
 import { ChatMensagens, ConsultaUsada, MensagemChat } from './mensagens/chat-mensagens';
 
@@ -11,7 +12,7 @@ interface RespostaChat {
 
 @Component({
   selector: 'app-chat',
-  imports: [ChatMensagens, ChatEntrada],
+  imports: [ChatMensagens, ChatEntrada, ModuloHeader],
   templateUrl: './chat.html',
   styleUrl: './chat.scss'
 })

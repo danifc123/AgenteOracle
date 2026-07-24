@@ -1,10 +1,6 @@
-<header class="page-header">
-  <div>
-    <p class="breadcrumb">Administração</p>
-    <h1>Usuários</h1>
-  </div>
-  <app-botao variant="primaria" (clicked)="abrirDialog()">Novo usuário</app-botao>
-</header>
+<app-modulo-header breadcrumb="Administração" titulo="Usuários">
+  <app-botao acoes variant="primaria" (clicked)="abrirDialog()">Novo usuário</app-botao>
+</app-modulo-header>
 
 @if (erro()) {
   <p class="erro-carregamento">{{ erro() }}</p>

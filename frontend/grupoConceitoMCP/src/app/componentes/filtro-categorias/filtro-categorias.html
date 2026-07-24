@@ -1,0 +1,18 @@
+<div class="chips">
+  <button type="button"
+          class="chip"
+          [class.chip--ativo]="selecionada() === null"
+          (click)="selecionar(null)">
+    Todos
+  </button>
+
+  @for (categoria of categorias(); track categoria.nome) {
+    <button type="button"
+            class="chip"
+            [class.chip--ativo]="selecionada() === categoria.nome"
+            (click)="selecionar(categoria.nome)">
+      <span class="chip-dot" [style.background]="categoria.cor"></span>
+      {{ categoria.nome }}
+    </button>
+  }
+</div>

@@ -21,6 +21,7 @@ from agente_oracle.server.financeiro.relatorios import (
     posicao_titulos_pagar,
     posicao_titulos_vendedor,
     relacao_baixas,
+    relatorio_customizado,
     retencao_impostos,
 )
 
@@ -39,3 +40,4 @@ def registrar(mcp) -> None:
     extrato_bancario.registrar(mcp)
     retencao_impostos.registrar(mcp)
     movimento_financeiro_diario.registrar(mcp)
+    relatorio_customizado.registrar(mcp)

@@ -1,0 +1,119 @@
+<ng-template #camposFiltro>
+  <span class="secao-titulo">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
+    </svg>
+    Filial
+  </span>
+
+  <div class="campos-grid" [class.campos-grid--invalido]="filtroInvalido()">
+    <app-select-busca rotulo="Filial(is) *"
+                       placeholder="Filial(is)..."
+                       [multiplo]="true"
+                       [opcoes]="filiais()"
+                       [(valores)]="filiaisSelecionadas" />
+  </div>
+
+  @for (grupo of gruposSelecionados(); track grupo.view.nome) {
+    <span class="secao-titulo secao-titulo--filtros">{{ grupo.view.descricao }}</span>
+    <div class="campos-grid">
+      @for (campo of grupo.campos; track campo.chave) {
+        @if (campo.tipo === 'texto') {
+          <app-select-busca [rotulo]="campo.rotulo"
+                             placeholder="Todos"
+                             [multiplo]="true"
+                             [opcoes]="opcoesDaColuna(campo.chave)"
+                             [valores]="valoresSelecionados(campo.chave)"
+                             (valoresChange)="definirValoresFiltro(campo.chave, $event)" />
+        } @else {
+          <app-campo-filtro-dinamico [campo]="campo"
+                                      [valorIni]="valorFiltro(campo.chave + '_ini')"
+                                      [valorFim]="valorFiltro(campo.chave + '_fim')"
+                                      (valorIniChange)="definirValorFiltro.emit({ chave: campo.chave + '_ini', valor: $event })"
+                                      (valorFimChange)="definirValorFiltro.emit({ chave: campo.chave + '_fim', valor: $event })" />
+        }
+      }
+    </div>
+  }
+</ng-template>
+
+<ng-template #acoesFiltro>
+  <app-botao variant="primaria" (clicked)="confirmar()">
+    Gerar Relatório
+  </app-botao>
+  <app-botao variant="acao" [disabled]="totalColunas() === 0" (clicked)="salvar()">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+      <path d="M17 21v-8H7v8" />
+      <path d="M7 3v5h8" />
+    </svg>
+    Salvar layout
+  </app-botao>
+  <app-botao variant="contorno" (clicked)="limparFiltros.emit()">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    Limpar
+  </app-botao>
+</ng-template>
+
+@if (totalColunas()) {
+  <div class="detalhe">
+    <div class="detalhe-cabecalho">
+      <span class="detalhe-icone">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M3 10h18M9 10v10" />
+        </svg>
+      </span>
+
+      <div class="detalhe-titulo-area">
+        <h2>Relatório personalizado</h2>
+        <p class="detalhe-descricao">{{ totalColunas() }} coluna(s) de {{ gruposSelecionados().length }} tabela(s) selecionada(s).</p>
+      </div>
+
+      @if (podeExpandir()) {
+        <button type="button"
+                class="detalhe-expandir"
+                (click)="abrirExpandido()"
+                aria-label="Expandir num dialog maior"
+                title="Expandir num dialog maior">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
+      }
+    </div>
+
+    <div class="detalhe-corpo">
+      <ng-container *ngTemplateOutlet="camposFiltro" />
+    </div>
+
+    <div class="detalhe-rodape">
+      <div class="detalhe-acoes">
+        <ng-container *ngTemplateOutlet="acoesFiltro" />
+      </div>
+      <p class="detalhe-ajuda">Selecione ao menos uma filial para gerar</p>
+    </div>
+  </div>
+} @else {
+  <div class="detalhe-vazio">
+    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 10h18M9 10v10" />
+    </svg>
+    <h3>Selecione as colunas</h3>
+    <p>Abra uma ou mais tabelas na lista à esquerda e marque as colunas que quer no relatório — dá pra combinar colunas de tabelas relacionadas.</p>
+  </div>
+}
+
+<app-dialog [aberto]="expandido()"
+            titulo="Relatório personalizado"
+            [temRodape]="true"
+            (fechar)="fecharExpandido()">
+  <ng-container *ngTemplateOutlet="camposFiltro" />
+
+  <div rodape class="detalhe-acoes">
+    <ng-container *ngTemplateOutlet="acoesFiltro" />
+  </div>
+</app-dialog>

@@ -55,7 +55,9 @@ export class Chat {
       });
   }
 
-  baixarRelatorio(sql: string): void {
+  baixarRelatorio(dados: { sql: string; titulo: string }): void {
+    const { sql, titulo } = dados;
+
     if (this.baixandoSql()) {
       return;
     }
@@ -64,7 +66,7 @@ export class Chat {
     this.erro.set(null);
 
     this.http
-      .post(`${MCP_API_BASE_URL}/api/relatorio/exportar`, { sql }, { observe: 'response', responseType: 'blob' })
+      .post(`${MCP_API_BASE_URL}/api/relatorio/exportar`, { sql, titulo }, { observe: 'response', responseType: 'blob' })
       .subscribe({
         next: (resposta) => {
           const blob = resposta.body;

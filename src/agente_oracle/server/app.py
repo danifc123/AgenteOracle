@@ -23,6 +23,11 @@ def main() -> None:
         allow_origins=settings.allowed_origins_list,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Sem isso o navegador recebe o header `Content-Disposition` (nome do
+        # arquivo de download) mas não deixa o JS lê-lo via `fetch`/`XHR` —
+        # todo download de Excel (chat, criar relatório, rotinas) caía no
+        # nome padrão do frontend em vez do nome real vindo do backend.
+        expose_headers=["Content-Disposition"],
     )
 
     uvicorn.run(app, host=settings.mcp_host, port=settings.mcp_port, log_level="info")

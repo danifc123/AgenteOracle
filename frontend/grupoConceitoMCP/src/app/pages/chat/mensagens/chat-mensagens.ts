@@ -29,7 +29,7 @@ export class ChatMensagens {
   enviando = input(false);
   baixandoSql = input<string | null>(null);
 
-  baixarRelatorio = output<string>();
+  baixarRelatorio = output<{ sql: string; titulo: string }>();
 
   constructor() {
     effect(() => {

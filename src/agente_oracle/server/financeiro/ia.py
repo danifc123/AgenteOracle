@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime
 
 from mcp import ClientSession
@@ -21,6 +23,19 @@ from agente_oracle.tools.financeiro.consulta_livre import (
 )
 
 
+def _nome_arquivo_a_partir_do_titulo(titulo: str) -> str:
+    """Deriva o nome do arquivo baixado a partir do título que a IA deu ao
+    relatório no chat (ex: "Últimas Transações Pagas" -> "Ultimas Transacoes
+    Pagas.xlsx") — sem acentos nem caracteres inválidos em nome de arquivo.
+    Sem título, cai de volta no padrão antigo com timestamp."""
+    sem_acento = unicodedata.normalize("NFKD", titulo).encode("ascii", "ignore").decode("ascii")
+    limpo = re.sub(r'[\\/:*?"<>|]', "", sem_acento).strip()
+    limpo = re.sub(r"\s+", " ", limpo)
+    if not limpo:
+        return f"relatorio_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    return f"{limpo}.xlsx"
+
+
 def registrar(mcp) -> None:
     @mcp.tool(name=f"{PREFIXO_TOOL}testar_conexao_oracle")
     def testar_conexao_oracle() -> str:
@@ -42,13 +57,14 @@ def registrar(mcp) -> None:
 
         corpo = await request.json()
         sql = str(corpo.get("sql", "")).strip()
+        titulo = str(corpo.get("titulo", "")).strip()
 
         try:
             conteudo_xlsx = exportar_consulta_financeira_xlsx(sql)
         except ConsultaFinanceiraInvalida as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
-        nome_arquivo = f"relatorio_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+        nome_arquivo = _nome_arquivo_a_partir_do_titulo(titulo)
         return Response(
             content=conteudo_xlsx,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

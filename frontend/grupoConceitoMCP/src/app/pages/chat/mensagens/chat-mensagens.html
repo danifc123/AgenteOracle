@@ -31,7 +31,7 @@
                     variant="contorno"
                     [loading]="baixandoSql() === consulta.argumentos['sql']"
                     loadingText="Gerando Excel..."
-                    (clicked)="baixarRelatorio.emit($any(consulta.argumentos['sql']))"
+                    (clicked)="baixarRelatorio.emit({ sql: $any(consulta.argumentos['sql']), titulo: $any(consulta.argumentos['titulo']) })"
                   >
                     Baixar em Excel
                   </app-botao>

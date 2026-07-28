@@ -22,11 +22,16 @@
       <span class="contagem">{{ viewsFiltradas().length }} {{ viewsFiltradas().length === 1 ? 'item' : 'itens' }}</span>
     </div>
 
+    @if (tabelasCompativeis()) {
+    <p class="aviso-vinculo">Tabelas sem vínculo com sua seleção ficam bloqueadas.</p>
+    }
+
     <div class="painel-lista-corpo">
       @if (viewsFiltradas().length) {
       @for (tabela of viewsFiltradas(); track tabela.nome) {
       <app-tabela-item [tabela]="tabela"
                        [aberta]="estaAberta(tabela)"
+                       [bloqueada]="!tabelaCompativel(tabela)"
                        [colunasSelecionadas]="colunasDaView(tabela)"
                        (alternarAberta)="alternarTabela(tabela)"
                        (alternarColuna)="alternarColuna(tabela.nome, $event)" />

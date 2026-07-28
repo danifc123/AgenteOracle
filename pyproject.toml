@@ -34,3 +34,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: exige Postgres local rodando (DB_BACKEND=postgres)",
+]
+addopts = "-m 'not integration'"

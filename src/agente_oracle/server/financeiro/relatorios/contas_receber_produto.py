@@ -66,15 +66,14 @@ essas versões mínimas podem ser substituídas sem qualquer mudança no SQL
 acima (os nomes de coluna são os mesmos).
 """
 
-from decimal import Decimal
-
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
-from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _QUERY = """
@@ -199,12 +198,6 @@ ORDER BY vw2.c5_filial, vw2.a1_cod, vw2.a1_loja, vw2.c6_num, vw2.c6_item
 _CAMPOS_OPCIONAIS = ("emissao_ini", "emissao_fim", "entrega_ini", "entrega_fim", "naturezas")
 
 
-def _serializar(valor):
-    if isinstance(valor, Decimal):
-        return float(valor)
-    return valor
-
-
 def _buscar_pedidos(filiais: list[str], clientes: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     clausula_cliente, binds_cliente = clausula_in("cliente", clientes) if clientes else ("('')", {})
@@ -222,16 +215,14 @@ def _buscar_pedidos(filiais: list[str], clientes: list[str], opcionais: dict[str
 
 
 def _parametros_da_query(request: Request) -> tuple[list[str], list[str], dict[str, str]] | None:
-    filial_bruto = request.query_params.get("filial", "").strip()
-    filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
-    if not filiais:
+    filiais = _comum.filiais_da_query(request)
+    if filiais is None:
         return None
 
     cliente_bruto = request.query_params.get("cliente", "").strip()
     clientes = [item.strip() for item in cliente_bruto.split(",") if item.strip()]
 
-    opcionais = {chave: request.query_params.get(chave, "").strip() for chave in _CAMPOS_OPCIONAIS}
-    return filiais, clientes, opcionais
+    return filiais, clientes, _comum.parametros_opcionais(request, _CAMPOS_OPCIONAIS)
 
 
 def registrar(mcp) -> None:
@@ -241,7 +232,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -250,7 +241,7 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
 
         colunas, linhas = _buscar_pedidos(*parametros)
-        dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/contas-receber-produto/exportar", methods=["GET", "OPTIONS"])
@@ -259,7 +250,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 

@@ -21,15 +21,14 @@ teste é VARCHAR (formato "YYYYMMDD"), por isso também precisa do ::date antes
 de comparar com os limites do período.
 """
 
-from decimal import Decimal
-
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
-from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _QUERY = """
@@ -84,10 +83,6 @@ ORDER BY se1.e1_filial, se1.e1_cliente, se1.e1_loja, se1.e1_prefixo, se1.e1_num,
 _CAMPOS_OPCIONAIS = ("cliente", "loja", "vencto_ini", "vencto_fim", "prefixo", "tipo", "vendedor", "status_assinatura")
 
 
-def _serializar(valor):
-    return float(valor) if isinstance(valor, Decimal) else valor
-
-
 def _buscar_duplicatas(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = _QUERY.replace("__FILIAL_IN__", clausula_filial)
@@ -101,13 +96,11 @@ def _buscar_duplicatas(filiais: list[str], opcionais: dict[str, str]) -> tuple[l
 
 
 def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] | None:
-    filial_bruto = request.query_params.get("filial", "").strip()
-    filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
-    if not filiais:
+    filiais = _comum.filiais_da_query(request)
+    if filiais is None:
         return None
 
-    opcionais = {chave: request.query_params.get(chave, "").strip() for chave in _CAMPOS_OPCIONAIS}
-    return filiais, opcionais
+    return filiais, _comum.parametros_opcionais(request, _CAMPOS_OPCIONAIS)
 
 
 def registrar(mcp) -> None:
@@ -117,7 +110,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -126,7 +119,7 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
 
         colunas, linhas = _buscar_duplicatas(*parametros)
-        dados = [dict(zip(colunas, (_serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/duplicata-mercantil/exportar", methods=["GET", "OPTIONS"])
@@ -135,7 +128,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 

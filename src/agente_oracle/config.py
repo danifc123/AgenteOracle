@@ -27,11 +27,21 @@ class Settings(BaseSettings):
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8000
 
+    # Origens (frontend) que podem chamar a API pelo navegador — separadas por
+    # vírgula. Sem isso no allow-list, o navegador bloqueia a resposta mesmo
+    # com token válido (CORS não é autenticação, é sobre "que site" pode ler
+    # a resposta pelo navegador).
+    allowed_origins: str = "http://localhost:4200,http://127.0.0.1:4200"
+
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:7b"
 
     auth_secret_key: str = ""
     auth_token_horas: int = 12
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return [origem.strip() for origem in self.allowed_origins.split(",") if origem.strip()]
 
 
 settings = Settings()

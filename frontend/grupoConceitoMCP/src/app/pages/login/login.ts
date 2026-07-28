@@ -1,5 +1,5 @@
-import { HttpClient } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
@@ -20,14 +20,22 @@ export class Login {
   senha = signal('');
   erro = signal<string | null>(null);
   entrando = signal(false);
+  segundosEspera = signal<number | null>(null);
 
-  constructor() {
+  private intervaloEspera: ReturnType<typeof setInterval> | null = null;
+
+  constructor(destroyRef: DestroyRef) {
     if (this.sessao.autenticado()) {
       this.router.navigateByUrl('/');
     }
+    destroyRef.onDestroy(() => this.pararContagem());
   }
 
   entrar(): void {
+    if (this.segundosEspera() !== null) {
+      return;
+    }
+
     if (!this.usuario().trim() || !this.senha().trim()) {
       this.erro.set('Informe usuário e senha.');
       return;
@@ -47,10 +55,47 @@ export class Login {
           this.entrando.set(false);
           this.router.navigateByUrl('/');
         },
-        error: () => {
-          this.erro.set('Usuário ou senha inválidos.');
+        error: (erro: HttpErrorResponse) => {
           this.entrando.set(false);
+          const segundos = erro.status === 429 ? Number(erro.error?.segundos_espera) : NaN;
+
+          if (Number.isFinite(segundos) && segundos > 0) {
+            this.iniciarContagem(segundos);
+          } else {
+            this.erro.set(erro.error?.erro || 'Usuário ou senha inválidos.');
+          }
         }
       });
+  }
+
+  private iniciarContagem(segundos: number): void {
+    this.pararContagem();
+    this.segundosEspera.set(Math.ceil(segundos));
+    this.atualizarMensagemEspera();
+
+    this.intervaloEspera = setInterval(() => {
+      const restante = (this.segundosEspera() ?? 1) - 1;
+
+      if (restante <= 0) {
+        this.pararContagem();
+        this.erro.set(null);
+        return;
+      }
+
+      this.segundosEspera.set(restante);
+      this.atualizarMensagemEspera();
+    }, 1000);
+  }
+
+  private atualizarMensagemEspera(): void {
+    this.erro.set(`Você errou a senha muitas vezes seguidas. Tente de novo em ${this.segundosEspera()}s.`);
+  }
+
+  private pararContagem(): void {
+    if (this.intervaloEspera !== null) {
+      clearInterval(this.intervaloEspera);
+      this.intervaloEspera = null;
+    }
+    this.segundosEspera.set(null);
   }
 }

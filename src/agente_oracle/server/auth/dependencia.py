@@ -33,3 +33,18 @@ def exigir_administrador(request: Request) -> dict | JSONResponse:
         return JSONResponse({"erro": "Acesso restrito a administradores."}, status_code=403, headers=CORS_HEADERS)
 
     return resultado
+
+
+def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
+    tenha acesso ao módulo financeiro — usada em toda rota `/api/financeiro/*`
+    e `/api/relatorio/*` e `/api/chat`. Sem isso, qualquer conta autenticada
+    (independente do papel atribuído) conseguia chamar essas rotas."""
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "financeiro"):
+        return JSONResponse({"erro": "Acesso restrito ao módulo Financeiro."}, status_code=403, headers=CORS_HEADERS)
+
+    return resultado

@@ -72,6 +72,54 @@ export class CriarRelatorio {
     this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome }))
   );
 
+  /** Grafo não-direcionado das views a partir dos relacionamentos declarados
+   * (mesma ideia do `_grafo_relacionamentos` do backend) — usado só pra
+   * decidir quais tabelas ficam bloqueadas na lista, o backend continua
+   * sendo a fonte de verdade que valida o join na hora de gerar. */
+  private readonly grafoRelacionamentos = computed(() => {
+    const grafo = new Map<string, Set<string>>();
+    for (const view of this.views()) {
+      grafo.set(view.nome, grafo.get(view.nome) ?? new Set());
+      for (const rel of view.relacionamentos) {
+        if (!grafo.has(rel.viewDestino)) {
+          grafo.set(rel.viewDestino, new Set());
+        }
+        grafo.get(view.nome)!.add(rel.viewDestino);
+        grafo.get(rel.viewDestino)!.add(view.nome);
+      }
+    }
+    return grafo;
+  });
+
+  /** Nomes das tabelas alcançáveis a partir da seleção atual (colunas já
+   * marcadas), direto ou por relacionamento indireto. `null` quando nada
+   * foi selecionado ainda — nesse caso qualquer tabela pode ser a primeira. */
+  protected readonly tabelasCompativeis = computed<Set<string> | null>(() => {
+    const selecionadas = Object.entries(this.colunasSelecionadas())
+      .filter(([, colunas]) => colunas.length > 0)
+      .map(([nomeView]) => nomeView);
+
+    if (!selecionadas.length) {
+      return null;
+    }
+
+    const grafo = this.grafoRelacionamentos();
+    const visitados = new Set(selecionadas);
+    const fila = [...selecionadas];
+
+    while (fila.length) {
+      const atual = fila.shift()!;
+      for (const vizinho of grafo.get(atual) ?? []) {
+        if (!visitados.has(vizinho)) {
+          visitados.add(vizinho);
+          fila.push(vizinho);
+        }
+      }
+    }
+
+    return visitados;
+  });
+
   constructor() {
     this.carregarViews();
     this.carregarFiliais();
@@ -111,10 +159,19 @@ export class CriarRelatorio {
     return this.colunasSelecionadas()[view.nome] ?? [];
   }
 
+  protected tabelaCompativel(view: ViewFinanceira): boolean {
+    const compativeis = this.tabelasCompativeis();
+    return !compativeis || compativeis.has(view.nome);
+  }
+
   /** Acordeão: só uma tabela expandida por vez — abrir outra fecha a
    * anterior. As colunas já marcadas em tabelas fechadas continuam
-   * selecionadas normalmente, só a exibição da lista de colunas fecha. */
+   * selecionadas normalmente, só a exibição da lista de colunas fecha.
+   * Tabelas sem vínculo com a seleção atual não abrem. */
   protected alternarTabela(view: ViewFinanceira): void {
+    if (!this.tabelaCompativel(view)) {
+      return;
+    }
     this.tabelasAbertas.update((atual) => (atual.has(view.nome) ? new Set() : new Set([view.nome])));
   }
 

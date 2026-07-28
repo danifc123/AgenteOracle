@@ -2,6 +2,9 @@
   <button type="button"
           class="tabela-cabecalho"
           [class.tabela-cabecalho--aberta]="aberta()"
+          [class.tabela-cabecalho--bloqueada]="bloqueada()"
+          [disabled]="bloqueada()"
+          [attr.title]="bloqueada() ? 'Sem relacionamento com as tabelas já selecionadas' : null"
           (click)="alternarAberta.emit()">
     <span class="tabela-icone">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -18,7 +21,9 @@
       </span>
     </span>
 
-    @if (colunasSelecionadas().length) {
+    @if (bloqueada()) {
+      <span class="tabela-badge-bloqueada">Sem vínculo</span>
+    } @else if (colunasSelecionadas().length) {
       <span class="tabela-contagem">{{ colunasSelecionadas().length }}</span>
     }
 
@@ -27,7 +32,7 @@
     </svg>
   </button>
 
-  @if (aberta()) {
+  @if (aberta() && !bloqueada()) {
     <div class="tabela-colunas">
       @for (coluna of tabela().colunas; track coluna.nome) {
         <label class="coluna-item" [title]="coluna.descricao">

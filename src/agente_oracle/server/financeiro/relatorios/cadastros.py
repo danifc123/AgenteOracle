@@ -8,7 +8,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from agente_oracle.db.connection import get_connection
-from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 
 _QUERY_CLIENTES = """
@@ -106,7 +106,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -118,7 +118,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -130,7 +130,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -142,7 +142,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -154,7 +154,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -166,7 +166,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -178,7 +178,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -190,7 +190,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
@@ -202,7 +202,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 

@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import datetime
 
 from mcp import ClientSession
@@ -11,7 +13,7 @@ from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
 from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
-from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.connectivity import check_oracle_connection
 from agente_oracle.tools.financeiro.consulta_livre import (
@@ -19,6 +21,19 @@ from agente_oracle.tools.financeiro.consulta_livre import (
     executar_consulta_financeira,
     exportar_consulta_financeira_xlsx,
 )
+
+
+def _nome_arquivo_a_partir_do_titulo(titulo: str) -> str:
+    """Deriva o nome do arquivo baixado a partir do título que a IA deu ao
+    relatório no chat (ex: "Últimas Transações Pagas" -> "Ultimas Transacoes
+    Pagas.xlsx") — sem acentos nem caracteres inválidos em nome de arquivo.
+    Sem título, cai de volta no padrão antigo com timestamp."""
+    sem_acento = unicodedata.normalize("NFKD", titulo).encode("ascii", "ignore").decode("ascii")
+    limpo = re.sub(r'[\\/:*?"<>|]', "", sem_acento).strip()
+    limpo = re.sub(r"\s+", " ", limpo)
+    if not limpo:
+        return f"relatorio_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    return f"{limpo}.xlsx"
 
 
 def registrar(mcp) -> None:
@@ -36,19 +51,20 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight()
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
         corpo = await request.json()
         sql = str(corpo.get("sql", "")).strip()
+        titulo = str(corpo.get("titulo", "")).strip()
 
         try:
             conteudo_xlsx = exportar_consulta_financeira_xlsx(sql)
         except ConsultaFinanceiraInvalida as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
-        nome_arquivo = f"relatorio_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+        nome_arquivo = _nome_arquivo_a_partir_do_titulo(titulo)
         return Response(
             content=conteudo_xlsx,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -64,7 +80,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight()
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 

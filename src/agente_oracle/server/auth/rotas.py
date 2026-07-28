@@ -2,6 +2,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.server.auth.dependencia import exigir_administrador, exigir_usuario
+from agente_oracle.server.auth.rate_limit import limpar, registrar_falha, segundos_ate_liberar
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.auth import papeis
 from agente_oracle.tools.auth.token import gerar_token
@@ -32,10 +33,30 @@ def registrar(mcp) -> None:
         usuario = str(corpo.get("usuario", "")).strip()
         senha = str(corpo.get("senha", ""))
 
+        chave_bloqueio = usuario or "desconhecido"
+        espera = segundos_ate_liberar(chave_bloqueio)
+        if espera is not None:
+            return JSONResponse(
+                {
+                    "erro": (
+                        f"Você errou a senha muitas vezes seguidas. "
+                        f"Por segurança, tente de novo em {espera} segundos."
+                    ),
+                    # Campo numérico à parte pra tela de login montar uma
+                    # contagem regressiva ao vivo, em vez de mostrar só o
+                    # texto fixo com o valor de quando a resposta chegou.
+                    "segundos_espera": espera,
+                },
+                status_code=429,
+                headers={**CORS_HEADERS, "Retry-After": str(espera)},
+            )
+
         dados = autenticar(usuario, senha) if usuario and senha else None
         if dados is None:
+            registrar_falha(chave_bloqueio)
             return JSONResponse({"erro": "Usuário ou senha inválidos."}, status_code=401, headers=CORS_HEADERS)
 
+        limpar(chave_bloqueio)
         token = gerar_token(dados["id"], dados["usuario"], dados["nome"], dados["papeis"])
         return JSONResponse(
             {

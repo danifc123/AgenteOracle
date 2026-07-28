@@ -1,7 +1,7 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.server.auth.dependencia import exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.financeiro import layouts as layouts_tools
 
@@ -21,7 +21,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("GET, POST, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
         usuario_id = int(usuario_ou_erro["sub"])
@@ -57,7 +57,7 @@ def registrar(mcp) -> None:
         if request.method == "OPTIONS":
             return resposta_preflight("PATCH, DELETE, OPTIONS")
 
-        usuario_ou_erro = exigir_usuario(request)
+        usuario_ou_erro = exigir_modulo_financeiro(request)
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
         usuario_id = int(usuario_ou_erro["sub"])

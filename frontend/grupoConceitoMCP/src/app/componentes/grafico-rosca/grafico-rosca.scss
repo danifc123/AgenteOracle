@@ -1,0 +1,66 @@
+:host {
+  display: block;
+}
+
+.rosca-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.rosca-titulo {
+  align-self: flex-start;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.rosca-total {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.rosca-svg {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+}
+
+.rosca-segmento {
+  fill: none;
+  transition: opacity 0.15s ease;
+}
+
+.rosca-rotulo {
+  font-size: 12px;
+  font-weight: 600;
+  fill: #fff;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.rosca-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+}
+
+.legenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.legenda-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}

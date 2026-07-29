@@ -158,6 +158,29 @@
           </span>
           <span class="nav-label">Específico Grupo Conceito</span>
         </a>
+
+        <a class="nav-sublink"
+           routerLink="/financeiro/previsoes"
+           routerLinkActive="active"
+           [title]="colapsado() ? 'Previsões' : null"
+           (click)="closeSidebar()">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24"
+                 width="16"
+                 height="16"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="1.8">
+              <path d="M3 17 9 11l4 4 8-8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+              <path d="M15 7h6v6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+          </span>
+          <span class="nav-label">Previsões</span>
+        </a>
       </div>
     </div>
     }

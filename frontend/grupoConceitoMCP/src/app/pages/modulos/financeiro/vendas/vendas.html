@@ -1,0 +1,45 @@
+<app-modulo-header breadcrumb="Financeiro / Vendas"
+                   titulo="Projeção de Vendas"
+                   descricao="Projeção de vendas futuras a partir do faturamento real, com uma análise gerada por IA em cima da tendência dos números." />
+
+<div class="filtros-topo">
+  <app-select-busca class="select-filial"
+                     rotulo="Filial(is) *"
+                     placeholder="Filial(is)..."
+                     [multiplo]="true"
+                     [opcoes]="filiais()"
+                     [(valores)]="filiaisSelecionadas" />
+
+  <app-botao variant="primaria"
+             [disabled]="!podeGerar()"
+             (clicked)="gerarPrevisao()">
+    Gerar previsão
+  </app-botao>
+</div>
+
+@if (!jaGerou()) {
+<div class="estado-vazio">
+  <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M3 17 9 11l4 4 8-8" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M15 7h6v6" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+  <h3>Selecione a(s) filial(is)</h3>
+  <p>Escolha uma ou mais filiais e gere a projeção de vendas com base no faturamento real do sistema.</p>
+</div>
+} @else {
+<div class="linha-kpis">
+  <app-cartao-kpi rotulo="Faturamento Total" [valor]="faturamentoTotal()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Média Mensal" [valor]="mediaMensal()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Projeção Próximo Mês" [valor]="projecaoProximoMes()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Projeção Trimestre" [valor]="projecaoTrimestre()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Variação Projetada" tipo="percentual" [valor]="variacaoProjetada()" />
+</div>
+
+<section class="cartao-previsao cartao-grafico-principal">
+  <h2>Projeção de Vendas</h2>
+  <app-grafico-serie tipo="linha" [series]="seriesVendas()" />
+  @if (vendasAnalise()) {
+  <p class="analise-ia">{{ vendasAnalise() }}</p>
+  }
+</section>
+}

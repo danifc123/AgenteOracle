@@ -1,0 +1,10 @@
+<div class="cartao-kpi">
+  <p class="cartao-kpi-rotulo">{{ rotulo() }}</p>
+  @if (prefixo()) {
+  <p class="cartao-kpi-prefixo" [class.cartao-kpi-prefixo--negativo]="emVermelho()">{{ prefixo() }}</p>
+  }
+  <p class="cartao-kpi-numero" [class.cartao-kpi-numero--negativo]="emVermelho()">{{ abreviado().numero }}</p>
+  @if (abreviado().unidade) {
+  <p class="cartao-kpi-unidade">{{ abreviado().unidade }}</p>
+  }
+</div>

@@ -56,6 +56,11 @@
   }
 }
 
+.cartao-grafico-principal {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
 .analise-ia {
   margin: 14px 0 0;
   padding: 12px 14px;
@@ -66,23 +71,18 @@
   color: var(--color-text);
 }
 
-.grade-cartoes {
+.linha-kpis {
   display: grid;
-  // Gráfico de fluxo de caixa (1ª seção) mais largo que os dois donuts —
-  // ele tem mais dado no eixo X pra caber, os donuts são só 2 fatias.
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 16px;
-  align-items: start;
+  margin-bottom: 16px;
 }
 
-@media (max-width: 960px) {
-  .grade-cartoes {
-    grid-template-columns: 1fr 1fr;
-
-    .cartao-previsao:first-child {
-      grid-column: 1 / -1;
-    }
-  }
+.grade-donuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
 }
 
 @media (max-width: 720px) {
@@ -93,9 +93,5 @@
 
   .select-filial {
     max-width: none;
-  }
-
-  .grade-cartoes {
-    grid-template-columns: 1fr;
   }
 }

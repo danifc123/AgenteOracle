@@ -1,5 +1,6 @@
 import { Component, computed, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
 import { FatiaRosca, GraficoRosca } from '../../../../componentes/grafico-rosca/grafico-rosca';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
@@ -52,7 +53,7 @@ const MOCK_FATIAS_A_PAGAR: FatiaRosca[] = [
 
 @Component({
   selector: 'app-fluxo-caixa',
-  imports: [ModuloHeader, SelectBusca, Botao, GraficoSerie, GraficoRosca],
+  imports: [ModuloHeader, SelectBusca, Botao, GraficoSerie, GraficoRosca, CartaoKpi],
   templateUrl: './fluxo-caixa.html',
   styleUrl: './fluxo-caixa.scss'
 })
@@ -67,6 +68,14 @@ export class FluxoCaixa {
   protected readonly fatiasAPagar = signal<FatiaRosca[]>([]);
 
   protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0);
+
+  protected readonly totalAReceber = computed(() =>
+    this.fatiasAReceber().reduce((soma, fatia) => soma + fatia.valor, 0)
+  );
+  protected readonly totalAPagar = computed(() => this.fatiasAPagar().reduce((soma, fatia) => soma + fatia.valor, 0));
+  protected readonly vencidoAReceber = computed(() => this.fluxoMeses().find((item) => item.mes === 'vencido')?.a_receber ?? 0);
+  protected readonly vencidoAPagar = computed(() => this.fluxoMeses().find((item) => item.mes === 'vencido')?.a_pagar ?? 0);
+  protected readonly saldoProjetado = computed(() => this.totalAReceber() - this.totalAPagar());
 
   protected readonly seriesFluxoCaixa = computed<SerieGrafico[]>(() => {
     const meses = this.fluxoMeses();

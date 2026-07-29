@@ -28,15 +28,23 @@
   <p>Escolha uma ou mais filiais e gere a projeção de fluxo de caixa com base nos títulos já lançados no sistema.</p>
 </div>
 } @else {
-<div class="grade-cartoes">
-  <section class="cartao-previsao">
-    <h2>Projeção de Fluxo de Caixa</h2>
-    <app-grafico-serie tipo="barra" [series]="seriesFluxoCaixa()" />
-    @if (fluxoAnalise()) {
-    <p class="analise-ia">{{ fluxoAnalise() }}</p>
-    }
-  </section>
+<div class="linha-kpis">
+  <app-cartao-kpi rotulo="A Receber" [valor]="totalAReceber()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="A Pagar" [valor]="totalAPagar()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Vencido a Receber" [valor]="vencidoAReceber()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Vencido a Pagar" [valor]="vencidoAPagar()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Saldo Projetado" [valor]="saldoProjetado()" />
+</div>
 
+<section class="cartao-previsao cartao-grafico-principal">
+  <h2>Projeção de Fluxo de Caixa</h2>
+  <app-grafico-serie tipo="barra" [series]="seriesFluxoCaixa()" />
+  @if (fluxoAnalise()) {
+  <p class="analise-ia">{{ fluxoAnalise() }}</p>
+  }
+</section>
+
+<div class="grade-donuts">
   <section class="cartao-previsao">
     <app-grafico-rosca titulo="Contas a Receber" [fatias]="fatiasAReceber()" />
   </section>

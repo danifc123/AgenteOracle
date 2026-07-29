@@ -261,14 +261,54 @@
     transform: rotate(180deg);
   }
 
-  .nav-link {
+  .nav-link,
+  .nav-sublink {
+    position: relative;
     justify-content: center;
+  }
+
+  .nav-link {
     padding: 10px;
   }
 
-  .nav-label,
   .chevron {
     display: none;
+  }
+
+  // Colapsado: o rótulo some da linha normal e vira um "balão" que só
+  // aparece flutuando ao lado do ícone quando passa o mouse (ou foca via
+  // teclado) — sem isso, ícone sozinho não diz qual módulo é cada um.
+  .nav-label {
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%) translateX(-4px);
+    display: block;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--color-primary-dark);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 40;
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease,
+      visibility 0.15s ease;
+  }
+
+  .nav-link:hover .nav-label,
+  .nav-link:focus-visible .nav-label,
+  .nav-sublink:hover .nav-label,
+  .nav-sublink:focus-visible .nav-label {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(-50%) translateX(0);
   }
 
   .nav-parent::after {
@@ -365,6 +405,17 @@
 
     .nav-label {
       display: inline;
+      position: static;
+      transform: none;
+      padding: 0;
+      background: none;
+      color: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      box-shadow: none;
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
     }
 
     .chevron {

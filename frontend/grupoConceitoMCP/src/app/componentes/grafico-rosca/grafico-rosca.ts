@@ -1,4 +1,5 @@
 import { Component, computed, input } from '@angular/core';
+import { formatarMoedaAbreviada } from '../../utilitarios/formatacao-moeda';
 
 export interface FatiaRosca {
   nome: string;
@@ -25,10 +26,6 @@ const CIRCUNFERENCIA = 2 * Math.PI * RAIO;
 /** Pequeno vão entre fatias vizinhas (2-3px na cor de fundo) — não deixa os
  * segmentos se fundirem visualmente numa fatia só quando as cores são próximas. */
 const VAO_ENTRE_FATIAS = 3;
-
-function formatarMoeda(valor: number): string {
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-}
 
 @Component({
   selector: 'app-grafico-rosca',
@@ -81,7 +78,7 @@ export class GraficoRosca {
   });
 
   protected formatarMoeda(valor: number): string {
-    return formatarMoeda(valor);
+    return formatarMoedaAbreviada(valor);
   }
 
   protected formatarPercentual(valor: number): string {

@@ -1,4 +1,5 @@
 import { Component, ElementRef, ViewChild, computed, input, signal } from '@angular/core';
+import { formatarMoedaAbreviada } from '../../utilitarios/formatacao-moeda';
 
 export interface PontoSerie {
   rotulo: string;
@@ -89,10 +90,6 @@ function formatarRotuloMes(rotulo: string): string {
   return `${MESES_ABREVIADOS[Number(mes) - 1]}/${ano.slice(2)}`;
 }
 
-function formatarMoeda(valor: number): string {
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-}
-
 @Component({
   selector: 'app-grafico-serie',
   imports: [],
@@ -150,7 +147,7 @@ export class GraficoSerie {
     const maximo = this.valorMaximo();
     return [0, 0.25, 0.5, 0.75, 1].map((fracao) => ({
       y: MARGEM_SUPERIOR + ALTURA_PLOT * (1 - fracao),
-      rotulo: formatarMoeda(maximo * fracao)
+      rotulo: formatarMoedaAbreviada(maximo * fracao)
     }));
   });
 
@@ -297,7 +294,7 @@ export class GraficoSerie {
   });
 
   protected formatarValor(valor: number): string {
-    return formatarMoeda(valor);
+    return formatarMoedaAbreviada(valor);
   }
 
   protected aoMoverMouse(evento: MouseEvent): void {

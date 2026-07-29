@@ -1,0 +1,94 @@
+<div class="grafico-container">
+  @if (series().length > 1) {
+  <div class="grafico-legenda">
+    @for (serie of series(); track serie.nome) {
+    <span class="legenda-item">
+      <span class="legenda-swatch"
+            [class.legenda-swatch--tracejada]="serie.tracejada"
+            [style.--cor-serie]="serie.cor"></span>
+      {{ serie.nome }}
+    </span>
+    }
+  </div>
+  }
+
+  <svg #svgEl
+       class="grafico-svg"
+       [attr.viewBox]="'0 0 ' + LARGURA + ' ' + ALTURA"
+       preserveAspectRatio="xMidYMid meet"
+       (mousemove)="aoMoverMouse($event)"
+       (mouseleave)="aoSairMouse()">
+    @for (grade of grades(); track grade.rotulo) {
+    <line class="grafico-grade"
+          [attr.x1]="MARGEM_ESQUERDA"
+          [attr.x2]="LARGURA - MARGEM_DIREITA"
+          [attr.y1]="grade.y"
+          [attr.y2]="grade.y" />
+    <text class="grafico-rotulo-y"
+          [attr.x]="MARGEM_ESQUERDA - 8"
+          [attr.y]="grade.y + 4">{{ grade.rotulo }}</text>
+    }
+
+    @for (rotulo of rotulosEixoX(); track rotulo.x) {
+    <text class="grafico-rotulo-x"
+          [attr.x]="rotulo.x"
+          [attr.y]="ALTURA - 8">{{ rotulo.texto }}</text>
+    }
+
+    @if (tipo() === 'barra') {
+    @for (grupo of grupos(); track grupo.rotulo) {
+    @for (barra of grupo.barras; track barra.nome) {
+    <rect class="grafico-barra"
+          [attr.x]="barra.x"
+          [attr.y]="barra.y"
+          [attr.width]="barra.largura"
+          [attr.height]="barra.altura"
+          rx="3"
+          [style.fill]="barra.cor" />
+    }
+    }
+    } @else {
+    @for (linha of linhas(); track linha.nome) {
+    <path class="grafico-linha"
+          [attr.d]="linha.path"
+          [style.stroke]="linha.cor"
+          [attr.stroke-dasharray]="linha.tracejada ? '6 5' : null" />
+    @for (ponto of linha.pontos; track $index) {
+    <circle class="grafico-ponto"
+            [attr.cx]="ponto.x"
+            [attr.cy]="ponto.y"
+            r="3.5"
+            [style.fill]="linha.cor" />
+    }
+    }
+    }
+
+    @if (tooltip(); as tt) {
+    <line class="grafico-crosshair"
+          [attr.x1]="tt.x"
+          [attr.x2]="tt.x"
+          [attr.y1]="16"
+          [attr.y2]="ALTURA - 30" />
+
+    <rect class="grafico-tooltip-fundo"
+          [attr.x]="tt.caixaX"
+          [attr.y]="tt.caixaY"
+          [attr.width]="tt.caixaLargura"
+          [attr.height]="tt.caixaAltura"
+          rx="6" />
+    <text class="grafico-tooltip-titulo"
+          [attr.x]="tt.caixaX + 10"
+          [attr.y]="tt.caixaY + 16">{{ tt.rotulo }}</text>
+    @for (item of tt.itens; track item.nome) {
+    <circle class="grafico-tooltip-marcador"
+            [attr.cx]="tt.caixaX + 12"
+            [attr.cy]="tt.caixaY + 30 + $index * 16"
+            r="3.5"
+            [style.fill]="item.cor" />
+    <text class="grafico-tooltip-valor"
+          [attr.x]="tt.caixaX + 20"
+          [attr.y]="tt.caixaY + 34 + $index * 16">{{ item.nome }}: {{ formatarValor(item.valor) }}</text>
+    }
+    }
+  </svg>
+</div>

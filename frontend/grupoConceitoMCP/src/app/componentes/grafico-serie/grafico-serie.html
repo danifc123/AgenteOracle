@@ -2,7 +2,10 @@
   @if (series().length > 1) {
   <div class="grafico-legenda">
     @for (serie of series(); track serie.nome) {
-    <span class="legenda-item">
+    <span class="legenda-item"
+          [class.legenda-item--apagada]="serieEmDestaque() && serieEmDestaque() !== serie.nome"
+          (mouseenter)="aoPassarMouseNaSerie(serie.nome)"
+          (mouseleave)="aoSairDaSerie()">
       <span class="legenda-swatch"
             [class.legenda-swatch--tracejada]="serie.tracejada"
             [style.--cor-serie]="serie.cor"></span>
@@ -39,36 +42,52 @@
     @for (grupo of grupos(); track grupo.rotulo) {
     @for (barra of grupo.barras; track barra.nome) {
     <rect class="grafico-barra"
+          [class.grafico-barra--apagada]="barra.apagada"
+          [class.grafico-barra--destaque]="serieEmDestaque() === barra.nome"
           [attr.x]="barra.x"
           [attr.y]="barra.y"
           [attr.width]="barra.largura"
           [attr.height]="barra.altura"
           rx="3"
-          [style.fill]="barra.cor" />
+          [style.fill]="barra.cor"
+          (mouseenter)="aoPassarMouseNaSerie(barra.nome)"
+          (mouseleave)="aoSairDaSerie()" />
     }
     }
     } @else {
     @for (linha of linhas(); track linha.nome) {
-    <path class="grafico-linha"
-          [attr.d]="linha.path"
-          [style.stroke]="linha.cor"
-          [attr.stroke-dasharray]="linha.tracejada ? '6 5' : null" />
-    @for (ponto of linha.pontos; track $index) {
-    <circle class="grafico-ponto"
-            [attr.cx]="ponto.x"
-            [attr.cy]="ponto.y"
-            r="3.5"
-            [style.fill]="linha.cor" />
-    }
+    <g class="grafico-linha-grupo"
+       [class.grafico-linha-grupo--apagada]="linha.apagada"
+       (mouseenter)="aoPassarMouseNaSerie(linha.nome)"
+       (mouseleave)="aoSairDaSerie()">
+      <path class="grafico-linha-fundo" [attr.d]="linha.path" />
+      <path class="grafico-linha"
+            [attr.d]="linha.path"
+            [style.stroke]="linha.cor"
+            [attr.stroke-dasharray]="linha.tracejada ? '6 5' : null" />
+      @for (ponto of linha.pontos; track $index) {
+      <circle class="grafico-ponto"
+              [attr.cx]="ponto.x"
+              [attr.cy]="ponto.y"
+              r="3.5"
+              [style.fill]="linha.cor" />
+      }
+    </g>
     }
     }
 
     @if (tooltip(); as tt) {
+    @if (tipo() !== 'barra') {
     <line class="grafico-crosshair"
           [attr.x1]="tt.x"
           [attr.x2]="tt.x"
           [attr.y1]="16"
           [attr.y2]="ALTURA - 30" />
+    }
+
+    @if (tt.seta; as seta) {
+    <polygon class="grafico-tooltip-seta" [attr.points]="seta.pontos" />
+    }
 
     <rect class="grafico-tooltip-fundo"
           [attr.x]="tt.caixaX"

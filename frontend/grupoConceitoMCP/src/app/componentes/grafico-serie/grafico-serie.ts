@@ -25,6 +25,7 @@ interface LinhaDesenhada {
   tracejada: boolean;
   path: string;
   pontos: PontoXY[];
+  apagada: boolean;
 }
 
 interface BarraDesenhada {
@@ -35,6 +36,7 @@ interface BarraDesenhada {
   largura: number;
   altura: number;
   valor: number;
+  apagada: boolean;
 }
 
 interface GrupoBarras {
@@ -56,6 +58,10 @@ interface Tooltip {
   caixaY: number;
   caixaLargura: number;
   caixaAltura: number;
+  /** Só existe no modo barra — a setinha que liga o balão até o topo da
+   * coluna mais alta daquele mês, pra parecer que a informação "sai" da
+   * coluna em vez de flutuar solta no gráfico. */
+  seta: { pontos: string } | null;
 }
 
 const LARGURA_TOOLTIP = 148;
@@ -105,6 +111,10 @@ export class GraficoSerie {
   protected readonly MARGEM_DIREITA = MARGEM_DIREITA;
 
   protected readonly indiceHover = signal<number | null>(null);
+  /** Nome da série sob o mouse (barra, linha/ponto ou item da legenda) —
+   * usado só pra destacar essa série e apagar as outras, interação separada
+   * do crosshair/tooltip por posição (`indiceHover`). */
+  protected readonly serieEmDestaque = signal<string | null>(null);
 
   /** Eixo X = união (em ordem de primeira aparição) dos rótulos de todas as
    * séries — não dá pra assumir que a primeira série cobre todos os meses:
@@ -171,6 +181,7 @@ export class GraficoSerie {
     }
     const xs = this.xPorIndice();
     const indices = this.indicePorRotulo();
+    const destaque = this.serieEmDestaque();
     return this.series().map((serie) => {
       const pontos: PontoXY[] = serie.pontos.map((ponto) => ({
         x: xs[indices.get(ponto.rotulo) ?? 0],
@@ -178,7 +189,14 @@ export class GraficoSerie {
         valor: ponto.valor
       }));
       const path = pontos.map((ponto, indice) => `${indice === 0 ? 'M' : 'L'} ${ponto.x},${ponto.y}`).join(' ');
-      return { nome: serie.nome, cor: serie.cor, tracejada: !!serie.tracejada, path, pontos };
+      return {
+        nome: serie.nome,
+        cor: serie.cor,
+        tracejada: !!serie.tracejada,
+        path,
+        pontos,
+        apagada: destaque !== null && destaque !== serie.nome
+      };
     });
   });
 
@@ -195,6 +213,7 @@ export class GraficoSerie {
     const espacamentoBarra = larguraBarra * 0.15;
 
     const valorPorRotulo = series.map((serie) => new Map(serie.pontos.map((ponto) => [ponto.rotulo, ponto.valor])));
+    const destaque = this.serieEmDestaque();
 
     return rotulos.map((rotulo, indiceGrupo) => {
       const centroGrupo = MARGEM_ESQUERDA + larguraGrupo * (indiceGrupo + 0.5);
@@ -210,7 +229,8 @@ export class GraficoSerie {
           y: yTopo,
           largura: larguraBarra,
           altura: MARGEM_SUPERIOR + ALTURA_PLOT - yTopo,
-          valor
+          valor,
+          apagada: destaque !== null && destaque !== serie.nome
         };
       });
 
@@ -236,17 +256,43 @@ export class GraficoSerie {
       .filter((item): item is { nome: string; cor: string; ponto: PontoSerie } => !!item.ponto)
       .map((item) => ({ nome: item.nome, cor: item.cor, valor: item.ponto.valor }));
     const caixaAltura = ALTURA_LINHA_TOOLTIP * (itens.length + 1) + 8;
-    const caixaNaDireita = x < MARGEM_ESQUERDA + LARGURA_PLOT * 0.6;
-    const caixaX = caixaNaDireita ? x + 10 : x - LARGURA_TOOLTIP - 10;
+    const caixaLargura = LARGURA_TOOLTIP;
+
+    let caixaX: number;
+    let caixaY: number;
+    let seta: { pontos: string } | null = null;
+
+    if (this.tipo() === 'barra') {
+      // No modo barra o balão "sai" de cima da coluna mais alta daquele mês
+      // (centralizado nela, só deslizando pra não estourar a borda do
+      // gráfico) em vez de flutuar numa altura fixa desconectada das colunas.
+      const grupo = this.grupos()[indice];
+      const topoColunas = grupo?.barras.length
+        ? Math.min(...grupo.barras.map((barra) => barra.y))
+        : MARGEM_SUPERIOR + ALTURA_PLOT;
+      const GAP_SETA = 8;
+
+      caixaX = Math.min(Math.max(x - caixaLargura / 2, MARGEM_ESQUERDA), LARGURA - MARGEM_DIREITA - caixaLargura);
+      caixaY = Math.max(MARGEM_SUPERIOR + 4, topoColunas - caixaAltura - GAP_SETA);
+
+      const baseY = caixaY + caixaAltura;
+      const pontaY = Math.max(baseY, topoColunas - 2);
+      seta = { pontos: `${x - 7},${baseY} ${x + 7},${baseY} ${x},${pontaY}` };
+    } else {
+      const caixaNaDireita = x < MARGEM_ESQUERDA + LARGURA_PLOT * 0.6;
+      caixaX = caixaNaDireita ? x + 10 : x - caixaLargura - 10;
+      caixaY = MARGEM_SUPERIOR + 4;
+    }
 
     return {
       x,
       rotulo: formatarRotuloMes(rotulo),
       itens,
       caixaX,
-      caixaY: MARGEM_SUPERIOR + 4,
-      caixaLargura: LARGURA_TOOLTIP,
-      caixaAltura
+      caixaY,
+      caixaLargura,
+      caixaAltura,
+      seta
     };
   });
 
@@ -283,5 +329,13 @@ export class GraficoSerie {
 
   protected aoSairMouse(): void {
     this.indiceHover.set(null);
+  }
+
+  protected aoPassarMouseNaSerie(nome: string): void {
+    this.serieEmDestaque.set(nome);
+  }
+
+  protected aoSairDaSerie(): void {
+    this.serieEmDestaque.set(null);
   }
 }

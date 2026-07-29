@@ -20,6 +20,12 @@
   gap: 6px;
   font-size: 12.5px;
   color: var(--color-text-muted);
+  cursor: default;
+  transition: opacity 0.15s ease;
+}
+
+.legenda-item--apagada {
+  opacity: 0.45;
 }
 
 .legenda-swatch {
@@ -59,25 +65,67 @@
   text-anchor: middle;
 }
 
+.grafico-linha-grupo {
+  cursor: default;
+}
+
+.grafico-linha-fundo {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
+
 .grafico-linha {
   fill: none;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+  transition: stroke-width 0.15s ease, opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.grafico-linha-grupo--apagada .grafico-linha {
+  opacity: 0.35;
+}
+
+.grafico-linha-grupo:not(.grafico-linha-grupo--apagada):hover .grafico-linha {
+  stroke-width: 3;
 }
 
 .grafico-ponto {
   pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.grafico-linha-grupo--apagada .grafico-ponto {
+  opacity: 0.35;
 }
 
 .grafico-barra {
-  transition: opacity 0.1s ease;
+  cursor: default;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.grafico-barra--apagada {
+  opacity: 0.35;
+}
+
+.grafico-barra--destaque {
+  filter: brightness(1.08) drop-shadow(0 2px 4px rgb(0 0 0 / 0.25));
 }
 
 .grafico-crosshair {
   stroke: var(--color-text-muted);
   stroke-width: 1;
   stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.grafico-tooltip-seta {
+  fill: var(--color-surface);
+  stroke: var(--color-border);
+  stroke-width: 1;
   pointer-events: none;
 }
 

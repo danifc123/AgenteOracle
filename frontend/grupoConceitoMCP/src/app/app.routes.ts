@@ -3,7 +3,7 @@ import { Layout } from './layout/layout';
 import { Home } from './pages/home/home';
 import { Financeiro } from './pages/modulos/financeiro/financeiro';
 import { CriarRelatorio } from './pages/modulos/financeiro/criar-relatorio/criar-relatorio';
-import { Previsoes } from './pages/modulos/financeiro/previsoes/previsoes';
+import { FluxoCaixa } from './pages/modulos/financeiro/fluxo-caixa/fluxo-caixa';
 import { Chat } from './pages/chat/chat';
 import { Login } from './pages/login/login';
 import { Historico } from './pages/relatorios/historico/historico';
@@ -20,7 +20,7 @@ export const routes: Routes = [
     children: [
       { path: '', component: Home },
       { path: 'financeiro/criar-relatorio', component: CriarRelatorio },
-      { path: 'financeiro/previsoes', component: Previsoes },
+      { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/:moduloId', component: Financeiro },
       { path: 'chat', component: Chat },
       { path: 'relatorios/historico', component: Historico },

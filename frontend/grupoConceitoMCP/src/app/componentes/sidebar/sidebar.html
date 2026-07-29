@@ -178,6 +178,29 @@
           </span>
           <span class="nav-label">Fluxo de Caixa</span>
         </a>
+
+        <a class="nav-sublink"
+           routerLink="/financeiro/vendas"
+           routerLinkActive="active"
+           [title]="colapsado() ? 'Vendas' : null"
+           (click)="closeSidebar()">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24"
+                 width="16"
+                 height="16"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="1.8">
+              <path d="M3 17 9 11l4 4 8-8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+              <path d="M15 7h6v6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+          </span>
+          <span class="nav-label">Vendas</span>
+        </a>
       </div>
     </div>
     }

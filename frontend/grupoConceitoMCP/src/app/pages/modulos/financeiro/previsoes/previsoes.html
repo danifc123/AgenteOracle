@@ -1,0 +1,57 @@
+<app-modulo-header breadcrumb="Financeiro / Previsões"
+                   titulo="Previsões"
+                   descricao="Projeção de vendas futuras e de fluxo de caixa (contas a pagar/receber já lançadas), com uma análise gerada por IA em cima dos números reais." />
+
+<div class="filtros-topo">
+  <app-select-busca class="select-filial"
+                     rotulo="Filial(is) *"
+                     placeholder="Filial(is)..."
+                     [multiplo]="true"
+                     [opcoes]="filiais()"
+                     [(valores)]="filiaisSelecionadas" />
+
+  <app-botao variant="primaria"
+             [disabled]="!podeGerar()"
+             (clicked)="gerarPrevisao()">
+    Gerar previsão
+  </app-botao>
+</div>
+
+@if (!jaGerou()) {
+<div class="estado-vazio">
+  <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M3 17 9 11l4 4 8-8" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M15 7h6v6" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+  <h3>Selecione a(s) filial(is)</h3>
+  <p>Escolha uma ou mais filiais e gere a projeção de vendas e de fluxo de caixa com base nos dados reais do sistema.</p>
+</div>
+} @else {
+<div class="grade-previsoes">
+  <section class="cartao-previsao">
+    <h2>Projeção de Vendas</h2>
+    <app-grafico-serie tipo="linha" [series]="seriesVendas()" />
+    @if (vendasAnalise()) {
+    <p class="analise-ia">{{ vendasAnalise() }}</p>
+    }
+  </section>
+
+  <section class="cartao-previsao">
+    <h2>Projeção de Fluxo de Caixa</h2>
+    <app-grafico-serie tipo="barra" [series]="seriesFluxoCaixa()" />
+    @if (fluxoAnalise()) {
+    <p class="analise-ia">{{ fluxoAnalise() }}</p>
+    }
+  </section>
+</div>
+
+<div class="grade-donuts">
+  <section class="cartao-previsao">
+    <app-grafico-rosca titulo="Contas a Receber" [fatias]="fatiasAReceber()" />
+  </section>
+
+  <section class="cartao-previsao">
+    <app-grafico-rosca titulo="Contas a Pagar" [fatias]="fatiasAPagar()" />
+  </section>
+</div>
+}

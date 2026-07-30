@@ -1,4 +1,6 @@
-import { Component, computed, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Component, computed, inject, signal } from '@angular/core';
+import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
 import { FatiaRosca, GraficoRosca } from '../../../../componentes/grafico-rosca/grafico-rosca';
@@ -6,50 +8,38 @@ import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-seri
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 
+interface Filial {
+  codigo: string;
+  nome: string;
+}
+
 interface ItemFluxoMes {
   mes: string;
   a_receber: number;
   a_pagar: number;
 }
 
+interface FatiaApi {
+  nome: string;
+  valor: number;
+}
+
+interface RespostaFluxoCaixa {
+  meses: ItemFluxoMes[];
+  total_a_receber: number;
+  total_a_pagar: number;
+  fatias_a_receber: FatiaApi[];
+  fatias_a_pagar: FatiaApi[];
+  analise: string;
+}
+
 // Cores da marca (mesmo verde/laranja da logo do Grupo Conceito) — verde
-// como cor primária/principal, laranja como secundária.
+// como cor primária/principal, laranja como secundária. A API só devolve
+// {nome, valor} pra cada fatia — a cor é atribuída aqui pela ordem (1ª fatia
+// = "No período" = primária, 2ª = "Fora do período" = secundária).
 const COR_PRIMARIA = '#2f9e58';
 const COR_SECUNDARIA = '#e8871e';
-
-// Dados de mentira só pra construir/ajustar os componentes visuais — troca
-// pra dados reais da API assim que o layout estiver aprovado.
-const MOCK_FILIAIS: OpcaoSelectBusca[] = [
-  { valor: '0101', rotulo: '0101 - Matriz' },
-  { valor: '0102', rotulo: '0102 - Filial Sul' }
-];
-
-const MOCK_FLUXO_MESES: ItemFluxoMes[] = [
-  { mes: 'vencido', a_receber: 448450.25, a_pagar: 27934.93 },
-  { mes: '2026-07', a_receber: 0, a_pagar: 0 },
-  { mes: '2026-08', a_receber: 0, a_pagar: 22000 },
-  { mes: '2026-09', a_receber: 0, a_pagar: 18500 },
-  { mes: '2026-10', a_receber: 0, a_pagar: 15200 },
-  { mes: '2026-11', a_receber: 0, a_pagar: 19800 },
-  { mes: '2026-12', a_receber: 0, a_pagar: 24100 }
-];
-
-const MOCK_FLUXO_ANALISE =
-  "A tendência revela uma redução significativa no valor de contas a pagar e a receber no período após o " +
-  "vencimento. Em comparação com os valores 'vencidos', não há nenhuma parcela a receber projetada nos próximos " +
-  'meses — vale investigar se há títulos futuros que ainda não entraram no sistema.';
-
-const MOCK_TOTAL_A_RECEBER = 81402812.78;
-const MOCK_FATIAS_A_RECEBER: FatiaRosca[] = [
-  { nome: 'No período', valor: MOCK_TOTAL_A_RECEBER * 0.4202, cor: COR_PRIMARIA },
-  { nome: 'Fora do período', valor: MOCK_TOTAL_A_RECEBER * 0.5798, cor: COR_SECUNDARIA }
-];
-
-const MOCK_TOTAL_A_PAGAR = 353462555.21;
-const MOCK_FATIAS_A_PAGAR: FatiaRosca[] = [
-  { nome: 'No período', valor: MOCK_TOTAL_A_PAGAR * 0.3005, cor: COR_PRIMARIA },
-  { nome: 'Fora do período', valor: MOCK_TOTAL_A_PAGAR * 0.6995, cor: COR_SECUNDARIA }
-];
+const CORES_FATIAS = [COR_PRIMARIA, COR_SECUNDARIA];
 
 @Component({
   selector: 'app-fluxo-caixa',
@@ -58,16 +48,20 @@ const MOCK_FATIAS_A_PAGAR: FatiaRosca[] = [
   styleUrl: './fluxo-caixa.scss'
 })
 export class FluxoCaixa {
-  protected readonly filiais = signal<OpcaoSelectBusca[]>(MOCK_FILIAIS);
+  private readonly http = inject(HttpClient);
+
+  protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
   protected readonly filiaisSelecionadas = signal<string[]>([]);
 
   protected readonly jaGerou = signal(false);
+  protected readonly carregando = signal(false);
+  protected readonly erro = signal<string | null>(null);
   protected readonly fluxoMeses = signal<ItemFluxoMes[]>([]);
   protected readonly fluxoAnalise = signal<string | null>(null);
   protected readonly fatiasAReceber = signal<FatiaRosca[]>([]);
   protected readonly fatiasAPagar = signal<FatiaRosca[]>([]);
 
-  protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0);
+  protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0 && !this.carregando());
 
   protected readonly totalAReceber = computed(() =>
     this.fatiasAReceber().reduce((soma, fatia) => soma + fatia.valor, 0)
@@ -89,15 +83,52 @@ export class FluxoCaixa {
     ];
   });
 
+  constructor() {
+    this.carregarFiliais();
+  }
+
+  private carregarFiliais(): void {
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
+      next: (filiais) => {
+        this.filiais.set(filiais.map((filial) => ({ valor: filial.codigo, rotulo: filial.nome })));
+      },
+      error: () => {
+        this.filiais.set([]);
+      }
+    });
+  }
+
+  private colorirFatias(fatias: FatiaApi[]): FatiaRosca[] {
+    return fatias.map((fatia, indice) => ({ ...fatia, cor: CORES_FATIAS[indice] ?? COR_PRIMARIA }));
+  }
+
   protected gerarPrevisao(): void {
     if (!this.podeGerar()) {
       return;
     }
 
-    this.jaGerou.set(true);
-    this.fluxoMeses.set(MOCK_FLUXO_MESES);
-    this.fluxoAnalise.set(MOCK_FLUXO_ANALISE);
-    this.fatiasAReceber.set(MOCK_FATIAS_A_RECEBER);
-    this.fatiasAPagar.set(MOCK_FATIAS_A_PAGAR);
+    this.carregando.set(true);
+    this.erro.set(null);
+
+    this.http
+      .get<RespostaFluxoCaixa>(`${MCP_API_BASE_URL}/api/financeiro/previsao/fluxo-caixa`, {
+        params: { filial: this.filiaisSelecionadas().join(',') }
+      })
+      .subscribe({
+        next: (resposta) => {
+          this.jaGerou.set(true);
+          this.fluxoMeses.set(resposta.meses);
+          this.fluxoAnalise.set(resposta.analise);
+          this.fatiasAReceber.set(this.colorirFatias(resposta.fatias_a_receber));
+          this.fatiasAPagar.set(this.colorirFatias(resposta.fatias_a_pagar));
+          this.carregando.set(false);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erro.set(
+            erro.error?.erro ?? 'Não foi possível gerar a previsão. Verifique se o servidor está em execução.'
+          );
+          this.carregando.set(false);
+        }
+      });
   }
 }

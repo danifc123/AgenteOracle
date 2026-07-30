@@ -17,7 +17,11 @@
   </app-botao>
 </div>
 
-@if (!jaGerou()) {
+@if (carregando()) {
+<p class="carregando">Gerando previsão...</p>
+} @else if (erro()) {
+<p class="erro-previsao">{{ erro() }}</p>
+} @else if (!jaGerou()) {
 <div class="estado-vazio">
   <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
     <rect x="3" y="6" width="18" height="13" rx="2" stroke-linecap="round" stroke-linejoin="round" />

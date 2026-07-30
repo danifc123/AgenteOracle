@@ -38,7 +38,6 @@
           [attr.y]="ALTURA - 8">{{ rotulo.texto }}</text>
     }
 
-    @if (tipo() === 'barra') {
     @for (grupo of grupos(); track grupo.rotulo) {
     @for (barra of grupo.barras; track barra.nome) {
     <rect class="grafico-barra"
@@ -54,7 +53,6 @@
           (mouseleave)="aoSairDaSerie()" />
     }
     }
-    } @else {
     @for (linha of linhas(); track linha.nome) {
     <g class="grafico-linha-grupo"
        [class.grafico-linha-grupo--apagada]="linha.apagada"
@@ -73,7 +71,6 @@
               [style.fill]="linha.cor" />
       }
     </g>
-    }
     }
 
     @if (tooltip(); as tt) {

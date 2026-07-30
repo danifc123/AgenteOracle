@@ -18,6 +18,41 @@
   font-size: 14px;
 }
 
+.etapas-previsao {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 20px;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--color-text-muted);
+    font-size: 14px;
+    transition: color 0.15s ease;
+  }
+
+  li.etapa--concluida {
+    color: var(--color-text);
+  }
+
+  .etapa-marcador {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    flex-shrink: 0;
+    color: var(--color-primary-light);
+    font-weight: 700;
+  }
+}
+
 .erro-previsao {
   margin: 0;
   color: #9a2f2f;
@@ -81,6 +116,12 @@
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--color-text);
+}
+
+.prazo-medio {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
 }
 
 .linha-kpis {

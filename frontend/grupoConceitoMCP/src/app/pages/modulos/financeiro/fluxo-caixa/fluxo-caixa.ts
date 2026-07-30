@@ -1,12 +1,13 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
-import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
 import { FatiaRosca, GraficoRosca } from '../../../../componentes/grafico-rosca/grafico-rosca';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
+import { MCP_API_BASE_URL } from '../../../../app-config';
+import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream';
 
 interface Filial {
   codigo: string;
@@ -17,6 +18,8 @@ interface ItemFluxoMes {
   mes: string;
   a_receber: number;
   a_pagar: number;
+  a_receber_estimado: number;
+  a_pagar_estimado: number;
 }
 
 interface FatiaApi {
@@ -30,7 +33,15 @@ interface RespostaFluxoCaixa {
   total_a_pagar: number;
   fatias_a_receber: FatiaApi[];
   fatias_a_pagar: FatiaApi[];
+  prazo_medio_recebimento_dias: number;
+  prazo_medio_pagamento_dias: number;
   analise: string;
+}
+
+interface EtapaPrevisao {
+  id: string;
+  rotulo: string;
+  status: 'pendente' | 'concluido';
 }
 
 // Cores da marca (mesmo verde/laranja da logo do Grupo Conceito) — verde
@@ -40,6 +51,13 @@ interface RespostaFluxoCaixa {
 const COR_PRIMARIA = '#2f9e58';
 const COR_SECUNDARIA = '#e8871e';
 const CORES_FATIAS = [COR_PRIMARIA, COR_SECUNDARIA];
+
+const ETAPAS_INICIAIS: EtapaPrevisao[] = [
+  { id: 'titulos_abertos', rotulo: 'Buscando títulos em aberto', status: 'pendente' },
+  { id: 'prazo_medio', rotulo: 'Calculando prazo médio de recebimento e pagamento', status: 'pendente' },
+  { id: 'projecao_futura', rotulo: 'Projetando tendência de vendas e novas contas a pagar', status: 'pendente' },
+  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' }
+];
 
 @Component({
   selector: 'app-fluxo-caixa',
@@ -56,10 +74,13 @@ export class FluxoCaixa {
   protected readonly jaGerou = signal(false);
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);
+  protected readonly etapas = signal<EtapaPrevisao[]>(ETAPAS_INICIAIS);
   protected readonly fluxoMeses = signal<ItemFluxoMes[]>([]);
   protected readonly fluxoAnalise = signal<string | null>(null);
   protected readonly fatiasAReceber = signal<FatiaRosca[]>([]);
   protected readonly fatiasAPagar = signal<FatiaRosca[]>([]);
+  protected readonly prazoMedioRecebimentoDias = signal<number | null>(null);
+  protected readonly prazoMedioPagamentoDias = signal<number | null>(null);
 
   protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0 && !this.carregando());
 
@@ -79,7 +100,21 @@ export class FluxoCaixa {
 
     return [
       { nome: 'A Receber', cor: COR_PRIMARIA, pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_receber })) },
-      { nome: 'A Pagar', cor: COR_SECUNDARIA, pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar })) }
+      { nome: 'A Pagar', cor: COR_SECUNDARIA, pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar })) },
+      {
+        nome: 'A Receber (estimado)',
+        cor: COR_PRIMARIA,
+        tracejada: true,
+        linhaSobreposta: true,
+        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_receber_estimado }))
+      },
+      {
+        nome: 'A Pagar (estimado)',
+        cor: COR_SECUNDARIA,
+        tracejada: true,
+        linhaSobreposta: true,
+        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar_estimado }))
+      }
     ];
   });
 
@@ -102,33 +137,38 @@ export class FluxoCaixa {
     return fatias.map((fatia, indice) => ({ ...fatia, cor: CORES_FATIAS[indice] ?? COR_PRIMARIA }));
   }
 
-  protected gerarPrevisao(): void {
+  private marcarEtapaConcluida(id: string): void {
+    this.etapas.update((atual) => atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)));
+  }
+
+  protected async gerarPrevisao(): Promise<void> {
     if (!this.podeGerar()) {
       return;
     }
 
     this.carregando.set(true);
     this.erro.set(null);
+    this.etapas.set(ETAPAS_INICIAIS.map((etapa) => ({ ...etapa })));
 
-    this.http
-      .get<RespostaFluxoCaixa>(`${MCP_API_BASE_URL}/api/financeiro/previsao/fluxo-caixa`, {
-        params: { filial: this.filiaisSelecionadas().join(',') }
-      })
-      .subscribe({
-        next: (resposta) => {
-          this.jaGerou.set(true);
-          this.fluxoMeses.set(resposta.meses);
-          this.fluxoAnalise.set(resposta.analise);
-          this.fatiasAReceber.set(this.colorirFatias(resposta.fatias_a_receber));
-          this.fatiasAPagar.set(this.colorirFatias(resposta.fatias_a_pagar));
-          this.carregando.set(false);
-        },
-        error: (erro: HttpErrorResponse) => {
-          this.erro.set(
-            erro.error?.erro ?? 'Não foi possível gerar a previsão. Verifique se o servidor está em execução.'
-          );
-          this.carregando.set(false);
-        }
-      });
+    try {
+      const resposta = await gerarPrevisaoStream<RespostaFluxoCaixa>(
+        this.http,
+        `${MCP_API_BASE_URL}/api/financeiro/previsao/fluxo-caixa`,
+        { filial: this.filiaisSelecionadas().join(',') },
+        (id) => this.marcarEtapaConcluida(id)
+      );
+
+      this.jaGerou.set(true);
+      this.fluxoMeses.set(resposta.meses);
+      this.fluxoAnalise.set(resposta.analise);
+      this.fatiasAReceber.set(this.colorirFatias(resposta.fatias_a_receber));
+      this.fatiasAPagar.set(this.colorirFatias(resposta.fatias_a_pagar));
+      this.prazoMedioRecebimentoDias.set(resposta.prazo_medio_recebimento_dias);
+      this.prazoMedioPagamentoDias.set(resposta.prazo_medio_pagamento_dias);
+    } catch (erroDesconhecido) {
+      this.erro.set(mensagemErroPrevisao(erroDesconhecido));
+    } finally {
+      this.carregando.set(false);
+    }
   }
 }

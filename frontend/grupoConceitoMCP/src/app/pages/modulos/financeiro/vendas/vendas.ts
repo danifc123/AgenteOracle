@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
@@ -6,6 +6,7 @@ import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
+import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream';
 
 interface Filial {
   codigo: string;
@@ -23,8 +24,20 @@ interface RespostaVendas {
   analise: string;
 }
 
+interface EtapaPrevisao {
+  id: string;
+  rotulo: string;
+  status: 'pendente' | 'concluido';
+}
+
 // Verde da marca — mesma cor primária usada no Fluxo de Caixa.
 const COR_VENDAS = '#2f9e58';
+
+const ETAPAS_INICIAIS: EtapaPrevisao[] = [
+  { id: 'historico', rotulo: 'Buscando faturamento histórico', status: 'pendente' },
+  { id: 'projecao', rotulo: 'Projetando tendência de vendas (regressão linear)', status: 'pendente' },
+  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' }
+];
 
 @Component({
   selector: 'app-vendas',
@@ -41,6 +54,7 @@ export class Vendas {
   protected readonly jaGerou = signal(false);
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);
+  protected readonly etapas = signal<EtapaPrevisao[]>(ETAPAS_INICIAIS);
   protected readonly vendasHistorico = signal<ItemMes[]>([]);
   protected readonly vendasProjecao = signal<ItemMes[]>([]);
   protected readonly vendasAnalise = signal<string | null>(null);
@@ -116,32 +130,35 @@ export class Vendas {
     });
   }
 
-  protected gerarPrevisao(): void {
+  private marcarEtapaConcluida(id: string): void {
+    this.etapas.update((atual) => atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)));
+  }
+
+  protected async gerarPrevisao(): Promise<void> {
     if (!this.podeGerar()) {
       return;
     }
 
     this.carregando.set(true);
     this.erro.set(null);
+    this.etapas.set(ETAPAS_INICIAIS.map((etapa) => ({ ...etapa })));
 
-    this.http
-      .get<RespostaVendas>(`${MCP_API_BASE_URL}/api/financeiro/previsao/vendas`, {
-        params: { filial: this.filiaisSelecionadas().join(',') }
-      })
-      .subscribe({
-        next: (resposta) => {
-          this.jaGerou.set(true);
-          this.vendasHistorico.set(resposta.historico);
-          this.vendasProjecao.set(resposta.projecao);
-          this.vendasAnalise.set(resposta.analise);
-          this.carregando.set(false);
-        },
-        error: (erro: HttpErrorResponse) => {
-          this.erro.set(
-            erro.error?.erro ?? 'Não foi possível gerar a previsão. Verifique se o servidor está em execução.'
-          );
-          this.carregando.set(false);
-        }
-      });
+    try {
+      const resposta = await gerarPrevisaoStream<RespostaVendas>(
+        this.http,
+        `${MCP_API_BASE_URL}/api/financeiro/previsao/vendas`,
+        { filial: this.filiaisSelecionadas().join(',') },
+        (id) => this.marcarEtapaConcluida(id)
+      );
+
+      this.jaGerou.set(true);
+      this.vendasHistorico.set(resposta.historico);
+      this.vendasProjecao.set(resposta.projecao);
+      this.vendasAnalise.set(resposta.analise);
+    } catch (erroDesconhecido) {
+      this.erro.set(mensagemErroPrevisao(erroDesconhecido));
+    } finally {
+      this.carregando.set(false);
+    }
   }
 }

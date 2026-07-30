@@ -18,7 +18,14 @@
 </div>
 
 @if (carregando()) {
-<p class="carregando">Gerando previsão...</p>
+<ul class="etapas-previsao">
+  @for (etapa of etapas(); track etapa.id) {
+  <li [class.etapa--concluida]="etapa.status === 'concluido'">
+    <span class="etapa-marcador">{{ etapa.status === 'concluido' ? '✓' : '○' }}</span>
+    {{ etapa.rotulo }}
+  </li>
+  }
+</ul>
 } @else if (erro()) {
 <p class="erro-previsao">{{ erro() }}</p>
 } @else if (!jaGerou()) {
@@ -45,6 +52,12 @@
   <app-grafico-serie tipo="barra" [series]="seriesFluxoCaixa()" />
   @if (fluxoAnalise()) {
   <p class="analise-ia">{{ fluxoAnalise() }}</p>
+  }
+  @if (prazoMedioRecebimentoDias() !== null) {
+  <p class="prazo-medio">
+    Prazo médio: {{ prazoMedioRecebimentoDias()!.toFixed(0) }} dias pra recebimento,
+    {{ prazoMedioPagamentoDias()!.toFixed(0) }} dias pra novas contas a pagar (base: histórico de títulos do banco).
+  </p>
   }
 </section>
 

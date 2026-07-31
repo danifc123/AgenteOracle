@@ -10,13 +10,6 @@ interface LinhaResultado<T> {
   dados: T;
 }
 
-/** Consome uma rota de previsão que responde em NDJSON (uma linha JSON por
- * etapa concluída, terminando em `{"tipo":"resultado","dados":...}`) — usa
- * `HttpClient` com `observe:'events'` em vez de `EventSource` nativo do
- * browser, porque o `EventSource` não permite enviar o header
- * `Authorization: Bearer ...` que o `authInterceptor` injeta em toda
- * chamada. Cada evento de progresso traz o texto acumulado até agora
- * (`partialText`); só processa as linhas novas desde a última leitura. */
 const MENSAGEM_ERRO_PADRAO = 'Não foi possível gerar a previsão. Verifique se o servidor está em execução.';
 
 /** `gerarPrevisaoStream` usa `responseType: 'text'`, então o corpo de um
@@ -36,6 +29,15 @@ export function mensagemErroPrevisao(erro: unknown): string {
   }
 }
 
+/** Consome uma rota de previsão que responde em NDJSON (uma linha JSON por
+ * etapa concluída, terminando em `{"tipo":"resultado","dados":...}`) — usa
+ * `HttpClient` com `observe:'events'` em vez de `EventSource` nativo do
+ * browser, porque o `EventSource` não permite enviar o header
+ * `Authorization: Bearer ...` que o `authInterceptor` injeta em toda
+ * chamada. Cada evento de progresso traz o texto acumulado até agora
+ * (`partialText`) — só o trecho novo desde a última leitura é reprocessado,
+ * e qualquer linha ainda incompleta no fim do trecho novo fica guardada em
+ * `bufferPendente` até completar num evento seguinte. */
 export function gerarPrevisaoStream<T>(
   http: HttpClient,
   url: string,
@@ -43,15 +45,20 @@ export function gerarPrevisaoStream<T>(
   aoEtapaConcluida: (id: string) => void
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    let posicaoProcessada = 0;
+    let comprimentoVisto = 0;
+    let bufferPendente = '';
 
-    const processarTexto = (texto: string): void => {
-      const completo = texto.endsWith('\n');
-      const linhas = texto.slice(posicaoProcessada).split('\n');
-      const linhasProntas = completo ? linhas : linhas.slice(0, -1);
+    const processarTexto = (textoCompleto: string): void => {
+      const trechoNovo = textoCompleto.slice(comprimentoVisto);
+      comprimentoVisto = textoCompleto.length;
+      if (!trechoNovo) {
+        return;
+      }
 
-      for (const linha of linhasProntas) {
-        posicaoProcessada += linha.length + 1;
+      const partes = (bufferPendente + trechoNovo).split('\n');
+      bufferPendente = partes.pop() ?? '';
+
+      for (const linha of partes) {
         if (!linha.trim()) {
           continue;
         }

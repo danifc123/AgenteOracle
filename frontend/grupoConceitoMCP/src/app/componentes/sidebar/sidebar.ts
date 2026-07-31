@@ -21,6 +21,7 @@ export class Sidebar {
 
   protected readonly sidebarOpen = signal(false);
   protected readonly financeiroOpen = signal(false);
+  protected readonly estoqueOpen = signal(false);
   protected readonly colapsado = signal(localStorage.getItem(CHAVE_COLAPSADO) === 'true');
 
   toggleSidebar(): void {
@@ -31,10 +32,12 @@ export class Sidebar {
     this.sidebarOpen.set(false);
   }
 
-  /** Usado pelos links FORA do grupo Financeiro — navegar pra outra área
-   * fecha o submenu dele, já que deixou de fazer sentido continuar aberto. */
+  /** Usado pelos links FORA dos grupos Financeiro/Estoque — navegar pra
+   * outra área fecha os dois submenus, já que deixou de fazer sentido
+   * continuar abertos. */
   navegarParaFora(): void {
     this.financeiroOpen.set(false);
+    this.estoqueOpen.set(false);
     this.closeSidebar();
   }
 
@@ -42,11 +45,20 @@ export class Sidebar {
     const novoValor = !this.colapsado();
     this.colapsado.set(novoValor);
     this.financeiroOpen.set(false);
+    this.estoqueOpen.set(false);
     localStorage.setItem(CHAVE_COLAPSADO, String(novoValor));
   }
 
+  /** Só um dos dois grupos fica aberto por vez (accordion) — abrir um fecha
+   * o outro, se estiver aberto. */
   toggleFinanceiro(): void {
+    this.estoqueOpen.set(false);
     this.financeiroOpen.update((value) => !value);
+  }
+
+  toggleEstoque(): void {
+    this.financeiroOpen.set(false);
+    this.estoqueOpen.update((value) => !value);
   }
 
   abrirConfiguracoes(): void {

@@ -201,6 +201,26 @@
           </span>
           <span class="nav-label">Vendas</span>
         </a>
+
+        <a class="nav-sublink"
+           routerLink="/financeiro/chat"
+           routerLinkActive="active"
+           [title]="colapsado() ? 'Assistente IA' : null"
+           (click)="closeSidebar()">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24"
+                 width="16"
+                 height="16"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="1.8">
+              <path d="M4 5h16v11H8l-4 4V5Z"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+          </span>
+          <span class="nav-label">Assistente IA</span>
+        </a>
       </div>
     </div>
     }
@@ -314,28 +334,28 @@
           </span>
           <span class="nav-label">Específico Grupo Conceito</span>
         </a>
+
+        <a class="nav-sublink"
+           routerLink="/estoque/chat"
+           routerLinkActive="active"
+           [title]="colapsado() ? 'Assistente IA' : null"
+           (click)="closeSidebar()">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24"
+                 width="16"
+                 height="16"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="1.8">
+              <path d="M4 5h16v11H8l-4 4V5Z"
+                    stroke-linecap="round"
+                    stroke-linejoin="round" />
+            </svg>
+          </span>
+          <span class="nav-label">Assistente IA</span>
+        </a>
       </div>
     </div>
-
-    <a class="nav-link"
-       routerLink="/chat"
-       routerLinkActive="active"
-       [title]="colapsado() ? 'Assistente IA' : null"
-       (click)="navegarParaFora()">
-      <span class="nav-icon">
-        <svg viewBox="0 0 24 24"
-             width="20"
-             height="20"
-             fill="none"
-             stroke="currentColor"
-             stroke-width="1.8">
-          <path d="M4 5h16v11H8l-4 4V5Z"
-                stroke-linecap="round"
-                stroke-linejoin="round" />
-        </svg>
-      </span>
-      <span class="nav-label">Assistente IA</span>
-    </a>
 
     <a class="nav-link"
        routerLink="/relatorios/historico"

@@ -8,7 +8,8 @@ import { Vendas } from './pages/modulos/financeiro/vendas/vendas';
 import { Estoque } from './pages/modulos/estoque/estoque';
 import { EstoqueCriarRelatorio } from './pages/modulos/estoque/criar-relatorio/criar-relatorio';
 import { EstoqueEspecificoGrupoConceito } from './pages/modulos/estoque/especifico-grupo-conceito/especifico-grupo-conceito';
-import { Chat } from './pages/chat/chat';
+import { EstoqueChat } from './pages/modulos/estoque/chat/estoque-chat';
+import { Chat } from './pages/modulos/financeiro/chat/chat';
 import { Login } from './pages/login/login';
 import { Historico } from './pages/relatorios/historico/historico';
 import { Usuarios } from './pages/usuarios/usuarios';
@@ -26,11 +27,12 @@ export const routes: Routes = [
       { path: 'financeiro/criar-relatorio', component: CriarRelatorio },
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },
+      { path: 'financeiro/chat', component: Chat },
       { path: 'financeiro/:moduloId', component: Financeiro },
       { path: 'estoque/criar-relatorio', component: EstoqueCriarRelatorio },
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },
+      { path: 'estoque/chat', component: EstoqueChat },
       { path: 'estoque', component: Estoque },
-      { path: 'chat', component: Chat },
       { path: 'relatorios/historico', component: Historico },
       { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] }
     ]

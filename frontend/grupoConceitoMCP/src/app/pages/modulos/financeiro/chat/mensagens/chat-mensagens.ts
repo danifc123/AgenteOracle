@@ -1,6 +1,6 @@
 import { Component, ElementRef, effect, input, output, viewChild } from '@angular/core';
-import { Botao } from '../../../componentes/botao/botao';
-import { formatarSql } from '../../../servicos/formatar-sql';
+import { Botao } from '../../../../../componentes/botao/botao';
+import { formatarSql } from '../../../../../servicos/formatar-sql';
 
 export interface ConsultaUsada {
   ferramenta: string;

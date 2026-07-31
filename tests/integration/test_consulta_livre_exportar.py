@@ -1,5 +1,5 @@
-"""Testa `/api/relatorio/exportar` (exportação em Excel da "consulta livre",
-usada pelo chat com IA) de ponta a ponta — em especial que o exploit de
+"""Testa `/api/financeiro/relatorio/exportar` (exportação em Excel da "consulta
+livre", usada pelo chat com IA) de ponta a ponta — em especial que o exploit de
 junção por vírgula (`FROM a, b`) corrigido nesta sessão continua bloqueado
 quando chamado via HTTP direto, sem precisar da IA gerar o SQL."""
 
@@ -7,7 +7,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-_URL = "/api/relatorio/exportar"
+_URL = "/api/financeiro/relatorio/exportar"
 
 
 def _auth(token: str) -> dict[str, str]:

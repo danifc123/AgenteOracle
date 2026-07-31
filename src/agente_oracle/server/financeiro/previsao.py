@@ -16,7 +16,14 @@ As duas rotas respondem em NDJSON (uma linha JSON por etapa concluída,
 terminando em `{"tipo": "resultado", "dados": {...}}`) em vez de um JSON
 único — a geração da previsão do Fluxo de Caixa envolve várias consultas
 mais a chamada de IA no fim, e o frontend usa esse streaming pra mostrar o
-progresso real em vez de um "carregando" genérico parado."""
+progresso real em vez de um "carregando" genérico parado.
+
+A estimativa do Fluxo de Caixa não usa um prazo médio único: o valor
+projetado é repartido por cliente (a receber) e por fornecedor (a pagar)
+conforme a participação histórica de cada um, e cada fatia é deslocada pelo
+prazo médio daquele cliente/fornecedor específico (ponderado por valor, não
+por contagem de título) antes de somar de volta no total mensal — ver
+`_resumo_participacoes`/`_distribuir_estimativa_ponderada`."""
 
 import json
 from datetime import date, timedelta
@@ -76,17 +83,43 @@ def _historico_e_projecao(
     return historico, projecao
 
 
-def _distribuir_estimativa(projecao: list[dict], deslocamento_meses: int, meses_janela: list[str]) -> dict[str, float]:
-    """Desloca cada mês projetado em `deslocamento_meses` (aproximação de
-    prazo médio em dias -> meses, uma simplificação de MVP, não uma
-    simulação dia-a-dia) e soma no mês de destino, descartando o que cair
-    fora de `meses_janela`. Função pura, sem I/O."""
+def _resumo_participacoes(grupos: list[tuple[float, float]]) -> tuple[float, list[tuple[float, int]]]:
+    """A partir de (valor_total, prazo_medio_dias) por cliente/fornecedor, devolve a média geral
+    ponderada por valor (pro campo exposto no JSON e pro texto da análise) e a lista de
+    (participação no valor, deslocamento em meses) por grupo, usada pra repartir a projeção.
+    Grupos com valor <= 0 (estornos/notas de crédito) ou prazo nulo são descartados. Sem
+    histórico válido, cai no prazo padrão com um único grupo de participação total. Deslocamento
+    negativo (prazo médio do grupo < 0) é tratado como "mesmo mês" — mesmo comportamento que a
+    versão global já tinha para `deslocamento <= 0`, não uma regressão nova."""
+    grupos_validos = [
+        (valor, prazo) for valor, prazo in grupos if valor is not None and valor > 0 and prazo is not None
+    ]
+    valor_total_geral = sum(valor for valor, _ in grupos_validos)
+    if not grupos_validos or valor_total_geral <= 0:
+        return _PRAZO_MEDIO_PADRAO_DIAS, [(1.0, round(_PRAZO_MEDIO_PADRAO_DIAS / 30))]
+
+    media_geral = sum(valor * prazo for valor, prazo in grupos_validos) / valor_total_geral
+    participacoes = [(valor / valor_total_geral, round(prazo / 30)) for valor, prazo in grupos_validos]
+    return media_geral, participacoes
+
+
+def _distribuir_estimativa_ponderada(
+    projecao: list[dict], participacoes: list[tuple[float, int]], meses_janela: list[str]
+) -> dict[str, float]:
+    """Reparte cada mês projetado entre os grupos (cliente/fornecedor) pela participação de cada
+    um no valor histórico e desloca cada fatia pelo deslocamento daquele grupo (aproximação de
+    prazo médio em dias -> meses, uma simplificação de MVP, não uma simulação dia-a-dia), somando
+    tudo no mês de destino e descartando o que cair fora de `meses_janela`. Como as participações
+    somam 1.0, o total bate com uma versão de deslocamento único sempre que nenhuma fatia cai fora
+    da janela — só fica mais preciso quando os grupos têm prazos diferentes. Função pura, sem I/O."""
     janela = set(meses_janela)
     estimativa: dict[str, float] = {}
     for item in projecao:
-        mes_destino = proximos_meses(item["mes"], deslocamento_meses)[-1] if deslocamento_meses > 0 else item["mes"]
-        if mes_destino in janela:
-            estimativa[mes_destino] = estimativa.get(mes_destino, 0.0) + item["valor"]
+        for share, deslocamento in participacoes:
+            fatia = item["valor"] * share
+            mes_destino = proximos_meses(item["mes"], deslocamento)[-1] if deslocamento > 0 else item["mes"]
+            if mes_destino in janela:
+                estimativa[mes_destino] = estimativa.get(mes_destino, 0.0) + fatia
     return estimativa
 
 
@@ -164,13 +197,15 @@ def _buscar_corte_periodo(view: str, filiais: list[str], data_corte: date) -> tu
     return _comum.serializar(no_periodo) or 0.0, _comum.serializar(fora_periodo) or 0.0
 
 
-def _prazo_medio_recebimento_dias(filiais: list[str]) -> float:
-    """Média de dias entre a emissão da nota fiscal (vw_faturamento) e o
-    vencimento do título que ela gerou (vw_titulos_receber, tipo='NF'),
-    usando o relacionamento declarado em `agent/financeiro/schema.py`.
-    `TO_DATE(..., 'YYYYMMDD')` converte o texto de data_emissao pra DATE de
-    verdade — subtração entre DATEs devolve dias direto, sem função de
-    date-diff especial, portável entre Oracle e Postgres."""
+def _grupos_prazo_recebimento(filiais: list[str]) -> list[tuple[float, float]]:
+    """(valor_total, prazo_medio_dias) por cliente — prazo entre a emissão da
+    nota fiscal (vw_faturamento) e o vencimento do título que ela gerou
+    (vw_titulos_receber, tipo='NF'), usando o relacionamento declarado em
+    `agent/financeiro/schema.py`, ponderado por `valor_original` de cada
+    título (não por contagem de título). `TO_DATE(..., 'YYYYMMDD')` converte
+    o texto de data_emissao pra DATE de verdade — subtração entre DATEs
+    devolve dias direto, sem função de date-diff especial, portável entre
+    Oracle e Postgres."""
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         WITH notas AS (
@@ -179,7 +214,9 @@ def _prazo_medio_recebimento_dias(filiais: list[str]) -> float:
             FROM vw_faturamento
             WHERE filial IN {clausula_filial}
         )
-        SELECT AVG(t.data_vencimento - n.data_emissao)
+        SELECT
+            SUM(t.valor_original) AS valor_total,
+            SUM(t.valor_original * (t.data_vencimento - n.data_emissao)) / NULLIF(SUM(t.valor_original), 0) AS prazo_medio_dias
         FROM vw_titulos_receber t
         JOIN notas n
           ON t.filial = n.filial
@@ -188,32 +225,37 @@ def _prazo_medio_recebimento_dias(filiais: list[str]) -> float:
          AND t.cliente_codigo = n.cliente_codigo
          AND t.cliente_loja = n.cliente_loja
         WHERE t.tipo = 'NF' AND t.filial IN {clausula_filial}
+        GROUP BY t.cliente_codigo, t.cliente_loja
+        HAVING SUM(t.valor_original) > 0
     """
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(sql, **binds_filial)
-        (media,) = cursor.fetchone()
-    media_serializada = _comum.serializar(media)
-    return float(media_serializada) if media_serializada is not None else _PRAZO_MEDIO_PADRAO_DIAS
+        linhas = cursor.fetchall()
+    return [(_comum.serializar(valor_total), _comum.serializar(prazo)) for valor_total, prazo in linhas]
 
 
-def _prazo_medio_pagamento_dias(filiais: list[str]) -> float:
-    """Média de dias entre emissão e vencimento dos títulos a pagar — aqui
-    os dois campos já são DATE de verdade na própria view, sem precisar de
-    join com nenhuma outra (não existe view de compras/pedido de compra no
-    sistema pra comparar)."""
+def _grupos_prazo_pagamento(filiais: list[str]) -> list[tuple[float, float]]:
+    """(valor_total, prazo_medio_dias) por fornecedor — prazo entre emissão e
+    vencimento dos títulos a pagar (os dois campos já são DATE de verdade na
+    própria view, sem precisar de join com nenhuma outra — não existe view de
+    compras/pedido de compra no sistema pra comparar), ponderado por
+    `valor_original` de cada título."""
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
-        SELECT AVG(data_vencimento - data_emissao)
+        SELECT
+            SUM(valor_original) AS valor_total,
+            SUM(valor_original * (data_vencimento - data_emissao)) / NULLIF(SUM(valor_original), 0) AS prazo_medio_dias
         FROM vw_titulos_pagar
         WHERE filial IN {clausula_filial}
+        GROUP BY fornecedor_codigo, fornecedor_loja
+        HAVING SUM(valor_original) > 0
     """
     with get_connection() as connection:
         cursor = connection.cursor()
         cursor.execute(sql, **binds_filial)
-        (media,) = cursor.fetchone()
-    media_serializada = _comum.serializar(media)
-    return float(media_serializada) if media_serializada is not None else _PRAZO_MEDIO_PADRAO_DIAS
+        linhas = cursor.fetchall()
+    return [(_comum.serializar(valor_total), _comum.serializar(prazo)) for valor_total, prazo in linhas]
 
 
 def registrar(mcp) -> None:
@@ -262,10 +304,12 @@ def registrar(mcp) -> None:
         próximos 6 meses) pro gráfico, totais + corte de 90 dias pros
         donuts — tudo dado real já lançado. Em cima disso, soma uma
         estimativa do que ainda vai virar título (venda projetada
-        convertida em caixa pelo prazo médio de recebimento; tendência
-        histórica de novas contas a pagar) — só o "*_estimado" carrega essa
-        parte; os campos sem sufixo continuam sendo só o confirmado, como
-        antes. A IA só narra os números prontos, nunca calcula nada disso."""
+        convertida em caixa pelo prazo médio de recebimento por cliente;
+        tendência histórica de novas contas a pagar convertida pelo prazo
+        médio de pagamento por fornecedor — ver `_resumo_participacoes`) —
+        só o "*_estimado" carrega essa parte; os campos sem sufixo continuam
+        sendo só o confirmado, como antes. A IA só narra os números prontos,
+        nunca calcula nada disso."""
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
@@ -289,8 +333,8 @@ def registrar(mcp) -> None:
             pagar_no_periodo, pagar_fora_periodo = _buscar_corte_periodo("vw_titulos_pagar", filiais, data_corte)
             yield _linha_ndjson({"tipo": "etapa", "id": "titulos_abertos"})
 
-            prazo_recebimento = _prazo_medio_recebimento_dias(filiais)
-            prazo_pagamento = _prazo_medio_pagamento_dias(filiais)
+            prazo_recebimento, participacoes_receber = _resumo_participacoes(_grupos_prazo_recebimento(filiais))
+            prazo_pagamento, participacoes_pagar = _resumo_participacoes(_grupos_prazo_pagamento(filiais))
             yield _linha_ndjson({"tipo": "etapa", "id": "prazo_medio"})
 
             meses_historico = _janela_meses_historico(_MESES_HISTORICO)
@@ -299,10 +343,8 @@ def registrar(mcp) -> None:
             titulos_pagar_por_mes = _buscar_titulos_pagar_mensal(filiais, meses_historico[0])
             _, projecao_pagar = _historico_e_projecao(titulos_pagar_por_mes, meses_historico, _MESES_PROJECAO)
 
-            deslocamento_receber = round(prazo_recebimento / 30)
-            deslocamento_pagar = round(prazo_pagamento / 30)
-            estimado_receber = _distribuir_estimativa(projecao_vendas, deslocamento_receber, meses_janela)
-            estimado_pagar = _distribuir_estimativa(projecao_pagar, deslocamento_pagar, meses_janela)
+            estimado_receber = _distribuir_estimativa_ponderada(projecao_vendas, participacoes_receber, meses_janela)
+            estimado_pagar = _distribuir_estimativa_ponderada(projecao_pagar, participacoes_pagar, meses_janela)
             yield _linha_ndjson({"tipo": "etapa", "id": "projecao_futura"})
 
             meses = [

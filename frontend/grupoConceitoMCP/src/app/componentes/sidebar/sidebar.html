@@ -206,6 +206,31 @@
     }
 
     <a class="nav-link"
+       routerLink="/estoque"
+       routerLinkActive="active"
+       [title]="colapsado() ? 'Estoque' : null"
+       (click)="navegarParaFora()">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24"
+             width="20"
+             height="20"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8">
+          <path d="M4 8 12 3l8 5-8 5-8-5Z"
+                stroke-linecap="round"
+                stroke-linejoin="round" />
+          <path d="M4 8v8l8 5 8-5V8"
+                stroke-linecap="round"
+                stroke-linejoin="round" />
+          <path d="M12 13v8"
+                stroke-linecap="round" />
+        </svg>
+      </span>
+      <span class="nav-label">Estoque</span>
+    </a>
+
+    <a class="nav-link"
        routerLink="/chat"
        routerLinkActive="active"
        [title]="colapsado() ? 'Assistente IA' : null"

@@ -5,6 +5,7 @@ import { Financeiro } from './pages/modulos/financeiro/financeiro';
 import { CriarRelatorio } from './pages/modulos/financeiro/criar-relatorio/criar-relatorio';
 import { FluxoCaixa } from './pages/modulos/financeiro/fluxo-caixa/fluxo-caixa';
 import { Vendas } from './pages/modulos/financeiro/vendas/vendas';
+import { Estoque } from './pages/modulos/estoque/estoque';
 import { Chat } from './pages/chat/chat';
 import { Login } from './pages/login/login';
 import { Historico } from './pages/relatorios/historico/historico';
@@ -24,6 +25,7 @@ export const routes: Routes = [
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },
       { path: 'financeiro/:moduloId', component: Financeiro },
+      { path: 'estoque', component: Estoque },
       { path: 'chat', component: Chat },
       { path: 'relatorios/historico', component: Historico },
       { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] }

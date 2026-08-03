@@ -1,0 +1,32 @@
+<app-modulo-header
+  breadcrumb="Ferramentas / Juntar Excel"
+  titulo="Juntar Excel"
+  descricao="Envie duas planilhas .xlsx e receba uma terceira com os dados combinados."
+/>
+
+<div class="juntar-excel">
+  <p class="explicacao">
+    Se as duas planilhas tiverem as mesmas colunas, os dados são combinados numa tabela só. Se as colunas forem
+    diferentes, o arquivo final mantém as duas tabelas separadas, uma embaixo da outra, cada uma com o fundo na cor
+    mostrada abaixo — assim fica fácil identificar de onde veio cada dado.
+  </p>
+
+  <div class="seletores">
+    <app-seletor-arquivo-excel rotulo="Planilha 1" cor="verde" (arquivoAlterado)="definirArquivo1($event)" />
+    <app-seletor-arquivo-excel rotulo="Planilha 2" cor="laranja" (arquivoAlterado)="definirArquivo2($event)" />
+  </div>
+
+  @if (erro()) {
+    <p class="mensagem mensagem--erro">{{ erro() }}</p>
+  }
+
+  @if (concluido()) {
+    <p class="mensagem mensagem--sucesso">Planilha combinada gerada e baixada com sucesso.</p>
+  }
+
+  <div class="acoes">
+    <app-botao variant="primaria" [disabled]="!prontoParaEnviar()" [loading]="enviando()" loadingText="Juntando..." (clicked)="juntar()">
+      Juntar planilhas
+    </app-botao>
+  </div>
+</div>

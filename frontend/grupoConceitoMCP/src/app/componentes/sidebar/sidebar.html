@@ -428,6 +428,25 @@
       </span>
       <span class="nav-label">Lista de Auditoria</span>
     </a>
+
+    <a class="nav-link"
+       routerLink="/juntar-excel"
+       routerLinkActive="active"
+       [title]="colapsado() ? 'Juntar Excel' : null"
+       (click)="navegarParaFora()">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24"
+             width="20"
+             height="20"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8">
+          <rect x="3" y="4" width="12" height="14" rx="2" />
+          <rect x="9" y="10" width="12" height="14" rx="2" />
+        </svg>
+      </span>
+      <span class="nav-label">Juntar Excel</span>
+    </a>
   </nav>
 
   <div class="sidebar-footer">

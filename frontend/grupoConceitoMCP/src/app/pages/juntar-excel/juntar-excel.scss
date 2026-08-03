@@ -1,0 +1,47 @@
+.juntar-excel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.explicacao {
+  margin: 0 0 24px;
+  max-width: 560px;
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.seletores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 220px));
+  gap: 28px;
+  width: 100%;
+  justify-content: center;
+}
+
+.mensagem {
+  margin: 20px 0 0;
+  font-size: 13.5px;
+}
+
+.mensagem--erro {
+  color: #9a2f2f;
+}
+
+.mensagem--sucesso {
+  color: var(--color-primary);
+}
+
+.acoes {
+  margin-top: 28px;
+}
+
+@media (max-width: 520px) {
+  .seletores {
+    grid-template-columns: minmax(0, 220px);
+  }
+}

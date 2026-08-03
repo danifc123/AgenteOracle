@@ -1,0 +1,42 @@
+<div class="seletor-wrapper">
+  <label
+    class="seletor"
+    [class.seletor--verde]="cor() === 'verde'"
+    [class.seletor--laranja]="cor() === 'laranja'"
+    [class.seletor--preenchido]="arquivo() !== null"
+    [class.seletor--arrastando]="arrastandoSobre()"
+    (dragover)="aoArrastarSobre($event)"
+    (dragleave)="aoSairArraste()"
+    (drop)="aoSoltarArquivo($event)"
+  >
+    <input type="file" accept=".xlsx" (change)="selecionarViaInput($event)" hidden />
+
+    @if (arquivo(); as arquivoAtual) {
+      <svg class="icone" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z" stroke-linejoin="round" />
+        <path d="M14 3v5h5" stroke-linejoin="round" />
+      </svg>
+      <p class="nome-arquivo" [title]="arquivoAtual.name">{{ arquivoAtual.name }}</p>
+      <p class="tamanho-arquivo">{{ tamanhoFormatado() }}</p>
+    } @else {
+      <svg class="icone" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M5 15.5v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <p class="titulo-seletor">{{ rotulo() }}</p>
+      <p class="instrucao">Clique ou arraste o arquivo .xlsx aqui</p>
+    }
+  </label>
+
+  @if (arquivo()) {
+    <button type="button" class="remover" (click)="remover()" aria-label="Remover arquivo" title="Remover arquivo">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 6 6 18M6 6l12 12" />
+      </svg>
+    </button>
+  }
+
+  @if (erro()) {
+    <p class="erro-seletor">{{ erro() }}</p>
+  }
+</div>

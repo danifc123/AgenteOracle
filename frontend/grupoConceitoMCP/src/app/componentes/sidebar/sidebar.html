@@ -405,6 +405,28 @@
       <span class="nav-label">Usuários</span>
     </a>
     }
+
+    <button type="button"
+            class="nav-link"
+            [title]="colapsado() ? 'Auditoria de Dados' : null"
+            (click)="auditoria.abrir()">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24"
+             width="20"
+             height="20"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8">
+          <path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z"
+                stroke-linecap="round"
+                stroke-linejoin="round" />
+          <path d="M9 12l2 2 4-4"
+                stroke-linecap="round"
+                stroke-linejoin="round" />
+        </svg>
+      </span>
+      <span class="nav-label">Auditoria de Dados</span>
+    </button>
   </nav>
 
   <div class="sidebar-footer">

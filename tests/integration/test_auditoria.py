@@ -77,19 +77,66 @@ def test_dispensar_e_idempotente(usuario_teste):
     assert ("financeiro", "vw_clientes", "filial", "1908745") in dispensados.listar_dispensados(usuario_id)
 
 
-def test_achado_dispensado_nao_reaparece_no_get(mcp_app, token_teste, usuario_teste):
-    """Dispensa um achado (independente de ele ter sido gerado pela IA ou
-    não — a checagem de dispensa não sabe/precisa saber disso) e confirma que
-    ele nunca aparece na resposta do GET pra esse usuário."""
-    dispensados.dispensar(str(usuario_teste["id"]), "financeiro", "vw_clientes", "filial", "1908745")
+def test_dispensados_sozinho_nao_esconde_do_get(mcp_app, token_teste, usuario_teste):
+    """`ativo` é a única fonte de verdade de quem aparece no GET — chamar só
+    `dispensados.dispensar` (sem passar pela rota, que também desativa) não
+    é suficiente pra esconder um achado ainda ativo. Documenta o oposto do
+    que valia antes de "Dispensar" passar a desativar globalmente — sem essa
+    garantia, um achado com `ativo=True` podia sumir do dialog por causa de
+    uma dispensa avulsa, que foi exatamente o bug relatado."""
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [
+            Achado(
+                modulo="financeiro",
+                view="vw_teste_dispensados_sozinho",
+                campo="campo",
+                valor="valor-r",
+                descricao="teste",
+            )
+        ],
+    )
+    dispensados.dispensar(str(usuario_teste["id"]), "financeiro", "vw_teste_dispensados_sozinho", "campo", "valor-r")
 
     resposta = mcp_app.get("/api/auditoria", headers=_auth(token_teste))
     assert resposta.status_code == 200
     achados = resposta.json()
-    assert not any(
-        achado["view"] == "vw_clientes" and achado["campo"] == "filial" and achado["valor"] == "1908745"
-        for achado in achados
+    assert any(
+        achado["view"] == "vw_teste_dispensados_sozinho" and achado["valor"] == "valor-r" for achado in achados
     )
+
+
+def test_dispensar_route_tambem_desativa_globalmente(mcp_app, token_teste):
+    """"Dispensar" não é mais só por usuário — a rota também chama
+    `definir_ativo(..., False)`, então o achado deixa de contar em
+    `ja_identificados` (a IA pode reencontrá-lo numa execução futura) e some
+    da Lista de Auditoria pra todo mundo, não só pra quem dispensou."""
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [
+            Achado(
+                modulo="financeiro",
+                view="vw_teste_dispensar_desativa",
+                campo="campo",
+                valor="valor-t",
+                descricao="teste",
+            )
+        ],
+    )
+    assert ("financeiro", "vw_teste_dispensar_desativa", "campo", "valor-t") in historico_tools.ja_identificados()
+
+    resposta = mcp_app.post(
+        "/api/auditoria/dispensar",
+        json={"modulo": "financeiro", "view": "vw_teste_dispensar_desativa", "campo": "campo", "valor": "valor-t"},
+        headers=_auth(token_teste),
+    )
+    assert resposta.status_code == 200
+    assert (
+        "financeiro",
+        "vw_teste_dispensar_desativa",
+        "campo",
+        "valor-t",
+    ) not in historico_tools.ja_identificados()
 
 
 def test_auditoria_historico_sem_token_e_nao_autorizado(mcp_app):
@@ -130,6 +177,61 @@ def test_auditoria_historico_nao_mostra_achado_de_modulo_fora_do_acesso(mcp_app,
 
 def test_historico_salvar_sem_achados_nao_grava_nada():
     assert historico_tools.salvar("usuario-qualquer-sem-achado", []) is None
+
+
+def test_listar_por_padrao_nao_inclui_desativado():
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [Achado(modulo="financeiro", view="vw_teste_listar_ativo", campo="campo", valor="valor-w", descricao="teste")],
+    )
+    historico_tools.definir_ativo("financeiro", "vw_teste_listar_ativo", "campo", "valor-w", False)
+
+    registros = historico_tools.listar(["financeiro"])
+    assert not any(r["view"] == "vw_teste_listar_ativo" and r["valor"] == "valor-w" for r in registros)
+
+    registros_com_desativados = historico_tools.listar(["financeiro"], incluir_desativados=True)
+    assert any(r["view"] == "vw_teste_listar_ativo" and r["valor"] == "valor-w" for r in registros_com_desativados)
+
+
+def test_auditoria_historico_route_usuario_comum_nao_ve_desativado(mcp_app, token_teste, usuario_teste):
+    """`usuario_teste` só tem o papel "financeiro" (não "desenvolvedor") — não
+    deve nem saber que um achado desativado existe."""
+    historico_tools.salvar(
+        str(usuario_teste["id"]),
+        [Achado(modulo="financeiro", view="vw_teste_route_ativo", campo="campo", valor="valor-v", descricao="teste")],
+    )
+    historico_tools.definir_ativo("financeiro", "vw_teste_route_ativo", "campo", "valor-v", False)
+
+    resposta = mcp_app.get("/api/auditoria/historico", headers=_auth(token_teste))
+    registros = resposta.json()
+    assert not any(r["view"] == "vw_teste_route_ativo" and r["valor"] == "valor-v" for r in registros)
+
+
+def test_auditoria_historico_route_desenvolvedor_ve_desativado(mcp_app):
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    historico_tools.salvar(
+        "usuario-dev-listar-teste",
+        [Achado(modulo="financeiro", view="vw_teste_route_dev", campo="campo", valor="valor-u", descricao="teste")],
+    )
+    historico_tools.definir_ativo("financeiro", "vw_teste_route_dev", "campo", "valor-u", False)
+
+    login = f"teste_dev_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    criado = usuarios_tools.criar_usuario(login, senha, "Dev de Teste (integração)", ["desenvolvedor"])
+    try:
+        resposta_login = mcp_app.post("/api/auth/login", json={"usuario": login, "senha": senha})
+        token = resposta_login.json()["token"]
+
+        resposta = mcp_app.get("/api/auditoria/historico", headers=_auth(token))
+        registros = resposta.json()
+        encontrado = next(
+            (r for r in registros if r["view"] == "vw_teste_route_dev" and r["valor"] == "valor-u"), None
+        )
+        assert encontrado is not None
+        assert encontrado["ativo"] is False
+    finally:
+        usuarios_tools.deletar_usuario(criado["id"])
 
 
 def test_achados_ativos_devolve_uma_linha_por_tupla_com_a_descricao_mais_recente():

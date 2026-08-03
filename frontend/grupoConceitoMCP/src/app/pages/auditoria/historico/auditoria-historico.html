@@ -25,8 +25,8 @@
           <th>Valor</th>
           <th>Descrição</th>
           <th>Encontrado em</th>
-          <th>Status</th>
           @if (ehDesenvolvedor()) {
+            <th>Status</th>
             <th><span class="sr-only">Ações</span></th>
           }
         </tr>
@@ -39,14 +39,14 @@
             <td>{{ achado.valor }}</td>
             <td>{{ achado.descricao }}</td>
             <td>{{ achado.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
-            <td>
-              @if (achado.ativo) {
-                <span class="badge-ativo">Ativo</span>
-              } @else {
-                <span class="badge-desativado">Desativado</span>
-              }
-            </td>
             @if (ehDesenvolvedor()) {
+              <td>
+                @if (achado.ativo) {
+                  <span class="badge-ativo">Ativo</span>
+                } @else {
+                  <span class="badge-desativado">Desativado</span>
+                }
+              </td>
               <td>
                 <button
                   type="button"

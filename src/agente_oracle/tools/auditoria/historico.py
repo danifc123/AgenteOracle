@@ -194,16 +194,23 @@ def definir_ativo(modulo: str, view: str, campo: str, valor: str, ativo: bool) -
         return cursor.rowcount > 0
 
 
-def listar(modulos_liberados: list[str], limite: int = 200) -> list[dict]:
+def listar(modulos_liberados: list[str], incluir_desativados: bool = False, limite: int = 200) -> list[dict]:
     """Achados já registrados, do mais recente pro mais antigo, restritos aos
     módulos que quem está consultando tem acesso — mesma regra de RBAC do
     `GET /api/auditoria` ao vivo, pra nunca vazar achado de um módulo sem
-    permissão através do histórico."""
+    permissão através do histórico.
+
+    `incluir_desativados` é pensado pra ser `True` só pra quem tem o papel
+    `desenvolvedor` (ver `server/auditoria/rotas.py`): achado desativado
+    (`definir_ativo(..., ativo=False)`) é um detalhe interno de
+    teste/depuração, não algo que o usuário comum deveria ver ou precisar
+    entender — pra ele, esse achado simplesmente nunca existiu."""
     if not modulos_liberados:
         return []
 
     marcadores = ", ".join(f":modulo_{indice}" for indice in range(len(modulos_liberados)))
     binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
+    clausula_ativo = "" if incluir_desativados else "AND ativo = TRUE"
 
     with get_connection() as connection:
         cursor = connection.cursor()
@@ -212,7 +219,7 @@ def listar(modulos_liberados: list[str], limite: int = 200) -> list[dict]:
             f"""
             SELECT execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em, ativo
             FROM auditoria_historico
-            WHERE modulo IN ({marcadores})
+            WHERE modulo IN ({marcadores}) {clausula_ativo}
             ORDER BY criado_em DESC
             FETCH FIRST {limite} ROWS ONLY
             """,

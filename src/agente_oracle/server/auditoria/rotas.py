@@ -38,18 +38,21 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/auditoria", methods=["GET", "OPTIONS"])
     async def auditoria_route(request: Request) -> Response:
         """Roda a análise de qualidade de dados ao vivo para os módulos que o
-        usuário logado tem acesso, e devolve o quadro completo do que está
-        pendente — não só o que apareceu nesta execução. Valores já
-        identificados por QUALQUER execução (de qualquer usuário) são
-        tirados dos perfis ANTES de chamar a IA (`historico.ja_identificados`
+        usuário logado tem acesso, e devolve TODO achado ATIVO — o quadro
+        completo do que está pendente, não só o que apareceu nesta execução.
+        Valores já identificados por QUALQUER execução (de qualquer usuário)
+        são tirados dos perfis ANTES de chamar a IA (`historico.ja_identificados`
         + `filtrar_valores_conhecidos`), pra não gastar uma chamada de IA
         "redescobrindo" o que já se sabe; os achados assim excluídos da
         análise são buscados de volta prontos, via `historico.achados_ativos`
         (achados_novos e achados_ja_conhecidos são disjuntos por construção:
         o pré-filtro garante que achados_novos nunca repete uma tupla que já
-        estava em ja_identificados). Só depois disso o que essa pessoa
-        dispensou (`tools/auditoria/dispensados`, por usuário — "isso não é
-        problema") é filtrado da resposta final."""
+        estava em ja_identificados). `ativo` é a ÚNICA fonte de verdade do
+        que aparece aqui — dispensar (`/api/auditoria/dispensar`) desativa,
+        então não tem filtro adicional por usuário depois disso; sem isso, um
+        achado com `ativo=True` (mostrado como "Ativo" na Lista de Auditoria)
+        podia sumir do dialog por causa de uma dispensa antiga, de antes de
+        dispensar passar a desativar — bug real que já aconteceu."""
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
@@ -79,26 +82,21 @@ def registrar(mcp) -> None:
 
         # Junta com o que já era conhecido e continua ativo, senão o dialog
         # só mostraria a novidade desta execução — não o que ainda está
-        # pendente de execuções anteriores.
+        # pendente de execuções anteriores. `achados_ativos` já não traz
+        # nada desativado, então não precisa de mais nenhum filtro depois.
         achados = achados_novos + historico_tools.achados_ativos(modulos_liberados)
 
-        # Por usuário: o que essa pessoa já disse que "não é problema" nunca
-        # aparece pra ela, mesmo sendo achado conhecido de longa data.
-        ja_dispensados = dispensados.listar_dispensados(usuario_ou_erro["sub"])
-        achados_visiveis = [
-            achado
-            for achado in achados
-            if (achado.modulo, achado.view, achado.campo, achado.valor) not in ja_dispensados
-        ]
-
-        return JSONResponse([_achado_para_json(achado) for achado in achados_visiveis], headers=CORS_HEADERS)
+        return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auditoria/historico", methods=["GET", "OPTIONS"])
     async def auditoria_historico_route(request: Request) -> Response:
         """Lista os achados que a auditoria já encontrou ao longo do tempo
         (todas as execuções, de qualquer usuário), restritos aos módulos que
         quem está consultando tem acesso — nunca expira, ao contrário de
-        `/api/relatorios/historico`."""
+        `/api/relatorios/historico`. Achado desativado (ver
+        `tools/auditoria/historico.definir_ativo`) só aparece pra quem tem o
+        papel `desenvolvedor` — pra usuário comum, é como se nunca tivesse
+        existido."""
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
@@ -106,8 +104,9 @@ def registrar(mcp) -> None:
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
-        modulos_liberados = papeis.modulos_liberados(usuario_ou_erro.get("papeis", []))
-        registros = historico_tools.listar(modulos_liberados)
+        papeis_usuario = usuario_ou_erro.get("papeis", [])
+        modulos_liberados = papeis.modulos_liberados(papeis_usuario)
+        registros = historico_tools.listar(modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario))
         return JSONResponse(registros, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auditoria/historico/ativo", methods=["PATCH", "OPTIONS"])
@@ -147,9 +146,15 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auditoria/dispensar", methods=["POST", "OPTIONS"])
     async def dispensar_route(request: Request) -> Response:
-        """Marca um achado como "não é problema" para o usuário logado — ele
-        não volta a aparecer nas próximas chamadas de GET /api/auditoria pra
-        essa mesma pessoa (a dispensa é por usuário, não global)."""
+        """Dispensa um achado — grava o registro por usuário (histórico de
+        quem dispensou o quê, em `tools/auditoria/dispensados`) e, além
+        disso, DESATIVA o achado globalmente (mesmo mecanismo do botão
+        ativar/desativar do desenvolvedor, via `historico.definir_ativo`).
+        Isso some da tela de todo mundo (Lista de Auditoria e próximas
+        execuções), mas também tira o valor de `ja_identificados` — se o
+        dado continuar errado, a IA pode reencontrar e reapontar o mesmo
+        problema numa execução futura. "Dispensar" aqui não é "isto nunca é
+        um problema", é "parei de olhar pra isso agora"."""
         if request.method == "OPTIONS":
             return resposta_preflight()
 
@@ -175,4 +180,5 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
 
         dispensados.dispensar(usuario_ou_erro["sub"], modulo, view, campo, valor)
+        historico_tools.definir_ativo(modulo, view, campo, valor, False)
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)

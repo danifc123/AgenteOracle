@@ -6,7 +6,9 @@ shape/autorização/RBAC, não o conteúdo exato dos achados."""
 
 import pytest
 
+from agente_oracle.agent.auditoria.analise import Achado
 from agente_oracle.tools.auditoria import dispensados
+from agente_oracle.tools.auditoria import historico as historico_tools
 
 pytestmark = pytest.mark.integration
 
@@ -86,3 +88,43 @@ def test_achado_dispensado_nao_reaparece_no_get(mcp_app, token_teste, usuario_te
         achado["view"] == "vw_clientes" and achado["campo"] == "filial" and achado["valor"] == "1908745"
         for achado in achados
     )
+
+
+def test_auditoria_historico_sem_token_e_nao_autorizado(mcp_app):
+    resposta = mcp_app.get("/api/auditoria/historico")
+    assert resposta.status_code == 401
+
+
+def test_auditoria_historico_lista_achados_ja_salvos(mcp_app, token_teste, usuario_teste):
+    historico_tools.salvar(
+        str(usuario_teste["id"]),
+        [Achado(modulo="financeiro", view="vw_clientes", campo="filial", valor="1908745", descricao="achado de teste")],
+    )
+
+    resposta = mcp_app.get("/api/auditoria/historico", headers=_auth(token_teste))
+    assert resposta.status_code == 200
+    registros = resposta.json()
+    assert any(
+        registro["modulo"] == "financeiro"
+        and registro["valor"] == "1908745"
+        and registro["descricao"] == "achado de teste"
+        for registro in registros
+    )
+
+
+def test_auditoria_historico_nao_mostra_achado_de_modulo_fora_do_acesso(mcp_app, token_teste, usuario_teste):
+    """`usuario_teste` só tem o papel "financeiro" — achado salvo pra um
+    módulo que ele não tem acesso nunca deve aparecer, nem no histórico."""
+    historico_tools.salvar(
+        str(usuario_teste["id"]),
+        [Achado(modulo="estoque", view="vw_qualquer", campo="campo", valor="valor-secreto", descricao="teste")],
+    )
+
+    resposta = mcp_app.get("/api/auditoria/historico", headers=_auth(token_teste))
+    assert resposta.status_code == 200
+    registros = resposta.json()
+    assert not any(registro["valor"] == "valor-secreto" for registro in registros)
+
+
+def test_historico_salvar_sem_achados_nao_grava_nada():
+    assert historico_tools.salvar("usuario-qualquer-sem-achado", []) is None

@@ -121,6 +121,9 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 | `/api/relatorios/historico/{id}/exportar` | GET | Baixa em Excel um relatório salvo, a partir do dado já armazenado no histórico |
 | `/api/relatorios/historico/{id}` | PATCH | `{fixado: bool}` → fixa/desfixa um relatório (fixado não expira pelo TTL) |
 | `/api/relatorios/historico/{id}` | DELETE | Apaga um relatório do histórico (ele volta a poder ser gerado de novo pela IA) |
+| `/api/auditoria` | GET | Roda a auditoria de dados ao vivo (sob demanda) para os módulos liberados ao usuário e devolve os achados ainda não dispensados |
+| `/api/auditoria/historico` | GET | Lista todo achado já encontrado ao longo do tempo, restrito aos módulos liberados — nunca expira |
+| `/api/auditoria/dispensar` | POST | `{modulo, view, campo, valor}` → marca um achado como "não é problema" para o usuário logado |
 
 ## Agente local (Ollama)
 

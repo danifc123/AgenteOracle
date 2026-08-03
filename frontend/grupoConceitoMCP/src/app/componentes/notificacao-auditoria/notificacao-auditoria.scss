@@ -14,15 +14,14 @@
   height: 40px;
   border: none;
   border-radius: 50%;
-  background: var(--color-surface);
-  color: var(--color-text-muted);
+  background: var(--color-primary);
+  color: #fff;
   box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 
   &:hover {
-    background: var(--color-bg);
-    color: var(--color-text);
+    background: var(--color-primary-light);
   }
 }
 
@@ -34,5 +33,5 @@
   height: 9px;
   border-radius: 50%;
   background: #c94b4b;
-  border: 2px solid var(--color-surface);
+  border: 2px solid var(--color-primary);
 }

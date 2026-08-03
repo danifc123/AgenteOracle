@@ -406,10 +406,11 @@
     </a>
     }
 
-    <button type="button"
-            class="nav-link"
-            [title]="colapsado() ? 'Auditoria de Dados' : null"
-            (click)="auditoria.abrir()">
+    <a class="nav-link"
+       routerLink="/auditoria/historico"
+       routerLinkActive="active"
+       [title]="colapsado() ? 'Lista de Auditoria' : null"
+       (click)="navegarParaFora()">
       <span class="nav-icon">
         <svg viewBox="0 0 24 24"
              width="20"
@@ -425,8 +426,8 @@
                 stroke-linejoin="round" />
         </svg>
       </span>
-      <span class="nav-label">Auditoria de Dados</span>
-    </button>
+      <span class="nav-label">Lista de Auditoria</span>
+    </a>
   </nav>
 
   <div class="sidebar-footer">

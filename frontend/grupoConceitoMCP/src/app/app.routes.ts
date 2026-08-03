@@ -11,6 +11,7 @@ import { EstoqueEspecificoGrupoConceito } from './pages/modulos/estoque/especifi
 import { EstoqueChat } from './pages/modulos/estoque/chat/estoque-chat';
 import { Chat } from './pages/modulos/financeiro/chat/chat';
 import { Login } from './pages/login/login';
+import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
 import { Historico } from './pages/relatorios/historico/historico';
 import { Usuarios } from './pages/usuarios/usuarios';
 import { adminGuard } from './servicos/admin.guard';
@@ -34,6 +35,7 @@ export const routes: Routes = [
       { path: 'estoque/chat', component: EstoqueChat },
       { path: 'estoque', component: Estoque },
       { path: 'relatorios/historico', component: Historico },
+      { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] }
     ]
   },

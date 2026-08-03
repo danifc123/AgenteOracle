@@ -15,12 +15,17 @@
     <ul class="lista-achados">
       @for (achado of auditoria.achados(); track chaveAchado(achado)) {
         <li class="achado">
-          <p>{{ achado.descricao }}</p>
-          <button type="button" class="dispensar" (click)="dispensar(achado)" title="Dispensar — não mostrar de novo">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <div class="achado-corpo">
+            <p class="achado-descricao">{{ achado.descricao }}</p>
+            <p class="achado-detalhe">
+              <span class="achado-tag">{{ achado.modulo }} · {{ achado.view }}</span>
+              <span class="achado-campo-valor"><strong>{{ achado.campo }}</strong>: <code>{{ achado.valor }}</code></span>
+            </p>
+          </div>
+          <label class="dispensar-opcao" title="Marcar como &quot;não é problema&quot; — não aparece mais pra você">
+            <input type="checkbox" (change)="dispensar(achado)" />
+            <span>Dispensar</span>
+          </label>
         </li>
       }
     </ul>

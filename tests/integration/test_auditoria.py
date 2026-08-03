@@ -4,6 +4,8 @@ disponível no ambiente — `analisar_perfis` já cai em lista vazia nesse caso
 (mesmo fallback usado nos testes de previsão), então os testes aqui cobrem
 shape/autorização/RBAC, não o conteúdo exato dos achados."""
 
+import uuid
+
 import pytest
 
 from agente_oracle.agent.auditoria.analise import Achado
@@ -128,3 +130,156 @@ def test_auditoria_historico_nao_mostra_achado_de_modulo_fora_do_acesso(mcp_app,
 
 def test_historico_salvar_sem_achados_nao_grava_nada():
     assert historico_tools.salvar("usuario-qualquer-sem-achado", []) is None
+
+
+def test_achados_ativos_devolve_uma_linha_por_tupla_com_a_descricao_mais_recente():
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [Achado(modulo="financeiro", view="vw_teste_ativos", campo="campo", valor="valor-x", descricao="primeira")],
+    )
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [
+            Achado(
+                modulo="financeiro",
+                view="vw_teste_ativos",
+                campo="campo",
+                valor="valor-x",
+                descricao="segunda mais recente",
+            )
+        ],
+    )
+    encontrados = [
+        achado
+        for achado in historico_tools.achados_ativos(["financeiro"])
+        if achado.view == "vw_teste_ativos" and achado.valor == "valor-x"
+    ]
+    assert len(encontrados) == 1
+    assert encontrados[0].descricao == "segunda mais recente"
+
+
+def test_achados_ativos_nao_inclui_desativado():
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [
+            Achado(
+                modulo="financeiro",
+                view="vw_teste_ativos_desativado",
+                campo="campo",
+                valor="valor-y",
+                descricao="teste",
+            )
+        ],
+    )
+    historico_tools.definir_ativo("financeiro", "vw_teste_ativos_desativado", "campo", "valor-y", False)
+
+    ativos = historico_tools.achados_ativos(["financeiro"])
+    assert not any(achado.view == "vw_teste_ativos_desativado" and achado.valor == "valor-y" for achado in ativos)
+
+
+def test_achados_ativos_respeita_modulos_liberados():
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [Achado(modulo="estoque", view="vw_teste_ativos_modulo", campo="campo", valor="valor-z", descricao="teste")],
+    )
+
+    ativos_financeiro = historico_tools.achados_ativos(["financeiro"])
+    assert not any(achado.view == "vw_teste_ativos_modulo" for achado in ativos_financeiro)
+
+    ativos_estoque = historico_tools.achados_ativos(["estoque"])
+    assert any(
+        achado.view == "vw_teste_ativos_modulo" and achado.valor == "valor-z" for achado in ativos_estoque
+    )
+
+
+def test_achados_ativos_sem_modulos_devolve_vazio():
+    assert historico_tools.achados_ativos([]) == []
+
+
+def test_definir_ativo_desativa_e_reativa_todas_as_linhas_da_tupla():
+    historico_tools.salvar(
+        "usuario-teste-ativo",
+        [Achado(modulo="financeiro", view="vw_teste_ativo", campo="campo", valor="valor-ativo-1", descricao="teste")],
+    )
+    assert ("financeiro", "vw_teste_ativo", "campo", "valor-ativo-1") in historico_tools.ja_identificados()
+
+    assert historico_tools.definir_ativo("financeiro", "vw_teste_ativo", "campo", "valor-ativo-1", False) is True
+    assert ("financeiro", "vw_teste_ativo", "campo", "valor-ativo-1") not in historico_tools.ja_identificados()
+
+    historico_tools.definir_ativo("financeiro", "vw_teste_ativo", "campo", "valor-ativo-1", True)
+    assert ("financeiro", "vw_teste_ativo", "campo", "valor-ativo-1") in historico_tools.ja_identificados()
+
+
+def test_definir_ativo_sem_achado_correspondente_devolve_false():
+    assert historico_tools.definir_ativo("financeiro", "vw_inexistente", "campo", "valor-que-nao-existe", False) is False
+
+
+def test_historico_ativo_route_sem_token_e_nao_autorizado(mcp_app):
+    resposta = mcp_app.patch(
+        "/api/auditoria/historico/ativo",
+        json={"modulo": "financeiro", "view": "v", "campo": "c", "valor": "x", "ativo": False},
+    )
+    assert resposta.status_code == 401
+
+
+def test_historico_ativo_route_sem_papel_desenvolvedor_e_bloqueado(mcp_app, token_teste):
+    """`usuario_teste` só tem o papel "financeiro" — mesmo sendo um achado do
+    módulo que ele acessa, ativar/desativar é restrito a desenvolvedor."""
+    resposta = mcp_app.patch(
+        "/api/auditoria/historico/ativo",
+        json={"modulo": "financeiro", "view": "vw_clientes", "campo": "filial", "valor": "1908745", "ativo": False},
+        headers=_auth(token_teste),
+    )
+    assert resposta.status_code == 403
+
+
+def test_historico_ativo_route_com_papel_desenvolvedor_funciona(mcp_app):
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    historico_tools.salvar(
+        "usuario-dev-teste",
+        [Achado(modulo="financeiro", view="vw_teste_dev", campo="campo", valor="valor-dev-1", descricao="teste")],
+    )
+
+    login = f"teste_dev_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    criado = usuarios_tools.criar_usuario(login, senha, "Dev de Teste (integração)", ["desenvolvedor"])
+    try:
+        resposta_login = mcp_app.post("/api/auth/login", json={"usuario": login, "senha": senha})
+        token = resposta_login.json()["token"]
+
+        resposta = mcp_app.patch(
+            "/api/auditoria/historico/ativo",
+            json={
+                "modulo": "financeiro",
+                "view": "vw_teste_dev",
+                "campo": "campo",
+                "valor": "valor-dev-1",
+                "ativo": False,
+            },
+            headers=_auth(token),
+        )
+        assert resposta.status_code == 200
+        assert resposta.json() == {"ok": True}
+        assert ("financeiro", "vw_teste_dev", "campo", "valor-dev-1") not in historico_tools.ja_identificados()
+    finally:
+        usuarios_tools.deletar_usuario(criado["id"])
+
+
+def test_ja_identificados_inclui_achado_salvo_por_qualquer_usuario():
+    """`ja_identificados` é global — não filtra por usuário nem por módulo
+    liberado (isso é feito depois, na camada de rota/histórico); é só "isso
+    já apareceu em algum momento"."""
+    historico_tools.salvar(
+        "usuario-qualquer-outro",
+        [
+            Achado(
+                modulo="financeiro",
+                view="vw_teste_ja_identificados",
+                campo="campo",
+                valor="valor-unico-123",
+                descricao="teste",
+            )
+        ],
+    )
+    assert ("financeiro", "vw_teste_ja_identificados", "campo", "valor-unico-123") in historico_tools.ja_identificados()

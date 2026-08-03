@@ -46,6 +46,15 @@ def eh_administrador(papeis: list[str]) -> bool:
     return any(papel.administrador for papel in _papeis_validos(papeis))
 
 
+def eh_desenvolvedor(papeis: list[str]) -> bool:
+    """Diferente de `eh_administrador` (verdadeiro pra qualquer papel
+    administrador, ex: `financeiro_admin`), aqui é só o papel `desenvolvedor`
+    especificamente — usado por funcionalidades de teste/depuração (ex:
+    ativar/desativar achado de auditoria) que não devem aparecer nem pra
+    administradores de módulo comuns."""
+    return any(papel.slug == "desenvolvedor" for papel in _papeis_validos(papeis))
+
+
 def modulos_liberados(papeis: list[str]) -> list[str]:
     validos = _papeis_validos(papeis)
     if any(papel.acesso_total for papel in validos):

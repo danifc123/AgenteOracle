@@ -74,6 +74,32 @@ class TestAchadoFundamentado:
         assert mod._achado_fundamentado(achado, perfis) is True
 
 
+class TestFiltrarValoresConhecidos:
+    def test_remove_so_o_valor_conhecido_mantendo_o_resto_do_perfil(self):
+        perfil = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0101", 40), ("1908745", 1))
+        )
+        conhecidos = {("financeiro", "vw_clientes", "filial", "1908745")}
+        resultado = mod.filtrar_valores_conhecidos([perfil], conhecidos)
+        assert resultado == [
+            PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0101", 40),))
+        ]
+
+    def test_perfil_que_fica_sem_nenhum_valor_e_descartado_inteiro(self):
+        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),))
+        conhecidos = {("financeiro", "vw_clientes", "filial", "1908745")}
+        assert mod.filtrar_valores_conhecidos([perfil], conhecidos) == []
+
+    def test_tupla_de_outro_modulo_view_ou_campo_nao_remove_por_engano(self):
+        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),))
+        conhecidos = {("financeiro", "vw_fornecedores", "filial", "1908745")}
+        assert mod.filtrar_valores_conhecidos([perfil], conhecidos) == [perfil]
+
+    def test_sem_conhecidos_devolve_os_perfis_intactos(self):
+        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),))
+        assert mod.filtrar_valores_conhecidos([perfil], set()) == [perfil]
+
+
 class TestAnalisarPerfis:
     _PERFIL = PerfilCampo(
         modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0101", 40), ("1908745", 1))

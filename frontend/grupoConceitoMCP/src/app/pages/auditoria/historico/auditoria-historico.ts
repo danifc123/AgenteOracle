@@ -39,12 +39,12 @@ export class AuditoriaHistorico {
   protected readonly ehDesenvolvedor = () => this.sessao.papeis().includes('desenvolvedor');
 
   constructor() {
-    // `execucoes()` incrementa toda vez que uma auditoria termina de rodar
-    // (em qualquer tela, via sino) — o efeito roda uma vez na criação
-    // (cobrindo a carga inicial da página) e de novo a cada execução nova,
-    // sem precisar que o usuário recarregue a tela.
+    // `mudancas()` incrementa toda vez que uma auditoria termina de rodar OU
+    // um achado é dispensado (em qualquer tela, via sino) — o efeito roda
+    // uma vez na criação (cobrindo a carga inicial da página) e de novo a
+    // cada mudança nova, sem precisar que o usuário recarregue a tela.
     effect(() => {
-      this.auditoria.execucoes();
+      this.auditoria.mudancas();
       this.carregar();
     });
   }

@@ -106,6 +106,26 @@ def test_dispensados_sozinho_nao_esconde_do_get(mcp_app, token_teste, usuario_te
     )
 
 
+def test_achados_ativos_lido_antes_de_salvar_nao_inclui_o_que_esta_sendo_salvo():
+    """Regressão do bug "8 no dialog, 4 na lista": `achados_ativos` lido
+    ANTES de `salvar` não pode incluir o que está prestes a ser salvo — a
+    rota depende dessa ordem pra `achados_novos` e `achados_ja_conhecidos`
+    serem disjuntos de verdade (ver docstring de `auditoria_route`). Lido
+    DEPOIS, cada achado novo apareceria duplicado."""
+    tupla = ("financeiro", "vw_teste_ordem_achados_ativos", "campo", "valor-ordem")
+
+    antes = historico_tools.achados_ativos(["financeiro"])
+    assert not any((a.modulo, a.view, a.campo, a.valor) == tupla for a in antes)
+
+    historico_tools.salvar(
+        "usuario-qualquer",
+        [Achado(modulo="financeiro", view="vw_teste_ordem_achados_ativos", campo="campo", valor="valor-ordem", descricao="teste")],
+    )
+
+    depois = historico_tools.achados_ativos(["financeiro"])
+    assert any((a.modulo, a.view, a.campo, a.valor) == tupla for a in depois)
+
+
 def test_dispensar_route_tambem_desativa_globalmente(mcp_app, token_teste):
     """"Dispensar" não é mais só por usuário — a rota também chama
     `definir_ativo(..., False)`, então o achado deixa de contar em

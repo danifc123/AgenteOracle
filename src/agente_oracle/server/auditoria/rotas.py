@@ -45,9 +45,12 @@ def registrar(mcp) -> None:
         + `filtrar_valores_conhecidos`), pra não gastar uma chamada de IA
         "redescobrindo" o que já se sabe; os achados assim excluídos da
         análise são buscados de volta prontos, via `historico.achados_ativos`
-        (achados_novos e achados_ja_conhecidos são disjuntos por construção:
-        o pré-filtro garante que achados_novos nunca repete uma tupla que já
-        estava em ja_identificados). `ativo` é a ÚNICA fonte de verdade do
+        — chamado ANTES de `historico.salvar`, de propósito: `achados_novos`
+        e `achados_ja_conhecidos` só ficam disjuntos se `achados_ativos` for
+        lido do banco ANTES dos achados novos serem gravados; lido depois,
+        cada achado novo aparecia duplicado (uma vez vindo da análise, outra
+        vindo do banco já com a linha recém-inserida) — bug real que já
+        aconteceu. `ativo` é a ÚNICA fonte de verdade do
         que aparece aqui — dispensar (`/api/auditoria/dispensar`) desativa,
         então não tem filtro adicional por usuário depois disso; sem isso, um
         achado com `ativo=True` (mostrado como "Ativo" na Lista de Auditoria)
@@ -76,15 +79,23 @@ def registrar(mcp) -> None:
         ollama_client = AsyncClient(host=settings.ollama_host)
         achados_novos = await analisar_perfis(ollama_client, settings.ollama_model, perfis)
 
+        # Busca o que já era conhecido e continua ativo ANTES de salvar os
+        # achados novos — nessa ordem, `achados_ja_conhecidos` nunca inclui
+        # os que estão em `achados_novos` (são disjuntos de verdade). Buscar
+        # DEPOIS de salvar duplicava cada achado novo: um vindo de
+        # `achados_novos` (em memória) e o mesmo de novo vindo de
+        # `achados_ativos` (lido do banco, já com a linha recém-inserida).
+        achados_ja_conhecidos = historico_tools.achados_ativos(modulos_liberados)
+
         # Guarda todo achado novo no histórico (é o que alimenta
         # `ja_identificados` na próxima execução, de qualquer usuário).
         historico_tools.salvar(usuario_ou_erro["sub"], achados_novos)
 
-        # Junta com o que já era conhecido e continua ativo, senão o dialog
-        # só mostraria a novidade desta execução — não o que ainda está
-        # pendente de execuções anteriores. `achados_ativos` já não traz
-        # nada desativado, então não precisa de mais nenhum filtro depois.
-        achados = achados_novos + historico_tools.achados_ativos(modulos_liberados)
+        # Junta com o que já era conhecido, senão o dialog só mostraria a
+        # novidade desta execução — não o que ainda está pendente de
+        # execuções anteriores. `achados_ativos` já não traz nada
+        # desativado, então não precisa de mais nenhum filtro depois.
+        achados = achados_novos + achados_ja_conhecidos
 
         return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)
 

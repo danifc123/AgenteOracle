@@ -6,18 +6,45 @@ de `relatorios_historico` (que expira em 15h), este histórico nunca expira —
 o objetivo é acumular dado ao longo do tempo, pra eventualmente servir de
 contexto/treino de algum agente, não só cache de curto prazo.
 
-Guarda TODO achado fundamentado que a IA já apontou, mesmo os que o usuário
-depois dispensou (`tools/auditoria/dispensados.py`) — dispensar só afeta o
-que aparece na tela seguinte, não apaga o registro de que aquele achado já
-foi sugerido um dia."""
+`ja_identificados()` é o que faz esta tabela também servir de deduplicação:
+`server/auditoria/rotas.py` só chama `salvar()` (e só devolve pro front) os
+achados cujo `(modulo, view, campo, valor)` ainda não está aqui e ATIVO — um
+problema já identificado e ainda não corrigido não é reapontado a cada
+execução (seria gasto de IA à toa pra "descobrir" de novo o que já se sabe).
+Se o dado mudou (mesmo que continue errado, com um valor diferente), o
+achado é outra tupla e volta a aparecer normalmente. Isso é global (qualquer
+usuário, qualquer execução) — diferente de `tools/auditoria/dispensados.py`,
+que é por usuário e serve pra "isso na verdade não é problema", não pra
+"isso já foi visto".
+
+A coluna `ativo` existe só pra facilitar teste/depuração: `definir_ativo`
+deixa um desenvolvedor "desligar" um achado específico (todas as linhas
+daquela tupla) sem apagar o registro — desativado, ele não conta mais pra
+`ja_identificados`, então a próxima execução da auditoria volta a considerar
+aquele valor como candidato e a IA pode reapontá-lo de novo, mesmo sem o
+dado ter mudado. É só pra reproduzir o mesmo cenário de teste várias vezes;
+ver `server/auth/dependencia.exigir_desenvolvedor`, que restringe isso ao
+papel `desenvolvedor`."""
 
 import uuid
 from datetime import datetime, timezone
 
 from agente_oracle.agent.auditoria.analise import Achado
+from agente_oracle.config import settings
 from agente_oracle.db.connection import get_connection
 
 _tabela_garantida = False
+
+
+def _coluna_ativo_existe(cursor) -> bool:
+    if settings.db_backend == "postgres":
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'auditoria_historico' AND column_name = 'ativo'"
+        )
+    else:
+        cursor.execute("SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'AUDITORIA_HISTORICO' AND COLUMN_NAME = 'ATIVO'")
+    return cursor.fetchone() is not None
 
 
 def _garantir_tabela(cursor) -> None:
@@ -34,9 +61,15 @@ def _garantir_tabela(cursor) -> None:
             campo VARCHAR NOT NULL,
             valor VARCHAR NOT NULL,
             descricao TEXT NOT NULL,
-            criado_em TIMESTAMPTZ NOT NULL
+            criado_em TIMESTAMPTZ NOT NULL,
+            ativo BOOLEAN NOT NULL DEFAULT TRUE
         )
     """)
+    # A tabela pode já existir de antes desta coluna ser criada (ambiente já
+    # em uso) — `CREATE TABLE IF NOT EXISTS` não adiciona coluna em tabela
+    # que já existe, então garante na mão, sem migração separada.
+    if not _coluna_ativo_existe(cursor):
+        cursor.execute("ALTER TABLE auditoria_historico ADD COLUMN ativo BOOLEAN NOT NULL DEFAULT TRUE")
     _tabela_garantida = True
 
 
@@ -74,6 +107,93 @@ def salvar(usuario_id: str, achados: list[Achado]) -> str | None:
     return execucao_id
 
 
+def ja_identificados() -> set[tuple[str, str, str, str]]:
+    """Todo achado `(modulo, view, campo, valor)` ATIVO já registrado alguma
+    vez, de qualquer execução e qualquer usuário — usado por
+    `server/auditoria/rotas.py` (via `filtrar_valores_conhecidos`) pra tirar
+    esses valores dos perfis ANTES de mandar pra IA, evitando gastar uma
+    chamada de IA pra "redescobrir" um problema que já se sabe que existe e
+    ainda não foi corrigido. Global de propósito: uma vez identificado por
+    qualquer execução, não faz sentido gastar IA de novo nele pra ninguém.
+    Achado desativado (`definir_ativo(..., ativo=False)`) não conta aqui —
+    volta a ser tratado como "novo" na próxima execução."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute("SELECT DISTINCT modulo, view_nome, campo, valor FROM auditoria_historico WHERE ativo = TRUE")
+        linhas = cursor.fetchall()
+    return {(modulo, view, campo, valor) for modulo, view, campo, valor in linhas}
+
+
+def achados_ativos(modulos_liberados: list[str]) -> list[Achado]:
+    """Um achado por tupla `(modulo, view, campo, valor)` ATIVA já conhecida
+    (com a descrição mais recente registrada pra ela), restrito aos módulos
+    liberados — usado por `server/auditoria/rotas.py` pra juntar no
+    `GET /api/auditoria` o que já era conhecido (e continua sem ser
+    corrigido, por isso nem entrou na análise desta execução) com o que a IA
+    encontrou de novo agora, pro dialog mostrar o quadro completo do que
+    ainda está pendente, não só a novidade da execução atual.
+
+    `ROW_NUMBER() OVER (PARTITION BY ...)` em vez de `DISTINCT ON`
+    (específico do Postgres) — funciona igual em Oracle."""
+    if not modulos_liberados:
+        return []
+
+    marcadores = ", ".join(f":modulo_{indice}" for indice in range(len(modulos_liberados)))
+    binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
+
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            f"""
+            SELECT modulo, view_nome, campo, valor, descricao
+            FROM (
+                SELECT modulo, view_nome, campo, valor, descricao,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY modulo, view_nome, campo, valor
+                           ORDER BY criado_em DESC
+                       ) AS posicao
+                FROM auditoria_historico
+                WHERE ativo = TRUE AND modulo IN ({marcadores})
+            ) recentes
+            WHERE posicao = 1
+            """,
+            **binds,
+        )
+        linhas = cursor.fetchall()
+
+    return [
+        Achado(modulo=modulo, view=view_nome, campo=campo, valor=valor, descricao=descricao)
+        for modulo, view_nome, campo, valor, descricao in linhas
+    ]
+
+
+def definir_ativo(modulo: str, view: str, campo: str, valor: str, ativo: bool) -> bool:
+    """Ativa/desativa TODAS as linhas do histórico que correspondem a essa
+    tupla `(modulo, view, campo, valor)` de uma vez só — é a tupla, não a
+    linha individual, que `ja_identificados` usa pra decidir se bloqueia a
+    IA de reanalisar aquele valor. Só pra desenvolvedor testar/depurar (ver
+    `server/auth/dependencia.exigir_desenvolvedor`). Devolve True se
+    encontrou e atualizou alguma linha."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            """
+            UPDATE auditoria_historico
+            SET ativo = :ativo
+            WHERE modulo = :modulo AND view_nome = :view_nome AND campo = :campo AND valor = :valor
+            """,
+            ativo=ativo,
+            modulo=modulo,
+            view_nome=view,
+            campo=campo,
+            valor=valor,
+        )
+        return cursor.rowcount > 0
+
+
 def listar(modulos_liberados: list[str], limite: int = 200) -> list[dict]:
     """Achados já registrados, do mais recente pro mais antigo, restritos aos
     módulos que quem está consultando tem acesso — mesma regra de RBAC do
@@ -90,7 +210,7 @@ def listar(modulos_liberados: list[str], limite: int = 200) -> list[dict]:
         _garantir_tabela(cursor)
         cursor.execute(
             f"""
-            SELECT execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em
+            SELECT execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em, ativo
             FROM auditoria_historico
             WHERE modulo IN ({marcadores})
             ORDER BY criado_em DESC
@@ -110,6 +230,7 @@ def listar(modulos_liberados: list[str], limite: int = 200) -> list[dict]:
             "valor": valor,
             "descricao": descricao,
             "criado_em": criado_em.isoformat(),
+            "ativo": ativo,
         }
-        for execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em in linhas
+        for execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em, ativo in linhas
     ]

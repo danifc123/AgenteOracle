@@ -10,7 +10,7 @@ confiar que um valor citado pela IA é real sem conferir contra o dado que
 foi de fato mandado pra ela."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ollama import AsyncClient
 
@@ -104,6 +104,30 @@ def _achado_fundamentado(achado: dict, perfis_por_chave: dict[tuple[str, str, st
     if len(valores_validos) > 1 and valor == valor_mais_comum:
         return False
     return True
+
+
+def filtrar_valores_conhecidos(
+    perfis: list[PerfilCampo], valores_conhecidos: set[tuple[str, str, str, str]]
+) -> list[PerfilCampo]:
+    """Remove de cada perfil os valores cuja tupla `(modulo, view, campo,
+    valor)` já está em `valores_conhecidos` — usada tanto pra não gastar uma
+    chamada de IA "redescobrindo" um problema já identificado antes (ver
+    `tools/auditoria/historico.ja_identificados`) quanto, potencialmente, pra
+    qualquer outro conjunto de exclusão no mesmo formato. Se o dado mudou
+    desde então (mesmo que continue errado, com um valor diferente), a tupla
+    é outra e não é removida — só evita repetir o que já é sabido. Perfil que
+    fica sem nenhum valor depois do filtro é descartado inteiro; se todos os
+    perfis ficarem vazios, `analisar_perfis` nem chega a chamar o Ollama."""
+    perfis_filtrados = []
+    for perfil in perfis:
+        valores_restantes = tuple(
+            (valor, ocorrencias)
+            for valor, ocorrencias in perfil.valores
+            if (perfil.modulo, perfil.view, perfil.campo, valor) not in valores_conhecidos
+        )
+        if valores_restantes:
+            perfis_filtrados.append(replace(perfil, valores=valores_restantes))
+    return perfis_filtrados
 
 
 async def analisar_perfis(ollama_client: AsyncClient, modelo: str, perfis: list[PerfilCampo]) -> list[Achado]:

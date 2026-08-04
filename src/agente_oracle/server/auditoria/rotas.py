@@ -1,8 +1,12 @@
-"""Rota agregadora de auditoria de dados — roda sob demanda (nunca em
-background), só quando o usuário clica no botão do sidebar. Junta achados de
-todos os módulos que o usuário logado tem acesso; hoje só existe o provedor
-do Financeiro, mas `_PROVEDORES_POR_MODULO` é o ponto de extensão pra quando
-outro módulo (Estoque, ...) ganhar backend de verdade — a análise genérica
+"""Rota de auditoria de dados — roda sob demanda (nunca em background), só
+quando o usuário clica no botão. Escopo por módulo/departamento, de
+propósito: cada departamento roda e revisa só a própria auditoria — um
+Financeiro nunca dispara nem vê achado de outro módulo, e o tamanho do prompt
+mandado pra IA fica proporcional a UM departamento, não à soma de todos os
+que o usuário tem acesso (o que não escalaria bem conforme mais módulos
+forem ganhando provider). Hoje só existe o provedor do Financeiro, mas
+`_PROVEDORES_POR_MODULO` é o ponto de extensão pra quando outro módulo
+(Estoque, ...) ganhar backend de verdade — a análise genérica
 (`agent/auditoria/analise.py`) nunca importa nada de um módulo específico, só
 esta rota conhece os dois lados."""
 
@@ -37,25 +41,27 @@ def _achado_para_json(achado: Achado) -> dict:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/auditoria", methods=["GET", "OPTIONS"])
     async def auditoria_route(request: Request) -> Response:
-        """Roda a análise de qualidade de dados ao vivo para os módulos que o
-        usuário logado tem acesso, e devolve TODO achado ATIVO — o quadro
-        completo do que está pendente, não só o que apareceu nesta execução.
-        Valores já identificados por QUALQUER execução (de qualquer usuário)
-        são tirados dos perfis ANTES de chamar a IA (`historico.ja_identificados`
-        + `filtrar_valores_conhecidos`), pra não gastar uma chamada de IA
-        "redescobrindo" o que já se sabe; os achados assim excluídos da
-        análise são buscados de volta prontos, via `historico.achados_ativos`
-        — chamado ANTES de `historico.salvar`, de propósito: `achados_novos`
-        e `achados_ja_conhecidos` só ficam disjuntos se `achados_ativos` for
-        lido do banco ANTES dos achados novos serem gravados; lido depois,
-        cada achado novo aparecia duplicado (uma vez vindo da análise, outra
-        vindo do banco já com a linha recém-inserida) — bug real que já
-        aconteceu. `ativo` é a ÚNICA fonte de verdade do
-        que aparece aqui — dispensar (`/api/auditoria/dispensar`) desativa,
-        então não tem filtro adicional por usuário depois disso; sem isso, um
-        achado com `ativo=True` (mostrado como "Ativo" na Lista de Auditoria)
-        podia sumir do dialog por causa de uma dispensa antiga, de antes de
-        dispensar passar a desativar — bug real que já aconteceu."""
+        """Roda a análise de qualidade de dados ao vivo pra UM módulo só
+        (`?modulo=financeiro`) — cada departamento roda e revisa a própria
+        auditoria, nunca a de outro. Devolve TODO achado ATIVO daquele
+        módulo — o quadro completo do que está pendente, não só o que
+        apareceu nesta execução. Valores já identificados por QUALQUER
+        execução (de qualquer usuário) são tirados dos perfis ANTES de
+        chamar a IA (`historico.ja_identificados` + `filtrar_valores_conhecidos`),
+        pra não gastar uma chamada de IA "redescobrindo" o que já se sabe; os
+        achados assim excluídos da análise são buscados de volta prontos,
+        via `historico.achados_ativos` — chamado ANTES de `historico.salvar`,
+        de propósito: `achados_novos` e `achados_ja_conhecidos` só ficam
+        disjuntos se `achados_ativos` for lido do banco ANTES dos achados
+        novos serem gravados; lido depois, cada achado novo aparecia
+        duplicado (uma vez vindo da análise, outra vindo do banco já com a
+        linha recém-inserida) — bug real que já aconteceu. `ativo` é a ÚNICA
+        fonte de verdade do que aparece aqui — dispensar
+        (`/api/auditoria/dispensar`) desativa, então não tem filtro adicional
+        por usuário depois disso; sem isso, um achado com `ativo=True`
+        (mostrado como "Ativo" na Lista de Auditoria) podia sumir do dialog
+        por causa de uma dispensa antiga, de antes de dispensar passar a
+        desativar — bug real que já aconteceu."""
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
@@ -63,13 +69,20 @@ def registrar(mcp) -> None:
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
-        modulos_liberados = papeis.modulos_liberados(usuario_ou_erro.get("papeis", []))
+        modulo = request.query_params.get("modulo", "").strip()
+        if not modulo:
+            return JSONResponse({"erro": "Informe o módulo a auditar."}, status_code=400, headers=CORS_HEADERS)
 
-        perfis = []
-        for modulo in modulos_liberados:
-            construir_perfis = _PROVEDORES_POR_MODULO.get(modulo)
-            if construir_perfis is not None:
-                perfis.extend(construir_perfis())
+        if modulo not in papeis.modulos_liberados(usuario_ou_erro.get("papeis", [])):
+            return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
+
+        construir_perfis = _PROVEDORES_POR_MODULO.get(modulo)
+        if construir_perfis is None:
+            return JSONResponse(
+                {"erro": "Este módulo ainda não tem auditoria disponível."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        perfis = construir_perfis()
 
         # Global: um problema já identificado antes (por qualquer execução,
         # de qualquer usuário) não é reanalisado — evita gastar uma chamada
@@ -85,7 +98,7 @@ def registrar(mcp) -> None:
         # DEPOIS de salvar duplicava cada achado novo: um vindo de
         # `achados_novos` (em memória) e o mesmo de novo vindo de
         # `achados_ativos` (lido do banco, já com a linha recém-inserida).
-        achados_ja_conhecidos = historico_tools.achados_ativos(modulos_liberados)
+        achados_ja_conhecidos = historico_tools.achados_ativos([modulo])
 
         # Guarda todo achado novo no histórico (é o que alimenta
         # `ja_identificados` na próxima execução, de qualquer usuário).
@@ -107,7 +120,10 @@ def registrar(mcp) -> None:
         `/api/relatorios/historico`. Achado desativado (ver
         `tools/auditoria/historico.definir_ativo`) só aparece pra quem tem o
         papel `desenvolvedor` — pra usuário comum, é como se nunca tivesse
-        existido."""
+        existido. `?modulo=` é opcional: sem ele, mostra todos os módulos que
+        o usuário tem acesso (útil pra quem tem mais de um, ex:
+        desenvolvedor); com ele, restringe a um departamento só — mesmo
+        filtro que a execução ao vivo em `/api/auditoria`."""
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
@@ -117,6 +133,13 @@ def registrar(mcp) -> None:
 
         papeis_usuario = usuario_ou_erro.get("papeis", [])
         modulos_liberados = papeis.modulos_liberados(papeis_usuario)
+
+        modulo = request.query_params.get("modulo", "").strip()
+        if modulo:
+            if modulo not in modulos_liberados:
+                return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
+            modulos_liberados = [modulo]
+
         registros = historico_tools.listar(modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario))
         return JSONResponse(registros, headers=CORS_HEADERS)
 

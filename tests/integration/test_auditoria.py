@@ -25,7 +25,7 @@ def test_auditoria_sem_token_e_nao_autorizado(mcp_app):
 
 
 def test_auditoria_com_token_devolve_lista(mcp_app, token_teste):
-    resposta = mcp_app.get("/api/auditoria", headers=_auth(token_teste))
+    resposta = mcp_app.get("/api/auditoria", params={"modulo": "financeiro"}, headers=_auth(token_teste))
     assert resposta.status_code == 200
     achados = resposta.json()
     assert isinstance(achados, list)
@@ -33,6 +33,20 @@ def test_auditoria_com_token_devolve_lista(mcp_app, token_teste):
         assert set(achado.keys()) == {"modulo", "view", "campo", "valor", "descricao"}
         # `usuario_teste` só tem o papel "financeiro" — nunca deveria ver achado de outro módulo.
         assert achado["modulo"] == "financeiro"
+
+
+def test_auditoria_sem_modulo_e_rejeitado(mcp_app, token_teste):
+    """Sem `?modulo=`, a rota não roda mais "todos os módulos liberados numa
+    tacada só" — cada departamento precisa dizer qual auditoria quer rodar."""
+    resposta = mcp_app.get("/api/auditoria", headers=_auth(token_teste))
+    assert resposta.status_code == 400
+
+
+def test_auditoria_modulo_fora_do_acesso_e_bloqueado(mcp_app, token_teste):
+    """`usuario_teste` só tem o papel "financeiro" — não pode rodar (nem ver)
+    a auditoria de um módulo que não tem acesso."""
+    resposta = mcp_app.get("/api/auditoria", params={"modulo": "estoque"}, headers=_auth(token_teste))
+    assert resposta.status_code == 403
 
 
 def test_dispensar_sem_token_e_nao_autorizado(mcp_app):
@@ -98,7 +112,7 @@ def test_dispensados_sozinho_nao_esconde_do_get(mcp_app, token_teste, usuario_te
     )
     dispensados.dispensar(str(usuario_teste["id"]), "financeiro", "vw_teste_dispensados_sozinho", "campo", "valor-r")
 
-    resposta = mcp_app.get("/api/auditoria", headers=_auth(token_teste))
+    resposta = mcp_app.get("/api/auditoria", params={"modulo": "financeiro"}, headers=_auth(token_teste))
     assert resposta.status_code == 200
     achados = resposta.json()
     assert any(
@@ -111,15 +125,20 @@ def test_achados_ativos_lido_antes_de_salvar_nao_inclui_o_que_esta_sendo_salvo()
     ANTES de `salvar` não pode incluir o que está prestes a ser salvo — a
     rota depende dessa ordem pra `achados_novos` e `achados_ja_conhecidos`
     serem disjuntos de verdade (ver docstring de `auditoria_route`). Lido
-    DEPOIS, cada achado novo apareceria duplicado."""
-    tupla = ("financeiro", "vw_teste_ordem_achados_ativos", "campo", "valor-ordem")
+    DEPOIS, cada achado novo apareceria duplicado.
+
+    `valor` usa um uuid único por execução — `auditoria_historico` nunca
+    expira por design, então um valor fixo faz a asserção "ainda não existe"
+    falhar sozinha depois da 1ª vez que a suíte roda contra o mesmo banco."""
+    valor = f"valor-ordem-{uuid.uuid4().hex[:12]}"
+    tupla = ("financeiro", "vw_teste_ordem_achados_ativos", "campo", valor)
 
     antes = historico_tools.achados_ativos(["financeiro"])
     assert not any((a.modulo, a.view, a.campo, a.valor) == tupla for a in antes)
 
     historico_tools.salvar(
         "usuario-qualquer",
-        [Achado(modulo="financeiro", view="vw_teste_ordem_achados_ativos", campo="campo", valor="valor-ordem", descricao="teste")],
+        [Achado(modulo="financeiro", view="vw_teste_ordem_achados_ativos", campo="campo", valor=valor, descricao="teste")],
     )
 
     depois = historico_tools.achados_ativos(["financeiro"])
@@ -179,6 +198,24 @@ def test_auditoria_historico_lista_achados_ja_salvos(mcp_app, token_teste, usuar
         and registro["descricao"] == "achado de teste"
         for registro in registros
     )
+
+
+def test_auditoria_historico_com_modulo_filtra(mcp_app, token_teste, usuario_teste):
+    historico_tools.salvar(
+        str(usuario_teste["id"]),
+        [Achado(modulo="financeiro", view="vw_teste_filtro_modulo", campo="campo", valor="valor-filtro", descricao="teste")],
+    )
+
+    resposta = mcp_app.get("/api/auditoria/historico", params={"modulo": "financeiro"}, headers=_auth(token_teste))
+    assert resposta.status_code == 200
+    registros = resposta.json()
+    assert all(registro["modulo"] == "financeiro" for registro in registros)
+    assert any(registro["valor"] == "valor-filtro" for registro in registros)
+
+
+def test_auditoria_historico_com_modulo_fora_do_acesso_e_bloqueado(mcp_app, token_teste):
+    resposta = mcp_app.get("/api/auditoria/historico", params={"modulo": "estoque"}, headers=_auth(token_teste))
+    assert resposta.status_code == 403
 
 
 def test_auditoria_historico_nao_mostra_achado_de_modulo_fora_do_acesso(mcp_app, token_teste, usuario_teste):

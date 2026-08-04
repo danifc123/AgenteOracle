@@ -1,5 +1,20 @@
-<app-dialog [aberto]="auditoria.aberto()" titulo="Auditoria de Dados" (fechar)="fechar()">
-  @if (!auditoria.jaExecutou() && !auditoria.carregando()) {
+<app-dialog [aberto]="auditoria.aberto()" [titulo]="titulo()" (fechar)="fechar()">
+  @if (auditoria.moduloAtual() && modulosDisponiveis().length > 1) {
+    <button type="button" class="trocar-modulo" (click)="trocarModulo()">← Trocar departamento</button>
+  }
+
+  @if (mostrarSeletor()) {
+    <div class="seletor-modulo">
+      <p>Selecione o departamento pra auditar:</p>
+      <div class="opcoes-modulo">
+        @for (modulo of modulosDisponiveis(); track modulo) {
+          <button type="button" class="opcao-modulo" (click)="selecionarModulo(modulo)">
+            {{ rotuloModulo(modulo) }}
+          </button>
+        }
+      </div>
+    </div>
+  } @else if (!auditoria.jaExecutou() && !auditoria.carregando()) {
     <div class="estado-inicial">
       <p>A auditoria analisa os dados do sistema em busca de possíveis problemas — cada execução é
         uma consulta real à IA, por isso só roda quando você pedir.</p>

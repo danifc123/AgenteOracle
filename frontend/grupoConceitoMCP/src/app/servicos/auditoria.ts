@@ -10,6 +10,19 @@ export interface AchadoAuditoria {
   descricao: string;
 }
 
+/** Nome amigável de cada módulo auditável — usado no seletor de departamento
+ * e no título do painel, pra deixar claro qual está sendo auditado. Módulo
+ * sem entrada aqui cai no próprio slug (fallback razoável até alguém lembrar
+ * de cadastrar o rótulo). */
+const ROTULOS_MODULO: Record<string, string> = {
+  financeiro: 'Financeiro',
+  estoque: 'Estoque'
+};
+
+export function rotuloModulo(modulo: string): string {
+  return ROTULOS_MODULO[modulo] ?? modulo;
+}
+
 /** Estado da auditoria de dados, compartilhado entre o sino do layout, o
  * botão do sidebar e o painel que mostra o resultado — extraído pra serviço
  * porque nenhum desses três é dono exclusivo do estado (mesmo caso de uso que
@@ -17,12 +30,20 @@ export interface AchadoAuditoria {
  * `abrir()` só mostra o painel (não busca nada — reabrir o painel pra olhar o
  * que já foi encontrado não pode disparar outra chamada ao Ollama sozinho);
  * só `buscar()`, chamado por um botão dedicado DENTRO do painel, dispara a
- * análise de verdade. */
+ * análise de verdade.
+ *
+ * Escopada por módulo/departamento, de propósito: cada departamento roda e
+ * revisa só a própria auditoria, nunca a de outro — reflete a mesma regra do
+ * backend (`GET /api/auditoria?modulo=`). Qual módulo é decidido DENTRO do
+ * painel, via `selecionarModulo` (`auditoria-painel` mostra um seletor só
+ * quando o usuário tem mais de uma opção liberada — hoje sempre 1, então na
+ * prática se auto-seleciona sem o usuário precisar escolher nada). */
 @Injectable({ providedIn: 'root' })
 export class Auditoria {
   private readonly http = inject(HttpClient);
 
   readonly aberto = signal(false);
+  readonly moduloAtual = signal<string | null>(null);
   readonly achados = signal<AchadoAuditoria[]>([]);
   readonly carregando = signal(false);
   readonly erro = signal<string | null>(null);
@@ -43,11 +64,38 @@ export class Auditoria {
     this.aberto.set(false);
   }
 
+  selecionarModulo(modulo: string): void {
+    if (this.moduloAtual() === modulo) {
+      return;
+    }
+    // Troca de departamento não pode mostrar achado de auditoria antiga de
+    // outro módulo enquanto a nova busca não roda.
+    this.achados.set([]);
+    this.jaExecutou.set(false);
+    this.erro.set(null);
+    this.moduloAtual.set(modulo);
+  }
+
+  /** Volta pro estado "nenhum módulo escolhido" — usado pelo seletor quando
+   * o usuário tem mais de uma opção e quer trocar de departamento sem
+   * fechar o painel. */
+  limparSelecao(): void {
+    this.moduloAtual.set(null);
+    this.achados.set([]);
+    this.jaExecutou.set(false);
+    this.erro.set(null);
+  }
+
   buscar(): void {
+    const modulo = this.moduloAtual();
+    if (!modulo) {
+      return;
+    }
+
     this.carregando.set(true);
     this.erro.set(null);
 
-    this.http.get<AchadoAuditoria[]>(`${MCP_API_BASE_URL}/api/auditoria`).subscribe({
+    this.http.get<AchadoAuditoria[]>(`${MCP_API_BASE_URL}/api/auditoria`, { params: { modulo } }).subscribe({
       next: (achados) => {
         this.achados.set(achados);
         this.carregando.set(false);

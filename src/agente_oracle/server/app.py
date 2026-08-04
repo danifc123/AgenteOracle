@@ -1,13 +1,14 @@
 from mcp.server.fastmcp import FastMCP
 
 from agente_oracle.config import settings
-from agente_oracle.server import auditoria, auth, financeiro
+from agente_oracle.server import auditoria, auth, ferramentas, financeiro
 
 mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
 
 auth.registrar(mcp)
 financeiro.registrar(mcp)
 auditoria.registrar(mcp)
+ferramentas.registrar(mcp)
 
 
 def main() -> None:

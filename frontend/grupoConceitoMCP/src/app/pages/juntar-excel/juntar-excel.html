@@ -10,32 +10,32 @@
       <app-seletor-arquivo-excel rotulo="Planilha 1" cor="verde" (arquivoAlterado)="definirArquivo1($event)" />
       <app-seletor-arquivo-excel rotulo="Planilha 2" cor="laranja" (arquivoAlterado)="definirArquivo2($event)" />
     </div>
-  </div>
 
-  @if (erro()) {
-    <p class="mensagem mensagem--erro">{{ erro() }}</p>
-  }
+    @if (erro()) {
+      <p class="mensagem mensagem--erro">{{ erro() }}</p>
+    }
 
-  @if (concluido()) {
-    <p class="mensagem mensagem--sucesso">Planilha combinada gerada e baixada com sucesso.</p>
-  }
+    @if (concluido()) {
+      <p class="mensagem mensagem--sucesso">Planilha combinada gerada e baixada com sucesso.</p>
+    }
 
-  <div class="acoes">
-    <app-botao variant="primaria" [disabled]="!prontoParaEnviar()" [loading]="enviando()" loadingText="Juntando..." (clicked)="juntar()">
-      Juntar planilhas
-    </app-botao>
+    <div class="acoes">
+      <app-botao variant="primaria" [disabled]="!prontoParaEnviar()" [loading]="enviando()" loadingText="Juntando..." (clicked)="juntar()">
+        Juntar planilhas
+      </app-botao>
 
-    <span class="info-tooltip" tabindex="0">
-      <svg class="icone-info" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 11v5" stroke-linecap="round" />
-        <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
-      </svg>
-      <span class="balao" role="tooltip">
-        Se as duas planilhas tiverem as mesmas colunas, os dados são combinados numa tabela só. Se as colunas forem
-        diferentes, o arquivo final mantém as duas tabelas lado a lado, cada uma com o fundo na cor mostrada acima —
-        assim fica fácil identificar de onde veio cada dado.
+      <span class="info-tooltip" tabindex="0">
+        <svg class="icone-info" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5" stroke-linecap="round" />
+          <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
+        </svg>
+        <span class="balao" role="tooltip">
+          Se as duas planilhas tiverem as mesmas colunas, os dados são combinados numa tabela só. Se as colunas forem
+          diferentes, o arquivo final mantém as duas tabelas lado a lado, cada uma com o fundo na cor mostrada acima —
+          assim fica fácil identificar de onde veio cada dado.
+        </span>
       </span>
-    </span>
+    </div>
   </div>
 </div>

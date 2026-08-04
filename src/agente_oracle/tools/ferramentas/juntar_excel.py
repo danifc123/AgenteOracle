@@ -2,8 +2,9 @@
 `server/ferramentas/juntar_excel.py` para a rota que expõe isso via upload.
 Regra de negócio: colunas iguais (mesmo conjunto de nomes, ordem não importa)
 empilha tudo num bloco só; colunas diferentes mantém os dois blocos
-separados, com fundo verde clarinho pro 1º arquivo e laranja clarinho pro 2º
-— mesmas cores usadas no preview do frontend (`D9F2D9`/`FCE4D6`)."""
+separados, lado a lado (uma coluna em branco entre eles), com fundo verde
+clarinho pro 1º arquivo e laranja clarinho pro 2º — mesmas cores usadas no
+preview do frontend (`D9F2D9`/`FCE4D6`)."""
 
 import io
 
@@ -36,17 +37,26 @@ def _ler_planilha(conteudo: bytes) -> tuple[list[str], list[list]]:
     return cabecalho, [list(linha) for linha in linhas[1:]]
 
 
-def _escrever_bloco(planilha, cabecalho: list[str], linhas: list[list], preenchimento: PatternFill | None) -> None:
-    planilha.append(cabecalho)
-    for celula in planilha[planilha.max_row]:
+def _escrever_bloco(
+    planilha,
+    cabecalho: list[str],
+    linhas: list[list],
+    preenchimento: PatternFill | None,
+    coluna_inicial: int = 1,
+) -> None:
+    """Escreve um bloco (cabeçalho em negrito + linhas) a partir da linha 1,
+    começando em `coluna_inicial` — permite colocar dois blocos lado a lado
+    na mesma planilha em vez de um embaixo do outro."""
+    for indice_coluna, valor in enumerate(cabecalho):
+        celula = planilha.cell(row=1, column=coluna_inicial + indice_coluna, value=valor)
         celula.font = Font(bold=True)
         if preenchimento is not None:
             celula.fill = preenchimento
 
-    for linha in linhas:
-        planilha.append(linha)
-        if preenchimento is not None:
-            for celula in planilha[planilha.max_row]:
+    for indice_linha, linha in enumerate(linhas, start=2):
+        for indice_coluna, valor in enumerate(linha):
+            celula = planilha.cell(row=indice_linha, column=coluna_inicial + indice_coluna, value=valor)
+            if preenchimento is not None:
                 celula.fill = preenchimento
 
 
@@ -70,8 +80,8 @@ def juntar_planilhas(conteudo1: bytes, conteudo2: bytes) -> bytes:
         _escrever_bloco(planilha, cabecalho1, linhas1 + linhas2_reordenadas, preenchimento=None)
     else:
         _escrever_bloco(planilha, cabecalho1, linhas1, _VERDE_CLARO)
-        planilha.append([])
-        _escrever_bloco(planilha, cabecalho2, linhas2, _LARANJA_CLARO)
+        coluna_bloco2 = len(cabecalho1) + 2  # 1 coluna em branco separando os dois blocos
+        _escrever_bloco(planilha, cabecalho2, linhas2, _LARANJA_CLARO, coluna_inicial=coluna_bloco2)
 
     _aplicar_largura_automatica(planilha)
 

@@ -48,7 +48,7 @@ class TestJuntarPlanilhas:
             for celula in linha:
                 assert celula.fill.fgColor.rgb in (None, "00000000")
 
-    def test_colunas_diferentes_mantem_dois_blocos_com_cores(self) -> None:
+    def test_colunas_diferentes_mantem_dois_blocos_lado_a_lado_com_cores(self) -> None:
         arquivo1 = _bytes_planilha(["nome"], [["Ana"]])
         arquivo2 = _bytes_planilha(["produto"], [["Caneta"]])
 
@@ -56,12 +56,13 @@ class TestJuntarPlanilhas:
         planilha = resultado.active
         linhas = list(planilha.iter_rows(values_only=True))
 
-        assert linhas == [("nome",), ("Ana",), (None,), ("produto",), ("Caneta",)]
+        # bloco 1 na coluna A, coluna B em branco (separação), bloco 2 na coluna C
+        assert linhas == [("nome", None, "produto"), ("Ana", None, "Caneta")]
 
         cabecalho1 = planilha["A1"]
         dado1 = planilha["A2"]
-        cabecalho2 = planilha["A4"]
-        dado2 = planilha["A5"]
+        cabecalho2 = planilha["C1"]
+        dado2 = planilha["C2"]
 
         assert cabecalho1.fill.fgColor.rgb == "00D9F2D9"
         assert dado1.fill.fgColor.rgb == "00D9F2D9"

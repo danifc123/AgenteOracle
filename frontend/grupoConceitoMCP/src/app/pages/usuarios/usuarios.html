@@ -1,6 +1,8 @@
-<app-modulo-header breadcrumb="Administração" titulo="Usuários">
-  <app-botao acoes variant="primaria" (clicked)="abrirDialog()">Novo usuário</app-botao>
-</app-modulo-header>
+<app-modulo-header breadcrumb="Administração" titulo="Usuários" />
+
+<div class="barra-acoes">
+  <app-botao variant="primaria" (clicked)="abrirDialog()">Novo usuário</app-botao>
+</div>
 
 @if (erro()) {
   <p class="erro-carregamento">{{ erro() }}</p>

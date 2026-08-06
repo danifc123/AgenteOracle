@@ -1,3 +1,9 @@
+.barra-acoes {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
 .erro-carregamento {
   margin: -12px 0 16px;
   color: #9a2f2f;

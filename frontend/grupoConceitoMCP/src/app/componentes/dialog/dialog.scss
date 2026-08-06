@@ -23,6 +23,10 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
+
+  &--compacto {
+    max-width: 660px;
+  }
 }
 
 .cabecalho {

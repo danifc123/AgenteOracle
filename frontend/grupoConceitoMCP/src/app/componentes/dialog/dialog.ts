@@ -10,6 +10,7 @@ export class Dialog {
   aberto = input(false);
   titulo = input('');
   temRodape = input(false);
+  tamanho = input<'padrao' | 'compacto'>('padrao');
 
   fechar = output<void>();
 

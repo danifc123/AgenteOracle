@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { Layout } from './layout/layout';
-import { Home } from './pages/home/home';
+import { HomeRoteador } from './pages/home-roteador/home-roteador';
 import { Financeiro } from './pages/modulos/financeiro/financeiro';
 import { CriarRelatorio } from './pages/modulos/financeiro/criar-relatorio/criar-relatorio';
 import { FluxoCaixa } from './pages/modulos/financeiro/fluxo-caixa/fluxo-caixa';
@@ -25,7 +25,7 @@ export const routes: Routes = [
     component: Layout,
     canActivate: [authGuard],
     children: [
-      { path: '', component: Home },
+      { path: '', component: HomeRoteador },
       { path: 'financeiro/criar-relatorio', component: CriarRelatorio },
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },

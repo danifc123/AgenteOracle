@@ -2,6 +2,19 @@ import { Injectable, signal } from '@angular/core';
 
 const CHAVE_SESSAO = 'sessao:usuario';
 
+/** Nome amigável de cada módulo conhecido — usado em qualquer lugar que
+ * precise mostrar o módulo pro usuário (seletor de auditoria, seletor de
+ * home do desenvolvedor, etc). Módulo sem entrada aqui cai no próprio slug
+ * (fallback razoável até alguém lembrar de cadastrar o rótulo). */
+const ROTULOS_MODULO: Record<string, string> = {
+  financeiro: 'Financeiro',
+  estoque: 'Estoque'
+};
+
+export function rotuloModulo(modulo: string): string {
+  return ROTULOS_MODULO[modulo] ?? modulo;
+}
+
 export interface DadosSessao {
   token: string;
   usuario: string;
@@ -35,6 +48,10 @@ export class Sessao {
   readonly papeis = () => this._dados()?.papeis ?? [];
   readonly administrador = () => this._dados()?.administrador ?? false;
   readonly modulos = () => this._dados()?.modulos ?? [];
+  /** Diferente de `administrador` (verdadeiro pra qualquer papel admin, ex:
+   * `financeiro_admin`), aqui é só o papel `desenvolvedor` especificamente —
+   * espelha `eh_desenvolvedor` do backend (`tools/auth/papeis.py`). */
+  readonly ehDesenvolvedor = () => this._dados()?.papeis.includes('desenvolvedor') ?? false;
 
   entrar(dados: DadosSessao): void {
     localStorage.setItem(CHAVE_SESSAO, JSON.stringify(dados));

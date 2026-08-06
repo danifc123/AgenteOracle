@@ -38,24 +38,27 @@
 }
 
 .mensagem--sucesso {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
   color: var(--color-primary);
 }
 
 .link-reiniciar {
-  border: none;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-sm);
   background: none;
-  padding: 0;
-  color: var(--color-primary-light);
-  font-size: 13px;
+  padding: 9px 16px;
+  color: var(--color-primary);
+  font-size: 13.5px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 
   &:hover {
-    text-decoration: underline;
+    background: #fce4d6;
+    border-color: #f0c19f;
+    color: #8a4a1c;
   }
 }
 

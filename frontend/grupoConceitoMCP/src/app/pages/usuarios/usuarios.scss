@@ -1,3 +1,9 @@
+.barra-acoes {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
 .erro-carregamento {
   margin: -12px 0 16px;
   color: #9a2f2f;
@@ -36,6 +42,22 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  thead th.ordenavel {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+
+  .cabecalho-coluna {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   tbody tr {

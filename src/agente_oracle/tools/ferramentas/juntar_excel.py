@@ -154,6 +154,30 @@ def _aplicar_largura_automatica(planilha) -> None:
         planilha.column_dimensions[coluna[0].column_letter].width = min(maior_valor + 2, _LARGURA_MAXIMA_COLUNA)
 
 
+def analisar_colunas(conteudo1: bytes, conteudo2: bytes) -> dict:
+    """Só lê os cabeçalhos das duas planilhas (sem montar o arquivo final) —
+    usado pelo frontend pra mostrar uma prévia de como a junção vai ficar
+    (empilhar, unir por coluna comum, ou lado a lado) antes do usuário
+    confirmar e baixar o resultado."""
+    cabecalho1, _ = _ler_planilha(conteudo1)
+    cabecalho2, _ = _ler_planilha(conteudo2)
+    colunas_comuns = [coluna for coluna in cabecalho1 if coluna in cabecalho2]
+
+    if cabecalho1 and set(cabecalho1) == set(cabecalho2):
+        tipo = "identicas"
+    elif colunas_comuns:
+        tipo = "parcial"
+    else:
+        tipo = "nenhuma"
+
+    return {
+        "tipo": tipo,
+        "colunas1": cabecalho1,
+        "colunas2": cabecalho2,
+        "colunas_comuns": colunas_comuns,
+    }
+
+
 def juntar_planilhas(conteudo1: bytes, conteudo2: bytes) -> bytes:
     cabecalho1, linhas1 = _ler_planilha(conteudo1)
     cabecalho2, linhas2 = _ler_planilha(conteudo2)

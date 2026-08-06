@@ -1,6 +1,6 @@
 @if (aberto()) {
   <div class="backdrop" (click)="fechar.emit()">
-    <div class="painel" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="painel" [class.painel--compacto]="tamanho() === 'compacto'" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
       <header class="cabecalho">
         <h2>{{ titulo() }}</h2>
         <button type="button" class="fechar" aria-label="Fechar" (click)="fechar.emit()">

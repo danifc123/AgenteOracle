@@ -155,9 +155,23 @@ export class GraficoSerie {
     }));
   });
 
+  /** Fonte única de verdade da posição X de cada mês — usada por barras,
+   * linha sobreposta, rótulos do eixo e tooltip. No modo barra, cada mês
+   * ocupa uma "fatia" igual da largura (`LARGURA_PLOT / total`) e o ponto
+   * fica no centro dela; no modo linha, os pontos ficam espalhados ponta a
+   * ponta (primeiro na borda esquerda, último na direita). Eram duas contas
+   * diferentes antes — a de barra vivia isolada em `grupos()` — o que fazia
+   * a barra, a linha sobreposta e o rótulo do mês desalinharem entre si. */
   private readonly xPorIndice = computed(() => {
     const total = this.rotulos().length;
-    if (total <= 1) {
+    if (total === 0) {
+      return [MARGEM_ESQUERDA + LARGURA_PLOT / 2];
+    }
+    if (this.tipo() === 'barra') {
+      const larguraGrupo = LARGURA_PLOT / total;
+      return Array.from({ length: total }, (_, indice) => MARGEM_ESQUERDA + larguraGrupo * (indice + 0.5));
+    }
+    if (total === 1) {
       return [MARGEM_ESQUERDA + LARGURA_PLOT / 2];
     }
     const passo = LARGURA_PLOT / (total - 1);
@@ -176,6 +190,25 @@ export class GraficoSerie {
     return MARGEM_SUPERIOR + ALTURA_PLOT * (1 - valor / maximo);
   }
 
+  /** Em grupos com mais de uma barra (ex: "A Receber" e "A Pagar" lado a
+   * lado), o centro do GRUPO não é o centro de cada barra individual — cada
+   * barra fica um pouco pra esquerda ou pra direita dele. Esse mapa guarda
+   * o centro de cada barra por nome de série + mês, pra uma linha sobreposta
+   * conseguir seguir a barra específica que ela representa (em vez de
+   * flutuar no meio do grupo, entre as duas barras). */
+  private readonly xBarraPorSerieERotulo = computed(() => {
+    const mapa = new Map<string, Map<string, number>>();
+    for (const grupo of this.grupos()) {
+      for (const barra of grupo.barras) {
+        if (!mapa.has(barra.nome)) {
+          mapa.set(barra.nome, new Map());
+        }
+        mapa.get(barra.nome)!.set(grupo.rotulo, barra.x + barra.largura / 2);
+      }
+    }
+    return mapa;
+  });
+
   protected readonly linhas = computed<LinhaDesenhada[]>(() => {
     const seriesParaLinha =
       this.tipo() === 'barra' ? this.series().filter((serie) => serie.linhaSobreposta) : this.series();
@@ -185,9 +218,27 @@ export class GraficoSerie {
     const xs = this.xPorIndice();
     const indices = this.indicePorRotulo();
     const destaque = this.serieEmDestaque();
+
+    // Uma linha sobreposta "pertence" à barra de mesma cor (ex: "A Receber
+    // (estimado)" tracejada acompanha a barra sólida "A Receber") — sem
+    // par encontrado (ex: só uma série de barra no gráfico todo), cai no
+    // centro do grupo, que nesse caso já é o centro da própria barra.
+    const nomeBarraPorCor = new Map<string, string>();
+    if (this.tipo() === 'barra') {
+      for (const serie of this.series()) {
+        if (!serie.linhaSobreposta) {
+          nomeBarraPorCor.set(serie.cor, serie.nome);
+        }
+      }
+    }
+    const xPorBarra = this.xBarraPorSerieERotulo();
+
     return seriesParaLinha.map((serie) => {
+      const nomeBarra = nomeBarraPorCor.get(serie.cor);
+      const xsDaBarra = nomeBarra ? xPorBarra.get(nomeBarra) : undefined;
+
       const pontos: PontoXY[] = serie.pontos.map((ponto) => ({
-        x: xs[indices.get(ponto.rotulo) ?? 0],
+        x: xsDaBarra?.get(ponto.rotulo) ?? xs[indices.get(ponto.rotulo) ?? 0],
         y: this.y(ponto.valor),
         valor: ponto.valor
       }));
@@ -217,9 +268,10 @@ export class GraficoSerie {
 
     const valorPorRotulo = series.map((serie) => new Map(serie.pontos.map((ponto) => [ponto.rotulo, ponto.valor])));
     const destaque = this.serieEmDestaque();
+    const xs = this.xPorIndice();
 
     return rotulos.map((rotulo, indiceGrupo) => {
-      const centroGrupo = MARGEM_ESQUERDA + larguraGrupo * (indiceGrupo + 0.5);
+      const centroGrupo = xs[indiceGrupo];
       const inicioGrupo = centroGrupo - (larguraBarra + espacamentoBarra) * (totalSeries / 2);
 
       const barras: BarraDesenhada[] = series.map((serie, indiceSerie) => {

@@ -27,9 +27,11 @@ export class ConfiguracoesUsuario {
   protected readonly iniciais = iniciais;
 
   protected readonly aberto = signal(false);
+  protected readonly secaoAtiva = signal<'perfil' | 'senha' | 'layouts' | 'cores'>('perfil');
 
   protected readonly nome = signal('');
   protected readonly fotoPreview = signal<string | null>(null);
+  protected readonly fotoExpandida = signal(false);
   protected readonly salvandoPerfil = signal(false);
   protected readonly erroPerfil = signal<string | null>(null);
 
@@ -47,15 +49,15 @@ export class ConfiguracoesUsuario {
   protected readonly salvandoLayoutId = signal<number | null>(null);
   protected readonly apagandoLayoutId = signal<number | null>(null);
   protected readonly erroLayouts = signal<string | null>(null);
-  protected readonly layoutsColapsado = signal(false);
 
   protected readonly salvandoCorCategoria = signal<string | null>(null);
   protected readonly erroCores = signal<string | null>(null);
-  protected readonly coresColapsado = signal(false);
 
   abrir(): void {
+    this.secaoAtiva.set('perfil');
     this.nome.set(this.sessao.nome());
     this.fotoPreview.set(this.sessao.foto());
+    this.fotoExpandida.set(false);
     this.erroPerfil.set(null);
     this.senhaAtual.set('');
     this.senhaNova.set('');
@@ -67,10 +69,28 @@ export class ConfiguracoesUsuario {
   }
 
   fechar(): void {
+    // Com a foto ampliada, o primeiro Esc/clique-fora só fecha o lightbox —
+    // fechar o dialog inteiro junto seria surpreendente pro usuário.
+    if (this.fotoExpandida()) {
+      this.fotoExpandida.set(false);
+      return;
+    }
     if (this.salvandoPerfil() || this.salvandoSenha()) {
       return;
     }
     this.aberto.set(false);
+  }
+
+  protected clicarAvatar(inputFoto: HTMLInputElement): void {
+    if (this.fotoPreview()) {
+      this.fotoExpandida.set(true);
+    } else {
+      inputFoto.click();
+    }
+  }
+
+  protected fecharFotoExpandida(): void {
+    this.fotoExpandida.set(false);
   }
 
   selecionarFoto(evento: Event): void {

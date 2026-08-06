@@ -1,10 +1,12 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { Dialog } from '../../componentes/dialog/dialog';
+import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
 
 interface Usuario {
   id: number;
@@ -25,7 +27,7 @@ function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
 
 @Component({
   selector: 'app-usuarios',
-  imports: [Botao, Dialog, ModuloHeader, SelectBusca],
+  imports: [Botao, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca],
   templateUrl: './usuarios.html',
   styleUrl: './usuarios.scss'
 })
@@ -58,6 +60,49 @@ export class Usuarios {
   protected rotuloPapeis(slugs: string[]): string {
     const disponiveis = this.papeisDisponiveis();
     return slugs.map((slug) => disponiveis.find((papel) => papel.slug === slug)?.rotulo ?? slug).join(', ');
+  }
+
+  protected readonly colunaOrdenada = signal<string | null>(null);
+  protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>(null);
+
+  protected readonly usuariosOrdenados = computed(() => {
+    const coluna = this.colunaOrdenada();
+    const direcao = this.direcaoOrdenacao();
+    const lista = this.usuarios();
+    if (!coluna || !direcao) {
+      return lista;
+    }
+
+    const sinal = direcao === 'asc' ? 1 : -1;
+    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+  });
+
+  private valorColuna(usuario: Usuario, coluna: string): unknown {
+    switch (coluna) {
+      case 'usuario':
+        return usuario.usuario;
+      case 'nome':
+        return usuario.nome;
+      case 'papeis':
+        return this.rotuloPapeis(usuario.papeis);
+      case 'status':
+        return usuario.ativo ? 1 : 0;
+      default:
+        return '';
+    }
+  }
+
+  protected ordenarPor(coluna: string): void {
+    if (this.colunaOrdenada() === coluna) {
+      this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
+    } else {
+      this.colunaOrdenada.set(coluna);
+      this.direcaoOrdenacao.set('asc');
+    }
+  }
+
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
   }
 
   carregarUsuarios(): void {

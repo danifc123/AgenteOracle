@@ -4,8 +4,10 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
 import { Dialog } from '../../../componentes/dialog/dialog';
+import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { formatarSql } from '../../../servicos/formatar-sql';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../../servicos/ordenacao-tabela';
 
 export interface RelatorioHistorico {
   id: string;
@@ -21,7 +23,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe, Botao, Dialog, ModuloHeader],
+  imports: [DatePipe, Botao, Dialog, IconeOrdenacao, ModuloHeader],
   templateUrl: './historico.html',
   styleUrl: './historico.scss'
 })
@@ -42,6 +44,49 @@ export class Historico {
     const relatorio = this.relatorioSelecionado();
     return relatorio ? formatarSql(relatorio.sql) : '';
   });
+
+  protected readonly colunaOrdenada = signal<string | null>(null);
+  protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>(null);
+
+  protected readonly relatoriosOrdenados = computed(() => {
+    const coluna = this.colunaOrdenada();
+    const direcao = this.direcaoOrdenacao();
+    const lista = this.relatorios();
+    if (!coluna || !direcao) {
+      return lista;
+    }
+
+    const sinal = direcao === 'asc' ? 1 : -1;
+    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+  });
+
+  private valorColuna(relatorio: RelatorioHistorico, coluna: string): unknown {
+    switch (coluna) {
+      case 'modulo':
+        return relatorio.modulo;
+      case 'titulo':
+        return relatorio.titulo;
+      case 'criado_em':
+        return relatorio.criado_em;
+      case 'total_linhas':
+        return relatorio.total_linhas;
+      default:
+        return '';
+    }
+  }
+
+  protected ordenarPor(coluna: string): void {
+    if (this.colunaOrdenada() === coluna) {
+      this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
+    } else {
+      this.colunaOrdenada.set(coluna);
+      this.direcaoOrdenacao.set('asc');
+    }
+  }
+
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
 
   constructor() {
     this.carregarHistorico();

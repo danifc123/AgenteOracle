@@ -1,9 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
+import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { Auditoria } from '../../../servicos/auditoria';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../../servicos/ordenacao-tabela';
 import { Sessao } from '../../../servicos/sessao';
 
 export interface AchadoHistorico {
@@ -20,7 +22,7 @@ export interface AchadoHistorico {
 
 @Component({
   selector: 'app-auditoria-historico',
-  imports: [DatePipe, ModuloHeader],
+  imports: [DatePipe, IconeOrdenacao, ModuloHeader],
   templateUrl: './auditoria-historico.html',
   styleUrl: './auditoria-historico.scss'
 })
@@ -99,5 +101,52 @@ export class AuditoriaHistorico {
 
   protected chaveAchado(achado: AchadoHistorico): string {
     return `${achado.modulo}|${achado.view}|${achado.campo}|${achado.valor}`;
+  }
+
+  protected readonly colunaOrdenada = signal<string | null>(null);
+  protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>(null);
+
+  protected readonly achadosOrdenados = computed(() => {
+    const coluna = this.colunaOrdenada();
+    const direcao = this.direcaoOrdenacao();
+    const lista = this.achados();
+    if (!coluna || !direcao) {
+      return lista;
+    }
+
+    const sinal = direcao === 'asc' ? 1 : -1;
+    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+  });
+
+  private valorColuna(achado: AchadoHistorico, coluna: string): unknown {
+    switch (coluna) {
+      case 'modulo':
+        return achado.modulo;
+      case 'campo':
+        return achado.campo;
+      case 'valor':
+        return achado.valor;
+      case 'descricao':
+        return achado.descricao;
+      case 'criado_em':
+        return achado.criado_em;
+      case 'status':
+        return achado.ativo ? 1 : 0;
+      default:
+        return '';
+    }
+  }
+
+  protected ordenarPor(coluna: string): void {
+    if (this.colunaOrdenada() === coluna) {
+      this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
+    } else {
+      this.colunaOrdenada.set(coluna);
+      this.direcaoOrdenacao.set('asc');
+    }
+  }
+
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
   }
 }

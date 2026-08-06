@@ -83,6 +83,10 @@
   background: transparent;
   width: 100%;
   text-align: left;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    gap 0.2s ease;
 }
 
 .nav-link:hover {
@@ -97,7 +101,7 @@
 }
 
 .nav-parent.aberto {
-  background: var(--color-primary-light);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font-weight: 600;
 }
@@ -110,6 +114,16 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.nav-label {
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  max-width: 220px;
+  transition:
+    opacity 0.15s ease,
+    max-width 0.2s ease;
 }
 
 .chevron {
@@ -139,6 +153,16 @@
     max-height: 240px;
     margin: 2px 0 6px;
     opacity: 1;
+    // Overflow só libera depois que a animação de abertura termina — antes
+    // disso, "hidden" cortava o balão de rótulo dos subitens no menu
+    // colapsado (ele nasce colado na borda do recorte), dando a impressão
+    // de que a caixinha do ícone encolhia ao passar o mouse.
+    overflow: visible;
+    transition:
+      max-height 0.25s ease,
+      opacity 0.2s ease,
+      margin 0.25s ease,
+      overflow 0s ease 0.25s;
   }
 }
 
@@ -150,6 +174,10 @@
   border-radius: var(--radius-sm);
   color: rgba(255, 255, 255, 0.68);
   font-size: 14px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    gap 0.2s ease;
 }
 
 .nav-sublink:hover {
@@ -158,7 +186,7 @@
 }
 
 .nav-sublink.active {
-  background: var(--color-primary-light);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font-weight: 600;
 }
@@ -268,6 +296,7 @@
   .nav-sublink {
     position: relative;
     justify-content: center;
+    gap: 0;
   }
 
   .nav-link {
@@ -278,40 +307,49 @@
     display: none;
   }
 
-  // Colapsado: o rótulo some da linha normal e vira um "balão" que só
-  // aparece flutuando ao lado do ícone quando passa o mouse (ou foca via
-  // teclado) — sem isso, ícone sozinho não diz qual módulo é cada um.
+  // Ocioso (colapsado, sem hover): o rótulo encolhe até zero junto com a
+  // largura do sidebar, acompanhando a mesma animação de 0.2s do
+  // fechamento — e some por completo (largura + gap) pra não deixar
+  // nenhuma fresta que empurre o ícone pra fora do centro. Sem essa
+  // fresta, o hover não precisa "realinhar" nada, então o ícone não salta.
   .nav-label {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 0;
+    opacity: 0;
+  }
+
+  // Hover ou foco: aí sim vira um balão flutuando ao lado do ícone — nesse
+  // ponto o sidebar já está fechado, não precisa acompanhar animação.
+  .nav-link:hover .nav-label,
+  .nav-link:focus-visible .nav-label,
+  .nav-sublink:hover .nav-label,
+  .nav-sublink:focus-visible .nav-label {
     position: absolute;
     left: calc(100% + 10px);
     top: 50%;
-    transform: translateY(-50%) translateX(-4px);
+    transform: translateY(-50%);
     display: block;
+    max-width: none;
     padding: 6px 10px;
     border-radius: var(--radius-sm);
     background: var(--color-primary-dark);
     color: #fff;
     font-size: 13px;
     font-weight: 500;
-    white-space: nowrap;
     box-shadow: var(--shadow-md);
-    opacity: 0;
-    visibility: hidden;
+    opacity: 1;
     pointer-events: none;
     z-index: 40;
-    transition:
-      opacity 0.15s ease,
-      transform 0.15s ease,
-      visibility 0.15s ease;
+    transition: opacity 0.15s ease;
   }
 
-  .nav-link:hover .nav-label,
-  .nav-link:focus-visible .nav-label,
-  .nav-sublink:hover .nav-label,
-  .nav-sublink:focus-visible .nav-label {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(-50%) translateX(0);
+  // Cor de destaque no ícone só faz sentido aqui: com o menu fechado, o
+  // ícone é o único indício visual de qual item está ativo.
+  .nav-link.active .nav-icon,
+  .nav-sublink.active .nav-icon,
+  .nav-parent.aberto .nav-icon {
+    color: var(--color-accent);
   }
 
   .nav-parent::after {
@@ -417,6 +455,7 @@
       font-weight: inherit;
       box-shadow: none;
       opacity: 1;
+      max-width: none;
       visibility: visible;
       pointer-events: auto;
     }
@@ -440,6 +479,7 @@
 
     .nav-link {
       justify-content: flex-start;
+      gap: 12px;
       padding: 10px 12px;
     }
 
@@ -449,6 +489,7 @@
 
     .nav-sublink {
       justify-content: flex-start;
+      gap: 10px;
       padding: 8px 10px;
     }
 

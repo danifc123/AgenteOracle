@@ -1,8 +1,9 @@
 import { Component, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-modulo-header',
-  imports: [],
+  imports: [RouterLink],
   templateUrl: './modulo-header.html',
   styleUrl: './modulo-header.scss'
 })

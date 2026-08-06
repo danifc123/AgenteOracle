@@ -1,197 +1,234 @@
-<app-dialog [aberto]="aberto()" titulo="Configurações" (fechar)="fechar()">
-  <section class="secao">
-    <h3>Perfil</h3>
-
-    <div class="foto-linha">
-      <div class="avatar-wrapper">
-        <label class="avatar-preview" title="Trocar foto">
-          @if (fotoPreview()) {
-            <img [src]="fotoPreview()" alt="Foto de perfil" />
-          } @else {
-            <span>{{ iniciais(nome()) || 'GC' }}</span>
-          }
-          <input type="file" accept="image/*" (change)="selecionarFoto($event)" hidden />
-        </label>
-
-        @if (fotoPreview()) {
-          <button type="button" class="remover-foto" (click)="removerFoto($event)" aria-label="Remover foto" title="Remover foto">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        }
-      </div>
-      <label class="botao-arquivo">
-        Escolher foto
-        <input type="file" accept="image/*" (change)="selecionarFoto($event)" hidden />
-      </label>
+<app-dialog [aberto]="aberto()" titulo="Configurações" tamanho="compacto" (fechar)="fechar()">
+  <div class="config-layout">
+    <div class="config-tabs" role="tablist" aria-label="Seções de configuração">
+      <button type="button" role="tab" [attr.aria-selected]="secaoAtiva() === 'perfil'" class="config-tab" [class.ativo]="secaoAtiva() === 'perfil'" (click)="secaoAtiva.set('perfil')">
+        Perfil
+      </button>
+      <button type="button" role="tab" [attr.aria-selected]="secaoAtiva() === 'senha'" class="config-tab" [class.ativo]="secaoAtiva() === 'senha'" (click)="secaoAtiva.set('senha')">
+        Senha
+      </button>
+      <button type="button" role="tab" [attr.aria-selected]="secaoAtiva() === 'layouts'" class="config-tab" [class.ativo]="secaoAtiva() === 'layouts'" (click)="secaoAtiva.set('layouts')">
+        Layouts salvos
+      </button>
+      <button type="button" role="tab" [attr.aria-selected]="secaoAtiva() === 'cores'" class="config-tab" [class.ativo]="secaoAtiva() === 'cores'" (click)="secaoAtiva.set('cores')">
+        Cores das categorias
+      </button>
     </div>
 
-    <label class="campo">
-      <span>Nome</span>
-      <input type="text" [value]="nome()" (input)="nome.set($any($event.target).value)" autocomplete="off" />
-    </label>
-
-    @if (erroPerfil()) {
-      <p class="erro">{{ erroPerfil() }}</p>
-    }
-
-    <app-botao variant="primaria" [loading]="salvandoPerfil()" loadingText="Salvando..." (clicked)="salvarPerfil()">
-      Salvar perfil
-    </app-botao>
-  </section>
-
-  <section class="secao">
-    <h3>Senha</h3>
-
-    <label class="campo">
-      <span>Senha atual</span>
-      <input
-        type="password"
-        [value]="senhaAtual()"
-        (input)="senhaAtual.set($any($event.target).value)"
-        autocomplete="current-password"
-      />
-    </label>
-
-    <label class="campo">
-      <span>Nova senha</span>
-      <input
-        type="password"
-        [value]="senhaNova()"
-        (input)="senhaNova.set($any($event.target).value)"
-        autocomplete="new-password"
-      />
-    </label>
-
-    <label class="campo">
-      <span>Confirmar nova senha</span>
-      <input
-        type="password"
-        [value]="senhaConfirmacao()"
-        (input)="senhaConfirmacao.set($any($event.target).value)"
-        autocomplete="new-password"
-      />
-    </label>
-
-    @if (erroSenha()) {
-      <p class="erro">{{ erroSenha() }}</p>
-    }
-    @if (senhaAlterada()) {
-      <p class="sucesso">Senha alterada com sucesso.</p>
-    }
-
-    <app-botao variant="primaria" [loading]="salvandoSenha()" loadingText="Alterando..." (clicked)="alterarSenha()">
-      Alterar senha
-    </app-botao>
-  </section>
-
-  <section class="secao">
-    <button type="button" class="secao-cabecalho" (click)="layoutsColapsado.set(!layoutsColapsado())" [attr.aria-expanded]="!layoutsColapsado()">
-      <h3>Layouts salvos</h3>
-      <svg class="secao-chevron" [class.rotacionado]="layoutsColapsado()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </button>
-
-    @if (!layoutsColapsado()) {
-      @if (carregandoLayouts()) {
-        <p class="carregando">Carregando layouts...</p>
-      } @else if (!layouts().length) {
-        <p class="carregando">Nenhum layout salvo ainda.</p>
-      } @else {
-        <ul class="lista-layouts">
-          @for (layout of layouts(); track layout.id) {
-            <li class="layout-item">
-              @if (editandoLayoutId() === layout.id) {
-                <input
-                  type="text"
-                  class="input-edicao-layout"
-                  [value]="nomeEdicaoLayout()"
-                  (input)="nomeEdicaoLayout.set($any($event.target).value)"
-                  autocomplete="off"
-                  aria-label="Nome do layout"
-                />
-                <app-botao
-                  variant="icone"
-                  [loading]="salvandoLayoutId() === layout.id"
-                  (clicked)="salvarEdicaoLayout(layout)"
-                  ariaLabel="Salvar nome"
-                  title="Salvar nome"
+    <div class="config-conteudo">
+      @switch (secaoAtiva()) {
+        @case ('perfil') {
+          <section class="secao-painel">
+            <div class="foto-linha">
+              <div class="avatar-wrapper">
+                <button
+                  type="button"
+                  class="avatar-preview"
+                  [class.tem-foto]="!!fotoPreview()"
+                  (click)="clicarAvatar(inputFoto)"
+                  [attr.aria-label]="fotoPreview() ? 'Ver foto ampliada' : 'Adicionar foto'"
+                  [title]="fotoPreview() ? 'Ver foto ampliada' : 'Adicionar foto'"
                 >
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </app-botao>
-                <app-botao variant="icone" [disabled]="salvandoLayoutId() === layout.id" (clicked)="cancelarEdicaoLayout()" ariaLabel="Cancelar" title="Cancelar">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </app-botao>
-              } @else {
-                <div class="layout-info">
-                  <span class="layout-nome">{{ layout.nome }}</span>
-                  <span class="layout-resumo">{{ totalColunasLayout(layout) }} coluna(s)</span>
-                </div>
-                <app-botao variant="icone" (clicked)="iniciarEdicaoLayout(layout)" ariaLabel="Renomear layout" title="Renomear">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
-                </app-botao>
-                <app-botao
-                  variant="perigo"
-                  [loading]="apagandoLayoutId() === layout.id"
-                  loadingText="Apagando..."
-                  (clicked)="apagarLayout(layout)"
-                >
-                  Apagar
-                </app-botao>
-              }
-            </li>
-          }
-        </ul>
-      }
+                  @if (fotoPreview()) {
+                    <img [src]="fotoPreview()" alt="Foto de perfil" />
+                  } @else {
+                    <span>{{ iniciais(nome()) || 'GC' }}</span>
+                  }
+                </button>
 
-      @if (erroLayouts()) {
-        <p class="erro">{{ erroLayouts() }}</p>
-      }
-    }
-  </section>
+                @if (fotoPreview()) {
+                  <button type="button" class="remover-foto" (click)="removerFoto($event)" aria-label="Remover foto" title="Remover foto">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                }
+              </div>
 
-  <section class="secao">
-    <button type="button" class="secao-cabecalho" (click)="coresColapsado.set(!coresColapsado())" [attr.aria-expanded]="!coresColapsado()">
-      <h3>Cores das categorias</h3>
-      <svg class="secao-chevron" [class.rotacionado]="coresColapsado()" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </button>
+              <div class="foto-acoes">
+                <label class="botao-arquivo">
+                  Escolher foto
+                  <input type="file" accept="image/*" (change)="selecionarFoto($event)" hidden />
+                </label>
+                <p class="foto-dica">
+                  {{ fotoPreview() ? 'Clique na foto pra ver ampliada.' : 'PNG ou JPG, até 1,5MB.' }}
+                </p>
+              </div>
+            </div>
 
-    @if (!coresColapsado()) {
-      <p class="secao-ajuda">Personalize a cor de cada categoria de relatório do Financeiro.</p>
+            <input #inputFoto type="file" accept="image/*" (change)="selecionarFoto($event)" hidden />
 
-      <ul class="lista-cores-categoria">
-        @for (item of coresCategoria.listaParaExibir(); track item.categoria) {
-          <li class="cor-categoria-item">
-            <label class="cor-categoria-seletor" [style.background]="item.cor">
-              <span class="sr-only">Cor da categoria {{ item.categoria }}</span>
-              <input type="color" [value]="item.cor" (change)="alterarCor(item.categoria, $any($event.target).value)" />
+            <label class="campo">
+              <span>Nome</span>
+              <input type="text" [value]="nome()" (input)="nome.set($any($event.target).value)" autocomplete="off" />
             </label>
-            <span class="cor-categoria-nome">{{ item.categoria }}</span>
-            @if (salvandoCorCategoria() === item.categoria) {
-              <span class="cor-categoria-status">salvando...</span>
-            } @else if (item.personalizada) {
-              <button type="button" class="cor-categoria-redefinir" (click)="redefinirCor(item.categoria)">
-                Redefinir
-              </button>
-            }
-          </li>
-        }
-      </ul>
 
-      @if (erroCores()) {
-        <p class="erro">{{ erroCores() }}</p>
+            @if (erroPerfil()) {
+              <p class="erro">{{ erroPerfil() }}</p>
+            }
+
+            <app-botao variant="primaria" [loading]="salvandoPerfil()" loadingText="Salvando..." (clicked)="salvarPerfil()">
+              Salvar perfil
+            </app-botao>
+          </section>
+        }
+
+        @case ('senha') {
+          <section class="secao-painel">
+            <h3>Alterar senha</h3>
+
+            <label class="campo">
+              <span>Senha atual</span>
+              <input
+                type="password"
+                [value]="senhaAtual()"
+                (input)="senhaAtual.set($any($event.target).value)"
+                autocomplete="current-password"
+              />
+            </label>
+
+            <label class="campo">
+              <span>Nova senha</span>
+              <input
+                type="password"
+                [value]="senhaNova()"
+                (input)="senhaNova.set($any($event.target).value)"
+                autocomplete="new-password"
+              />
+            </label>
+
+            <label class="campo">
+              <span>Confirmar nova senha</span>
+              <input
+                type="password"
+                [value]="senhaConfirmacao()"
+                (input)="senhaConfirmacao.set($any($event.target).value)"
+                autocomplete="new-password"
+              />
+            </label>
+
+            @if (erroSenha()) {
+              <p class="erro">{{ erroSenha() }}</p>
+            }
+            @if (senhaAlterada()) {
+              <p class="sucesso">Senha alterada com sucesso.</p>
+            }
+
+            <app-botao variant="primaria" [loading]="salvandoSenha()" loadingText="Alterando..." (clicked)="alterarSenha()">
+              Alterar senha
+            </app-botao>
+          </section>
+        }
+
+        @case ('layouts') {
+          <section class="secao-painel">
+            <h3>Layouts salvos</h3>
+
+            @if (carregandoLayouts()) {
+              <p class="carregando">Carregando layouts...</p>
+            } @else if (!layouts().length) {
+              <p class="carregando">Nenhum layout salvo ainda.</p>
+            } @else {
+              <ul class="lista-layouts">
+                @for (layout of layouts(); track layout.id) {
+                  <li class="layout-item">
+                    @if (editandoLayoutId() === layout.id) {
+                      <input
+                        type="text"
+                        class="input-edicao-layout"
+                        [value]="nomeEdicaoLayout()"
+                        (input)="nomeEdicaoLayout.set($any($event.target).value)"
+                        autocomplete="off"
+                        aria-label="Nome do layout"
+                      />
+                      <app-botao
+                        variant="icone"
+                        [loading]="salvandoLayoutId() === layout.id"
+                        (clicked)="salvarEdicaoLayout(layout)"
+                        ariaLabel="Salvar nome"
+                        title="Salvar nome"
+                      >
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      </app-botao>
+                      <app-botao variant="icone" [disabled]="salvandoLayoutId() === layout.id" (clicked)="cancelarEdicaoLayout()" ariaLabel="Cancelar" title="Cancelar">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M18 6 6 18M6 6l12 12" />
+                        </svg>
+                      </app-botao>
+                    } @else {
+                      <div class="layout-info">
+                        <span class="layout-nome">{{ layout.nome }}</span>
+                        <span class="layout-resumo">{{ totalColunasLayout(layout) }} coluna(s)</span>
+                      </div>
+                      <app-botao variant="icone" (clicked)="iniciarEdicaoLayout(layout)" ariaLabel="Renomear layout" title="Renomear">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </app-botao>
+                      <app-botao
+                        variant="perigo"
+                        [loading]="apagandoLayoutId() === layout.id"
+                        loadingText="Apagando..."
+                        (clicked)="apagarLayout(layout)"
+                      >
+                        Apagar
+                      </app-botao>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+
+            @if (erroLayouts()) {
+              <p class="erro">{{ erroLayouts() }}</p>
+            }
+          </section>
+        }
+
+        @case ('cores') {
+          <section class="secao-painel">
+            <h3>Cores das categorias</h3>
+            <p class="secao-ajuda">Personalize a cor de cada categoria de relatório do Financeiro.</p>
+
+            <ul class="lista-cores-categoria">
+              @for (item of coresCategoria.listaParaExibir(); track item.categoria) {
+                <li class="cor-categoria-item">
+                  <label class="cor-categoria-seletor" [style.background]="item.cor">
+                    <span class="sr-only">Cor da categoria {{ item.categoria }}</span>
+                    <input type="color" [value]="item.cor" (change)="alterarCor(item.categoria, $any($event.target).value)" />
+                  </label>
+                  <span class="cor-categoria-nome">{{ item.categoria }}</span>
+                  @if (salvandoCorCategoria() === item.categoria) {
+                    <span class="cor-categoria-status">salvando...</span>
+                  } @else if (item.personalizada) {
+                    <button type="button" class="cor-categoria-redefinir" (click)="redefinirCor(item.categoria)">
+                      Redefinir
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+
+            @if (erroCores()) {
+              <p class="erro">{{ erroCores() }}</p>
+            }
+          </section>
+        }
       }
-    }
-  </section>
+    </div>
+  </div>
 </app-dialog>
+
+@if (fotoExpandida()) {
+  <div class="lightbox-backdrop" (click)="fecharFotoExpandida()">
+    <button type="button" class="lightbox-fechar" (click)="fecharFotoExpandida()" aria-label="Fechar foto ampliada">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 6 18 18M18 6 6 18" />
+      </svg>
+    </button>
+    <img class="lightbox-imagem" [src]="fotoPreview()" alt="Foto de perfil ampliada" (click)="$event.stopPropagation()" />
+  </div>
+}

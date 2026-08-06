@@ -2,48 +2,74 @@
   display: contents;
 }
 
-.secao {
-  padding-bottom: 20px;
+.config-layout {
+  display: flex;
+  flex-direction: column;
+  width: 600px;
+  max-width: 100%;
+}
+
+.config-tabs {
+  display: flex;
+  gap: 22px;
+  flex-shrink: 0;
   margin-bottom: 20px;
   border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 
-  &:last-child {
-    padding-bottom: 0;
-    margin-bottom: 0;
-    border-bottom: none;
+.config-tab {
+  position: relative;
+  flex-shrink: 0;
+  padding: 4px 2px 12px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--color-primary);
+    transform: scaleX(0);
+    transition: transform 0.15s ease;
   }
 
+  &:hover {
+    color: var(--color-text);
+  }
+
+  &.ativo {
+    color: var(--color-primary);
+
+    &::after {
+      transform: scaleX(1);
+    }
+  }
+}
+
+.config-conteudo {
+  height: 340px;
+  padding: 6px 4px 0;
+  overflow-y: auto;
+}
+
+.secao-painel {
   h3 {
     margin: 0 0 14px;
     font-size: 14.5px;
     color: var(--color-primary);
-  }
-}
-
-.secao-cabecalho {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  margin-bottom: 14px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-
-  h3 {
-    margin: 0;
-  }
-}
-
-.secao-chevron {
-  flex-shrink: 0;
-  color: var(--color-text-muted);
-  transition: transform 0.15s ease;
-
-  &.rotacionado {
-    transform: rotate(-90deg);
   }
 }
 
@@ -54,6 +80,19 @@
   margin-bottom: 18px;
 }
 
+.foto-acoes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.foto-dica {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 .avatar-wrapper {
   position: relative;
   flex-shrink: 0;
@@ -61,13 +100,13 @@
 
 .remover-foto {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: -6px;
+  right: -6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border: 2px solid var(--color-surface);
   border-radius: 50%;
   background: #9a2f2f;
@@ -81,24 +120,31 @@
 }
 
 .avatar-preview {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
+  border: none;
   border-radius: 50%;
   background: var(--color-primary);
   color: #fff;
   display: grid;
   place-items: center;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 20px;
+  font-family: inherit;
   flex-shrink: 0;
   overflow: hidden;
+  padding: 0;
   cursor: pointer;
   box-shadow: 0 0 0 0 var(--color-accent);
   transition: box-shadow 0.15s ease;
 
   &:hover,
-  &:focus-within {
+  &:focus-visible {
     box-shadow: 0 0 0 3px var(--color-accent);
+  }
+
+  &.tem-foto {
+    cursor: zoom-in;
   }
 
   img {
@@ -317,4 +363,56 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(10, 20, 15, 0.82);
+  z-index: 60;
+  cursor: zoom-out;
+}
+
+.lightbox-imagem {
+  max-width: min(90vw, 520px);
+  max-height: 80vh;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  object-fit: contain;
+  cursor: default;
+}
+
+.lightbox-fechar {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+}
+
+@media (max-width: 640px) {
+  .config-layout {
+    width: 100%;
+  }
+
+  .config-conteudo {
+    height: 280px;
+  }
 }

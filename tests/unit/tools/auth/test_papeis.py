@@ -3,6 +3,8 @@ from agente_oracle.tools.auth.papeis import (
     eh_administrador,
     modulos_liberados,
     pode_atribuir_papel,
+    sigla_modulo,
+    sigla_usuario,
     tem_acesso_modulo,
 )
 
@@ -51,6 +53,30 @@ class TestModulosLiberados:
 
     def test_papel_invalido_e_ignorado(self):
         assert modulos_liberados(["papel_que_nao_existe"]) == []
+
+
+class TestSiglaModulo:
+    def test_modulo_conhecido_usa_sigla_cadastrada(self):
+        assert sigla_modulo("financeiro") == "FIN"
+        assert sigla_modulo("estoque") == "EST"
+
+    def test_modulo_sem_sigla_cadastrada_cai_no_fallback(self):
+        assert sigla_modulo("recursos_humanos") == "REC"
+
+
+class TestSiglaUsuario:
+    def test_financeiro_usa_sigla_do_modulo(self):
+        assert sigla_usuario(["financeiro"]) == "FIN"
+
+    def test_estoque_usa_sigla_do_modulo(self):
+        assert sigla_usuario(["estoque"]) == "EST"
+
+    def test_desenvolvedor_usa_dev_em_vez_da_lista_de_modulos(self):
+        assert sigla_usuario(["desenvolvedor"]) == "DEV"
+
+    def test_sem_papel_valido_devolve_vazio(self):
+        assert sigla_usuario(["papel_que_nao_existe"]) == ""
+        assert sigla_usuario([]) == ""
 
 
 class TestPodeAtribuirPapel:

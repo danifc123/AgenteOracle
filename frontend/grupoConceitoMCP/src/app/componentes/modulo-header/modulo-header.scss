@@ -9,6 +9,23 @@
   }
 }
 
+.voltar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0 0 6px -3px;
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  transition: color 0.15s ease;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-accent);
+  }
+}
+
 .breadcrumb {
   margin: 0 0 4px;
   font-size: 13px;

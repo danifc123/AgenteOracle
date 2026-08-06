@@ -101,7 +101,7 @@
 }
 
 .nav-parent.aberto {
-  background: var(--color-primary-light);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font-weight: 600;
 }
@@ -186,7 +186,7 @@
 }
 
 .nav-sublink.active {
-  background: var(--color-primary-light);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font-weight: 600;
 }

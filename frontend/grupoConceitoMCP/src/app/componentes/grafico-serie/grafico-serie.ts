@@ -190,6 +190,25 @@ export class GraficoSerie {
     return MARGEM_SUPERIOR + ALTURA_PLOT * (1 - valor / maximo);
   }
 
+  /** Em grupos com mais de uma barra (ex: "A Receber" e "A Pagar" lado a
+   * lado), o centro do GRUPO não é o centro de cada barra individual — cada
+   * barra fica um pouco pra esquerda ou pra direita dele. Esse mapa guarda
+   * o centro de cada barra por nome de série + mês, pra uma linha sobreposta
+   * conseguir seguir a barra específica que ela representa (em vez de
+   * flutuar no meio do grupo, entre as duas barras). */
+  private readonly xBarraPorSerieERotulo = computed(() => {
+    const mapa = new Map<string, Map<string, number>>();
+    for (const grupo of this.grupos()) {
+      for (const barra of grupo.barras) {
+        if (!mapa.has(barra.nome)) {
+          mapa.set(barra.nome, new Map());
+        }
+        mapa.get(barra.nome)!.set(grupo.rotulo, barra.x + barra.largura / 2);
+      }
+    }
+    return mapa;
+  });
+
   protected readonly linhas = computed<LinhaDesenhada[]>(() => {
     const seriesParaLinha =
       this.tipo() === 'barra' ? this.series().filter((serie) => serie.linhaSobreposta) : this.series();
@@ -199,9 +218,27 @@ export class GraficoSerie {
     const xs = this.xPorIndice();
     const indices = this.indicePorRotulo();
     const destaque = this.serieEmDestaque();
+
+    // Uma linha sobreposta "pertence" à barra de mesma cor (ex: "A Receber
+    // (estimado)" tracejada acompanha a barra sólida "A Receber") — sem
+    // par encontrado (ex: só uma série de barra no gráfico todo), cai no
+    // centro do grupo, que nesse caso já é o centro da própria barra.
+    const nomeBarraPorCor = new Map<string, string>();
+    if (this.tipo() === 'barra') {
+      for (const serie of this.series()) {
+        if (!serie.linhaSobreposta) {
+          nomeBarraPorCor.set(serie.cor, serie.nome);
+        }
+      }
+    }
+    const xPorBarra = this.xBarraPorSerieERotulo();
+
     return seriesParaLinha.map((serie) => {
+      const nomeBarra = nomeBarraPorCor.get(serie.cor);
+      const xsDaBarra = nomeBarra ? xPorBarra.get(nomeBarra) : undefined;
+
       const pontos: PontoXY[] = serie.pontos.map((ponto) => ({
-        x: xs[indices.get(ponto.rotulo) ?? 0],
+        x: xsDaBarra?.get(ponto.rotulo) ?? xs[indices.get(ponto.rotulo) ?? 0],
         y: this.y(ponto.valor),
         valor: ponto.valor
       }));

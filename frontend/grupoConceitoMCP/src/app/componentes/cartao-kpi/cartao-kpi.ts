@@ -18,8 +18,13 @@ export class CartaoKpi {
   /** Deixa o número em vermelho quando negativo (ex: saldo projetado) —
    * desliga pra KPIs onde negativo não é necessariamente "ruim". */
   destacarNegativo = input(true);
+  /** Sobrescreve o prefixo padrão de `tipo="moeda"` (sempre "R$") — pra KPI
+   * em outra moeda, ex: `prefixoPersonalizado="US$"`. */
+  prefixoPersonalizado = input<string | null>(null);
 
-  protected readonly prefixo = computed(() => (this.tipo() === 'moeda' ? 'R$' : ''));
+  protected readonly prefixo = computed(
+    () => this.prefixoPersonalizado() ?? (this.tipo() === 'moeda' ? 'R$' : '')
+  );
 
   protected readonly abreviado = computed(() => {
     if (this.tipo() === 'percentual') {

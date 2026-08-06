@@ -1,49 +1,43 @@
-import { Component, computed, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Component, computed, inject, signal } from '@angular/core';
+import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
+import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream';
+
+interface Filial {
+  codigo: string;
+  nome: string;
+}
 
 interface ItemMes {
   mes: string;
   valor: number;
 }
 
+interface RespostaVendas {
+  historico: ItemMes[];
+  projecao: ItemMes[];
+  analise: string;
+}
+
+interface EtapaPrevisao {
+  id: string;
+  rotulo: string;
+  status: 'pendente' | 'concluido';
+}
+
 // Verde da marca — mesma cor primária usada no Fluxo de Caixa.
 const COR_VENDAS = '#2f9e58';
 
-// Dados de mentira só pra construir/ajustar os componentes visuais — troca
-// pra dados reais da API assim que o layout estiver aprovado.
-const MOCK_FILIAIS: OpcaoSelectBusca[] = [
-  { valor: '0101', rotulo: '0101 - Matriz' },
-  { valor: '0102', rotulo: '0102 - Filial Sul' }
+const ETAPAS_INICIAIS: EtapaPrevisao[] = [
+  { id: 'historico', rotulo: 'Buscando faturamento histórico', status: 'pendente' },
+  { id: 'projecao', rotulo: 'Projetando tendência de vendas (regressão linear)', status: 'pendente' },
+  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' }
 ];
-
-const MOCK_VENDAS_HISTORICO: ItemMes[] = [
-  { mes: '2025-08', valor: 62000 },
-  { mes: '2025-09', valor: 145000 },
-  { mes: '2025-10', valor: 118000 },
-  { mes: '2025-11', valor: 58000 },
-  { mes: '2025-12', valor: 172000 },
-  { mes: '2026-01', valor: 129000 },
-  { mes: '2026-02', valor: 6000 },
-  { mes: '2026-03', valor: 193000 },
-  { mes: '2026-04', valor: 84000 },
-  { mes: '2026-05', valor: 97000 },
-  { mes: '2026-06', valor: 22000 },
-  { mes: '2026-07', valor: 26000 }
-];
-
-const MOCK_VENDAS_PROJECAO: ItemMes[] = [
-  { mes: '2026-08', valor: 63000 },
-  { mes: '2026-09', valor: 57000 },
-  { mes: '2026-10', valor: 51000 }
-];
-
-const MOCK_VENDAS_ANALISE =
-  'O faturamento aumentou significativamente nos últimos meses, com picos em setembro de 2025 e março de 2026. ' +
-  'Os próximos três meses estão projetados para uma queda gradual.';
 
 @Component({
   selector: 'app-vendas',
@@ -52,15 +46,20 @@ const MOCK_VENDAS_ANALISE =
   styleUrl: './vendas.scss'
 })
 export class Vendas {
-  protected readonly filiais = signal<OpcaoSelectBusca[]>(MOCK_FILIAIS);
+  private readonly http = inject(HttpClient);
+
+  protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
   protected readonly filiaisSelecionadas = signal<string[]>([]);
 
   protected readonly jaGerou = signal(false);
+  protected readonly carregando = signal(false);
+  protected readonly erro = signal<string | null>(null);
+  protected readonly etapas = signal<EtapaPrevisao[]>(ETAPAS_INICIAIS);
   protected readonly vendasHistorico = signal<ItemMes[]>([]);
   protected readonly vendasProjecao = signal<ItemMes[]>([]);
   protected readonly vendasAnalise = signal<string | null>(null);
 
-  protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0);
+  protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0 && !this.carregando());
 
   protected readonly faturamentoTotal = computed(() =>
     this.vendasHistorico().reduce((soma, item) => soma + item.valor, 0)
@@ -116,14 +115,50 @@ export class Vendas {
     return [serieHistorico, serieProjecao];
   });
 
-  protected gerarPrevisao(): void {
+  constructor() {
+    this.carregarFiliais();
+  }
+
+  private carregarFiliais(): void {
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
+      next: (filiais) => {
+        this.filiais.set(filiais.map((filial) => ({ valor: filial.codigo, rotulo: filial.nome })));
+      },
+      error: () => {
+        this.filiais.set([]);
+      }
+    });
+  }
+
+  private marcarEtapaConcluida(id: string): void {
+    this.etapas.update((atual) => atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)));
+  }
+
+  protected async gerarPrevisao(): Promise<void> {
     if (!this.podeGerar()) {
       return;
     }
 
-    this.jaGerou.set(true);
-    this.vendasHistorico.set(MOCK_VENDAS_HISTORICO);
-    this.vendasProjecao.set(MOCK_VENDAS_PROJECAO);
-    this.vendasAnalise.set(MOCK_VENDAS_ANALISE);
+    this.carregando.set(true);
+    this.erro.set(null);
+    this.etapas.set(ETAPAS_INICIAIS.map((etapa) => ({ ...etapa })));
+
+    try {
+      const resposta = await gerarPrevisaoStream<RespostaVendas>(
+        this.http,
+        `${MCP_API_BASE_URL}/api/financeiro/previsao/vendas`,
+        { filial: this.filiaisSelecionadas().join(',') },
+        (id) => this.marcarEtapaConcluida(id)
+      );
+
+      this.jaGerou.set(true);
+      this.vendasHistorico.set(resposta.historico);
+      this.vendasProjecao.set(resposta.projecao);
+      this.vendasAnalise.set(resposta.analise);
+    } catch (erroDesconhecido) {
+      this.erro.set(mensagemErroPrevisao(erroDesconhecido));
+    } finally {
+      this.carregando.set(false);
+    }
   }
 }

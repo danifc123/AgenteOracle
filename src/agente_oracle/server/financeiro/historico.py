@@ -4,6 +4,7 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.tools.auth import papeis
 from agente_oracle.tools.financeiro import historico as historico_tools
 
 
@@ -19,7 +20,11 @@ def _historico_para_json(documento: dict) -> dict:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/relatorios/historico", methods=["GET", "OPTIONS"])
     async def listar_historico_route(request: Request) -> Response:
-        """Endpoint HTTP usado pela tela de histórico para listar os relatórios já gerados pela IA."""
+        """Endpoint HTTP usado pela tela de histórico para listar os relatórios
+        já gerados pela IA, restritos aos módulos que quem está consultando
+        tem acesso — desenvolvedor (`acesso_total`) vê o histórico de todos os
+        módulos conhecidos, os demais só o(s) seu(s) (ex: financeiro só vê
+        relatório do financeiro), mesma regra já usada na Auditoria."""
         if request.method == "OPTIONS":
             return resposta_preflight("GET, OPTIONS")
 
@@ -27,7 +32,8 @@ def registrar(mcp) -> None:
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
-        documentos = historico_tools.listar()
+        modulos_liberados = papeis.modulos_liberados(usuario_ou_erro.get("papeis", []))
+        documentos = historico_tools.listar(modulos_liberados)
         return JSONResponse([_historico_para_json(doc) for doc in documentos], headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])

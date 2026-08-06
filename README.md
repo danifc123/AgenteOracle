@@ -51,7 +51,7 @@ src/agente_oracle/
 │       │   ├── cadastros.py           # lista clientes/fornecedores/lojas/vendedores/prefixos/tipos/naturezas/produtos/contas bancárias pros selects com busca dos filtros (fornecedores também usados pelo FINR14)
 │       │   └── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores
 │       ├── historico.py           # rotas REST do histórico de relatórios gerados pela IA
-│       └── ia.py                   # registra as tools de IA + /api/chat + /api/relatorio/exportar
+│       └── ia.py                   # registra as tools de IA + /api/financeiro/chat + /api/financeiro/relatorio/exportar
 └── tools/
     ├── connectivity.py       # teste de conexão com o Oracle (genérico, qualquer módulo pode usar)
     └── financeiro/
@@ -108,19 +108,22 @@ Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando pa
 
 - **Início** — página inicial.
 - **Financeiro → Específico Grupo Conceito** — lista os relatórios do módulo (ex: Fluxo de Caixa Realizado, Boleto, FINR10...); cada um aparece como "Em breve" até ter uma tool/rota fixa implementada.
-- **Assistente IA** — chat com o agente (usa `POST /api/chat`); respostas que rodaram SQL mostram a consulta usada e um botão para baixar o resultado em Excel.
+- **Financeiro → Assistente IA** — chat com o agente (usa `POST /api/financeiro/chat`); respostas que rodaram SQL mostram a consulta usada e um botão para baixar o resultado em Excel. O Estoque tem um item equivalente no menu, mas ainda como placeholder ("em breve") — não existe view/backend de estoque ainda.
 - **Histórico de relatórios** — lista os relatórios já gerados pela IA (`GET /api/relatorios/historico`), com botão de bandeira para fixar/desfixar (relatório fixado não expira), botão para baixar em Excel (sem rodar de novo no banco) e botão para apagar do histórico.
 
 ## Rotas REST expostas pelo backend
 
 | Rota | Método | Uso |
 |---|---|---|
-| `/api/chat` | POST | `{mensagem, historico}` → `{resposta, consultas}` — conversa com o agente |
-| `/api/relatorio/exportar` | POST | `{sql}` → arquivo Excel — reexecuta uma consulta (normalmente uma que a IA gerou) e baixa o resultado |
+| `/api/financeiro/chat` | POST | `{mensagem, historico}` → `{resposta, consultas}` — conversa com o agente |
+| `/api/financeiro/relatorio/exportar` | POST | `{sql}` → arquivo Excel — reexecuta uma consulta (normalmente uma que a IA gerou) e baixa o resultado |
 | `/api/relatorios/historico` | GET | Lista os relatórios salvos no histórico (sem os dados das linhas) |
 | `/api/relatorios/historico/{id}/exportar` | GET | Baixa em Excel um relatório salvo, a partir do dado já armazenado no histórico |
 | `/api/relatorios/historico/{id}` | PATCH | `{fixado: bool}` → fixa/desfixa um relatório (fixado não expira pelo TTL) |
 | `/api/relatorios/historico/{id}` | DELETE | Apaga um relatório do histórico (ele volta a poder ser gerado de novo pela IA) |
+| `/api/auditoria` | GET | Roda a auditoria de dados ao vivo (sob demanda) para os módulos liberados ao usuário e devolve os achados ainda não dispensados |
+| `/api/auditoria/historico` | GET | Lista todo achado já encontrado ao longo do tempo, restrito aos módulos liberados — nunca expira |
+| `/api/auditoria/dispensar` | POST | `{modulo, view, campo, valor}` → marca um achado como "não é problema" para o usuário logado |
 
 ## Agente local (Ollama)
 

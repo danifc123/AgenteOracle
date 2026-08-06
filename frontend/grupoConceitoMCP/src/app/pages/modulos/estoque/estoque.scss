@@ -1,0 +1,133 @@
+.filtros-topo {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.select-filial {
+  flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+.estado-vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 48px 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+
+  svg {
+    color: var(--color-primary-light);
+    margin-bottom: 6px;
+  }
+
+  h3 {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 16px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 420px;
+    line-height: 1.5;
+  }
+}
+
+.linha-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cartao-secao {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+
+  h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.tabela-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+
+  th,
+  td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  td.numero {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+
+  &--entrada,
+  &--ok {
+    background: rgba(47, 158, 88, 0.14);
+    color: #2f9e58;
+  }
+
+  &--saida,
+  &--baixo {
+    background: rgba(232, 135, 30, 0.14);
+    color: #e8871e;
+  }
+
+  &--critico {
+    background: rgba(154, 47, 47, 0.14);
+    color: #9a2f2f;
+  }
+}
+
+@media (max-width: 720px) {
+  .filtros-topo {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .select-filial {
+    max-width: none;
+  }
+}

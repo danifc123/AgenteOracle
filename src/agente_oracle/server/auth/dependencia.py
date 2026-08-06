@@ -35,10 +35,25 @@ def exigir_administrador(request: Request) -> dict | JSONResponse:
     return resultado
 
 
+def exigir_desenvolvedor(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_usuario`, mais a exigência do papel
+    `desenvolvedor` especificamente (não qualquer administrador) — usada em
+    funcionalidades de teste/depuração, como ativar/desativar achado de
+    auditoria pra facilitar reproduzir o mesmo cenário várias vezes."""
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.eh_desenvolvedor(resultado.get("papeis", [])):
+        return JSONResponse({"erro": "Acesso restrito a desenvolvedores."}, status_code=403, headers=CORS_HEADERS)
+
+    return resultado
+
+
 def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
     """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
-    tenha acesso ao módulo financeiro — usada em toda rota `/api/financeiro/*`
-    e `/api/relatorio/*` e `/api/chat`. Sem isso, qualquer conta autenticada
+    tenha acesso ao módulo financeiro — usada em toda rota `/api/financeiro/*`.
+    Sem isso, qualquer conta autenticada
     (independente do papel atribuído) conseguia chamar essas rotas."""
     resultado = exigir_usuario(request)
     if isinstance(resultado, JSONResponse):

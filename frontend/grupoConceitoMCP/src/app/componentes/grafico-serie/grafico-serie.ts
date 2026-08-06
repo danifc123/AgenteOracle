@@ -12,6 +12,10 @@ export interface SerieGrafico {
   pontos: PontoSerie[];
   /** Mesma cor/identidade da série, só o traço muda (ex: projeção que continua o histórico). */
   tracejada?: boolean;
+  /** Em gráficos de barra, desenha essa série como linha por cima das
+   * barras em vez de virar mais um grupo de barra (ex: total estimado
+   * sobreposto ao confirmado). Sem efeito em gráficos de linha. */
+  linhaSobreposta?: boolean;
 }
 
 interface PontoXY {
@@ -173,13 +177,15 @@ export class GraficoSerie {
   }
 
   protected readonly linhas = computed<LinhaDesenhada[]>(() => {
-    if (this.tipo() !== 'linha') {
+    const seriesParaLinha =
+      this.tipo() === 'barra' ? this.series().filter((serie) => serie.linhaSobreposta) : this.series();
+    if (!seriesParaLinha.length) {
       return [];
     }
     const xs = this.xPorIndice();
     const indices = this.indicePorRotulo();
     const destaque = this.serieEmDestaque();
-    return this.series().map((serie) => {
+    return seriesParaLinha.map((serie) => {
       const pontos: PontoXY[] = serie.pontos.map((ponto) => ({
         x: xs[indices.get(ponto.rotulo) ?? 0],
         y: this.y(ponto.valor),
@@ -201,7 +207,7 @@ export class GraficoSerie {
     if (this.tipo() !== 'barra') {
       return [];
     }
-    const series = this.series();
+    const series = this.series().filter((serie) => !serie.linhaSobreposta);
     const rotulos = this.rotulos();
     const totalGrupos = rotulos.length || 1;
     const larguraGrupo = LARGURA_PLOT / totalGrupos;

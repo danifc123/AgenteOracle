@@ -17,7 +17,18 @@
   </app-botao>
 </div>
 
-@if (!jaGerou()) {
+@if (carregando()) {
+<ul class="etapas-previsao">
+  @for (etapa of etapas(); track etapa.id) {
+  <li [class.etapa--concluida]="etapa.status === 'concluido'">
+    <span class="etapa-marcador">{{ etapa.status === 'concluido' ? '✓' : '○' }}</span>
+    {{ etapa.rotulo }}
+  </li>
+  }
+</ul>
+} @else if (erro()) {
+<p class="erro-previsao">{{ erro() }}</p>
+} @else if (!jaGerou()) {
 <div class="estado-vazio">
   <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
     <path d="M3 17 9 11l4 4 8-8" stroke-linecap="round" stroke-linejoin="round" />

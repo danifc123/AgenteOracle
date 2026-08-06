@@ -1,0 +1,37 @@
+:host {
+  display: contents;
+}
+
+.sino {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: var(--color-primary-light);
+  }
+}
+
+.bolinha {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #c94b4b;
+  border: 2px solid var(--color-primary);
+}

@@ -1,5 +1,5 @@
 import { Component, input, output } from '@angular/core';
-import { Botao } from '../../../componentes/botao/botao';
+import { Botao } from '../../../../../componentes/botao/botao';
 
 @Component({
   selector: 'app-chat-entrada',

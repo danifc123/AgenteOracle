@@ -1,4 +1,4 @@
-from agente_oracle.server.financeiro import categoria_cores, historico, ia, layouts, relatorios
+from agente_oracle.server.financeiro import categoria_cores, historico, ia, layouts, previsao, relatorios
 
 
 def registrar(mcp) -> None:
@@ -7,3 +7,4 @@ def registrar(mcp) -> None:
     layouts.registrar(mcp)
     categoria_cores.registrar(mcp)
     ia.registrar(mcp)
+    previsao.registrar(mcp)

@@ -1,0 +1,54 @@
+<app-dialog [aberto]="auditoria.aberto()" [titulo]="titulo()" (fechar)="fechar()">
+  @if (auditoria.moduloAtual() && modulosDisponiveis().length > 1) {
+    <button type="button" class="trocar-modulo" (click)="trocarModulo()">← Trocar departamento</button>
+  }
+
+  @if (mostrarSeletor()) {
+    <div class="seletor-modulo">
+      <p>Selecione o departamento pra auditar:</p>
+      <div class="opcoes-modulo">
+        @for (modulo of modulosDisponiveis(); track modulo) {
+          <button type="button" class="opcao-modulo" (click)="selecionarModulo(modulo)">
+            {{ rotuloModulo(modulo) }}
+          </button>
+        }
+      </div>
+    </div>
+  } @else if (!auditoria.jaExecutou() && !auditoria.carregando()) {
+    <div class="estado-inicial">
+      <p>A auditoria analisa os dados do sistema em busca de possíveis problemas — cada execução é
+        uma consulta real à IA, por isso só roda quando você pedir.</p>
+      <app-botao variant="primaria" (clicked)="rodar()">Rodar auditoria</app-botao>
+    </div>
+  } @else if (auditoria.carregando()) {
+    <p class="estado">Analisando os dados, isso pode levar alguns segundos...</p>
+  } @else if (auditoria.erro()) {
+    <p class="estado erro">{{ auditoria.erro() }}</p>
+  } @else if (auditoria.achados().length === 0) {
+    <p class="estado">Nenhum problema encontrado nos dados analisados.</p>
+  } @else {
+    <ul class="lista-achados">
+      @for (achado of auditoria.achados(); track chaveAchado(achado)) {
+        <li class="achado">
+          <div class="achado-corpo">
+            <p class="achado-descricao">{{ achado.descricao }}</p>
+            <p class="achado-detalhe">
+              <span class="achado-tag">{{ achado.modulo }} · {{ achado.view }}</span>
+              <span class="achado-campo-valor"><strong>{{ achado.campo }}</strong>: <code>{{ achado.valor }}</code></span>
+            </p>
+          </div>
+          <label class="dispensar-opcao" title="Some da lista agora — se o dado continuar errado, pode voltar a aparecer numa próxima auditoria">
+            <input type="checkbox" (change)="dispensar(achado)" />
+            <span>Dispensar</span>
+          </label>
+        </li>
+      }
+    </ul>
+  }
+
+  @if (auditoria.jaExecutou() && !auditoria.carregando()) {
+    <div class="rodape-acao">
+      <app-botao variant="contorno" (clicked)="rodar()">Rodar de novo</app-botao>
+    </div>
+  }
+</app-dialog>

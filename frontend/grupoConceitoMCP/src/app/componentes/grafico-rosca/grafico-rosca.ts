@@ -36,6 +36,11 @@ const VAO_ENTRE_FATIAS = 3;
 export class GraficoRosca {
   titulo = input<string>('');
   fatias = input.required<FatiaRosca[]>();
+  /** 'moeda' abrevia e prefixa "R$" no total do título (comportamento
+   * original); 'numero' é uma contagem simples, sem abreviar nem prefixo —
+   * mesma semântica de `CartaoKpi.tipo`, pra gráfico de contagem (ex: lotes,
+   * unidades) não aparecer com "R$" na frente. */
+  unidade = input<'moeda' | 'numero'>('moeda');
 
   protected readonly TAMANHO = TAMANHO;
   protected readonly CENTRO = CENTRO;
@@ -77,8 +82,8 @@ export class GraficoRosca {
     });
   });
 
-  protected formatarMoeda(valor: number): string {
-    return formatarMoedaAbreviada(valor);
+  protected formatarTotal(valor: number): string {
+    return this.unidade() === 'numero' ? valor.toLocaleString('pt-BR') : formatarMoedaAbreviada(valor);
   }
 
   protected formatarPercentual(valor: number): string {

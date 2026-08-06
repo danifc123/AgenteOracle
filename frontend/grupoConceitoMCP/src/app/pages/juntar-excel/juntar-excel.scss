@@ -1,0 +1,121 @@
+.juntar-excel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.cartao-seletores {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 40px;
+}
+
+.seletores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 320px));
+  gap: 56px;
+  width: 100%;
+  justify-content: center;
+}
+
+.mensagem {
+  margin: 24px 0 0;
+  font-size: 13.5px;
+  text-align: center;
+}
+
+.mensagem--erro {
+  color: #9a2f2f;
+}
+
+.mensagem--sucesso {
+  color: var(--color-primary);
+}
+
+.acoes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 32px;
+}
+
+.info-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: help;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-primary);
+  }
+
+  &:hover .balao,
+  &:focus-visible .balao {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -4px);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.icone-info {
+  display: block;
+}
+
+.balao {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 0);
+  width: 260px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-dark);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 10;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--color-primary-dark);
+  }
+}
+
+@media (max-width: 640px) {
+  .cartao-seletores {
+    padding: 28px 20px;
+  }
+
+  .seletores {
+    grid-template-columns: minmax(0, 240px);
+  }
+
+  .balao {
+    width: 220px;
+  }
+}

@@ -1,0 +1,41 @@
+.linha-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: stretch;
+}
+
+.grade-principal {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.cartao-grafico {
+  height: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  box-sizing: border-box;
+
+  h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+@media (max-width: 720px) {
+  .linha-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .grade-principal {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,22 @@
+<app-modulo-header
+  breadcrumb="Estoque"
+  titulo="Início"
+  descricao="Painel do time de estoque — indicadores gerais de lotes e movimentação."
+/>
+
+<div class="linha-kpis">
+  <app-cartao-kpi rotulo="Quantidade de Produtos" tipo="numero" [valor]="quantidadeProdutos" />
+  <app-cartao-kpi rotulo="Valor Total em Estoque" [valor]="valorTotalEstoque" />
+  <app-cartao-kpi rotulo="Valor em Dólar" [valor]="valorEmDolar" prefixoPersonalizado="US$" />
+</div>
+
+<div class="grade-principal">
+  <section class="cartao-grafico cartao-grafico-principal">
+    <h2>Evolução dos Estoques por Fechamento</h2>
+    <app-grafico-serie tipo="barra" [series]="seriesEvolucaoEstoque" />
+  </section>
+
+  <section class="cartao-grafico">
+    <app-grafico-rosca titulo="Lotes a Vencer" unidade="numero" [fatias]="fatiasLotes" />
+  </section>
+</div>

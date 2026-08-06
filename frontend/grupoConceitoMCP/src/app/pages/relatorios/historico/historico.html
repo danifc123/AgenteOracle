@@ -20,6 +20,7 @@
       <thead>
         <tr>
           <th></th>
+          <th>Módulo</th>
           <th>Título</th>
           <th>Gerado em</th>
           <th>Validade</th>
@@ -46,6 +47,7 @@
                 <span class="sr-only">{{ relatorio.fixado ? 'Desfixar relatório' : 'Fixar relatório para não expirar' }}</span>
               </app-botao>
             </td>
+            <td>{{ relatorio.modulo }}</td>
             <td>{{ relatorio.titulo }}</td>
             <td>{{ relatorio.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
             <td>

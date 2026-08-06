@@ -1,0 +1,67 @@
+<app-modulo-header breadcrumb="Auditoria" titulo="Lista de Auditoria" />
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+@if (carregando()) {
+  <p class="carregando">Carregando...</p>
+} @else if (achados().length === 0) {
+  <div class="empty-state">
+    <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <h2>Nenhuma auditoria registrada ainda</h2>
+    <p>Use o sino no topo da tela pra rodar a auditoria de dados — os achados encontrados aparecem aqui automaticamente.</p>
+  </div>
+} @else {
+  <div class="table-wrapper">
+    <table class="tabela-historico">
+      <thead>
+        <tr>
+          <th>Módulo</th>
+          <th>Campo</th>
+          <th>Valor</th>
+          <th>Descrição</th>
+          <th>Encontrado em</th>
+          @if (ehDesenvolvedor()) {
+            <th>Status</th>
+            <th><span class="sr-only">Ações</span></th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (achado of achados(); track achado.execucao_id + achado.view + achado.campo + achado.valor) {
+          <tr>
+            <td>{{ achado.modulo }}</td>
+            <td>{{ achado.campo }}</td>
+            <td>{{ achado.valor }}</td>
+            <td>{{ achado.descricao }}</td>
+            <td>{{ achado.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
+            @if (ehDesenvolvedor()) {
+              <td>
+                @if (achado.ativo) {
+                  <span class="badge-ativo">Ativo</span>
+                } @else {
+                  <span class="badge-desativado">Desativado</span>
+                }
+              </td>
+              <td>
+                <button
+                  type="button"
+                  class="botao-alternar"
+                  [disabled]="alterandoAtivo() === chaveAchado(achado)"
+                  (click)="alternarAtivo(achado)"
+                  [title]="achado.ativo ? 'Desativar (a IA volta a poder reapontar isso)' : 'Ativar de novo'"
+                >
+                  {{ achado.ativo ? 'Desativar' : 'Ativar' }}
+                </button>
+              </td>
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

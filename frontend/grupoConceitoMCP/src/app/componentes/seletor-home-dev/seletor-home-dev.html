@@ -1,0 +1,13 @@
+@if (sessao.ehDesenvolvedor()) {
+  <select
+    class="seletor-home"
+    [value]="homeSelecionada.modulo()"
+    (change)="selecionar($event)"
+    aria-label="Trocar tela de início"
+    title="Trocar tela de início"
+  >
+    @for (modulo of sessao.modulos(); track modulo) {
+      <option [value]="modulo">{{ rotuloModulo(modulo) }}</option>
+    }
+  </select>
+}

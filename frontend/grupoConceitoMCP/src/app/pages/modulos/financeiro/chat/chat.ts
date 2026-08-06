@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
-import { MCP_API_BASE_URL } from '../../app-config';
-import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
+import { MCP_API_BASE_URL } from '../../../../app-config';
+import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { ChatEntrada } from './entrada/chat-entrada';
 import { ChatMensagens, ConsultaUsada, MensagemChat } from './mensagens/chat-mensagens';
 
@@ -39,7 +39,7 @@ export class Chat {
     this.erro.set(null);
 
     this.http
-      .post<RespostaChat>(`${MCP_API_BASE_URL}/api/chat`, { mensagem: texto, historico })
+      .post<RespostaChat>(`${MCP_API_BASE_URL}/api/financeiro/chat`, { mensagem: texto, historico })
       .subscribe({
         next: (resultado) => {
           this.mensagens.update((atual) => [
@@ -66,7 +66,7 @@ export class Chat {
     this.erro.set(null);
 
     this.http
-      .post(`${MCP_API_BASE_URL}/api/relatorio/exportar`, { sql, titulo }, { observe: 'response', responseType: 'blob' })
+      .post(`${MCP_API_BASE_URL}/api/financeiro/relatorio/exportar`, { sql, titulo }, { observe: 'response', responseType: 'blob' })
       .subscribe({
         next: (resposta) => {
           const blob = resposta.body;

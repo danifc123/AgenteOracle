@@ -13,7 +13,7 @@ automaticamente, sem precisar editar nada aqui.
 
 from dataclasses import dataclass
 
-MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro",)
+MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,8 @@ PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="desenvolvedor", rotulo="Desenvolvedor", acesso_total=True, administrador=True),
     Papel(slug="financeiro_admin", rotulo="Administrador do Financeiro", modulos=("financeiro",), administrador=True),
     Papel(slug="financeiro", rotulo="Time do Financeiro", modulos=("financeiro",)),
+    Papel(slug="estoque_admin", rotulo="Administrador do Estoque", modulos=("estoque",), administrador=True),
+    Papel(slug="estoque", rotulo="Time do Estoque", modulos=("estoque",)),
 )
 
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}
@@ -44,6 +46,15 @@ def tem_acesso_modulo(papeis: list[str], modulo: str) -> bool:
 
 def eh_administrador(papeis: list[str]) -> bool:
     return any(papel.administrador for papel in _papeis_validos(papeis))
+
+
+def eh_desenvolvedor(papeis: list[str]) -> bool:
+    """Diferente de `eh_administrador` (verdadeiro pra qualquer papel
+    administrador, ex: `financeiro_admin`), aqui é só o papel `desenvolvedor`
+    especificamente — usado por funcionalidades de teste/depuração (ex:
+    ativar/desativar achado de auditoria) que não devem aparecer nem pra
+    administradores de módulo comuns."""
+    return any(papel.slug == "desenvolvedor" for papel in _papeis_validos(papeis))
 
 
 def modulos_liberados(papeis: list[str]) -> list[str]:

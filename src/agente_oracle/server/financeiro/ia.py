@@ -44,7 +44,7 @@ def registrar(mcp) -> None:
 
     mcp.tool(name=f"{PREFIXO_TOOL}executar_consulta_financeira")(executar_consulta_financeira)
 
-    @mcp.custom_route("/api/relatorio/exportar", methods=["POST", "OPTIONS"])
+    @mcp.custom_route("/api/financeiro/relatorio/exportar", methods=["POST", "OPTIONS"])
     async def exportar_relatorio_route(request: Request) -> Response:
         """Endpoint HTTP usado pelo frontend para baixar em Excel um relatório
         gerado pelo Agente Oracle no chat (roda de novo a mesma consulta validada)."""
@@ -74,7 +74,7 @@ def registrar(mcp) -> None:
             },
         )
 
-    @mcp.custom_route("/api/chat", methods=["POST", "OPTIONS"])
+    @mcp.custom_route("/api/financeiro/chat", methods=["POST", "OPTIONS"])
     async def chat_route(request: Request) -> JSONResponse:
         """Endpoint HTTP usado pelo frontend para conversar com o Agente Oracle."""
         if request.method == "OPTIONS":

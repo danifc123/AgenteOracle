@@ -13,7 +13,10 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow-y: auto;
+  // Sem overflow-y aqui de propósito: por spec, overflow-y:auto força
+  // overflow-x a virar auto também, e isso criava uma barra de scroll
+  // horizontal por causa do balão do .nav-label (colapsado) que sai
+  // fora da largura do sidebar.
   transition:
     width 0.2s ease,
     padding 0.2s ease;

@@ -83,6 +83,9 @@
   background: transparent;
   width: 100%;
   text-align: left;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .nav-link:hover {
@@ -110,6 +113,19 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.nav-link.active .nav-icon,
+.nav-sublink.active .nav-icon,
+.nav-parent.aberto .nav-icon {
+  color: var(--color-accent);
+}
+
+.nav-label {
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 0.15s ease;
 }
 
 .chevron {
@@ -150,6 +166,9 @@
   border-radius: var(--radius-sm);
   color: rgba(255, 255, 255, 0.68);
   font-size: 14px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .nav-sublink:hover {
@@ -278,14 +297,26 @@
     display: none;
   }
 
-  // Colapsado: o rótulo some da linha normal e vira um "balão" que só
-  // aparece flutuando ao lado do ícone quando passa o mouse (ou foca via
-  // teclado) — sem isso, ícone sozinho não diz qual módulo é cada um.
+  // Ocioso (colapsado, sem hover): o rótulo encolhe junto com a largura do
+  // sidebar (flex-shrink natural) em vez de sumir instantaneamente — assim
+  // acompanha a mesma animação de 0.2s do fechamento, ao invés de saltar
+  // pra fora do fluxo antes da largura terminar de encolher.
   .nav-label {
+    flex-shrink: 1;
+    min-width: 0;
+    opacity: 0;
+  }
+
+  // Hover ou foco: aí sim vira um balão flutuando ao lado do ícone — nesse
+  // ponto o sidebar já está fechado, não precisa acompanhar animação.
+  .nav-link:hover .nav-label,
+  .nav-link:focus-visible .nav-label,
+  .nav-sublink:hover .nav-label,
+  .nav-sublink:focus-visible .nav-label {
     position: absolute;
     left: calc(100% + 10px);
     top: 50%;
-    transform: translateY(-50%) translateX(-4px);
+    transform: translateY(-50%);
     display: block;
     padding: 6px 10px;
     border-radius: var(--radius-sm);
@@ -293,25 +324,11 @@
     color: #fff;
     font-size: 13px;
     font-weight: 500;
-    white-space: nowrap;
     box-shadow: var(--shadow-md);
-    opacity: 0;
-    visibility: hidden;
+    opacity: 1;
     pointer-events: none;
     z-index: 40;
-    transition:
-      opacity 0.15s ease,
-      transform 0.15s ease,
-      visibility 0.15s ease;
-  }
-
-  .nav-link:hover .nav-label,
-  .nav-link:focus-visible .nav-label,
-  .nav-sublink:hover .nav-label,
-  .nav-sublink:focus-visible .nav-label {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(-50%) translateX(0);
+    transition: opacity 0.15s ease;
   }
 
   .nav-parent::after {

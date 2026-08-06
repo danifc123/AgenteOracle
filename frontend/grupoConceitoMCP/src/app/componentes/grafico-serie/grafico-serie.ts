@@ -155,9 +155,23 @@ export class GraficoSerie {
     }));
   });
 
+  /** Fonte única de verdade da posição X de cada mês — usada por barras,
+   * linha sobreposta, rótulos do eixo e tooltip. No modo barra, cada mês
+   * ocupa uma "fatia" igual da largura (`LARGURA_PLOT / total`) e o ponto
+   * fica no centro dela; no modo linha, os pontos ficam espalhados ponta a
+   * ponta (primeiro na borda esquerda, último na direita). Eram duas contas
+   * diferentes antes — a de barra vivia isolada em `grupos()` — o que fazia
+   * a barra, a linha sobreposta e o rótulo do mês desalinharem entre si. */
   private readonly xPorIndice = computed(() => {
     const total = this.rotulos().length;
-    if (total <= 1) {
+    if (total === 0) {
+      return [MARGEM_ESQUERDA + LARGURA_PLOT / 2];
+    }
+    if (this.tipo() === 'barra') {
+      const larguraGrupo = LARGURA_PLOT / total;
+      return Array.from({ length: total }, (_, indice) => MARGEM_ESQUERDA + larguraGrupo * (indice + 0.5));
+    }
+    if (total === 1) {
       return [MARGEM_ESQUERDA + LARGURA_PLOT / 2];
     }
     const passo = LARGURA_PLOT / (total - 1);
@@ -217,9 +231,10 @@ export class GraficoSerie {
 
     const valorPorRotulo = series.map((serie) => new Map(serie.pontos.map((ponto) => [ponto.rotulo, ponto.valor])));
     const destaque = this.serieEmDestaque();
+    const xs = this.xPorIndice();
 
     return rotulos.map((rotulo, indiceGrupo) => {
-      const centroGrupo = MARGEM_ESQUERDA + larguraGrupo * (indiceGrupo + 0.5);
+      const centroGrupo = xs[indiceGrupo];
       const inicioGrupo = centroGrupo - (larguraBarra + espacamentoBarra) * (totalSeries / 2);
 
       const barras: BarraDesenhada[] = series.map((serie, indiceSerie) => {

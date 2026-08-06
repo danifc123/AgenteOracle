@@ -10,19 +10,6 @@ export interface AchadoAuditoria {
   descricao: string;
 }
 
-/** Nome amigável de cada módulo auditável — usado no seletor de departamento
- * e no título do painel, pra deixar claro qual está sendo auditado. Módulo
- * sem entrada aqui cai no próprio slug (fallback razoável até alguém lembrar
- * de cadastrar o rótulo). */
-const ROTULOS_MODULO: Record<string, string> = {
-  financeiro: 'Financeiro',
-  estoque: 'Estoque'
-};
-
-export function rotuloModulo(modulo: string): string {
-  return ROTULOS_MODULO[modulo] ?? modulo;
-}
-
 /** Estado da auditoria de dados, compartilhado entre o sino do layout, o
  * botão do sidebar e o painel que mostra o resultado — extraído pra serviço
  * porque nenhum desses três é dono exclusivo do estado (mesmo caso de uso que

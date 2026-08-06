@@ -1,0 +1,11 @@
+<app-modulo-header
+  breadcrumb="Estoque"
+  titulo="Início"
+  descricao="Painel do time de estoque — indicadores gerais de lotes e movimentação."
+/>
+
+<div class="grade-graficos">
+  <section class="cartao-grafico">
+    <app-grafico-rosca titulo="Lotes por situação" unidade="numero" [fatias]="fatiasLotes" />
+  </section>
+</div>

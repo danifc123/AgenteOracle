@@ -26,15 +26,29 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 
+from agente_oracle.config import settings
 from agente_oracle.db.connection import get_connection
 
 _SELECT_FROM_REGEX = re.compile(r"^SELECT\s+(.*?)\s+FROM\s", re.IGNORECASE | re.DOTALL)
 
 TEMPO_EXPIRACAO = timedelta(hours=15)
 
-_COLUNAS_COMPLETAS = "id, hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em"
+_COLUNAS_COMPLETAS = "id, hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo"
 
 _tabela_garantida = False
+
+
+def _coluna_modulo_existe(cursor) -> bool:
+    if settings.db_backend == "postgres":
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
+        )
+    else:
+        cursor.execute(
+            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'RELATORIOS_HISTORICO' AND COLUMN_NAME = 'MODULO'"
+        )
+    return cursor.fetchone() is not None
 
 
 def _garantir_tabela(cursor) -> None:
@@ -52,9 +66,17 @@ def _garantir_tabela(cursor) -> None:
             total_linhas INTEGER NOT NULL,
             criado_em TIMESTAMPTZ NOT NULL,
             fixado BOOLEAN NOT NULL DEFAULT FALSE,
-            expira_em TIMESTAMPTZ
+            expira_em TIMESTAMPTZ,
+            modulo VARCHAR NOT NULL DEFAULT 'financeiro'
         )
     """)
+    # A tabela pode já existir de antes desta coluna ser criada (ambiente já
+    # em uso) — `CREATE TABLE IF NOT EXISTS` não adiciona coluna em tabela que
+    # já existe, então garante na mão, sem migração separada. Todo relatório
+    # salvo até hoje só pode ter vindo do Financeiro (único módulo que já
+    # gravou nessa tabela), daí o DEFAULT.
+    if not _coluna_modulo_existe(cursor):
+        cursor.execute("ALTER TABLE relatorios_historico ADD COLUMN modulo VARCHAR NOT NULL DEFAULT 'financeiro'")
     _tabela_garantida = True
 
 
@@ -83,7 +105,7 @@ def _carregar_json(valor):
 
 
 def _linha_para_documento(linha: tuple) -> dict:
-    id_, hash_sql_valor, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em = linha
+    id_, hash_sql_valor, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo = linha
     return {
         "_id": id_,
         "hash_sql": hash_sql_valor,
@@ -95,6 +117,7 @@ def _linha_para_documento(linha: tuple) -> dict:
         "criado_em": criado_em,
         "fixado": fixado,
         "expira_em": expira_em,
+        "modulo": modulo,
     }
 
 
@@ -113,12 +136,14 @@ def buscar_por_sql(sql_validado: str) -> dict | None:
     return _linha_para_documento(linha) if linha else None
 
 
-def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list]) -> dict:
+def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list], modulo: str) -> dict:
     """Salva um relatório novo no histórico. Se outra chamada concorrente já
     tiver salvo o mesmo SQL entre a busca e este insert, devolve o documento
     já existente em vez de duplicar (a constraint única em hash_sql garante
     isso). Por padrão, o relatório expira e é "esquecido" após
-    TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`)."""
+    TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`). `modulo` é
+    quem gerou o relatório (ex: "financeiro") — usado por `listar` pra cada
+    papel só ver o histórico do(s) módulo(s) que tem acesso."""
     agora = datetime.now(timezone.utc)
     hash_valor = hash_sql(sql_validado)
 
@@ -133,9 +158,9 @@ def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list
         cursor.execute(
             f"""
             INSERT INTO relatorios_historico
-                (hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em)
+                (hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo)
             VALUES
-                (:hash_sql, :sql_texto, :titulo, :colunas::jsonb, :linhas::jsonb, :total_linhas, :criado_em, FALSE, :expira_em)
+                (:hash_sql, :sql_texto, :titulo, :colunas::jsonb, :linhas::jsonb, :total_linhas, :criado_em, FALSE, :expira_em, :modulo)
             ON CONFLICT (hash_sql) DO NOTHING
             RETURNING {_COLUNAS_COMPLETAS}
             """,
@@ -147,6 +172,7 @@ def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list
             total_linhas=len(linhas),
             criado_em=agora,
             expira_em=agora + TEMPO_EXPIRACAO,
+            modulo=modulo,
         )
         linha = cursor.fetchone()
 
@@ -160,20 +186,32 @@ def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list
     return _linha_para_documento(linha)
 
 
-def listar() -> list[dict]:
+def listar(modulos_liberados: list[str]) -> list[dict]:
     """Lista os relatórios salvos, do mais recente para o mais antigo, sem os
-    dados completos das linhas (usado pela tela de histórico). Relatórios não
-    fixados que já passaram do prazo de expiração não aparecem, mesmo que a
-    limpeza física ainda não tenha rodado."""
+    dados completos das linhas (usado pela tela de histórico), restritos aos
+    módulos que quem está consultando tem acesso — mesma regra de RBAC da
+    Auditoria (`tools/auditoria/historico.py::listar`): desenvolvedor
+    (`acesso_total`) recebe todos os módulos conhecidos, os demais só o(s)
+    seu(s). Relatórios não fixados que já passaram do prazo de expiração não
+    aparecem, mesmo que a limpeza física ainda não tenha rodado."""
+    if not modulos_liberados:
+        return []
+
+    marcadores = ", ".join(f":modulo_{indice}" for indice in range(len(modulos_liberados)))
+    binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
+
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute("""
-            SELECT id, hash_sql, sql, titulo, colunas, total_linhas, criado_em, fixado, expira_em
+        cursor.execute(
+            f"""
+            SELECT id, hash_sql, sql, titulo, colunas, total_linhas, criado_em, fixado, expira_em, modulo
             FROM relatorios_historico
-            WHERE fixado = TRUE OR expira_em > now()
+            WHERE (fixado = TRUE OR expira_em > now()) AND modulo IN ({marcadores})
             ORDER BY criado_em DESC
-        """)
+            """,
+            **binds,
+        )
         linhas_resultado = cursor.fetchall()
 
     return [
@@ -187,6 +225,7 @@ def listar() -> list[dict]:
             "criado_em": linha[6],
             "fixado": linha[7],
             "expira_em": linha[8],
+            "modulo": linha[9],
         }
         for linha in linhas_resultado
     ]

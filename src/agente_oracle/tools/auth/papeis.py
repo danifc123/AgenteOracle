@@ -13,7 +13,7 @@ automaticamente, sem precisar editar nada aqui.
 
 from dataclasses import dataclass
 
-MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro",)
+MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,8 @@ PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="desenvolvedor", rotulo="Desenvolvedor", acesso_total=True, administrador=True),
     Papel(slug="financeiro_admin", rotulo="Administrador do Financeiro", modulos=("financeiro",), administrador=True),
     Papel(slug="financeiro", rotulo="Time do Financeiro", modulos=("financeiro",)),
+    Papel(slug="estoque_admin", rotulo="Administrador do Estoque", modulos=("estoque",), administrador=True),
+    Papel(slug="estoque", rotulo="Time do Estoque", modulos=("estoque",)),
 )
 
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}

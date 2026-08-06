@@ -16,6 +16,7 @@ export interface RelatorioHistorico {
   criado_em: string;
   fixado: boolean;
   expira_em: string | null;
+  modulo: string;
 }
 
 @Component({

@@ -35,6 +35,32 @@ def test_auditoria_com_token_devolve_lista(mcp_app, token_teste):
         assert achado["modulo"] == "financeiro"
 
 
+def test_auditoria_usuario_estoque_nao_acessa_financeiro(mcp_app):
+    """Papel "estoque" existe de verdade agora (`tools/auth/papeis.py`) —
+    confirma que ele fica isolado do Financeiro: pode pedir auditoria do
+    próprio módulo (esbarra em "sem provider ainda", não em RBAC) mas não
+    pode pedir a de Financeiro."""
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    login = f"teste_estoque_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    criado = usuarios_tools.criar_usuario(login, senha, "Estoque de Teste (integração)", ["estoque"])
+    try:
+        resposta_login = mcp_app.post("/api/auth/login", json={"usuario": login, "senha": senha})
+        token = resposta_login.json()["token"]
+
+        resposta_financeiro = mcp_app.get("/api/auditoria", params={"modulo": "financeiro"}, headers=_auth(token))
+        assert resposta_financeiro.status_code == 403
+
+        # Módulo liberado pro papel, mas ainda sem provider cadastrado em
+        # `_PROVEDORES_POR_MODULO` — 400, não 403 (a diferença importa: aqui
+        # o problema é "não implementado ainda", não "sem permissão").
+        resposta_estoque = mcp_app.get("/api/auditoria", params={"modulo": "estoque"}, headers=_auth(token))
+        assert resposta_estoque.status_code == 400
+    finally:
+        usuarios_tools.deletar_usuario(criado["id"])
+
+
 def test_auditoria_sem_modulo_e_rejeitado(mcp_app, token_teste):
     """Sem `?modulo=`, a rota não roda mais "todos os módulos liberados numa
     tacada só" — cada departamento precisa dizer qual auditoria quer rodar."""

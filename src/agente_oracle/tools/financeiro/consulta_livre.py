@@ -156,7 +156,7 @@ def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], s
     colunas, linhas_brutas = _executar(sql_validado)
     linhas = [[_serializar(valor) for valor in linha] for linha in linhas_brutas]
 
-    documento = historico.salvar(sql_validado, titulo, colunas, linhas)
+    documento = historico.salvar(sql_validado, titulo, colunas, linhas, modulo="financeiro")
     return documento["colunas"], documento["linhas"], documento["titulo"], False, documento["criado_em"]
 
 

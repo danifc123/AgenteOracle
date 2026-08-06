@@ -225,6 +225,7 @@
     </div>
     }
 
+    @if (sessao.modulos().includes('estoque')) {
     <div class="nav-group">
       <button type="button"
               class="nav-link nav-parent"
@@ -356,6 +357,7 @@
         </a>
       </div>
     </div>
+    }
 
     <a class="nav-link"
        routerLink="/relatorios/historico"

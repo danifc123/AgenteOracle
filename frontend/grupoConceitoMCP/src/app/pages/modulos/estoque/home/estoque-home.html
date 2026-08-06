@@ -10,12 +10,12 @@
   <app-cartao-kpi rotulo="Valor em Dólar" [valor]="valorEmDolar" prefixoPersonalizado="US$" />
 </div>
 
-<section class="cartao-grafico cartao-grafico-principal">
-  <h2>Evolução dos Estoques por Fechamento</h2>
-  <app-grafico-serie tipo="barra" [series]="seriesEvolucaoEstoque" />
-</section>
+<div class="grade-principal">
+  <section class="cartao-grafico cartao-grafico-principal">
+    <h2>Evolução dos Estoques por Fechamento</h2>
+    <app-grafico-serie tipo="barra" [series]="seriesEvolucaoEstoque" />
+  </section>
 
-<div class="grade-graficos">
   <section class="cartao-grafico">
     <app-grafico-rosca titulo="Lotes a Vencer" unidade="numero" [fatias]="fatiasLotes" />
   </section>

@@ -7,16 +7,40 @@
 <div class="juntar-excel">
   <div class="cartao-seletores">
     <div class="seletores">
-      <app-seletor-arquivo-excel rotulo="Planilha 1" cor="verde" (arquivoAlterado)="definirArquivo1($event)" />
-      <app-seletor-arquivo-excel rotulo="Planilha 2" cor="laranja" (arquivoAlterado)="definirArquivo2($event)" />
+      <app-seletor-arquivo-excel #seletor1 rotulo="Planilha 1" cor="verde" (arquivoAlterado)="definirArquivo1($event)" />
+      <app-seletor-arquivo-excel #seletor2 rotulo="Planilha 2" cor="laranja" (arquivoAlterado)="definirArquivo2($event)" />
     </div>
+
+    @if (analisando()) {
+      <p class="analise-preview">Analisando colunas...</p>
+    } @else if (analise(); as a) {
+      <div class="analise-preview" [class.analise-preview--atencao]="a.tipo === 'nenhuma'">
+        @switch (a.tipo) {
+          @case ('identicas') {
+            <p><strong>Mesmas colunas.</strong> Os dados das duas planilhas vão ser combinados numa tabela só.</p>
+          }
+          @case ('parcial') {
+            <p>
+              <strong>Coluna(s) em comum:</strong> {{ a.colunas_comuns.join(', ') }}. As planilhas vão ser unidas por
+              {{ a.colunas_comuns.length > 1 ? 'essas colunas' : 'essa coluna' }}.
+            </p>
+          }
+          @case ('nenhuma') {
+            <p><strong>Nenhuma coluna em comum.</strong> O resultado vai ter as duas tabelas lado a lado, sem combinar dados.</p>
+          }
+        }
+      </div>
+    }
 
     @if (erro()) {
       <p class="mensagem mensagem--erro">{{ erro() }}</p>
     }
 
     @if (concluido()) {
-      <p class="mensagem mensagem--sucesso">Planilha combinada gerada e baixada com sucesso.</p>
+      <div class="mensagem mensagem--sucesso">
+        <p>Planilha combinada gerada e baixada com sucesso.</p>
+        <button type="button" class="link-reiniciar" (click)="reiniciar()">Juntar outras planilhas</button>
+      </div>
     }
 
     <div class="acoes">

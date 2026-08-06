@@ -1,9 +1,18 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { SeletorArquivoExcel } from '../../componentes/seletor-arquivo-excel/seletor-arquivo-excel';
+
+type TipoAnaliseColunas = 'identicas' | 'parcial' | 'nenhuma';
+
+interface AnaliseColunas {
+  tipo: TipoAnaliseColunas;
+  colunas1: string[];
+  colunas2: string[];
+  colunas_comuns: string[];
+}
 
 @Component({
   selector: 'app-juntar-excel',
@@ -14,22 +23,64 @@ import { SeletorArquivoExcel } from '../../componentes/seletor-arquivo-excel/sel
 export class JuntarExcel {
   private readonly http = inject(HttpClient);
 
+  private readonly seletor1 = viewChild.required<SeletorArquivoExcel>('seletor1');
+  private readonly seletor2 = viewChild.required<SeletorArquivoExcel>('seletor2');
+
   protected readonly arquivo1 = signal<File | null>(null);
   protected readonly arquivo2 = signal<File | null>(null);
   protected readonly enviando = signal(false);
   protected readonly erro = signal<string | null>(null);
   protected readonly concluido = signal(false);
 
+  protected readonly analise = signal<AnaliseColunas | null>(null);
+  protected readonly analisando = signal(false);
+
   protected readonly prontoParaEnviar = computed(() => this.arquivo1() !== null && this.arquivo2() !== null);
 
   definirArquivo1(arquivo: File | null): void {
     this.arquivo1.set(arquivo);
     this.concluido.set(false);
+    this.atualizarAnalise();
   }
 
   definirArquivo2(arquivo: File | null): void {
     this.arquivo2.set(arquivo);
     this.concluido.set(false);
+    this.atualizarAnalise();
+  }
+
+  reiniciar(): void {
+    this.seletor1().remover();
+    this.seletor2().remover();
+    this.concluido.set(false);
+    this.erro.set(null);
+  }
+
+  private atualizarAnalise(): void {
+    const arquivo1 = this.arquivo1();
+    const arquivo2 = this.arquivo2();
+    this.analise.set(null);
+
+    if (!arquivo1 || !arquivo2) {
+      this.analisando.set(false);
+      return;
+    }
+
+    this.analisando.set(true);
+
+    const formData = new FormData();
+    formData.append('arquivo1', arquivo1);
+    formData.append('arquivo2', arquivo2);
+
+    this.http.post<AnaliseColunas>(`${MCP_API_BASE_URL}/api/ferramentas/juntar-excel/analisar`, formData).subscribe({
+      next: (resultado) => {
+        this.analise.set(resultado);
+        this.analisando.set(false);
+      },
+      error: () => {
+        this.analisando.set(false);
+      }
+    });
   }
 
   juntar(): void {
@@ -60,10 +111,11 @@ export class JuntarExcel {
             return;
           }
 
+          const nomeArquivo = this.extrairNomeArquivo(resposta.headers.get('content-disposition'));
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = 'planilhas_combinadas.xlsx';
+          link.download = nomeArquivo;
           link.click();
           URL.revokeObjectURL(url);
           this.concluido.set(true);
@@ -73,5 +125,10 @@ export class JuntarExcel {
           this.enviando.set(false);
         }
       });
+  }
+
+  private extrairNomeArquivo(contentDisposition: string | null): string {
+    const match = contentDisposition?.match(/filename="?([^"]+)"?/);
+    return match?.[1] ?? 'planilhas_combinadas.xlsx';
   }
 }

@@ -3,7 +3,7 @@ import io
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from agente_oracle.tools.ferramentas.juntar_excel import ArquivoExcelInvalido, juntar_planilhas
+from agente_oracle.tools.ferramentas.juntar_excel import ArquivoExcelInvalido, analisar_colunas, juntar_planilhas
 
 
 def _bytes_planilha(cabecalho: list[str], linhas: list[list]) -> bytes:
@@ -144,3 +144,40 @@ class TestJuntarPlanilhasPorChaveComum:
         linhas = list(resultado.active.iter_rows(values_only=True))
 
         assert linhas == [("filial", "nome", "valor"), ("01", "Fazenda A", 100)]
+
+
+class TestAnalisarColunas:
+    def test_colunas_identicas(self) -> None:
+        arquivo1 = _bytes_planilha(["nome", "idade"], [["Ana", 30]])
+        arquivo2 = _bytes_planilha(["idade", "nome"], [[25, "Bruno"]])
+
+        analise = analisar_colunas(arquivo1, arquivo2)
+
+        assert analise["tipo"] == "identicas"
+        assert analise["colunas1"] == ["nome", "idade"]
+        assert analise["colunas2"] == ["idade", "nome"]
+        assert set(analise["colunas_comuns"]) == {"nome", "idade"}
+
+    def test_colunas_parcialmente_em_comum(self) -> None:
+        arquivo1 = _bytes_planilha(["filial", "nome"], [["01", "Fazenda A"]])
+        arquivo2 = _bytes_planilha(["filial", "valor"], [["01", 100]])
+
+        analise = analisar_colunas(arquivo1, arquivo2)
+
+        assert analise["tipo"] == "parcial"
+        assert analise["colunas_comuns"] == ["filial"]
+
+    def test_nenhuma_coluna_em_comum(self) -> None:
+        arquivo1 = _bytes_planilha(["nome"], [["Ana"]])
+        arquivo2 = _bytes_planilha(["produto"], [["Caneta"]])
+
+        analise = analisar_colunas(arquivo1, arquivo2)
+
+        assert analise["tipo"] == "nenhuma"
+        assert analise["colunas_comuns"] == []
+
+    def test_arquivo_invalido_levanta_erro(self) -> None:
+        arquivo_valido = _bytes_planilha(["nome"], [["Ana"]])
+
+        with pytest.raises(ArquivoExcelInvalido):
+            analisar_colunas(b"isso nao e um xlsx", arquivo_valido)

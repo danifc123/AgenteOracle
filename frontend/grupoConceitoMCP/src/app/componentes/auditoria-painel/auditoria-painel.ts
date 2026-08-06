@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject } from '@angular/core';
-import { AchadoAuditoria, Auditoria, rotuloModulo } from '../../servicos/auditoria';
-import { Sessao } from '../../servicos/sessao';
+import { AchadoAuditoria, Auditoria } from '../../servicos/auditoria';
+import { Sessao, rotuloModulo } from '../../servicos/sessao';
 import { Botao } from '../botao/botao';
 import { Dialog } from '../dialog/dialog';
 

@@ -1,0 +1,13 @@
+:host {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.35;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+:host(.ativo) {
+  opacity: 1;
+  color: var(--color-primary-light);
+}

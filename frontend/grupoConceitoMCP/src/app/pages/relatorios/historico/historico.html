@@ -20,17 +20,25 @@
       <thead>
         <tr>
           <th></th>
-          <th>Módulo</th>
-          <th>Título</th>
-          <th>Gerado em</th>
+          <th class="ordenavel" (click)="ordenarPor('modulo')">
+            <span class="cabecalho-coluna">Módulo <app-icone-ordenacao [direcao]="direcaoDaColuna('modulo')" /></span>
+          </th>
+          <th class="ordenavel" (click)="ordenarPor('titulo')">
+            <span class="cabecalho-coluna">Título <app-icone-ordenacao [direcao]="direcaoDaColuna('titulo')" /></span>
+          </th>
+          <th class="ordenavel" (click)="ordenarPor('criado_em')">
+            <span class="cabecalho-coluna">Gerado em <app-icone-ordenacao [direcao]="direcaoDaColuna('criado_em')" /></span>
+          </th>
           <th>Validade</th>
-          <th class="text-right">Linhas</th>
+          <th class="text-right ordenavel" (click)="ordenarPor('total_linhas')">
+            <span class="cabecalho-coluna">Linhas <app-icone-ordenacao [direcao]="direcaoDaColuna('total_linhas')" /></span>
+          </th>
           <th><span class="sr-only">Ver consulta</span></th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        @for (relatorio of relatorios(); track relatorio.id) {
+        @for (relatorio of relatoriosOrdenados(); track relatorio.id) {
           <tr>
             <td>
               <app-botao

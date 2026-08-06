@@ -41,6 +41,22 @@
     border-bottom: 1px solid var(--color-border);
   }
 
+  thead th.ordenavel {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+
+  .cabecalho-coluna {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   tbody tr {
     border-bottom: 1px solid var(--color-border);
 

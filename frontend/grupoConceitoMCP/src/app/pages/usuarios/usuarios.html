@@ -20,15 +20,23 @@
     <table class="tabela-usuarios">
       <thead>
         <tr>
-          <th>Usuário</th>
-          <th>Nome</th>
-          <th>Papéis</th>
-          <th>Status</th>
+          <th class="ordenavel" (click)="ordenarPor('usuario')">
+            <span class="cabecalho-coluna">Usuário <app-icone-ordenacao [direcao]="direcaoDaColuna('usuario')" /></span>
+          </th>
+          <th class="ordenavel" (click)="ordenarPor('nome')">
+            <span class="cabecalho-coluna">Nome <app-icone-ordenacao [direcao]="direcaoDaColuna('nome')" /></span>
+          </th>
+          <th class="ordenavel" (click)="ordenarPor('papeis')">
+            <span class="cabecalho-coluna">Papéis <app-icone-ordenacao [direcao]="direcaoDaColuna('papeis')" /></span>
+          </th>
+          <th class="ordenavel" (click)="ordenarPor('status')">
+            <span class="cabecalho-coluna">Status <app-icone-ordenacao [direcao]="direcaoDaColuna('status')" /></span>
+          </th>
           <th><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody>
-        @for (usuario of usuarios(); track usuario.id) {
+        @for (usuario of usuariosOrdenados(); track usuario.id) {
           <tr>
             <td>{{ usuario.usuario }}</td>
             <td>{{ usuario.nome }}</td>

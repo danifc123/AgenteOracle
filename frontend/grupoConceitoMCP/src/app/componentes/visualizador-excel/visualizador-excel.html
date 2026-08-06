@@ -7,12 +7,7 @@
           <th class="ordenavel" (click)="ordenarPor(coluna)">
             <span class="cabecalho-coluna">
               {{ coluna }}
-              <svg class="icone-ordenacao"
-                   [class.ativo]="colunaOrdenada() === coluna"
-                   [class.invertido]="colunaOrdenada() === coluna && direcaoOrdenacao() === 'desc'"
-                   viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m6 9 6 6 6-6" />
-              </svg>
+              <app-icone-ordenacao [direcao]="direcaoDaColuna(coluna)" />
             </span>
           </th>
         }

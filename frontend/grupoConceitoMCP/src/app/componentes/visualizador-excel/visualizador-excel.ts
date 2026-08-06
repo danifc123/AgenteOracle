@@ -1,10 +1,10 @@
 import { Component, computed, input, signal } from '@angular/core';
-
-type DirecaoOrdenacao = 'asc' | 'desc';
+import { IconeOrdenacao } from '../icone-ordenacao/icone-ordenacao';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
 
 @Component({
   selector: 'app-visualizador-excel',
-  imports: [],
+  imports: [IconeOrdenacao],
   templateUrl: './visualizador-excel.html',
   styleUrl: './visualizador-excel.scss'
 })
@@ -17,40 +17,31 @@ export class VisualizadorExcel {
   });
 
   protected readonly colunaOrdenada = signal<string | null>(null);
-  protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>('asc');
+  protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>(null);
 
   protected readonly dadosOrdenados = computed(() => {
     const coluna = this.colunaOrdenada();
+    const direcao = this.direcaoOrdenacao();
     const linhas = this.dados();
-    if (!coluna) {
+    if (!coluna || !direcao) {
       return linhas;
     }
 
-    const direcao = this.direcaoOrdenacao() === 'asc' ? 1 : -1;
-    return [...linhas].sort((a, b) => this.compararValores(a[coluna], b[coluna]) * direcao);
+    const sinal = direcao === 'asc' ? 1 : -1;
+    return [...linhas].sort((a, b) => compararValores(a[coluna], b[coluna]) * sinal);
   });
-
-  private compararValores(valorA: unknown, valorB: unknown): number {
-    const vazioA = valorA === null || valorA === undefined || valorA === '';
-    const vazioB = valorB === null || valorB === undefined || valorB === '';
-    if (vazioA && vazioB) return 0;
-    if (vazioA) return 1;
-    if (vazioB) return -1;
-
-    if (typeof valorA === 'number' && typeof valorB === 'number') {
-      return valorA - valorB;
-    }
-
-    return String(valorA).localeCompare(String(valorB), 'pt-BR', { numeric: true, sensitivity: 'base' });
-  }
 
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
-      this.direcaoOrdenacao.set(this.direcaoOrdenacao() === 'asc' ? 'desc' : 'asc');
+      this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
     } else {
       this.colunaOrdenada.set(coluna);
       this.direcaoOrdenacao.set('asc');
     }
+  }
+
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
   }
 
   protected ehNumero(valor: unknown): boolean {

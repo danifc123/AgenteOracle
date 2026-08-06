@@ -1,6 +1,6 @@
 <div class="rosca-container">
   @if (titulo()) {
-  <p class="rosca-titulo">{{ titulo() }} <span class="rosca-total">{{ formatarMoeda(valorTotal()) }}</span></p>
+  <p class="rosca-titulo">{{ titulo() }} <span class="rosca-total">{{ formatarTotal(valorTotal()) }}</span></p>
   }
 
   <svg class="rosca-svg" [attr.viewBox]="'0 0 ' + TAMANHO + ' ' + TAMANHO">

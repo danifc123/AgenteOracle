@@ -15,6 +15,16 @@ from dataclasses import dataclass
 
 MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
 
+# Sigla curta usada em nomes de arquivo exportado (ex:
+# `planilhas_combinadas_FIN.xlsx`), pra quem baixa saber de qual time veio.
+# Módulo novo sem entrada aqui ainda funciona — `sigla_modulo` cai num
+# fallback derivado do nome — mas vale adicionar a sigla "oficial" junto de
+# `MODULOS_CONHECIDOS` quando um módulo novo (RH, Compras...) for criado.
+SIGLAS_MODULO: dict[str, str] = {
+    "financeiro": "FIN",
+    "estoque": "EST",
+}
+
 
 @dataclass(frozen=True)
 class Papel:
@@ -62,6 +72,26 @@ def modulos_liberados(papeis: list[str]) -> list[str]:
     if any(papel.acesso_total for papel in validos):
         return list(MODULOS_CONHECIDOS)
     return sorted({modulo for papel in validos for modulo in papel.modulos})
+
+
+def sigla_modulo(modulo: str) -> str:
+    """Sigla curta de um módulo pra usar em nome de arquivo exportado.
+    Sem entrada em `SIGLAS_MODULO`, cai num fallback com as 3 primeiras
+    letras do próprio nome — não trava a exportação por módulo novo sem
+    sigla cadastrada."""
+    return SIGLAS_MODULO.get(modulo, modulo[:3].upper())
+
+
+def sigla_usuario(papeis_usuario: list[str]) -> str:
+    """Sigla que identifica de qual time veio um arquivo exportado pelo
+    usuário logado. Desenvolvedor (acesso a todos os módulos) usa `DEV` em
+    vez da lista inteira; usuário sem nenhum módulo liberado (não deveria
+    acontecer pra quem já passou por `exigir_usuario`) devolve string vazia."""
+    if eh_desenvolvedor(papeis_usuario):
+        return "DEV"
+
+    modulos = modulos_liberados(papeis_usuario)
+    return sigla_modulo(modulos[0]) if modulos else ""
 
 
 def pode_atribuir_papel(papeis_de_quem_cria: list[str], papel_alvo: str) -> bool:

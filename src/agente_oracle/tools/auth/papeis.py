@@ -35,6 +35,17 @@ class Papel:
     acesso_total: bool = False
 
 
+# NOTA DE SEGURANÇA (revisão de 2026): `desenvolvedor` concentra bastante
+# poder — `acesso_total` dá acesso automático a TODO módulo (presente e
+# futuro, sem precisar editar nada aqui) e `administrador` dá acesso a toda
+# rota administrativa (gerenciar usuário, desbloquear conta, ver a trilha de
+# auditoria em `eventos_seguranca`). Hoje isso é aceitável (time pequeno,
+# `desenvolvedor` = quem já tem acesso ao código-fonte e ao banco mesmo). Se
+# o time crescer, vale considerar separar "acesso de dados" (ver
+# Financeiro/Estoque) de "administração do sistema" (gerenciar usuário,
+# desbloquear conta) em papéis distintos, em vez de um papel só cobrindo os
+# dois. Não é um bug — é uma decisão de design que vale reavaliar mais pra
+# frente, não uma ação pendente.
 PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="desenvolvedor", rotulo="Desenvolvedor", acesso_total=True, administrador=True),
     Papel(slug="financeiro_admin", rotulo="Administrador do Financeiro", modulos=("financeiro",), administrador=True),

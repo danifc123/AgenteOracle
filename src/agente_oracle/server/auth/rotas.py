@@ -1,10 +1,10 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.server.auth.dependencia import exigir_administrador, exigir_usuario
+from agente_oracle.server.auth.dependencia import exigir_administrador, exigir_desenvolvedor, exigir_usuario
 from agente_oracle.server.auth.rate_limit import limpar, registrar_falha, segundos_ate_liberar
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
-from agente_oracle.tools.auth import papeis
+from agente_oracle.tools.auth import eventos_seguranca, papeis
 from agente_oracle.tools.auth.token import gerar_token
 from agente_oracle.tools.auth.usuarios import (
     UsuarioJaExiste,
@@ -13,13 +13,33 @@ from agente_oracle.tools.auth.usuarios import (
     autenticar,
     criar_usuario,
     deletar_usuario,
+    desbloquear_usuario,
+    esta_bloqueado,
     listar_usuarios,
+    registrar_tentativa_falha,
+    senha_fraca,
 )
 
 # Limite de tamanho da foto (string base64, já com o prefixo "data:...;base64,")
 # — generoso o bastante pra uma foto de perfil comum, sem deixar a tabela
 # crescer sem controle.
 _TAMANHO_MAXIMO_FOTO = 2_000_000
+
+_MENSAGEM_BLOQUEADO = "Sua conta foi bloqueada após 3 tentativas de login incorretas. Contate o time de TI pra desbloquear."
+
+
+def _resposta_limite_excedido(espera: int, mensagem: str) -> JSONResponse:
+    return JSONResponse(
+        {
+            "erro": mensagem,
+            # Campo numérico à parte pra tela montar uma contagem regressiva ao
+            # vivo, em vez de mostrar só o texto fixo com o valor de quando a
+            # resposta chegou.
+            "segundos_espera": espera,
+        },
+        status_code=429,
+        headers={**CORS_HEADERS, "Retry-After": str(espera)},
+    )
 
 
 def registrar(mcp) -> None:
@@ -33,30 +53,31 @@ def registrar(mcp) -> None:
         usuario = str(corpo.get("usuario", "")).strip()
         senha = str(corpo.get("senha", ""))
 
+        # Checado antes até do rate limit: uma conta já bloqueada sempre
+        # devolve a mensagem específica, em vez de às vezes cair no 429
+        # genérico dependendo de qual dos dois contadores está mais "fresco"
+        # (o bloqueio persistente não expira sozinho; o rate limit sim).
+        if usuario and esta_bloqueado(usuario):
+            return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
+
         chave_bloqueio = usuario or "desconhecido"
         espera = segundos_ate_liberar(chave_bloqueio)
         if espera is not None:
-            return JSONResponse(
-                {
-                    "erro": (
-                        f"Você errou a senha muitas vezes seguidas. "
-                        f"Por segurança, tente de novo em {espera} segundos."
-                    ),
-                    # Campo numérico à parte pra tela de login montar uma
-                    # contagem regressiva ao vivo, em vez de mostrar só o
-                    # texto fixo com o valor de quando a resposta chegou.
-                    "segundos_espera": espera,
-                },
-                status_code=429,
-                headers={**CORS_HEADERS, "Retry-After": str(espera)},
+            return _resposta_limite_excedido(
+                espera, f"Você errou a senha muitas vezes seguidas. Por segurança, tente de novo em {espera} segundos."
             )
 
         dados = autenticar(usuario, senha) if usuario and senha else None
         if dados is None:
             registrar_falha(chave_bloqueio)
+            if usuario:
+                eventos_seguranca.registrar("login_falha", usuario_afetado=usuario)
+                if registrar_tentativa_falha(usuario):
+                    return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
             return JSONResponse({"erro": "Usuário ou senha inválidos."}, status_code=401, headers=CORS_HEADERS)
 
         limpar(chave_bloqueio)
+        eventos_seguranca.registrar("login_sucesso", usuario_afetado=dados["usuario"])
         token = gerar_token(dados["id"], dados["usuario"], dados["nome"], dados["papeis"])
         return JSONResponse(
             {
@@ -104,6 +125,17 @@ def registrar(mcp) -> None:
         if request.method == "GET":
             return JSONResponse(listar_usuarios(), headers=CORS_HEADERS)
 
+        # Namespace própria ("criar_usuario:") pra não compartilhar contador
+        # com o rate limit do login — limita quantas contas um mesmo admin
+        # consegue criar num intervalo curto (proteção contra abuso em caso
+        # de token de admin comprometido), independente de cada tentativa
+        # dar certo ou não.
+        chave_rate_limit = f"criar_usuario:{usuario_ou_erro['usuario']}"
+        espera = segundos_ate_liberar(chave_rate_limit)
+        if espera is not None:
+            return _resposta_limite_excedido(espera, f"Muitas contas criadas em pouco tempo. Tente de novo em {espera} segundos.")
+        registrar_falha(chave_rate_limit)
+
         corpo = await request.json()
         usuario = str(corpo.get("usuario", "")).strip()
         senha = str(corpo.get("senha", ""))
@@ -114,6 +146,10 @@ def registrar(mcp) -> None:
             return JSONResponse(
                 {"erro": "Preencha usuário, nome, senha e ao menos um papel."}, status_code=400, headers=CORS_HEADERS
             )
+
+        erro_senha = senha_fraca(senha)
+        if erro_senha:
+            return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
 
         slugs_validos = {papel.slug for papel in papeis.PAPEIS_DISPONIVEIS}
         if not set(papeis_pedidos).issubset(slugs_validos):
@@ -132,6 +168,12 @@ def registrar(mcp) -> None:
         except UsuarioJaExiste as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
+        eventos_seguranca.registrar(
+            "usuario_criado",
+            usuario_afetado=usuario,
+            realizado_por=usuario_ou_erro["usuario"],
+            detalhes={"papeis": papeis_pedidos},
+        )
         return JSONResponse(
             {chave: valor for chave, valor in usuario_criado.items() if chave != "senha_hash"},
             status_code=201,
@@ -181,6 +223,15 @@ def registrar(mcp) -> None:
         if isinstance(usuario_ou_erro, JSONResponse):
             return usuario_ou_erro
 
+        # Namespace própria ("senha:") pra não compartilhar contador com o
+        # rate limit do login — sem isso, alguém com um token roubado (ainda
+        # válido) mas sem saber a senha atual podia tentar adivinhá-la à
+        # vontade nessa rota.
+        chave_rate_limit = f"senha:{usuario_ou_erro['usuario']}"
+        espera = segundos_ate_liberar(chave_rate_limit)
+        if espera is not None:
+            return _resposta_limite_excedido(espera, f"Muitas tentativas. Tente de novo em {espera} segundos.")
+
         corpo = await request.json()
         senha_atual = str(corpo.get("senha_atual", ""))
         senha_nova = str(corpo.get("senha_nova", ""))
@@ -190,10 +241,16 @@ def registrar(mcp) -> None:
                 {"erro": "Informe uma senha nova diferente da atual."}, status_code=400, headers=CORS_HEADERS
             )
 
+        erro_senha = senha_fraca(senha_nova)
+        if erro_senha:
+            return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
+
         sucesso = alterar_senha(usuario_ou_erro["usuario"], senha_atual, senha_nova)
         if not sucesso:
+            registrar_falha(chave_rate_limit)
             return JSONResponse({"erro": "Senha atual incorreta."}, status_code=400, headers=CORS_HEADERS)
 
+        limpar(chave_rate_limit)
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
@@ -218,8 +275,49 @@ def registrar(mcp) -> None:
         except ValueError:
             return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
 
-        apagado = deletar_usuario(id_numerico)
-        if not apagado:
+        usuario_apagado = deletar_usuario(id_numerico)
+        if usuario_apagado is None:
             return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
 
+        eventos_seguranca.registrar(
+            "usuario_apagado", usuario_afetado=usuario_apagado, realizado_por=usuario_ou_erro["usuario"]
+        )
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/usuarios/{id}/desbloquear", methods=["PATCH", "OPTIONS"])
+    async def desbloquear_usuario_route(request: Request) -> Response:
+        """Desbloqueia uma conta travada após 3 tentativas de login erradas
+        seguidas — restrito ao time de TI (papel `desenvolvedor`)."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("PATCH, OPTIONS")
+
+        usuario_ou_erro = exigir_desenvolvedor(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
+        try:
+            id_numerico = int(request.path_params["id"])
+        except ValueError:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        usuario_desbloqueado = desbloquear_usuario(id_numerico)
+        if usuario_desbloqueado is None:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        eventos_seguranca.registrar(
+            "conta_desbloqueada", usuario_afetado=usuario_desbloqueado, realizado_por=usuario_ou_erro["usuario"]
+        )
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/eventos-seguranca", methods=["GET", "OPTIONS"])
+    async def eventos_seguranca_route(request: Request) -> Response:
+        """Trilha de auditoria de login/administração de contas — restrita
+        ao time de TI (papel `desenvolvedor`), pra investigar incidentes."""
+        if request.method == "OPTIONS":
+            return resposta_preflight("GET, OPTIONS")
+
+        usuario_ou_erro = exigir_desenvolvedor(request)
+        if isinstance(usuario_ou_erro, JSONResponse):
+            return usuario_ou_erro
+
+        return JSONResponse(eventos_seguranca.listar(), headers=CORS_HEADERS)

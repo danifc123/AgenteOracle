@@ -45,3 +45,24 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+TAMANHO_MINIMO_AUTH_SECRET_KEY = 32
+
+
+def validar_auth_secret_key(settings: Settings) -> None:
+    """Falha rápido na inicialização do servidor se `AUTH_SECRET_KEY` não
+    estiver configurada (ou for curta demais pra ter entropia suficiente).
+    Sem essa checagem, o servidor subia normalmente assinando e verificando
+    token com uma chave vazia — qualquer um consegue forjar um token válido
+    sabendo disso, já que a chave "secreta" é uma string vazia conhecida.
+    Chamada só em `server/app.py:main()` (o processo real do servidor) — não
+    roda ao simplesmente importar este módulo, então não afeta testes nem
+    scripts que só precisam de outras configurações."""
+    if len(settings.auth_secret_key) < TAMANHO_MINIMO_AUTH_SECRET_KEY:
+        raise RuntimeError(
+            f"AUTH_SECRET_KEY não está configurada, ou tem menos de "
+            f"{TAMANHO_MINIMO_AUTH_SECRET_KEY} caracteres. Gere um valor aleatório com "
+            '`python -c "import secrets; print(secrets.token_hex(32))"` e defina no .env '
+            "antes de subir o servidor — sem uma chave forte, qualquer pessoa consegue "
+            "forjar um token de login válido."
+        )

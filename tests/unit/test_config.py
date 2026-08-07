@@ -1,6 +1,6 @@
 import pytest
 
-from agente_oracle.config import Settings, TAMANHO_MINIMO_AUTH_SECRET_KEY, validar_auth_secret_key
+from agente_oracle.config import TAMANHO_MINIMO_AUTH_SECRET_KEY, Settings, validar_auth_secret_key
 
 
 class TestValidarAuthSecretKey:

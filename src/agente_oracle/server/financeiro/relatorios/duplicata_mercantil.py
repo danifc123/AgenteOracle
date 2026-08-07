@@ -26,8 +26,9 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -80,7 +81,16 @@ WHERE COALESCE(se1.d_e_l_e_t_, ' ') = ' '
 ORDER BY se1.e1_filial, se1.e1_cliente, se1.e1_loja, se1.e1_prefixo, se1.e1_num, se1.e1_parcela, se1.e1_tipo
 """
 
-_CAMPOS_OPCIONAIS = ("cliente", "loja", "vencto_ini", "vencto_fim", "prefixo", "tipo", "vendedor", "status_assinatura")
+_CAMPOS_OPCIONAIS = (
+    "cliente",
+    "loja",
+    "vencto_ini",
+    "vencto_fim",
+    "prefixo",
+    "tipo",
+    "vendedor",
+    "status_assinatura",
+)
 
 
 def _buscar_duplicatas(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
@@ -105,36 +115,30 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/duplicata-mercantil", methods=["GET", "OPTIONS"])
-    async def listar_duplicatas_route(request: Request) -> JSONResponse:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_duplicatas_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Impressão de Duplicata Mercantil (FINR04) — endpoint JSON usado pela tela."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_duplicatas(*parametros)
-        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/duplicata-mercantil/exportar", methods=["GET", "OPTIONS"])
-    async def exportar_duplicatas_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_duplicatas_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Impressão de Duplicata Mercantil (FINR04) — exportação em Excel."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_duplicatas(*parametros)
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Duplicata Mercantil")

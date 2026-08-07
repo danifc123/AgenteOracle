@@ -9,6 +9,6 @@ import { Sidebar } from '../componentes/sidebar/sidebar';
   selector: 'app-layout',
   imports: [RouterOutlet, Sidebar, NotificacaoAuditoria, AuditoriaPainel, SeletorHomeDev],
   templateUrl: './layout.html',
-  styleUrl: './layout.scss'
+  styleUrl: './layout.scss',
 })
 export class Layout {}

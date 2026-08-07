@@ -67,7 +67,9 @@ def _validar_consulta(sql: str) -> str:
         raise ConsultaFinanceiraInvalida("A consulta está vazia.")
 
     if ";" in sql_limpo:
-        raise ConsultaFinanceiraInvalida("Apenas uma única instrução é permitida (sem ';' no meio da consulta).")
+        raise ConsultaFinanceiraInvalida(
+            "Apenas uma única instrução é permitida (sem ';' no meio da consulta)."
+        )
 
     # "WITH" cobre consultas com CTE (ex: "WITH ranking AS (...) SELECT ..."),
     # usadas para perguntas compostas (top N + mais recente de cada grupo) —
@@ -79,7 +81,9 @@ def _validar_consulta(sql: str) -> str:
     sql_upper = sql_limpo.upper()
     for palavra in PALAVRAS_BLOQUEADAS:
         if palavra in sql_upper:
-            raise ConsultaFinanceiraInvalida(f"A consulta contém um termo não permitido: '{palavra.strip()}'.")
+            raise ConsultaFinanceiraInvalida(
+                f"A consulta contém um termo não permitido: '{palavra.strip()}'."
+            )
 
     for clausula in _FROM_CLAUSULA_REGEX.findall(sql_limpo):
         if "," in clausula:
@@ -183,7 +187,7 @@ def executar_consulta_financeira(sql: str, titulo: str) -> dict:
         "reutilizado": reutilizado,
         "titulo": titulo_final,
         "gerado_em": criado_em.isoformat(),
-        "dados": [dict(zip(colunas, linha)) for linha in linhas],
+        "dados": [dict(zip(colunas, linha, strict=True)) for linha in linhas],
     }
 
 

@@ -93,7 +93,9 @@ def _normalizar_valor_monetario(bruto: str) -> float | None:
     mistura — o separador decimal é sempre o que aparece por último na string."""
     ultimo_ponto = bruto.rfind(".")
     ultima_virgula = bruto.rfind(",")
-    limpo = bruto.replace(".", "").replace(",", ".") if ultima_virgula > ultimo_ponto else bruto.replace(",", "")
+    limpo = (
+        bruto.replace(".", "").replace(",", ".") if ultima_virgula > ultimo_ponto else bruto.replace(",", "")
+    )
     try:
         return round(float(limpo), 2)
     except ValueError:
@@ -268,7 +270,9 @@ async def responder(
         )
 
         if not linhas:
-            messages.append({"role": "assistant", "content": "Não encontrei nenhum registro com esses critérios."})
+            messages.append(
+                {"role": "assistant", "content": "Não encontrei nenhum registro com esses critérios."}
+            )
             return messages, eventos
 
         # Só trata como "pergunta direta" (uma frase respondendo) quando o

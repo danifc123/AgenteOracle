@@ -10,10 +10,10 @@ describe('Sidebar', () => {
     }).compileComponents();
   });
 
-  it('should render the brand name', async () => {
+  it('should render the brand logo', async () => {
     const fixture = TestBed.createComponent(Sidebar);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.brand-name')?.textContent).toContain('Grupo Conceito');
+    expect(compiled.querySelector<HTMLImageElement>('.brand-logo')?.alt).toBe('Grupo Conceito');
   });
 });

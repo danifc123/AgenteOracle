@@ -6,7 +6,7 @@ import { OpcaoSelectBusca, SelectBusca } from '../select-busca/select-busca';
   selector: 'app-campo-filtro-dinamico',
   imports: [SelectBusca],
   templateUrl: './campo-filtro-dinamico.html',
-  styleUrl: './campo-filtro-dinamico.scss'
+  styleUrl: './campo-filtro-dinamico.scss',
 })
 export class CampoFiltroDinamico {
   campo = input.required<CampoFiltro>();

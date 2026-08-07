@@ -8,7 +8,7 @@ const CHAVE_SESSAO = 'sessao:usuario';
  * (fallback razoável até alguém lembrar de cadastrar o rótulo). */
 const ROTULOS_MODULO: Record<string, string> = {
   financeiro: 'Financeiro',
-  estoque: 'Estoque'
+  estoque: 'Estoque',
 };
 
 export function rotuloModulo(modulo: string): string {

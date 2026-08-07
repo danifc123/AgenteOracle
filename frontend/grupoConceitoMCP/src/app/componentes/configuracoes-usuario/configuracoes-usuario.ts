@@ -1,24 +1,22 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts';
 import { CoresCategoria } from '../../servicos/cores-categoria';
 import { iniciais } from '../../servicos/iniciais';
+import { mensagemErro } from '../../servicos/mensagens-erro';
 import { Sessao } from '../../servicos/sessao';
 import { Botao } from '../botao/botao';
+import { ConfirmacaoDialog } from '../confirmacao-dialog/confirmacao-dialog';
 import { Dialog } from '../dialog/dialog';
 
 const TAMANHO_MAXIMO_ARQUIVO = 1_500_000; // ~1.5MB — a string base64 fica maior ainda, folga pro limite do backend
 
-function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
-  return erro.error?.erro || mensagemPadrao;
-}
-
 @Component({
   selector: 'app-configuracoes-usuario',
-  imports: [Botao, Dialog],
+  imports: [Botao, ConfirmacaoDialog, Dialog],
   templateUrl: './configuracoes-usuario.html',
-  styleUrl: './configuracoes-usuario.scss'
+  styleUrl: './configuracoes-usuario.scss',
 })
 export class ConfiguracoesUsuario {
   private readonly http = inject(HttpClient);
@@ -47,8 +45,14 @@ export class ConfiguracoesUsuario {
   protected readonly editandoLayoutId = signal<number | null>(null);
   protected readonly nomeEdicaoLayout = signal('');
   protected readonly salvandoLayoutId = signal<number | null>(null);
+  protected readonly layoutParaApagar = signal<LayoutRelatorio | null>(null);
   protected readonly apagandoLayoutId = signal<number | null>(null);
   protected readonly erroLayouts = signal<string | null>(null);
+
+  protected readonly mensagemConfirmacaoApagarLayout = computed(() => {
+    const layout = this.layoutParaApagar();
+    return layout ? `Apagar o layout "${layout.nome}"? Essa ação não pode ser desfeita.` : '';
+  });
 
   protected readonly salvandoCorCategoria = signal<string | null>(null);
   protected readonly erroCores = signal<string | null>(null);
@@ -69,10 +73,18 @@ export class ConfiguracoesUsuario {
   }
 
   fechar(): void {
-    // Com a foto ampliada, o primeiro Esc/clique-fora só fecha o lightbox —
-    // fechar o dialog inteiro junto seria surpreendente pro usuário.
+    // Com a foto ampliada ou uma confirmação de exclusão aberta, o primeiro
+    // Esc/clique-fora só fecha essa camada — fechar o dialog inteiro junto
+    // seria surpreendente pro usuário. (Cada `app-dialog` trata Esc por
+    // conta própria via `HostListener`, então os dois `fechar()` disparam
+    // juntos numa mesma tecla — por isso esse método também precisa saber
+    // ceder a vez pra camada de cima.)
     if (this.fotoExpandida()) {
       this.fotoExpandida.set(false);
+      return;
+    }
+    if (this.layoutParaApagar()) {
+      this.cancelarApagarLayout();
       return;
     }
     if (this.salvandoPerfil() || this.salvandoSenha()) {
@@ -136,7 +148,7 @@ export class ConfiguracoesUsuario {
     this.http
       .patch<{ nome: string; foto: string | null }>(`${MCP_API_BASE_URL}/api/auth/perfil`, {
         nome: this.nome().trim(),
-        foto: this.fotoPreview()
+        foto: this.fotoPreview(),
       })
       .subscribe({
         next: (resultado) => {
@@ -146,7 +158,7 @@ export class ConfiguracoesUsuario {
         error: (erro: HttpErrorResponse) => {
           this.erroPerfil.set(mensagemErro(erro, 'Não foi possível salvar o perfil.'));
           this.salvandoPerfil.set(false);
-        }
+        },
       });
   }
 
@@ -168,7 +180,7 @@ export class ConfiguracoesUsuario {
     this.http
       .patch(`${MCP_API_BASE_URL}/api/auth/senha`, {
         senha_atual: this.senhaAtual(),
-        senha_nova: this.senhaNova()
+        senha_nova: this.senhaNova(),
       })
       .subscribe({
         next: () => {
@@ -181,28 +193,33 @@ export class ConfiguracoesUsuario {
         error: (erro: HttpErrorResponse) => {
           this.erroSenha.set(mensagemErro(erro, 'Não foi possível trocar a senha.'));
           this.salvandoSenha.set(false);
-        }
+        },
       });
   }
 
   protected totalColunasLayout(layout: LayoutRelatorio): number {
-    return Object.values(layout.colunas_selecionadas).reduce((total, colunas) => total + colunas.length, 0);
+    return Object.values(layout.colunas_selecionadas).reduce(
+      (total, colunas) => total + colunas.length,
+      0,
+    );
   }
 
   private carregarLayouts(): void {
     this.carregandoLayouts.set(true);
     this.erroLayouts.set(null);
 
-    this.http.get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`).subscribe({
-      next: (layouts) => {
-        this.layouts.set(layouts);
-        this.carregandoLayouts.set(false);
-      },
-      error: () => {
-        this.layouts.set([]);
-        this.carregandoLayouts.set(false);
-      }
-    });
+    this.http
+      .get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`)
+      .subscribe({
+        next: (layouts) => {
+          this.layouts.set(layouts);
+          this.carregandoLayouts.set(false);
+        },
+        error: () => {
+          this.layouts.set([]);
+          this.carregandoLayouts.set(false);
+        },
+      });
   }
 
   protected iniciarEdicaoLayout(layout: LayoutRelatorio): void {
@@ -225,37 +242,61 @@ export class ConfiguracoesUsuario {
     this.salvandoLayoutId.set(layout.id);
     this.erroLayouts.set(null);
 
-    this.http.patch<LayoutRelatorio>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`, { nome }).subscribe({
-      next: (atualizado) => {
-        this.layouts.update((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
-        this.editandoLayoutId.set(null);
-        this.salvandoLayoutId.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erroLayouts.set(mensagemErro(erro, 'Não foi possível renomear o layout.'));
-        this.salvandoLayoutId.set(null);
-      }
-    });
+    this.http
+      .patch<LayoutRelatorio>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`, {
+        nome,
+      })
+      .subscribe({
+        next: (atualizado) => {
+          this.layouts.update((atual) =>
+            atual.map((item) => (item.id === atualizado.id ? atualizado : item)),
+          );
+          this.editandoLayoutId.set(null);
+          this.salvandoLayoutId.set(null);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erroLayouts.set(mensagemErro(erro, 'Não foi possível renomear o layout.'));
+          this.salvandoLayoutId.set(null);
+        },
+      });
   }
 
   protected apagarLayout(layout: LayoutRelatorio): void {
-    if (this.apagandoLayoutId() || !confirm(`Apagar o layout "${layout.nome}"? Essa ação não pode ser desfeita.`)) {
+    if (this.apagandoLayoutId()) {
+      return;
+    }
+    this.layoutParaApagar.set(layout);
+  }
+
+  protected cancelarApagarLayout(): void {
+    if (this.apagandoLayoutId()) {
+      return;
+    }
+    this.layoutParaApagar.set(null);
+  }
+
+  protected confirmarApagarLayout(): void {
+    const layout = this.layoutParaApagar();
+    if (!layout || this.apagandoLayoutId()) {
       return;
     }
 
     this.apagandoLayoutId.set(layout.id);
     this.erroLayouts.set(null);
 
-    this.http.delete(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`).subscribe({
-      next: () => {
-        this.layouts.update((atual) => atual.filter((item) => item.id !== layout.id));
-        this.apagandoLayoutId.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erroLayouts.set(mensagemErro(erro, 'Não foi possível apagar o layout.'));
-        this.apagandoLayoutId.set(null);
-      }
-    });
+    this.http
+      .delete(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`)
+      .subscribe({
+        next: () => {
+          this.layouts.update((atual) => atual.filter((item) => item.id !== layout.id));
+          this.apagandoLayoutId.set(null);
+          this.layoutParaApagar.set(null);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erroLayouts.set(mensagemErro(erro, 'Não foi possível apagar o layout.'));
+          this.apagandoLayoutId.set(null);
+        },
+      });
   }
 
   protected alterarCor(categoria: string, cor: string): void {
@@ -270,7 +311,7 @@ export class ConfiguracoesUsuario {
       error: (erro: HttpErrorResponse) => {
         this.erroCores.set(mensagemErro(erro, 'Não foi possível salvar a cor.'));
         this.salvandoCorCategoria.set(null);
-      }
+      },
     });
   }
 
@@ -286,7 +327,7 @@ export class ConfiguracoesUsuario {
       error: (erro: HttpErrorResponse) => {
         this.erroCores.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
         this.salvandoCorCategoria.set(null);
-      }
+      },
     });
   }
 }

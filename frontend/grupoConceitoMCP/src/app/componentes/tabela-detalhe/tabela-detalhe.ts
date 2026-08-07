@@ -20,7 +20,7 @@ const LIMITE_FILTROS_PARA_EXPANDIR = 7;
   selector: 'app-tabela-detalhe',
   imports: [SelectBusca, CampoFiltroDinamico, Botao, Dialog, NgTemplateOutlet],
   templateUrl: './tabela-detalhe.html',
-  styleUrl: './tabela-detalhe.scss'
+  styleUrl: './tabela-detalhe.scss',
 })
 export class TabelaDetalhe {
   views = input<ViewFinanceira[]>([]);
@@ -41,14 +41,14 @@ export class TabelaDetalhe {
   protected readonly expandido = signal(false);
 
   protected readonly totalColunas = computed(() =>
-    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0)
+    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0),
   );
 
   /** Só oferece o botão de expandir com muitos filtros — mas se o painel já
    * estiver expandido e o usuário remover colunas até ficar abaixo do
    * limite, mantém o botão disponível pra ele conseguir voltar ao normal. */
   protected readonly podeExpandir = computed(
-    () => this.totalColunas() > LIMITE_FILTROS_PARA_EXPANDIR || this.expandido()
+    () => this.totalColunas() > LIMITE_FILTROS_PARA_EXPANDIR || this.expandido(),
   );
 
   constructor() {
@@ -72,13 +72,13 @@ export class TabelaDetalhe {
           return {
             chave: `${nomeView}.${nomeColuna}`,
             rotulo: coluna?.descricao ?? nomeColuna,
-            tipo: coluna?.tipo ?? 'texto'
+            tipo: coluna?.tipo ?? 'texto',
           };
         });
 
         return {
           view: view ?? { nome: nomeView, descricao: nomeView, colunas: [], relacionamentos: [] },
-          campos
+          campos,
         };
       });
   });

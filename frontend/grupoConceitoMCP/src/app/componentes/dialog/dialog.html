@@ -1,10 +1,30 @@
 @if (aberto()) {
+  <!-- Clique no backdrop é só conveniência de mouse: Esc já fecha o dialog pra
+       quem usa teclado (ver @HostListener('document:keydown.escape') em dialog.ts),
+       e o botão "Fechar" abaixo é focável. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
   <div class="backdrop" (click)="fechar.emit()">
-    <div class="painel" [class.painel--compacto]="tamanho() === 'compacto'" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -->
+    <div
+      class="painel"
+      [class.painel--compacto]="tamanho() === 'compacto'"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+    >
       <header class="cabecalho">
         <h2>{{ titulo() }}</h2>
         <button type="button" class="fechar" aria-label="Fechar" (click)="fechar.emit()">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
             <path d="M6 6 18 18M18 6 6 18" />
           </svg>
         </button>

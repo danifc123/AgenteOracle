@@ -5,6 +5,6 @@ import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-heade
   selector: 'app-estoque-chat',
   imports: [ModuloHeader],
   templateUrl: './estoque-chat.html',
-  styleUrl: './estoque-chat.scss'
+  styleUrl: './estoque-chat.scss',
 })
 export class EstoqueChat {}

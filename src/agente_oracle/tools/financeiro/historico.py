@@ -24,7 +24,7 @@ troca).
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from agente_oracle.config import settings
 from agente_oracle.db.connection import get_connection
@@ -33,7 +33,9 @@ _SELECT_FROM_REGEX = re.compile(r"^SELECT\s+(.*?)\s+FROM\s", re.IGNORECASE | re.
 
 TEMPO_EXPIRACAO = timedelta(hours=15)
 
-_COLUNAS_COMPLETAS = "id, hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo"
+_COLUNAS_COMPLETAS = (
+    "id, hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo"
+)
 
 _tabela_garantida = False
 
@@ -76,7 +78,9 @@ def _garantir_tabela(cursor) -> None:
     # salvo até hoje só pode ter vindo do Financeiro (único módulo que já
     # gravou nessa tabela), daí o DEFAULT.
     if not _coluna_modulo_existe(cursor):
-        cursor.execute("ALTER TABLE relatorios_historico ADD COLUMN modulo VARCHAR NOT NULL DEFAULT 'financeiro'")
+        cursor.execute(
+            "ALTER TABLE relatorios_historico ADD COLUMN modulo VARCHAR NOT NULL DEFAULT 'financeiro'"
+        )
     _tabela_garantida = True
 
 
@@ -105,7 +109,9 @@ def _carregar_json(valor):
 
 
 def _linha_para_documento(linha: tuple) -> dict:
-    id_, hash_sql_valor, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo = linha
+    id_, hash_sql_valor, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo = (
+        linha
+    )
     return {
         "_id": id_,
         "hash_sql": hash_sql_valor,
@@ -144,7 +150,7 @@ def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list
     TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`). `modulo` é
     quem gerou o relatório (ex: "financeiro") — usado por `listar` pra cada
     papel só ver o histórico do(s) módulo(s) que tem acesso."""
-    agora = datetime.now(timezone.utc)
+    agora = datetime.now(UTC)
     hash_valor = hash_sql(sql_validado)
 
     with get_connection() as connection:
@@ -292,6 +298,6 @@ def desfixar(id_relatorio: str) -> bool:
         cursor.execute(
             "UPDATE relatorios_historico SET fixado = FALSE, expira_em = :expira_em WHERE id = :id",
             id=id_numerico,
-            expira_em=datetime.now(timezone.utc) + TEMPO_EXPIRACAO,
+            expira_em=datetime.now(UTC) + TEMPO_EXPIRACAO,
         )
         return cursor.rowcount > 0

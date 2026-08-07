@@ -6,5 +6,7 @@
     placeholder="Digite sua pergunta..."
     rows="1"
   ></textarea>
-  <app-botao variant="enviar" type="submit" [disabled]="enviando() || !entrada().trim()">Enviar</app-botao>
+  <app-botao variant="enviar" type="submit" [disabled]="enviando() || !entrada().trim()"
+    >Enviar</app-botao
+  >
 </form>

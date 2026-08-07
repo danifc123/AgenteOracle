@@ -10,7 +10,7 @@ configurada em DB_BACKEND, sem migração separada.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import bcrypt
 
@@ -60,7 +60,9 @@ def _garantir_tabela(cursor) -> None:
     # tabela criada antes da foto existir ganham a coluna sozinhas aqui,
     # sem precisar de uma migração separada.
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto TEXT")
-    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tentativas_falhas INTEGER NOT NULL DEFAULT 0")
+    cursor.execute(
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tentativas_falhas INTEGER NOT NULL DEFAULT 0"
+    )
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado BOOLEAN NOT NULL DEFAULT FALSE")
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado_em TIMESTAMPTZ")
     _tabela_garantida = True
@@ -112,7 +114,7 @@ def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dic
                 senha_hash=senha_hash,
                 nome=nome,
                 papeis=json.dumps(papeis),
-                criado_em=datetime.now(timezone.utc),
+                criado_em=datetime.now(UTC),
             )
             linha = cursor.fetchone()
     except DatabaseError as erro:
@@ -218,7 +220,7 @@ def registrar_tentativa_falha(usuario: str) -> bool:
 
         cursor.execute(
             "UPDATE usuarios SET bloqueado = TRUE, bloqueado_em = :agora WHERE usuario = :usuario",
-            agora=datetime.now(timezone.utc),
+            agora=datetime.now(UTC),
             usuario=usuario,
         )
 
@@ -274,9 +276,13 @@ def atualizar_perfil(usuario: str, nome: str | None = None, foto: str | None = N
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         if nome is not None:
-            cursor.execute("UPDATE usuarios SET nome = :nome WHERE usuario = :usuario", nome=nome, usuario=usuario)
+            cursor.execute(
+                "UPDATE usuarios SET nome = :nome WHERE usuario = :usuario", nome=nome, usuario=usuario
+            )
         if foto is not None:
-            cursor.execute("UPDATE usuarios SET foto = :foto WHERE usuario = :usuario", foto=foto, usuario=usuario)
+            cursor.execute(
+                "UPDATE usuarios SET foto = :foto WHERE usuario = :usuario", foto=foto, usuario=usuario
+            )
         cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
         linha = cursor.fetchone()
 

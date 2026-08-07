@@ -10,7 +10,7 @@ export interface ValorAbreviado {
 const UNIDADES = [
   { limite: 1_000_000_000, divisor: 1_000_000_000, nome: 'Bilhões' },
   { limite: 1_000_000, divisor: 1_000_000, nome: 'Milhões' },
-  { limite: 1_000, divisor: 1_000, nome: 'Mil' }
+  { limite: 1_000, divisor: 1_000, nome: 'Mil' },
 ] as const;
 
 export function abreviarValor(valor: number): ValorAbreviado {
@@ -23,7 +23,7 @@ export function abreviarValor(valor: number): ValorAbreviado {
 
   const numero = (valor / unidade.divisor).toLocaleString('pt-BR', {
     minimumFractionDigits: 1,
-    maximumFractionDigits: 1
+    maximumFractionDigits: 1,
   });
   return { numero, unidade: unidade.nome };
 }

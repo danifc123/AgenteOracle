@@ -7,7 +7,7 @@ Categorias sem registro aqui usam a cor padrão do site (resolvida no
 frontend) — este módulo só guarda as exceções que o usuário personalizou.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from agente_oracle.db.connection import get_connection
 
@@ -45,7 +45,7 @@ def listar(usuario_id: int) -> list[dict]:
 
 
 def definir(usuario_id: int, categoria: str, cor: str) -> dict:
-    agora = datetime.now(timezone.utc)
+    agora = datetime.now(UTC)
 
     with get_connection() as connection:
         cursor = connection.cursor()

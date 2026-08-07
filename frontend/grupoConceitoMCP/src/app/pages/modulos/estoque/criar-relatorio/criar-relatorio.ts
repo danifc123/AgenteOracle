@@ -15,45 +15,45 @@ import { MOCK_VIEWS_ESTOQUE } from '../../../../dadosRelatorios/views-estoque';
 // `estoque.ts`). Sem chamada de API nenhuma aqui ainda.
 const MOCK_FILIAIS: OpcaoSelectBusca[] = [
   { valor: '0101', rotulo: '0101 - Matriz' },
-  { valor: '0102', rotulo: '0102 - Filial Sul' }
+  { valor: '0102', rotulo: '0102 - Filial Sul' },
 ];
 
 const MOCK_OPCOES_COLUNA: Record<string, OpcaoSelectBusca[]> = {
   'vw_movimentacao_estoque.tipo': [
     { valor: 'entrada', rotulo: 'entrada' },
-    { valor: 'saida', rotulo: 'saida' }
+    { valor: 'saida', rotulo: 'saida' },
   ],
   'vw_movimentacao_estoque.produto_codigo': [
     { valor: 'P001', rotulo: 'P001' },
     { valor: 'P002', rotulo: 'P002' },
-    { valor: 'P003', rotulo: 'P003' }
+    { valor: 'P003', rotulo: 'P003' },
   ],
   'vw_produtos.codigo': [
     { valor: 'P001', rotulo: 'P001' },
     { valor: 'P002', rotulo: 'P002' },
-    { valor: 'P003', rotulo: 'P003' }
+    { valor: 'P003', rotulo: 'P003' },
   ],
   'vw_produtos.descricao': [
     { valor: 'Semente de Soja RR', rotulo: 'Semente de Soja RR' },
     { valor: 'Fertilizante NPK 20-05-20', rotulo: 'Fertilizante NPK 20-05-20' },
     { valor: 'Defensivo Agrícola Glifosato', rotulo: 'Defensivo Agrícola Glifosato' },
-    { valor: 'Óleo Diesel S10', rotulo: 'Óleo Diesel S10' }
+    { valor: 'Óleo Diesel S10', rotulo: 'Óleo Diesel S10' },
   ],
   'vw_fornecedores.codigo': [
     { valor: 'F001', rotulo: 'F001' },
-    { valor: 'F002', rotulo: 'F002' }
+    { valor: 'F002', rotulo: 'F002' },
   ],
   'vw_fornecedores.nome': [
     { valor: 'Cooperativa Agrícola Central', rotulo: 'Cooperativa Agrícola Central' },
-    { valor: 'Distribuidora AgroMax', rotulo: 'Distribuidora AgroMax' }
-  ]
+    { valor: 'Distribuidora AgroMax', rotulo: 'Distribuidora AgroMax' },
+  ],
 };
 
 @Component({
   selector: 'app-estoque-criar-relatorio',
   imports: [Busca, Dialog, Botao, ModuloHeader, TabelaItem, TabelaDetalhe, SelectBusca],
   templateUrl: './criar-relatorio.html',
-  styleUrl: './criar-relatorio.scss'
+  styleUrl: './criar-relatorio.scss',
 })
 export class EstoqueCriarRelatorio {
   protected readonly views = signal<ViewFinanceira[]>(MOCK_VIEWS_ESTOQUE);
@@ -81,16 +81,17 @@ export class EstoqueCriarRelatorio {
       return this.views();
     }
     return this.views().filter(
-      (view) => view.nome.toLowerCase().includes(termo) || view.descricao.toLowerCase().includes(termo)
+      (view) =>
+        view.nome.toLowerCase().includes(termo) || view.descricao.toLowerCase().includes(termo),
     );
   });
 
   protected readonly totalColunasSelecionadas = computed(() =>
-    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0)
+    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0),
   );
 
   protected readonly opcoesLayouts = computed<OpcaoSelectBusca[]>(() =>
-    this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome }))
+    this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome })),
   );
 
   /** Grafo não-direcionado das views a partir dos relacionamentos declarados
@@ -159,7 +160,9 @@ export class EstoqueCriarRelatorio {
     if (!this.tabelaCompativel(view)) {
       return;
     }
-    this.tabelasAbertas.update((atual) => (atual.has(view.nome) ? new Set() : new Set([view.nome])));
+    this.tabelasAbertas.update((atual) =>
+      atual.has(view.nome) ? new Set() : new Set([view.nome]),
+    );
   }
 
   protected alternarColuna(nomeView: string, nomeColuna: string): void {
@@ -235,10 +238,12 @@ export class EstoqueCriarRelatorio {
       valores_filtros: this.valoresFiltros(),
       filiais_selecionadas: this.filiaisSelecionadas(),
       criado_em: agora,
-      atualizado_em: agora
+      atualizado_em: agora,
     };
 
-    this.layouts.update((atual) => [...atual, novoLayout].sort((a, b) => a.nome.localeCompare(b.nome)));
+    this.layouts.update((atual) =>
+      [...atual, novoLayout].sort((a, b) => a.nome.localeCompare(b.nome)),
+    );
     this.layoutSelecionadoId.set(String(novoLayout.id));
     this.salvarLayoutAberto.set(false);
   }

@@ -54,16 +54,24 @@ const CORES_FATIAS = [COR_PRIMARIA, COR_SECUNDARIA];
 
 const ETAPAS_INICIAIS: EtapaPrevisao[] = [
   { id: 'titulos_abertos', rotulo: 'Buscando títulos em aberto', status: 'pendente' },
-  { id: 'prazo_medio', rotulo: 'Calculando prazo médio de recebimento e pagamento', status: 'pendente' },
-  { id: 'projecao_futura', rotulo: 'Projetando tendência de vendas e novas contas a pagar', status: 'pendente' },
-  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' }
+  {
+    id: 'prazo_medio',
+    rotulo: 'Calculando prazo médio de recebimento e pagamento',
+    status: 'pendente',
+  },
+  {
+    id: 'projecao_futura',
+    rotulo: 'Projetando tendência de vendas e novas contas a pagar',
+    status: 'pendente',
+  },
+  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' },
 ];
 
 @Component({
   selector: 'app-fluxo-caixa',
   imports: [ModuloHeader, SelectBusca, Botao, GraficoSerie, GraficoRosca, CartaoKpi],
   templateUrl: './fluxo-caixa.html',
-  styleUrl: './fluxo-caixa.scss'
+  styleUrl: './fluxo-caixa.scss',
 })
 export class FluxoCaixa {
   private readonly http = inject(HttpClient);
@@ -82,14 +90,22 @@ export class FluxoCaixa {
   protected readonly prazoMedioRecebimentoDias = signal<number | null>(null);
   protected readonly prazoMedioPagamentoDias = signal<number | null>(null);
 
-  protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0 && !this.carregando());
+  protected readonly podeGerar = computed(
+    () => this.filiaisSelecionadas().length > 0 && !this.carregando(),
+  );
 
   protected readonly totalAReceber = computed(() =>
-    this.fatiasAReceber().reduce((soma, fatia) => soma + fatia.valor, 0)
+    this.fatiasAReceber().reduce((soma, fatia) => soma + fatia.valor, 0),
   );
-  protected readonly totalAPagar = computed(() => this.fatiasAPagar().reduce((soma, fatia) => soma + fatia.valor, 0));
-  protected readonly vencidoAReceber = computed(() => this.fluxoMeses().find((item) => item.mes === 'vencido')?.a_receber ?? 0);
-  protected readonly vencidoAPagar = computed(() => this.fluxoMeses().find((item) => item.mes === 'vencido')?.a_pagar ?? 0);
+  protected readonly totalAPagar = computed(() =>
+    this.fatiasAPagar().reduce((soma, fatia) => soma + fatia.valor, 0),
+  );
+  protected readonly vencidoAReceber = computed(
+    () => this.fluxoMeses().find((item) => item.mes === 'vencido')?.a_receber ?? 0,
+  );
+  protected readonly vencidoAPagar = computed(
+    () => this.fluxoMeses().find((item) => item.mes === 'vencido')?.a_pagar ?? 0,
+  );
   protected readonly saldoProjetado = computed(() => this.totalAReceber() - this.totalAPagar());
 
   protected readonly seriesFluxoCaixa = computed<SerieGrafico[]>(() => {
@@ -99,22 +115,30 @@ export class FluxoCaixa {
     }
 
     return [
-      { nome: 'A Receber', cor: COR_PRIMARIA, pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_receber })) },
-      { nome: 'A Pagar', cor: COR_SECUNDARIA, pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar })) },
+      {
+        nome: 'A Receber',
+        cor: COR_PRIMARIA,
+        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_receber })),
+      },
+      {
+        nome: 'A Pagar',
+        cor: COR_SECUNDARIA,
+        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar })),
+      },
       {
         nome: 'A Receber (estimado)',
         cor: COR_PRIMARIA,
         tracejada: true,
         linhaSobreposta: true,
-        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_receber_estimado }))
+        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_receber_estimado })),
       },
       {
         nome: 'A Pagar (estimado)',
         cor: COR_SECUNDARIA,
         tracejada: true,
         linhaSobreposta: true,
-        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar_estimado }))
-      }
+        pontos: meses.map((item) => ({ rotulo: item.mes, valor: item.a_pagar_estimado })),
+      },
     ];
   });
 
@@ -129,7 +153,7 @@ export class FluxoCaixa {
       },
       error: () => {
         this.filiais.set([]);
-      }
+      },
     });
   }
 
@@ -138,7 +162,9 @@ export class FluxoCaixa {
   }
 
   private marcarEtapaConcluida(id: string): void {
-    this.etapas.update((atual) => atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)));
+    this.etapas.update((atual) =>
+      atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)),
+    );
   }
 
   protected async gerarPrevisao(): Promise<void> {
@@ -155,7 +181,7 @@ export class FluxoCaixa {
         this.http,
         `${MCP_API_BASE_URL}/api/financeiro/previsao/fluxo-caixa`,
         { filial: this.filiaisSelecionadas().join(',') },
-        (id) => this.marcarEtapaConcluida(id)
+        (id) => this.marcarEtapaConcluida(id),
       );
 
       this.jaGerou.set(true);

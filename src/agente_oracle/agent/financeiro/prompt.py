@@ -30,7 +30,9 @@ def _montar_relacionamentos_texto() -> str:
         for relacionamento in view.relacionamentos:
             condicoes = " AND ".join(
                 f"{view.nome}.{local} = {relacionamento.view_destino}.{destino}"
-                for local, destino in zip(relacionamento.colunas_locais, relacionamento.colunas_destino)
+                for local, destino in zip(
+                    relacionamento.colunas_locais, relacionamento.colunas_destino, strict=True
+                )
             )
             linha = f"- {view.nome} ↔ {relacionamento.view_destino}: `{condicoes}`."
             if relacionamento.descricao:
@@ -42,7 +44,9 @@ def _montar_relacionamentos_texto() -> str:
             # dentro da view referenciada, onde ele não existe.
             nomes_diferentes = [
                 (local, destino)
-                for local, destino in zip(relacionamento.colunas_locais, relacionamento.colunas_destino)
+                for local, destino in zip(
+                    relacionamento.colunas_locais, relacionamento.colunas_destino, strict=True
+                )
                 if local != destino
             ]
             if nomes_diferentes:

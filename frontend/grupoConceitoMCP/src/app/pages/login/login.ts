@@ -9,7 +9,7 @@ import { DadosSessao, Sessao } from '../../servicos/sessao';
   selector: 'app-login',
   imports: [Botao],
   templateUrl: './login.html',
-  styleUrl: './login.scss'
+  styleUrl: './login.scss',
 })
 export class Login {
   private readonly http = inject(HttpClient);
@@ -24,11 +24,11 @@ export class Login {
 
   private intervaloEspera: ReturnType<typeof setInterval> | null = null;
 
-  constructor(destroyRef: DestroyRef) {
+  constructor() {
     if (this.sessao.autenticado()) {
       this.router.navigateByUrl('/');
     }
-    destroyRef.onDestroy(() => this.pararContagem());
+    inject(DestroyRef).onDestroy(() => this.pararContagem());
   }
 
   entrar(): void {
@@ -47,7 +47,7 @@ export class Login {
     this.http
       .post<DadosSessao>(`${MCP_API_BASE_URL}/api/auth/login`, {
         usuario: this.usuario().trim(),
-        senha: this.senha()
+        senha: this.senha(),
       })
       .subscribe({
         next: (dados) => {
@@ -64,7 +64,7 @@ export class Login {
           } else {
             this.erro.set(erro.error?.erro || 'Usuário ou senha inválidos.');
           }
-        }
+        },
       });
   }
 
@@ -88,7 +88,9 @@ export class Login {
   }
 
   private atualizarMensagemEspera(): void {
-    this.erro.set(`Você errou a senha muitas vezes seguidas. Tente de novo em ${this.segundosEspera()}s.`);
+    this.erro.set(
+      `Você errou a senha muitas vezes seguidas. Tente de novo em ${this.segundosEspera()}s.`,
+    );
   }
 
   private pararContagem(): void {

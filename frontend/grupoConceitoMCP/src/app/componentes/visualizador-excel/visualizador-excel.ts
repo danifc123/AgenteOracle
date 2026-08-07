@@ -6,7 +6,7 @@ import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servico
   selector: 'app-visualizador-excel',
   imports: [IconeOrdenacao],
   templateUrl: './visualizador-excel.html',
-  styleUrl: './visualizador-excel.scss'
+  styleUrl: './visualizador-excel.scss',
 })
 export class VisualizadorExcel {
   dados = input.required<Record<string, unknown>[]>();

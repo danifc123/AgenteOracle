@@ -35,8 +35,9 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from agente_oracle.agent.financeiro.projecoes import gerar_analise, projetar_tendencia_linear, proximos_meses
 from agente_oracle.config import settings
 from agente_oracle.db.connection import get_connection
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -79,7 +80,13 @@ def _historico_e_projecao(
     historico = [{"mes": mes, "valor": valores_por_mes.get(mes, 0.0)} for mes in meses_historico]
     valores_projetados = projetar_tendencia_linear([item["valor"] for item in historico], meses_futuros)
     meses_projecao = proximos_meses(meses_historico[-1], meses_futuros)
-    projecao = [{"mes": mes, "valor": valor} for mes, valor in zip(meses_projecao, valores_projetados)]
+    # `zip` sem `strict`: propositalmente tolerante — com menos de 2 pontos de
+    # histórico, `projetar_tendencia_linear` devolve `[]` (não dá pra calcular
+    # tendência) e a projeção deve sair vazia também, não estourar erro.
+    projecao = [
+        {"mes": mes, "valor": valor}
+        for mes, valor in zip(meses_projecao, valores_projetados)  # noqa: B905
+    ]
     return historico, projecao
 
 
@@ -162,7 +169,9 @@ def _buscar_titulos_pagar_mensal(filiais: list[str], mes_inicio: str) -> dict[st
     return {mes: _comum.serializar(total) for mes, total in linhas}
 
 
-def _buscar_bucket_mensal(view: str, coluna_valor: str, filiais: list[str], hoje: date, mes_fim: str) -> dict[str, float]:
+def _buscar_bucket_mensal(
+    view: str, coluna_valor: str, filiais: list[str], hoje: date, mes_fim: str
+) -> dict[str, float]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         SELECT
@@ -260,19 +269,15 @@ def _grupos_prazo_pagamento(filiais: list[str]) -> list[tuple[float, float]]:
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/previsao/vendas", methods=["GET", "OPTIONS"])
-    async def previsao_vendas_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def previsao_vendas_route(request: Request, usuario: dict) -> Response:
         """Faturamento dos últimos 12 meses + projeção dos próximos 3 por
         regressão linear + análise curta da IA em cima desses números."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         async def gerador():
             meses_historico = _janela_meses_historico(_MESES_HISTORICO)
@@ -289,17 +294,23 @@ def registrar(mcp) -> None:
                 + ", ".join(f"{item['mes']}: R$ {item['valor']:.2f}" for item in projecao)
                 + "."
             )
-            analise = await gerar_analise(AsyncClient(host=settings.ollama_host), settings.ollama_model, contexto)
+            analise = await gerar_analise(
+                AsyncClient(host=settings.ollama_host), settings.ollama_model, contexto
+            )
             yield _linha_ndjson({"tipo": "etapa", "id": "analise_ia"})
 
             yield _linha_ndjson(
-                {"tipo": "resultado", "dados": {"historico": historico, "projecao": projecao, "analise": analise}}
+                {
+                    "tipo": "resultado",
+                    "dados": {"historico": historico, "projecao": projecao, "analise": analise},
+                }
             )
 
         return StreamingResponse(gerador(), media_type="application/x-ndjson", headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/previsao/fluxo-caixa", methods=["GET", "OPTIONS"])
-    async def previsao_fluxo_caixa_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def previsao_fluxo_caixa_route(request: Request, usuario: dict) -> Response:
         """Títulos em aberto (a receber/a pagar): bucket mensal (vencido +
         próximos 6 meses) pro gráfico, totais + corte de 90 dias pros
         donuts — tudo dado real já lançado. Em cima disso, soma uma
@@ -310,16 +321,11 @@ def registrar(mcp) -> None:
         só o "*_estimado" carrega essa parte; os campos sem sufixo continuam
         sendo só o confirmado, como antes. A IA só narra os números prontos,
         nunca calcula nada disso."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         async def gerador():
             hoje = date.today()
@@ -327,13 +333,23 @@ def registrar(mcp) -> None:
             meses_janela = [mes_atual, *proximos_meses(mes_atual, _MESES_JANELA_FLUXO_CAIXA - 1)]
             data_corte = hoje + timedelta(days=_DIAS_CORTE_PERIODO)
 
-            bucket_receber = _buscar_bucket_mensal("vw_titulos_receber", "saldo_aberto", filiais, hoje, meses_janela[-1])
-            bucket_pagar = _buscar_bucket_mensal("vw_titulos_pagar", "saldo_aberto", filiais, hoje, meses_janela[-1])
-            receber_no_periodo, receber_fora_periodo = _buscar_corte_periodo("vw_titulos_receber", filiais, data_corte)
-            pagar_no_periodo, pagar_fora_periodo = _buscar_corte_periodo("vw_titulos_pagar", filiais, data_corte)
+            bucket_receber = _buscar_bucket_mensal(
+                "vw_titulos_receber", "saldo_aberto", filiais, hoje, meses_janela[-1]
+            )
+            bucket_pagar = _buscar_bucket_mensal(
+                "vw_titulos_pagar", "saldo_aberto", filiais, hoje, meses_janela[-1]
+            )
+            receber_no_periodo, receber_fora_periodo = _buscar_corte_periodo(
+                "vw_titulos_receber", filiais, data_corte
+            )
+            pagar_no_periodo, pagar_fora_periodo = _buscar_corte_periodo(
+                "vw_titulos_pagar", filiais, data_corte
+            )
             yield _linha_ndjson({"tipo": "etapa", "id": "titulos_abertos"})
 
-            prazo_recebimento, participacoes_receber = _resumo_participacoes(_grupos_prazo_recebimento(filiais))
+            prazo_recebimento, participacoes_receber = _resumo_participacoes(
+                _grupos_prazo_recebimento(filiais)
+            )
             prazo_pagamento, participacoes_pagar = _resumo_participacoes(_grupos_prazo_pagamento(filiais))
             yield _linha_ndjson({"tipo": "etapa", "id": "prazo_medio"})
 
@@ -343,8 +359,12 @@ def registrar(mcp) -> None:
             titulos_pagar_por_mes = _buscar_titulos_pagar_mensal(filiais, meses_historico[0])
             _, projecao_pagar = _historico_e_projecao(titulos_pagar_por_mes, meses_historico, _MESES_PROJECAO)
 
-            estimado_receber = _distribuir_estimativa_ponderada(projecao_vendas, participacoes_receber, meses_janela)
-            estimado_pagar = _distribuir_estimativa_ponderada(projecao_pagar, participacoes_pagar, meses_janela)
+            estimado_receber = _distribuir_estimativa_ponderada(
+                projecao_vendas, participacoes_receber, meses_janela
+            )
+            estimado_pagar = _distribuir_estimativa_ponderada(
+                projecao_pagar, participacoes_pagar, meses_janela
+            )
             yield _linha_ndjson({"tipo": "etapa", "id": "projecao_futura"})
 
             meses = [
@@ -372,7 +392,9 @@ def registrar(mcp) -> None:
                 "Estimativa adicional de venda/conta que ainda não foi lançada, baseada na tendência histórica, "
                 f"pros próximos meses: R$ {total_estimado_receber:.2f} a receber e R$ {total_estimado_pagar:.2f} a pagar."
             )
-            analise = await gerar_analise(AsyncClient(host=settings.ollama_host), settings.ollama_model, contexto)
+            analise = await gerar_analise(
+                AsyncClient(host=settings.ollama_host), settings.ollama_model, contexto
+            )
             yield _linha_ndjson({"tipo": "etapa", "id": "analise_ia"})
 
             yield _linha_ndjson(

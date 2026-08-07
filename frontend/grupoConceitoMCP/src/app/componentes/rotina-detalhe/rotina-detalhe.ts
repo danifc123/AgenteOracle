@@ -9,7 +9,7 @@ import { OpcaoSelectBusca, SelectBusca } from '../select-busca/select-busca';
   selector: 'app-rotina-detalhe',
   imports: [SelectBusca, CampoFiltroDinamico, Botao],
   templateUrl: './rotina-detalhe.html',
-  styleUrl: './rotina-detalhe.scss'
+  styleUrl: './rotina-detalhe.scss',
 })
 export class RotinaDetalhe {
   private readonly coresCategoria = inject(CoresCategoria);

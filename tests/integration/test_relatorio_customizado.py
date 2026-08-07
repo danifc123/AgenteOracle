@@ -84,4 +84,7 @@ def test_exportar_devolve_xlsx(mcp_app, token_teste):
         headers=_auth(token_teste),
     )
     assert resposta.status_code == 200
-    assert resposta.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert (
+        resposta.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

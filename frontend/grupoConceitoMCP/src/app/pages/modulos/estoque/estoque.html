@@ -1,106 +1,134 @@
-<app-modulo-header breadcrumb="Estoque"
-                   titulo="Estoque"
-                   descricao="Visão geral de entradas, saídas e níveis de suprimento." />
+<app-modulo-header
+  breadcrumb="Estoque"
+  titulo="Estoque"
+  descricao="Visão geral de entradas, saídas e níveis de suprimento."
+/>
 
 <div class="filtros-topo">
-  <app-select-busca class="select-filial"
-                     rotulo="Filial(is) *"
-                     placeholder="Filial(is)..."
-                     [multiplo]="true"
-                     [opcoes]="filiais()"
-                     [(valores)]="filiaisSelecionadas" />
+  <app-select-busca
+    class="select-filial"
+    rotulo="Filial(is) *"
+    placeholder="Filial(is)..."
+    [multiplo]="true"
+    [opcoes]="filiais()"
+    [(valores)]="filiaisSelecionadas"
+  />
 
-  <app-botao variant="primaria"
-             [disabled]="!podeCarregar()"
-             (clicked)="carregarEstoque()">
+  <app-botao variant="primaria" [disabled]="!podeCarregar()" (clicked)="carregarEstoque()">
     Ver Estoque
   </app-botao>
 </div>
 
 @if (!jaCarregou()) {
-<div class="estado-vazio">
-  <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
-    <path d="M3 8 12 3l9 5-9 5-9-5Z" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M3 8v8l9 5 9-5V8" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M12 13v8" stroke-linecap="round" />
-  </svg>
-  <h3>Selecione a(s) filial(is)</h3>
-  <p>Escolha uma ou mais filiais pra ver as movimentações e os níveis de suprimento.</p>
-</div>
-} @else {
-<div class="linha-kpis">
-  <app-cartao-kpi rotulo="Total Entradas" tipo="numero" [valor]="totalEntradas()" [destacarNegativo]="false" />
-  <app-cartao-kpi rotulo="Total Saídas" tipo="numero" [valor]="totalSaidas()" [destacarNegativo]="false" />
-  <app-cartao-kpi rotulo="Saldo do Período" tipo="numero" [valor]="saldoPeriodo()" />
-  <app-cartao-kpi rotulo="Itens em Suprimento Baixo" tipo="numero" [valor]="itensSuprimentoBaixo()" [destacarNegativo]="false" />
-</div>
-
-<section class="cartao-secao">
-  <h2>Movimentações</h2>
-  <div class="tabela-scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>Data</th>
-          <th>Produto</th>
-          <th>Tipo</th>
-          <th>Quantidade</th>
-          <th>Origem/Destino</th>
-          <th>Documento</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (item of movimentacoes(); track item.documento) {
-        <tr>
-          <td>{{ item.data }}</td>
-          <td>{{ item.produto }}</td>
-          <td>
-            <span class="badge"
-                  [class.badge--entrada]="item.tipo === 'entrada'"
-                  [class.badge--saida]="item.tipo === 'saida'">
-              {{ item.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
-            </span>
-          </td>
-          <td class="numero">{{ item.quantidade.toLocaleString('pt-BR') }}</td>
-          <td>{{ item.origemDestino }}</td>
-          <td>{{ item.documento }}</td>
-        </tr>
-        }
-      </tbody>
-    </table>
+  <div class="estado-vazio">
+    <svg
+      viewBox="0 0 24 24"
+      width="40"
+      height="40"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+    >
+      <path d="M3 8 12 3l9 5-9 5-9-5Z" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M3 8v8l9 5 9-5V8" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M12 13v8" stroke-linecap="round" />
+    </svg>
+    <h3>Selecione a(s) filial(is)</h3>
+    <p>Escolha uma ou mais filiais pra ver as movimentações e os níveis de suprimento.</p>
   </div>
-</section>
+} @else {
+  <div class="linha-kpis">
+    <app-cartao-kpi
+      rotulo="Total Entradas"
+      tipo="numero"
+      [valor]="totalEntradas()"
+      [destacarNegativo]="false"
+    />
+    <app-cartao-kpi
+      rotulo="Total Saídas"
+      tipo="numero"
+      [valor]="totalSaidas()"
+      [destacarNegativo]="false"
+    />
+    <app-cartao-kpi rotulo="Saldo do Período" tipo="numero" [valor]="saldoPeriodo()" />
+    <app-cartao-kpi
+      rotulo="Itens em Suprimento Baixo"
+      tipo="numero"
+      [valor]="itensSuprimentoBaixo()"
+      [destacarNegativo]="false"
+    />
+  </div>
 
-<section class="cartao-secao">
-  <h2>Suprimentos</h2>
-  <div class="tabela-scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>Produto</th>
-          <th>Estoque Atual</th>
-          <th>Estoque Mínimo</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (item of suprimentos(); track item.produto) {
-        <tr>
-          <td>{{ item.produto }}</td>
-          <td class="numero">{{ item.estoqueAtual.toLocaleString('pt-BR') }}</td>
-          <td class="numero">{{ item.estoqueMinimo.toLocaleString('pt-BR') }}</td>
-          <td>
-            <span class="badge"
+  <section class="cartao-secao">
+    <h2>Movimentações</h2>
+    <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Produto</th>
+            <th>Tipo</th>
+            <th>Quantidade</th>
+            <th>Origem/Destino</th>
+            <th>Documento</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of movimentacoes(); track item.documento) {
+            <tr>
+              <td>{{ item.data }}</td>
+              <td>{{ item.produto }}</td>
+              <td>
+                <span
+                  class="badge"
+                  [class.badge--entrada]="item.tipo === 'entrada'"
+                  [class.badge--saida]="item.tipo === 'saida'"
+                >
+                  {{ item.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
+                </span>
+              </td>
+              <td class="numero">{{ item.quantidade.toLocaleString('pt-BR') }}</td>
+              <td>{{ item.origemDestino }}</td>
+              <td>{{ item.documento }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="cartao-secao">
+    <h2>Suprimentos</h2>
+    <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th>Estoque Atual</th>
+            <th>Estoque Mínimo</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of suprimentos(); track item.produto) {
+            <tr>
+              <td>{{ item.produto }}</td>
+              <td class="numero">{{ item.estoqueAtual.toLocaleString('pt-BR') }}</td>
+              <td class="numero">{{ item.estoqueMinimo.toLocaleString('pt-BR') }}</td>
+              <td>
+                <span
+                  class="badge"
                   [class.badge--ok]="statusSuprimento(item) === 'ok'"
                   [class.badge--baixo]="statusSuprimento(item) === 'baixo'"
-                  [class.badge--critico]="statusSuprimento(item) === 'critico'">
-              {{ rotuloStatus(statusSuprimento(item)) }}
-            </span>
-          </td>
-        </tr>
-        }
-      </tbody>
-    </table>
-  </div>
-</section>
+                  [class.badge--critico]="statusSuprimento(item) === 'critico'"
+                >
+                  {{ rotuloStatus(statusSuprimento(item)) }}
+                </span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
 }

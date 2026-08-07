@@ -17,7 +17,7 @@ import { Sessao } from '../../servicos/sessao';
 @Component({
   selector: 'app-home-roteador',
   imports: [EstoqueHome, Home],
-  templateUrl: './home-roteador.html'
+  templateUrl: './home-roteador.html',
 })
 export class HomeRoteador {
   private readonly sessao = inject(Sessao);

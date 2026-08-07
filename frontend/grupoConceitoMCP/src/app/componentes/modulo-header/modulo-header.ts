@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
   selector: 'app-modulo-header',
   imports: [RouterLink],
   templateUrl: './modulo-header.html',
-  styleUrl: './modulo-header.scss'
+  styleUrl: './modulo-header.scss',
 })
 export class ModuloHeader {
   breadcrumb = input.required<string>();

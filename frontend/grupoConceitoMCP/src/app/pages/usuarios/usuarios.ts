@@ -2,10 +2,12 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
+import { ConfirmacaoDialog } from '../../componentes/confirmacao-dialog/confirmacao-dialog';
 import { Dialog } from '../../componentes/dialog/dialog';
 import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
+import { mensagemErro } from '../../servicos/mensagens-erro';
 import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
 import { Sessao } from '../../servicos/sessao';
 
@@ -23,15 +25,11 @@ interface Papel {
   rotulo: string;
 }
 
-function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
-  return erro.error?.erro || mensagemPadrao;
-}
-
 @Component({
   selector: 'app-usuarios',
-  imports: [Botao, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca],
+  imports: [Botao, ConfirmacaoDialog, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca],
   templateUrl: './usuarios.html',
-  styleUrl: './usuarios.scss'
+  styleUrl: './usuarios.scss',
 })
 export class Usuarios {
   private readonly http = inject(HttpClient);
@@ -45,8 +43,16 @@ export class Usuarios {
   dialogAberto = signal(false);
   criando = signal(false);
   erroForm = signal<string | null>(null);
+  usuarioParaApagar = signal<Usuario | null>(null);
   apagandoId = signal<number | null>(null);
   desbloqueandoId = signal<number | null>(null);
+
+  protected readonly mensagemConfirmacaoApagar = computed(() => {
+    const usuario = this.usuarioParaApagar();
+    return usuario
+      ? `Apagar o usuário "${usuario.usuario}"? Essa ação não pode ser desfeita.`
+      : '';
+  });
 
   formUsuario = signal('');
   formNome = signal('');
@@ -59,11 +65,16 @@ export class Usuarios {
   }
 
   protected readonly opcoesPapeis = () =>
-    this.papeisDisponiveis().map((papel): OpcaoSelectBusca => ({ valor: papel.slug, rotulo: papel.rotulo }));
+    this.papeisDisponiveis().map((papel): OpcaoSelectBusca => ({
+      valor: papel.slug,
+      rotulo: papel.rotulo,
+    }));
 
   protected rotuloPapeis(slugs: string[]): string {
     const disponiveis = this.papeisDisponiveis();
-    return slugs.map((slug) => disponiveis.find((papel) => papel.slug === slug)?.rotulo ?? slug).join(', ');
+    return slugs
+      .map((slug) => disponiveis.find((papel) => papel.slug === slug)?.rotulo ?? slug)
+      .join(', ');
   }
 
   protected readonly colunaOrdenada = signal<string | null>(null);
@@ -78,7 +89,9 @@ export class Usuarios {
     }
 
     const sinal = direcao === 'asc' ? 1 : -1;
-    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+    return [...lista].sort(
+      (a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal,
+    );
   });
 
   private valorColuna(usuario: Usuario, coluna: string): unknown {
@@ -121,14 +134,14 @@ export class Usuarios {
       error: () => {
         this.erro.set('Não foi possível carregar os usuários.');
         this.carregando.set(false);
-      }
+      },
     });
   }
 
   private carregarPapeis(): void {
     this.http.get<Papel[]>(`${MCP_API_BASE_URL}/api/auth/papeis`).subscribe({
       next: (papeis) => this.papeisDisponiveis.set(papeis),
-      error: () => this.papeisDisponiveis.set([])
+      error: () => this.papeisDisponiveis.set([]),
     });
   }
 
@@ -149,7 +162,12 @@ export class Usuarios {
   }
 
   criarUsuario(): void {
-    if (!this.formUsuario().trim() || !this.formNome().trim() || !this.formSenha().trim() || !this.formPapeis().length) {
+    if (
+      !this.formUsuario().trim() ||
+      !this.formNome().trim() ||
+      !this.formSenha().trim() ||
+      !this.formPapeis().length
+    ) {
       this.erroForm.set('Preencha usuário, nome, senha e ao menos um papel.');
       return;
     }
@@ -162,7 +180,7 @@ export class Usuarios {
         usuario: this.formUsuario().trim(),
         nome: this.formNome().trim(),
         senha: this.formSenha(),
-        papeis: this.formPapeis()
+        papeis: this.formPapeis(),
       })
       .subscribe({
         next: () => {
@@ -173,12 +191,27 @@ export class Usuarios {
         error: (erro: HttpErrorResponse) => {
           this.erroForm.set(mensagemErro(erro, 'Não foi possível criar o usuário.'));
           this.criando.set(false);
-        }
+        },
       });
   }
 
   apagarUsuario(usuario: Usuario): void {
-    if (this.apagandoId() || !confirm(`Apagar o usuário "${usuario.usuario}"? Essa ação não pode ser desfeita.`)) {
+    if (this.apagandoId()) {
+      return;
+    }
+    this.usuarioParaApagar.set(usuario);
+  }
+
+  cancelarApagarUsuario(): void {
+    if (this.apagandoId()) {
+      return;
+    }
+    this.usuarioParaApagar.set(null);
+  }
+
+  confirmarApagarUsuario(): void {
+    const usuario = this.usuarioParaApagar();
+    if (!usuario || this.apagandoId()) {
       return;
     }
 
@@ -189,11 +222,12 @@ export class Usuarios {
       next: () => {
         this.usuarios.update((atual) => atual.filter((item) => item.id !== usuario.id));
         this.apagandoId.set(null);
+        this.usuarioParaApagar.set(null);
       },
       error: (erro: HttpErrorResponse) => {
         this.erro.set(mensagemErro(erro, 'Não foi possível apagar o usuário.'));
         this.apagandoId.set(null);
-      }
+      },
     });
   }
 
@@ -205,17 +239,19 @@ export class Usuarios {
     this.desbloqueandoId.set(usuario.id);
     this.erro.set(null);
 
-    this.http.patch(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}/desbloquear`, {}).subscribe({
-      next: () => {
-        this.usuarios.update((atual) =>
-          atual.map((item) => (item.id === usuario.id ? { ...item, bloqueado: false } : item))
-        );
-        this.desbloqueandoId.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erro.set(mensagemErro(erro, 'Não foi possível desbloquear o usuário.'));
-        this.desbloqueandoId.set(null);
-      }
-    });
+    this.http
+      .patch(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}/desbloquear`, {})
+      .subscribe({
+        next: () => {
+          this.usuarios.update((atual) =>
+            atual.map((item) => (item.id === usuario.id ? { ...item, bloqueado: false } : item)),
+          );
+          this.desbloqueandoId.set(null);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erro.set(mensagemErro(erro, 'Não foi possível desbloquear o usuário.'));
+          this.desbloqueandoId.set(null);
+        },
+      });
   }
 }

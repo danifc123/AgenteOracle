@@ -35,15 +35,19 @@ const COR_VENDAS = '#2f9e58';
 
 const ETAPAS_INICIAIS: EtapaPrevisao[] = [
   { id: 'historico', rotulo: 'Buscando faturamento histórico', status: 'pendente' },
-  { id: 'projecao', rotulo: 'Projetando tendência de vendas (regressão linear)', status: 'pendente' },
-  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' }
+  {
+    id: 'projecao',
+    rotulo: 'Projetando tendência de vendas (regressão linear)',
+    status: 'pendente',
+  },
+  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' },
 ];
 
 @Component({
   selector: 'app-vendas',
   imports: [ModuloHeader, SelectBusca, Botao, GraficoSerie, CartaoKpi],
   templateUrl: './vendas.html',
-  styleUrl: './vendas.scss'
+  styleUrl: './vendas.scss',
 })
 export class Vendas {
   private readonly http = inject(HttpClient);
@@ -59,10 +63,12 @@ export class Vendas {
   protected readonly vendasProjecao = signal<ItemMes[]>([]);
   protected readonly vendasAnalise = signal<string | null>(null);
 
-  protected readonly podeGerar = computed(() => this.filiaisSelecionadas().length > 0 && !this.carregando());
+  protected readonly podeGerar = computed(
+    () => this.filiaisSelecionadas().length > 0 && !this.carregando(),
+  );
 
   protected readonly faturamentoTotal = computed(() =>
-    this.vendasHistorico().reduce((soma, item) => soma + item.valor, 0)
+    this.vendasHistorico().reduce((soma, item) => soma + item.valor, 0),
   );
   protected readonly mediaMensal = computed(() => {
     const historico = this.vendasHistorico();
@@ -70,7 +76,7 @@ export class Vendas {
   });
   protected readonly projecaoProximoMes = computed(() => this.vendasProjecao()[0]?.valor ?? 0);
   protected readonly projecaoTrimestre = computed(() =>
-    this.vendasProjecao().reduce((soma, item) => soma + item.valor, 0)
+    this.vendasProjecao().reduce((soma, item) => soma + item.valor, 0),
   );
   protected readonly variacaoProjetada = computed(() => {
     const historico = this.vendasHistorico();
@@ -91,7 +97,7 @@ export class Vendas {
     const serieHistorico: SerieGrafico = {
       nome: 'Faturamento realizado',
       cor: COR_VENDAS,
-      pontos: historico.map((item) => ({ rotulo: item.mes, valor: item.valor }))
+      pontos: historico.map((item) => ({ rotulo: item.mes, valor: item.valor })),
     };
 
     const projecao = this.vendasProjecao();
@@ -108,8 +114,8 @@ export class Vendas {
       // visualmente a partir de onde o histórico parou, em vez de boiar solta.
       pontos: [
         { rotulo: ultimoHistorico.mes, valor: ultimoHistorico.valor },
-        ...projecao.map((item) => ({ rotulo: item.mes, valor: item.valor }))
-      ]
+        ...projecao.map((item) => ({ rotulo: item.mes, valor: item.valor })),
+      ],
     };
 
     return [serieHistorico, serieProjecao];
@@ -126,12 +132,14 @@ export class Vendas {
       },
       error: () => {
         this.filiais.set([]);
-      }
+      },
     });
   }
 
   private marcarEtapaConcluida(id: string): void {
-    this.etapas.update((atual) => atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)));
+    this.etapas.update((atual) =>
+      atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)),
+    );
   }
 
   protected async gerarPrevisao(): Promise<void> {
@@ -148,7 +156,7 @@ export class Vendas {
         this.http,
         `${MCP_API_BASE_URL}/api/financeiro/previsao/vendas`,
         { filial: this.filiaisSelecionadas().join(',') },
-        (id) => this.marcarEtapaConcluida(id)
+        (id) => this.marcarEtapaConcluida(id),
       );
 
       this.jaGerou.set(true);

@@ -13,8 +13,8 @@ export const ROTINAS_ESTOQUE: RotinaFinanceira[] = [
     descricao: 'Entradas e saídas de estoque detalhadas, filtradas por produto e período.',
     filtros: [
       { chave: 'produto', rotulo: 'Produto', tipo: 'texto' },
-      { chave: 'periodo', rotulo: 'Período', tipo: 'periodo-data' }
-    ]
+      { chave: 'periodo', rotulo: 'Período', tipo: 'periodo-data' },
+    ],
   },
   {
     nome: 'Posição de Suprimentos',
@@ -30,10 +30,10 @@ export const ROTINAS_ESTOQUE: RotinaFinanceira[] = [
           { valor: '', rotulo: 'Todos' },
           { valor: 'ok', rotulo: 'OK' },
           { valor: 'baixo', rotulo: 'Baixo' },
-          { valor: 'critico', rotulo: 'Crítico' }
-        ]
-      }
-    ]
+          { valor: 'critico', rotulo: 'Crítico' },
+        ],
+      },
+    ],
   },
   {
     nome: 'Entradas por Fornecedor',
@@ -41,8 +41,8 @@ export const ROTINAS_ESTOQUE: RotinaFinanceira[] = [
     descricao: 'Entradas de estoque agrupadas por fornecedor e período.',
     filtros: [
       { chave: 'fornecedor', rotulo: 'Fornecedor', tipo: 'texto' },
-      { chave: 'periodo', rotulo: 'Período', tipo: 'periodo-data' }
-    ]
+      { chave: 'periodo', rotulo: 'Período', tipo: 'periodo-data' },
+    ],
   },
   {
     nome: 'Saídas por Requisitante',
@@ -50,8 +50,8 @@ export const ROTINAS_ESTOQUE: RotinaFinanceira[] = [
     descricao: 'Saídas de estoque agrupadas por requisitante (fazenda/setor) e período.',
     filtros: [
       { chave: 'requisitante', rotulo: 'Requisitante', tipo: 'texto' },
-      { chave: 'periodo', rotulo: 'Período', tipo: 'periodo-data' }
-    ]
+      { chave: 'periodo', rotulo: 'Período', tipo: 'periodo-data' },
+    ],
   },
   {
     nome: 'Ajustes de Inventário',
@@ -67,9 +67,9 @@ export const ROTINAS_ESTOQUE: RotinaFinanceira[] = [
           { valor: '', rotulo: 'Todos' },
           { valor: 'contagem', rotulo: 'Contagem de inventário' },
           { valor: 'perda', rotulo: 'Perda' },
-          { valor: 'avaria', rotulo: 'Avaria' }
-        ]
-      }
-    ]
-  }
+          { valor: 'avaria', rotulo: 'Avaria' },
+        ],
+      },
+    ],
+  },
 ];

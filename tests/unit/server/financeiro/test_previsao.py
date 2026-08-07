@@ -80,7 +80,9 @@ class TestDistribuirEstimativaPonderada:
     def test_soma_quando_fatias_de_grupos_diferentes_caem_no_mesmo_destino(self):
         projecao = [{"mes": "2026-08", "valor": 100.0}]
         participacoes = [(0.5, 1), (0.5, 1)]
-        assert mod._distribuir_estimativa_ponderada(projecao, participacoes, ["2026-09"]) == {"2026-09": 100.0}
+        assert mod._distribuir_estimativa_ponderada(projecao, participacoes, ["2026-09"]) == {
+            "2026-09": 100.0
+        }
 
 
 class TestJanelaMesesHistorico:

@@ -12,7 +12,7 @@ editar este arquivo): `login_sucesso`, `login_falha`, `conta_bloqueada`,
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from agente_oracle.db.connection import DatabaseError, get_connection
 
@@ -63,7 +63,7 @@ def registrar(
                 usuario_afetado=usuario_afetado,
                 realizado_por=realizado_por,
                 detalhes=detalhes_json,
-                criado_em=datetime.now(timezone.utc),
+                criado_em=datetime.now(UTC),
             )
     except DatabaseError:
         pass

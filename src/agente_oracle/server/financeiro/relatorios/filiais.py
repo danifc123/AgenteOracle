@@ -8,8 +8,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from agente_oracle.db.connection import get_connection
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 
 _QUERY = """
     SELECT DISTINCT a6_filial
@@ -28,14 +29,8 @@ def _buscar_filiais() -> list[str]:
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/filiais", methods=["GET", "OPTIONS"])
-    async def listar_filiais_route(request: Request) -> JSONResponse:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_filiais_route(request: Request, usuario: dict) -> JSONResponse:
         """Lista as filiais (SA6010) disponíveis para os relatórios do Financeiro."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         filiais = [{"codigo": codigo, "nome": codigo} for codigo in _buscar_filiais()]
         return JSONResponse(filiais, headers=CORS_HEADERS)

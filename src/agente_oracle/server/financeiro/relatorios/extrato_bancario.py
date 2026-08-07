@@ -57,8 +57,9 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -135,9 +136,8 @@ def _buscar_extrato(filiais: list[str], opcionais: dict[str, str]) -> tuple[list
 
     opcionais.setdefault("saldo_tipo", "1")
 
-    sql = (
-        _QUERY.replace("__FILIAL_IN__", clausula_filial)
-        .replace("__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN)
+    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace(
+        "__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN
     )
 
     with get_connection() as connection:
@@ -158,7 +158,11 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
     if len(partes) != 3 or not all(partes):
         return None
 
-    opcionais = {chave: request.query_params.get(chave, "").strip() for chave in _CAMPOS_OPCIONAIS if chave not in ("banco", "agencia", "conta")}
+    opcionais = {
+        chave: request.query_params.get(chave, "").strip()
+        for chave in _CAMPOS_OPCIONAIS
+        if chave not in ("banco", "agencia", "conta")
+    }
     opcionais["banco"], opcionais["agencia"], opcionais["conta"] = partes
 
     if not opcionais.get("data_ini") or not opcionais.get("data_fim"):
@@ -169,36 +173,34 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/extrato-bancario", methods=["GET", "OPTIONS"])
-    async def listar_extrato_bancario_route(request: Request) -> JSONResponse:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_extrato_bancario_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Extrato Bancário (FINR470) — endpoint JSON usado pela tela."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe filial, conta bancária e a faixa de data."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe filial, conta bancária e a faixa de data."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
 
         colunas, linhas = _buscar_extrato(*parametros)
-        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/extrato-bancario/exportar", methods=["GET", "OPTIONS"])
-    async def exportar_extrato_bancario_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_extrato_bancario_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Extrato Bancário (FINR470) — exportação em Excel."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe filial, conta bancária e a faixa de data."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe filial, conta bancária e a faixa de data."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
 
         colunas, linhas = _buscar_extrato(*parametros)
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Extrato Bancário")
@@ -210,4 +212,3 @@ def registrar(mcp) -> None:
                 **CORS_HEADERS,
             },
         )
-

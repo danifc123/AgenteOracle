@@ -6,7 +6,7 @@ confere o estado atual da conta (ativo/bloqueado) no banco a cada requisição
 autenticada, então desativar ou bloquear alguém corta o acesso na prática já
 no request seguinte, mesmo com um token ainda tecnicamente válido."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 
@@ -16,7 +16,7 @@ _ALGORITMO = "HS256"
 
 
 def gerar_token(usuario_id: int, usuario: str, nome: str, papeis: list[str]) -> str:
-    agora = datetime.now(timezone.utc)
+    agora = datetime.now(UTC)
     payload = {
         "sub": str(usuario_id),
         "usuario": usuario,

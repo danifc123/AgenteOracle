@@ -48,7 +48,12 @@ class Papel:
 # frente, não uma ação pendente.
 PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="desenvolvedor", rotulo="Desenvolvedor", acesso_total=True, administrador=True),
-    Papel(slug="financeiro_admin", rotulo="Administrador do Financeiro", modulos=("financeiro",), administrador=True),
+    Papel(
+        slug="financeiro_admin",
+        rotulo="Administrador do Financeiro",
+        modulos=("financeiro",),
+        administrador=True,
+    ),
     Papel(slug="financeiro", rotulo="Time do Financeiro", modulos=("financeiro",)),
     Papel(slug="estoque_admin", rotulo="Administrador do Estoque", modulos=("estoque",), administrador=True),
     Papel(slug="estoque", rotulo="Time do Estoque", modulos=("estoque",)),

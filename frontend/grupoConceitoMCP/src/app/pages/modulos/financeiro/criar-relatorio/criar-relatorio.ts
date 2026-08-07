@@ -11,21 +11,30 @@ import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
 import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
 import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
+import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { filtrosPorColuna } from './filtros-relatorio';
+import { construirGrafoRelacionamentos, tabelasAlcancaveis } from './relacionamento-views';
 
 interface Filial {
   codigo: string;
   nome: string;
 }
 
-function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
-  return erro.error?.erro || mensagemPadrao;
-}
-
 @Component({
   selector: 'app-criar-relatorio',
-  imports: [Busca, Dialog, Botao, VisualizadorExcel, ModuloHeader, TabelaItem, TabelaDetalhe, SelectBusca],
+  imports: [
+    Busca,
+    Dialog,
+    Botao,
+    VisualizadorExcel,
+    ModuloHeader,
+    TabelaItem,
+    TabelaDetalhe,
+    SelectBusca,
+  ],
   templateUrl: './criar-relatorio.html',
-  styleUrl: './criar-relatorio.scss'
+  styleUrl: './criar-relatorio.scss',
 })
 export class CriarRelatorio {
   private readonly http = inject(HttpClient);
@@ -60,36 +69,22 @@ export class CriarRelatorio {
       return this.views();
     }
     return this.views().filter(
-      (view) => view.nome.toLowerCase().includes(termo) || view.descricao.toLowerCase().includes(termo)
+      (view) =>
+        view.nome.toLowerCase().includes(termo) || view.descricao.toLowerCase().includes(termo),
     );
   });
 
   protected readonly totalColunasSelecionadas = computed(() =>
-    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0)
+    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0),
   );
 
   protected readonly opcoesLayouts = computed<OpcaoSelectBusca[]>(() =>
-    this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome }))
+    this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome })),
   );
 
-  /** Grafo não-direcionado das views a partir dos relacionamentos declarados
-   * (mesma ideia do `_grafo_relacionamentos` do backend) — usado só pra
-   * decidir quais tabelas ficam bloqueadas na lista, o backend continua
-   * sendo a fonte de verdade que valida o join na hora de gerar. */
-  private readonly grafoRelacionamentos = computed(() => {
-    const grafo = new Map<string, Set<string>>();
-    for (const view of this.views()) {
-      grafo.set(view.nome, grafo.get(view.nome) ?? new Set());
-      for (const rel of view.relacionamentos) {
-        if (!grafo.has(rel.viewDestino)) {
-          grafo.set(rel.viewDestino, new Set());
-        }
-        grafo.get(view.nome)!.add(rel.viewDestino);
-        grafo.get(rel.viewDestino)!.add(view.nome);
-      }
-    }
-    return grafo;
-  });
+  private readonly grafoRelacionamentos = computed(() =>
+    construirGrafoRelacionamentos(this.views()),
+  );
 
   /** Nomes das tabelas alcançáveis a partir da seleção atual (colunas já
    * marcadas), direto ou por relacionamento indireto. `null` quando nada
@@ -99,25 +94,7 @@ export class CriarRelatorio {
       .filter(([, colunas]) => colunas.length > 0)
       .map(([nomeView]) => nomeView);
 
-    if (!selecionadas.length) {
-      return null;
-    }
-
-    const grafo = this.grafoRelacionamentos();
-    const visitados = new Set(selecionadas);
-    const fila = [...selecionadas];
-
-    while (fila.length) {
-      const atual = fila.shift()!;
-      for (const vizinho of grafo.get(atual) ?? []) {
-        if (!visitados.has(vizinho)) {
-          visitados.add(vizinho);
-          fila.push(vizinho);
-        }
-      }
-    }
-
-    return visitados;
+    return tabelasAlcancaveis(this.grafoRelacionamentos(), selecionadas);
   });
 
   constructor() {
@@ -127,10 +104,12 @@ export class CriarRelatorio {
   }
 
   private carregarViews(): void {
-    this.http.get<ViewFinanceira[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/views`).subscribe({
-      next: (views) => this.views.set(views),
-      error: () => this.views.set([])
-    });
+    this.http
+      .get<ViewFinanceira[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/views`)
+      .subscribe({
+        next: (views) => this.views.set(views),
+        error: () => this.views.set([]),
+      });
   }
 
   private carregarFiliais(): void {
@@ -140,15 +119,17 @@ export class CriarRelatorio {
       },
       error: () => {
         this.filiais.set([]);
-      }
+      },
     });
   }
 
   private carregarLayouts(): void {
-    this.http.get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`).subscribe({
-      next: (layouts) => this.layouts.set(layouts),
-      error: () => this.layouts.set([])
-    });
+    this.http
+      .get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`)
+      .subscribe({
+        next: (layouts) => this.layouts.set(layouts),
+        error: () => this.layouts.set([]),
+      });
   }
 
   protected estaAberta(view: ViewFinanceira): boolean {
@@ -172,7 +153,9 @@ export class CriarRelatorio {
     if (!this.tabelaCompativel(view)) {
       return;
     }
-    this.tabelasAbertas.update((atual) => (atual.has(view.nome) ? new Set() : new Set([view.nome])));
+    this.tabelasAbertas.update((atual) =>
+      atual.has(view.nome) ? new Set() : new Set([view.nome]),
+    );
   }
 
   protected alternarColuna(nomeView: string, nomeColuna: string): void {
@@ -212,11 +195,11 @@ export class CriarRelatorio {
 
     this.http
       .get<OpcaoSelectBusca[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/opcoes-coluna`, {
-        params: { coluna: chave }
+        params: { coluna: chave },
       })
       .subscribe({
         next: (opcoes) => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: opcoes })),
-        error: () => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: [] }))
+        error: () => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: [] })),
       });
   }
 
@@ -281,11 +264,13 @@ export class CriarRelatorio {
         nome,
         colunas_selecionadas: this.colunasSelecionadas(),
         valores_filtros: this.valoresFiltros(),
-        filiais_selecionadas: this.filiaisSelecionadas()
+        filiais_selecionadas: this.filiaisSelecionadas(),
       })
       .subscribe({
         next: (layout) => {
-          this.layouts.update((atual) => [...atual, layout].sort((a, b) => a.nome.localeCompare(b.nome)));
+          this.layouts.update((atual) =>
+            [...atual, layout].sort((a, b) => a.nome.localeCompare(b.nome)),
+          );
           this.layoutSelecionadoId.set(String(layout.id));
           this.salvandoLayout.set(false);
           this.salvarLayoutAberto.set(false);
@@ -293,7 +278,7 @@ export class CriarRelatorio {
         error: (erro: HttpErrorResponse) => {
           this.erroSalvarLayout.set(mensagemErro(erro, 'Não foi possível salvar o layout.'));
           this.salvandoLayout.set(false);
-        }
+        },
       });
   }
 
@@ -324,70 +309,19 @@ export class CriarRelatorio {
 
   private parametrosRelatorio(): HttpParams {
     const colunas = Object.entries(this.colunasSelecionadas()).flatMap(([nomeView, nomesColunas]) =>
-      nomesColunas.map((nomeColuna) => `${nomeView}.${nomeColuna}`)
+      nomesColunas.map((nomeColuna) => `${nomeView}.${nomeColuna}`),
     );
 
-    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(',')).set('colunas', colunas.join(','));
+    let params = new HttpParams()
+      .set('filial', this.filiaisSelecionadas().join(','))
+      .set('colunas', colunas.join(','));
 
-    const filtros = this.filtrosPorColuna();
+    const filtros = filtrosPorColuna(this.views(), this.colunasSelecionadas(), this.valoresFiltros());
     if (Object.keys(filtros).length) {
       params = params.set('filtros', JSON.stringify(filtros));
     }
 
     return params;
-  }
-
-  /** Monta {"view.coluna": {...}} a partir de valoresFiltros(), no formato
-   * que cada tipo de coluna espera (texto: valores, lista de valores exatos
-   * escolhidos no select multiplo — guardados aqui como string separada por
-   * vírgula; numero: min/max; periodo-data: ini/fim) — só entram colunas com
-   * algum valor preenchido. */
-  private filtrosPorColuna(): Record<string, Record<string, string | string[]>> {
-    const valores = this.valoresFiltros();
-    const views = this.views();
-    const filtros: Record<string, Record<string, string | string[]>> = {};
-
-    for (const [nomeView, nomesColunas] of Object.entries(this.colunasSelecionadas())) {
-      const view = views.find((item) => item.nome === nomeView);
-
-      for (const nomeColuna of nomesColunas) {
-        const chave = `${nomeView}.${nomeColuna}`;
-        const tipo = view?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo ?? 'texto';
-
-        if (tipo === 'periodo-data') {
-          const entrada = this.entradaFaixa(valores, chave, 'ini', 'fim');
-          if (entrada) {
-            filtros[chave] = entrada;
-          }
-        } else if (tipo === 'numero') {
-          const entrada = this.entradaFaixa(valores, chave, 'min', 'max');
-          if (entrada) {
-            filtros[chave] = entrada;
-          }
-        } else if (valores[chave]) {
-          const selecionados = valores[chave].split(',').filter(Boolean);
-          if (selecionados.length) {
-            filtros[chave] = { valores: selecionados };
-          }
-        }
-      }
-    }
-
-    return filtros;
-  }
-
-  private entradaFaixa(
-    valores: Record<string, string>,
-    chave: string,
-    chaveMin: string,
-    chaveMax: string
-  ): Record<string, string> | null {
-    const min = valores[`${chave}_ini`];
-    const max = valores[`${chave}_fim`];
-    if (!min && !max) {
-      return null;
-    }
-    return { ...(min ? { [chaveMin]: min } : {}), ...(max ? { [chaveMax]: max } : {}) };
   }
 
   private buscarRelatorio(): void {
@@ -398,7 +332,7 @@ export class CriarRelatorio {
 
     this.http
       .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado`, {
-        params: this.parametrosRelatorio()
+        params: this.parametrosRelatorio(),
       })
       .subscribe({
         next: (dados) => {
@@ -407,10 +341,11 @@ export class CriarRelatorio {
         },
         error: (erro: HttpErrorResponse) => {
           this.relatorioErro.set(
-            erro.error?.erro ?? 'Não foi possível carregar o relatório. Verifique se o servidor está em execução.'
+            erro.error?.erro ??
+              'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
           );
           this.relatorioCarregando.set(false);
-        }
+        },
       });
   }
 
@@ -432,7 +367,7 @@ export class CriarRelatorio {
       .get(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar`, {
         params: this.parametrosRelatorio(),
         observe: 'response',
-        responseType: 'blob'
+        responseType: 'blob',
       })
       .subscribe({
         next: (resposta) => {
@@ -442,23 +377,16 @@ export class CriarRelatorio {
             return;
           }
 
-          const nomeArquivo = this.extrairNomeArquivo(resposta.headers.get('content-disposition')) ?? 'relatorio_customizado.xlsx';
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = nomeArquivo;
-          link.click();
-          URL.revokeObjectURL(url);
+          const nomeArquivo = extrairNomeArquivo(
+            resposta.headers.get('content-disposition'),
+            'relatorio_customizado.xlsx',
+          );
+          baixarBlob(blob, nomeArquivo);
           this.baixandoRelatorio.set(false);
         },
         error: () => {
           this.baixandoRelatorio.set(false);
-        }
+        },
       });
-  }
-
-  private extrairNomeArquivo(contentDisposition: string | null): string | undefined {
-    const match = contentDisposition?.match(/filename="?([^"]+)"?/);
-    return match?.[1];
   }
 }

@@ -5,7 +5,7 @@ import { Botao } from '../../../../../componentes/botao/botao';
   selector: 'app-chat-entrada',
   imports: [Botao],
   templateUrl: './chat-entrada.html',
-  styleUrl: './chat-entrada.scss'
+  styleUrl: './chat-entrada.scss',
 })
 export class ChatEntrada {
   entrada = input('');

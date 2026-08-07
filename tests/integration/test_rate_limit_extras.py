@@ -12,7 +12,9 @@ from agente_oracle.server.auth.rate_limit import LIMITE_TENTATIVAS
 pytestmark = pytest.mark.integration
 
 
-def test_troca_de_senha_bloqueia_apos_muitas_tentativas_com_senha_atual_errada(mcp_app, usuario_teste, token_teste):
+def test_troca_de_senha_bloqueia_apos_muitas_tentativas_com_senha_atual_errada(
+    mcp_app, usuario_teste, token_teste
+):
     for _ in range(LIMITE_TENTATIVAS):
         resposta = mcp_app.patch(
             "/api/auth/senha",
@@ -84,4 +86,6 @@ def test_criacao_de_usuario_bloqueia_apos_muitas_contas_seguidas(mcp_app, token_
         assert resposta.status_code == 429
     finally:
         for id_criado in ids_criados:
-            mcp_app.delete(f"/api/auth/usuarios/{id_criado}", headers={"Authorization": f"Bearer {token_dev}"})
+            mcp_app.delete(
+                f"/api/auth/usuarios/{id_criado}", headers={"Authorization": f"Bearer {token_dev}"}
+            )

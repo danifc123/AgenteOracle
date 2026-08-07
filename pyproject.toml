@@ -22,6 +22,7 @@ dependencies = [
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    "ruff>=0.16.0",
 ]
 
 [project.scripts]
@@ -43,3 +44,28 @@ markers = [
     "integration: exige Postgres local rodando (DB_BACKEND=postgres)",
 ]
 addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [".venv", "frontend"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # import sorting
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+]
+# Strings/f-strings longas (prompts, SQL, mensagens de erro) já são convenção
+# neste projeto — não vale quebrar linha nelas artificialmente.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]
+
+[tool.ruff.format]
+docstring-code-format = false

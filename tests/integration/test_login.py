@@ -23,13 +23,17 @@ def test_login_com_credenciais_validas(mcp_app, usuario_teste):
 
 
 def test_login_com_senha_errada(mcp_app, usuario_teste):
-    resposta = mcp_app.post("/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"})
+    resposta = mcp_app.post(
+        "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"}
+    )
     assert resposta.status_code == 401
     assert "erro" in resposta.json()
 
 
 def test_login_com_usuario_inexistente(mcp_app):
-    resposta = mcp_app.post("/api/auth/login", json={"usuario": "usuario-que-nao-existe-xyz", "senha": "qualquer"})
+    resposta = mcp_app.post(
+        "/api/auth/login", json={"usuario": "usuario-que-nao-existe-xyz", "senha": "qualquer"}
+    )
     assert resposta.status_code == 401
 
 
@@ -122,7 +126,9 @@ class TestDesbloquearUsuarioRota:
 
     def test_desenvolvedor_desbloqueia_e_conta_volta_a_logar(self, mcp_app, usuario_teste, token_dev):
         for _ in range(LIMITE_TENTATIVAS_BLOQUEIO):
-            mcp_app.post("/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"})
+            mcp_app.post(
+                "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"}
+            )
 
         bloqueada = mcp_app.post(
             "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": usuario_teste["senha"]}

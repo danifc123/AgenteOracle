@@ -3,7 +3,11 @@ import io
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from agente_oracle.tools.ferramentas.juntar_excel import ArquivoExcelInvalido, analisar_colunas, juntar_planilhas
+from agente_oracle.tools.ferramentas.juntar_excel import (
+    ArquivoExcelInvalido,
+    analisar_colunas,
+    juntar_planilhas,
+)
 
 
 def _bytes_planilha(cabecalho: list[str], linhas: list[list]) -> bytes:

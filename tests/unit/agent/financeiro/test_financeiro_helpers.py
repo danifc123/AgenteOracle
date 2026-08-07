@@ -67,4 +67,6 @@ class TestRespostaSeguraGenerica:
     def test_sem_nenhum_titulo_usa_mensagem_generica(self):
         eventos = [{"argumentos": {}}]
         resultado = mod._resposta_segura_generica(eventos)
-        assert resultado == "Consulta executada com sucesso — confira os dados retornados no relatório gerado."
+        assert (
+            resultado == "Consulta executada com sucesso — confira os dados retornados no relatório gerado."
+        )

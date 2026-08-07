@@ -7,8 +7,18 @@
 <div class="juntar-excel">
   <div class="cartao-seletores">
     <div class="seletores">
-      <app-seletor-arquivo-excel #seletor1 rotulo="Planilha 1" cor="verde" (arquivoAlterado)="definirArquivo1($event)" />
-      <app-seletor-arquivo-excel #seletor2 rotulo="Planilha 2" cor="laranja" (arquivoAlterado)="definirArquivo2($event)" />
+      <app-seletor-arquivo-excel
+        #seletor1
+        rotulo="Planilha 1"
+        cor="verde"
+        (arquivoAlterado)="definirArquivo1($event)"
+      />
+      <app-seletor-arquivo-excel
+        #seletor2
+        rotulo="Planilha 2"
+        cor="laranja"
+        (arquivoAlterado)="definirArquivo2($event)"
+      />
     </div>
 
     @if (analisando()) {
@@ -17,16 +27,23 @@
       <div class="analise-preview" [class.analise-preview--atencao]="a.tipo === 'nenhuma'">
         @switch (a.tipo) {
           @case ('identicas') {
-            <p><strong>Mesmas colunas.</strong> Os dados das duas planilhas vão ser combinados numa tabela só.</p>
+            <p>
+              <strong>Mesmas colunas.</strong> Os dados das duas planilhas vão ser combinados numa
+              tabela só.
+            </p>
           }
           @case ('parcial') {
             <p>
-              <strong>Coluna(s) em comum:</strong> {{ a.colunas_comuns.join(', ') }}. As planilhas vão ser unidas por
+              <strong>Coluna(s) em comum:</strong> {{ a.colunas_comuns.join(', ') }}. As planilhas
+              vão ser unidas por
               {{ a.colunas_comuns.length > 1 ? 'essas colunas' : 'essa coluna' }}.
             </p>
           }
           @case ('nenhuma') {
-            <p><strong>Nenhuma coluna em comum.</strong> O resultado vai ter as duas tabelas lado a lado, sem combinar dados.</p>
+            <p>
+              <strong>Nenhuma coluna em comum.</strong> O resultado vai ter as duas tabelas lado a
+              lado, sem combinar dados.
+            </p>
           }
         }
       </div>
@@ -41,7 +58,13 @@
     }
 
     <div class="acoes">
-      <app-botao variant="primaria" [disabled]="!prontoParaEnviar()" [loading]="enviando()" loadingText="Juntando..." (clicked)="juntar()">
+      <app-botao
+        variant="primaria"
+        [disabled]="!prontoParaEnviar()"
+        [loading]="enviando()"
+        loadingText="Juntando..."
+        (clicked)="juntar()"
+      >
         Juntar planilhas
       </app-botao>
 
@@ -50,15 +73,23 @@
       }
 
       <span class="info-tooltip" tabindex="0">
-        <svg class="icone-info" viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8">
+        <svg
+          class="icone-info"
+          viewBox="0 0 24 24"
+          width="19"
+          height="19"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
           <circle cx="12" cy="12" r="9" />
           <path d="M12 11v5" stroke-linecap="round" />
           <circle cx="12" cy="8" r="0.75" fill="currentColor" stroke="none" />
         </svg>
         <span class="balao" role="tooltip">
-          Se as duas planilhas tiverem as mesmas colunas, os dados são combinados numa tabela só. Se as colunas forem
-          diferentes, o arquivo final mantém as duas tabelas lado a lado, cada uma com o fundo na cor mostrada acima —
-          assim fica fácil identificar de onde veio cada dado.
+          Se as duas planilhas tiverem as mesmas colunas, os dados são combinados numa tabela só. Se
+          as colunas forem diferentes, o arquivo final mantém as duas tabelas lado a lado, cada uma
+          com o fundo na cor mostrada acima — assim fica fácil identificar de onde veio cada dado.
         </span>
       </span>
     </div>

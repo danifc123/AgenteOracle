@@ -7,8 +7,8 @@ import { DirecaoOrdenacao } from '../../servicos/ordenacao-tabela';
   templateUrl: './icone-ordenacao.html',
   styleUrl: './icone-ordenacao.scss',
   host: {
-    '[class.ativo]': 'direcao() !== null'
-  }
+    '[class.ativo]': 'direcao() !== null',
+  },
 })
 export class IconeOrdenacao {
   direcao = input<DirecaoOrdenacao>(null);

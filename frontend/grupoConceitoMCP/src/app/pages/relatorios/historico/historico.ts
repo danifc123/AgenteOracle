@@ -6,8 +6,13 @@ import { Botao } from '../../../componentes/botao/botao';
 import { Dialog } from '../../../componentes/dialog/dialog';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
+import { baixarBlob } from '../../../servicos/download-arquivo';
 import { formatarSql } from '../../../servicos/formatar-sql';
-import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../../servicos/ordenacao-tabela';
+import {
+  compararValores,
+  DirecaoOrdenacao,
+  proximaDirecao,
+} from '../../../servicos/ordenacao-tabela';
 
 export interface RelatorioHistorico {
   id: string;
@@ -25,7 +30,7 @@ export interface RelatorioHistorico {
   selector: 'app-historico',
   imports: [DatePipe, Botao, Dialog, IconeOrdenacao, ModuloHeader],
   templateUrl: './historico.html',
-  styleUrl: './historico.scss'
+  styleUrl: './historico.scss',
 })
 export class Historico {
   private readonly http = inject(HttpClient);
@@ -57,7 +62,9 @@ export class Historico {
     }
 
     const sinal = direcao === 'asc' ? 1 : -1;
-    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+    return [...lista].sort(
+      (a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal,
+    );
   });
 
   private valorColuna(relatorio: RelatorioHistorico, coluna: string): unknown {
@@ -102,9 +109,11 @@ export class Historico {
         this.carregando.set(false);
       },
       error: () => {
-        this.erro.set('Não foi possível carregar o histórico. Verifique se o servidor está em execução.');
+        this.erro.set(
+          'Não foi possível carregar o histórico. Verifique se o servidor está em execução.',
+        );
         this.carregando.set(false);
-      }
+      },
     });
   }
 
@@ -119,7 +128,7 @@ export class Historico {
     this.http
       .get(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}/exportar`, {
         observe: 'response',
-        responseType: 'blob'
+        responseType: 'blob',
       })
       .subscribe({
         next: (resposta) => {
@@ -129,18 +138,13 @@ export class Historico {
             return;
           }
 
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `${relatorio.titulo || 'relatorio'}.xlsx`;
-          link.click();
-          URL.revokeObjectURL(url);
+          baixarBlob(blob, `${relatorio.titulo || 'relatorio'}.xlsx`);
           this.baixandoId.set(null);
         },
         error: () => {
           this.erro.set('Não foi possível baixar o relatório.');
           this.baixandoId.set(null);
-        }
+        },
       });
   }
 
@@ -160,7 +164,7 @@ export class Historico {
       error: () => {
         this.erro.set('Não foi possível apagar o relatório.');
         this.apagandoId.set(null);
-      }
+      },
     });
   }
 
@@ -195,7 +199,9 @@ export class Historico {
     this.erro.set(null);
 
     this.http
-      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, { fixado: novoFixado })
+      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, {
+        fixado: novoFixado,
+      })
       .subscribe({
         next: () => {
           this.fixandoId.set(null);
@@ -204,7 +210,7 @@ export class Historico {
         error: () => {
           this.erro.set('Não foi possível fixar/desfixar o relatório.');
           this.fixandoId.set(null);
-        }
+        },
       });
   }
 }

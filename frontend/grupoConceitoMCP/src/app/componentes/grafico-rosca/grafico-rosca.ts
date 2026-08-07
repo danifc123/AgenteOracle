@@ -31,7 +31,7 @@ const VAO_ENTRE_FATIAS = 3;
   selector: 'app-grafico-rosca',
   imports: [],
   templateUrl: './grafico-rosca.html',
-  styleUrl: './grafico-rosca.scss'
+  styleUrl: './grafico-rosca.scss',
 })
 export class GraficoRosca {
   titulo = input<string>('');
@@ -47,7 +47,9 @@ export class GraficoRosca {
   protected readonly RAIO = RAIO;
   protected readonly ESPESSURA = ESPESSURA;
 
-  protected readonly valorTotal = computed(() => this.fatias().reduce((soma, fatia) => soma + fatia.valor, 0));
+  protected readonly valorTotal = computed(() =>
+    this.fatias().reduce((soma, fatia) => soma + fatia.valor, 0),
+  );
 
   /** Cada fatia vira um círculo com stroke-dasharray/-dashoffset — técnica
    * clássica de "donut em SVG" sem precisar calcular arco/path manualmente.
@@ -64,7 +66,10 @@ export class GraficoRosca {
     let acumulado = 0;
     return this.fatias().map((fatia) => {
       const fracao = fatia.valor / total;
-      const comprimentoArco = Math.max(fracao * CIRCUNFERENCIA - (temVaos ? VAO_ENTRE_FATIAS : 0), 0);
+      const comprimentoArco = Math.max(
+        fracao * CIRCUNFERENCIA - (temVaos ? VAO_ENTRE_FATIAS : 0),
+        0,
+      );
       const anguloMedio = (acumulado + fracao / 2) * 2 * Math.PI;
       const dashoffset = -acumulado * CIRCUNFERENCIA;
       acumulado += fracao;
@@ -77,13 +82,15 @@ export class GraficoRosca {
         dasharray: `${comprimentoArco} ${CIRCUNFERENCIA - comprimentoArco}`,
         dashoffset,
         rotuloX: CENTRO + RAIO * Math.sin(anguloMedio),
-        rotuloY: CENTRO - RAIO * Math.cos(anguloMedio)
+        rotuloY: CENTRO - RAIO * Math.cos(anguloMedio),
       };
     });
   });
 
   protected formatarTotal(valor: number): string {
-    return this.unidade() === 'numero' ? valor.toLocaleString('pt-BR') : formatarMoedaAbreviada(valor);
+    return this.unidade() === 'numero'
+      ? valor.toLocaleString('pt-BR')
+      : formatarMoedaAbreviada(valor);
   }
 
   protected formatarPercentual(valor: number): string {

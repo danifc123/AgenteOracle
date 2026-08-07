@@ -1,4 +1,14 @@
-import { Component, ElementRef, HostListener, ViewChild, computed, inject, input, model, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  ViewChild,
+  computed,
+  inject,
+  input,
+  model,
+  signal,
+} from '@angular/core';
 
 export interface OpcaoSelectBusca {
   valor: string;
@@ -15,7 +25,7 @@ interface PosicaoPainel {
   selector: 'app-select-busca',
   imports: [],
   templateUrl: './select-busca.html',
-  styleUrl: './select-busca.scss'
+  styleUrl: './select-busca.scss',
 })
 export class SelectBusca {
   private readonly elementRef = inject(ElementRef);
@@ -62,7 +72,9 @@ export class SelectBusca {
       }
 
       if (selecionadas.length === 1) {
-        return this.opcoes().find((item) => item.valor === selecionadas[0])?.rotulo ?? selecionadas[0];
+        return (
+          this.opcoes().find((item) => item.valor === selecionadas[0])?.rotulo ?? selecionadas[0]
+        );
       }
 
       return `${selecionadas.length} selecionadas`;
@@ -134,7 +146,7 @@ export class SelectBusca {
     this.posicao.set({
       top: retangulo.bottom + 4,
       left: retangulo.left,
-      largura: retangulo.width
+      largura: retangulo.width,
     });
   }
 
@@ -155,7 +167,7 @@ export class SelectBusca {
       this.posicao.set({
         top: Math.max(4, retangulo.top - alturaPainel - 4),
         left: retangulo.left,
-        largura: retangulo.width
+        largura: retangulo.width,
       });
     }
   }

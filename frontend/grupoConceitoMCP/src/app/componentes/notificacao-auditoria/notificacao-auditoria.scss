@@ -18,7 +18,9 @@
   color: #fff;
   box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 
   &:hover {
     background: var(--color-primary-light);

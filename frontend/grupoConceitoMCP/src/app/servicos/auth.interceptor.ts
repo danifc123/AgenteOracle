@@ -10,9 +10,10 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 
   const token = sessao.token();
   const ehLogin = request.url.endsWith('/api/auth/login');
-  const requisicao = token && !ehLogin
-    ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
-    : request;
+  const requisicao =
+    token && !ehLogin
+      ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
+      : request;
 
   return next(requisicao).pipe(
     catchError((erro: HttpErrorResponse) => {
@@ -21,6 +22,6 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
         router.navigateByUrl('/login');
       }
       return throwError(() => erro);
-    })
+    }),
   );
 };

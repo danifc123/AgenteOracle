@@ -15,35 +15,41 @@ from agente_oracle.config import settings
 async def executar_chat() -> None:
     ollama_client = AsyncClient(host=settings.ollama_host)
 
-    async with streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (read_stream, write_stream, _):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
+    async with (
+        streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (
+            read_stream,
+            write_stream,
+            _,
+        ),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
 
-            print(f"Agente Oracle pronto (modelo: {settings.ollama_model}). Digite 'sair' para encerrar.\n")
+        print(f"Agente Oracle pronto (modelo: {settings.ollama_model}). Digite 'sair' para encerrar.\n")
 
-            messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            while True:
-                entrada = input("Você: ").strip()
-                if entrada.lower() in {"sair", "exit", "quit"}:
-                    break
-                if not entrada:
-                    continue
+        while True:
+            entrada = input("Você: ").strip()
+            if entrada.lower() in {"sair", "exit", "quit"}:
+                break
+            if not entrada:
+                continue
 
-                messages.append({"role": "user", "content": entrada})
-                messages, eventos = await responder(
-                    ollama_client,
-                    settings.ollama_model,
-                    session,
-                    f"{PREFIXO_TOOL}executar_consulta_financeira",
-                    f"{PREFIXO_TOOL}testar_conexao_oracle",
-                    messages,
-                )
+            messages.append({"role": "user", "content": entrada})
+            messages, eventos = await responder(
+                ollama_client,
+                settings.ollama_model,
+                session,
+                f"{PREFIXO_TOOL}executar_consulta_financeira",
+                f"{PREFIXO_TOOL}testar_conexao_oracle",
+                messages,
+            )
 
-                for evento in eventos:
-                    print(f"  [ferramenta] {evento['ferramenta']}({evento['argumentos']})")
+            for evento in eventos:
+                print(f"  [ferramenta] {evento['ferramenta']}({evento['argumentos']})")
 
-                print(f"Agente: {messages[-1].get('content', '')}\n")
+            print(f"Agente: {messages[-1].get('content', '')}\n")
 
 
 def main() -> None:

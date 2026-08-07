@@ -19,7 +19,13 @@ _MODULO = "financeiro"
 
 # `filial` existe (e deveria seguir o mesmo padrão de numeração) em todas
 # essas views; `estado`/`tipo_pessoa`/`cnpj_cpf` só existem no cadastro.
-_VIEWS_COM_FILIAL = ("vw_titulos_pagar", "vw_titulos_receber", "vw_faturamento", "vw_clientes", "vw_fornecedores")
+_VIEWS_COM_FILIAL = (
+    "vw_titulos_pagar",
+    "vw_titulos_receber",
+    "vw_faturamento",
+    "vw_clientes",
+    "vw_fornecedores",
+)
 _VIEWS_CADASTRO = ("vw_clientes", "vw_fornecedores")
 
 # Protege o num_ctx do Ollama (16384, mesma constante usada no resto do

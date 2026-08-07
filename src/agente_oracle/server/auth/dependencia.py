@@ -37,7 +37,9 @@ def exigir_administrador(request: Request) -> dict | JSONResponse:
         return resultado
 
     if not papeis.eh_administrador(resultado.get("papeis", [])):
-        return JSONResponse({"erro": "Acesso restrito a administradores."}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse(
+            {"erro": "Acesso restrito a administradores."}, status_code=403, headers=CORS_HEADERS
+        )
 
     return resultado
 
@@ -52,7 +54,9 @@ def exigir_desenvolvedor(request: Request) -> dict | JSONResponse:
         return resultado
 
     if not papeis.eh_desenvolvedor(resultado.get("papeis", [])):
-        return JSONResponse({"erro": "Acesso restrito a desenvolvedores."}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse(
+            {"erro": "Acesso restrito a desenvolvedores."}, status_code=403, headers=CORS_HEADERS
+        )
 
     return resultado
 
@@ -67,6 +71,8 @@ def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
         return resultado
 
     if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "financeiro"):
-        return JSONResponse({"erro": "Acesso restrito ao módulo Financeiro."}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse(
+            {"erro": "Acesso restrito ao módulo Financeiro."}, status_code=403, headers=CORS_HEADERS
+        )
 
     return resultado

@@ -6,7 +6,7 @@ export type CorSeletorArquivo = 'verde' | 'laranja';
   selector: 'app-seletor-arquivo-excel',
   imports: [],
   templateUrl: './seletor-arquivo-excel.html',
-  styleUrl: './seletor-arquivo-excel.scss'
+  styleUrl: './seletor-arquivo-excel.scss',
 })
 export class SeletorArquivoExcel {
   rotulo = input.required<string>();

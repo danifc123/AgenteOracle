@@ -14,7 +14,7 @@ import { Dialog } from '../dialog/dialog';
   selector: 'app-auditoria-painel',
   imports: [Botao, Dialog],
   templateUrl: './auditoria-painel.html',
-  styleUrl: './auditoria-painel.scss'
+  styleUrl: './auditoria-painel.scss',
 })
 export class AuditoriaPainel {
   protected readonly auditoria = inject(Auditoria);
@@ -24,7 +24,7 @@ export class AuditoriaPainel {
   protected readonly modulosDisponiveis = this.sessao.modulos;
 
   protected readonly mostrarSeletor = computed(
-    () => this.auditoria.moduloAtual() === null && this.modulosDisponiveis().length > 1
+    () => this.auditoria.moduloAtual() === null && this.modulosDisponiveis().length > 1,
   );
 
   protected readonly titulo = computed(() => {

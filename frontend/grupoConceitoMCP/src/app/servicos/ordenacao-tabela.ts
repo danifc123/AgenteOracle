@@ -19,5 +19,8 @@ export function compararValores(valorA: unknown, valorB: unknown): number {
     return valorA - valorB;
   }
 
-  return String(valorA).localeCompare(String(valorB), 'pt-BR', { numeric: true, sensitivity: 'base' });
+  return String(valorA).localeCompare(String(valorB), 'pt-BR', {
+    numeric: true,
+    sensitivity: 'base',
+  });
 }

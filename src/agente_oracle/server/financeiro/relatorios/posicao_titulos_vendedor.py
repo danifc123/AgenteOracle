@@ -61,8 +61,9 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -161,10 +162,18 @@ ORDER BY tv.vendedor_codigo, tv.e1_prefixo, tv.e1_num, tv.e1_parcela, tv.e1_tipo
 """
 
 _CAMPOS_OPCIONAIS = (
-    "cliente_ini", "cliente_fim", "loja_ini", "loja_fim",
-    "emissao_ini", "emissao_fim", "vencimento_ini", "vencimento_fim",
-    "vendedor_ini", "vendedor_fim",
-    "tipos_incluir", "tipos_excluir",
+    "cliente_ini",
+    "cliente_fim",
+    "loja_ini",
+    "loja_fim",
+    "emissao_ini",
+    "emissao_fim",
+    "vencimento_ini",
+    "vencimento_fim",
+    "vendedor_ini",
+    "vendedor_fim",
+    "tipos_incluir",
+    "tipos_excluir",
     "saldo_retroativo",
 )
 
@@ -197,36 +206,30 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/posicao-titulos-vendedor", methods=["GET", "OPTIONS"])
-    async def listar_posicao_titulos_vendedor_route(request: Request) -> JSONResponse:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_posicao_titulos_vendedor_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Posição dos Títulos a Receber por Vendedor (FINR137) — endpoint JSON usado pela tela."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_titulos(*parametros)
-        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/posicao-titulos-vendedor/exportar", methods=["GET", "OPTIONS"])
-    async def exportar_posicao_titulos_vendedor_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_posicao_titulos_vendedor_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Posição dos Títulos a Receber por Vendedor (FINR137) — exportação em Excel."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_titulos(*parametros)
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Posição dos Títulos a Receber por Vendedor")

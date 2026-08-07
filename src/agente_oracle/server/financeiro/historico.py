@@ -2,8 +2,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis
 from agente_oracle.tools.financeiro import historico as historico_tools
 
@@ -19,37 +20,27 @@ def _historico_para_json(documento: dict) -> dict:
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/relatorios/historico", methods=["GET", "OPTIONS"])
-    async def listar_historico_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_historico_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de histórico para listar os relatórios
         já gerados pela IA, restritos aos módulos que quem está consultando
         tem acesso — desenvolvedor (`acesso_total`) vê o histórico de todos os
         módulos conhecidos, os demais só o(s) seu(s) (ex: financeiro só vê
         relatório do financeiro), mesma regra já usada na Auditoria."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
-        modulos_liberados = papeis.modulos_liberados(usuario_ou_erro.get("papeis", []))
+        modulos_liberados = papeis.modulos_liberados(usuario.get("papeis", []))
         documentos = historico_tools.listar(modulos_liberados)
         return JSONResponse([_historico_para_json(doc) for doc in documentos], headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])
-    async def exportar_historico_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_historico_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de histórico para baixar em Excel um
         relatório já salvo, sem rodar a consulta de novo no Oracle."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         documento = historico_tools.obter(request.path_params["id"])
         if documento is None:
-            return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+            )
 
         conteudo_xlsx = gerar_xlsx(documento["colunas"], documento["linhas"], titulo="Relatório")
         nome_arquivo = f"relatorio_{documento['_id']}.xlsx"
@@ -63,28 +54,28 @@ def registrar(mcp) -> None:
         )
 
     @mcp.custom_route("/api/relatorios/historico/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
-    async def atualizar_ou_deletar_historico_route(request: Request) -> Response:
+    @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def atualizar_ou_deletar_historico_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de histórico para apagar (DELETE) um
         relatório salvo, ou fixar/desfixar (PATCH `{"fixado": bool}`) — um
         relatório fixado não expira pelo TTL de 15h."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("PATCH, DELETE, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         id_relatorio = request.path_params["id"]
 
         if request.method == "PATCH":
             corpo = await request.json()
             fixado = bool(corpo.get("fixado"))
-            atualizado = historico_tools.fixar(id_relatorio) if fixado else historico_tools.desfixar(id_relatorio)
+            atualizado = (
+                historico_tools.fixar(id_relatorio) if fixado else historico_tools.desfixar(id_relatorio)
+            )
             if not atualizado:
-                return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS)
+                return JSONResponse(
+                    {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+                )
             return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
         apagado = historico_tools.deletar(id_relatorio)
         if not apagado:
-            return JSONResponse({"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+            )
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)

@@ -38,8 +38,8 @@ export const routes: Routes = [
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },
-      { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] }
-    ]
+      { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] },
+    ],
   },
-  { path: '**', redirectTo: '' }
+  { path: '**', redirectTo: '' },
 ];

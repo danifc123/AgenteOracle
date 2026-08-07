@@ -6,7 +6,7 @@ import { Sessao } from '../../servicos/sessao';
   selector: 'app-home',
   imports: [RouterLink],
   templateUrl: './home.html',
-  styleUrl: './home.scss'
+  styleUrl: './home.scss',
 })
 export class Home {
   protected readonly sessao = inject(Sessao);

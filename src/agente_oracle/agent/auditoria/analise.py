@@ -83,7 +83,9 @@ def _achado_valido(achado: object) -> bool:
     )
 
 
-def _achado_fundamentado(achado: dict, perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]]) -> bool:
+def _achado_fundamentado(
+    achado: dict, perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]]
+) -> bool:
     """Descarta achados que citam um `(modulo, view, campo)` que não estava
     entre os perfis realmente enviados, ou um `valor` que não está entre os
     valores daquele perfil específico — valida a tupla inteira, não só o
@@ -101,9 +103,7 @@ def _achado_fundamentado(achado: dict, perfis_por_chave: dict[tuple[str, str, st
     valor = achado["valor"]
     if valor not in valores_validos:
         return False
-    if len(valores_validos) > 1 and valor == valor_mais_comum:
-        return False
-    return True
+    return not (len(valores_validos) > 1 and valor == valor_mais_comum)
 
 
 def filtrar_valores_conhecidos(
@@ -162,6 +162,9 @@ async def analisar_perfis(ollama_client: AsyncClient, modelo: str, perfis: list[
         )
         corpo = json.loads(resposta.message.content or "{}")
     except Exception:
+        # Best-effort: chamada de IA (erro de rede/timeout do Ollama) ou
+        # resposta que não veio em JSON válido — a auditoria segue sem
+        # achados em vez de derrubar a análise inteira por causa da IA.
         return []
 
     achados_brutos = corpo.get("achados")

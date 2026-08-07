@@ -18,7 +18,7 @@ export interface MensagemChat {
   selector: 'app-chat-mensagens',
   imports: [Botao],
   templateUrl: './chat-mensagens.html',
-  styleUrl: './chat-mensagens.scss'
+  styleUrl: './chat-mensagens.scss',
 })
 export class ChatMensagens {
   private readonly listaMensagens = viewChild<ElementRef<HTMLDivElement>>('listaMensagens');

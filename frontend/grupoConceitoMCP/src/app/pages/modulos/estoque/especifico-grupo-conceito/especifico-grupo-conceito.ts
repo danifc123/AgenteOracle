@@ -1,7 +1,10 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Busca } from '../../../../componentes/busca/busca';
 import { Dialog } from '../../../../componentes/dialog/dialog';
-import { FiltroCategorias, OpcaoCategoria } from '../../../../componentes/filtro-categorias/filtro-categorias';
+import {
+  FiltroCategorias,
+  OpcaoCategoria,
+} from '../../../../componentes/filtro-categorias/filtro-categorias';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { RotinaDetalhe } from '../../../../componentes/rotina-detalhe/rotina-detalhe';
 import { RotinaItem } from '../../../../componentes/rotina-item/rotina-item';
@@ -19,7 +22,7 @@ const CHAVE_FIXADOS = 'estoque:especifico-grupo-conceito:fixados';
 // pra dados reais assim que existir a consulta SQL desse módulo.
 const MOCK_FILIAIS: OpcaoSelectBusca[] = [
   { valor: '0101', rotulo: '0101 - Matriz' },
-  { valor: '0102', rotulo: '0102 - Filial Sul' }
+  { valor: '0102', rotulo: '0102 - Filial Sul' },
 ];
 
 interface GrupoRotinas {
@@ -32,7 +35,7 @@ interface GrupoRotinas {
   selector: 'app-estoque-especifico-grupo-conceito',
   imports: [Busca, Dialog, ModuloHeader, RotinaItem, RotinaDetalhe, FiltroCategorias],
   templateUrl: './especifico-grupo-conceito.html',
-  styleUrl: './especifico-grupo-conceito.scss'
+  styleUrl: './especifico-grupo-conceito.scss',
 })
 export class EstoqueEspecificoGrupoConceito {
   private readonly coresCategoria = inject(CoresCategoria);
@@ -59,7 +62,10 @@ export class EstoqueEspecificoGrupoConceito {
     for (const rotina of ROTINAS_ESTOQUE) {
       if (!vistas.has(rotina.categoria)) {
         vistas.add(rotina.categoria);
-        categorias.push({ nome: rotina.categoria, cor: this.coresCategoria.obterCor(rotina.categoria) });
+        categorias.push({
+          nome: rotina.categoria,
+          cor: this.coresCategoria.obterCor(rotina.categoria),
+        });
       }
     }
 
@@ -73,7 +79,8 @@ export class EstoqueEspecificoGrupoConceito {
 
     return ROTINAS_ESTOQUE.filter((rotina) => {
       const combinaTermo = !termo || rotina.nome.toLowerCase().includes(termo);
-      const combinaCategoria = !categoria || categoria === CATEGORIA_FIXADOS || rotina.categoria === categoria;
+      const combinaCategoria =
+        !categoria || categoria === CATEGORIA_FIXADOS || rotina.categoria === categoria;
       const combinaFixado = categoria !== CATEGORIA_FIXADOS || fixados.includes(rotina.nome);
       return combinaTermo && combinaCategoria && combinaFixado;
     });
@@ -84,7 +91,9 @@ export class EstoqueEspecificoGrupoConceito {
     const filtradas = this.rotinasFiltradas();
 
     if (this.categoriaSelecionada() === CATEGORIA_FIXADOS) {
-      return filtradas.length ? [{ categoria: CATEGORIA_FIXADOS, cor: COR_FIXADOS, rotinas: filtradas }] : [];
+      return filtradas.length
+        ? [{ categoria: CATEGORIA_FIXADOS, cor: COR_FIXADOS, rotinas: filtradas }]
+        : [];
     }
 
     const grupos: GrupoRotinas[] = [];
@@ -94,7 +103,9 @@ export class EstoqueEspecificoGrupoConceito {
       grupos.push({
         categoria: CATEGORIA_FIXADOS,
         cor: COR_FIXADOS,
-        rotinas: [...fixadasNaLista].sort((a, b) => fixados.indexOf(a.nome) - fixados.indexOf(b.nome))
+        rotinas: [...fixadasNaLista].sort(
+          (a, b) => fixados.indexOf(a.nome) - fixados.indexOf(b.nome),
+        ),
       });
     }
 

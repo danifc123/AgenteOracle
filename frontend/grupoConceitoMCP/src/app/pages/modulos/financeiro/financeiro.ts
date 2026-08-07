@@ -7,14 +7,22 @@ import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
 import { Busca } from '../../../componentes/busca/busca';
 import { Dialog } from '../../../componentes/dialog/dialog';
-import { FiltroCategorias, OpcaoCategoria } from '../../../componentes/filtro-categorias/filtro-categorias';
+import {
+  FiltroCategorias,
+  OpcaoCategoria,
+} from '../../../componentes/filtro-categorias/filtro-categorias';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { RotinaDetalhe } from '../../../componentes/rotina-detalhe/rotina-detalhe';
 import { RotinaItem } from '../../../componentes/rotina-item/rotina-item';
 import { OpcaoSelectBusca } from '../../../componentes/select-busca/select-busca';
 import { VisualizadorExcel } from '../../../componentes/visualizador-excel/visualizador-excel';
-import { CampoFiltro, MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
+import {
+  CampoFiltro,
+  MODULOS_FINANCEIRO,
+  RotinaFinanceira,
+} from '../../../dadosRelatorios/modulos-financeiro';
 import { CoresCategoria } from '../../../servicos/cores-categoria';
+import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';
@@ -33,9 +41,18 @@ interface GrupoRotinas {
 
 @Component({
   selector: 'app-financeiro',
-  imports: [Busca, Dialog, Botao, VisualizadorExcel, ModuloHeader, RotinaItem, RotinaDetalhe, FiltroCategorias],
+  imports: [
+    Busca,
+    Dialog,
+    Botao,
+    VisualizadorExcel,
+    ModuloHeader,
+    RotinaItem,
+    RotinaDetalhe,
+    FiltroCategorias,
+  ],
   templateUrl: './financeiro.html',
-  styleUrl: './financeiro.scss'
+  styleUrl: './financeiro.scss',
 })
 export class Financeiro {
   private readonly route = inject(ActivatedRoute);
@@ -44,11 +61,11 @@ export class Financeiro {
 
   private readonly moduloId = toSignal(
     this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
-    { initialValue: this.route.snapshot.paramMap.get('moduloId') ?? '' }
+    { initialValue: this.route.snapshot.paramMap.get('moduloId') ?? '' },
   );
 
   protected readonly modulo = computed(() =>
-    MODULOS_FINANCEIRO.find((item) => item.id === this.moduloId())
+    MODULOS_FINANCEIRO.find((item) => item.id === this.moduloId()),
   );
 
   protected readonly termoBusca = signal('');
@@ -79,7 +96,10 @@ export class Financeiro {
     for (const rotina of rotinas) {
       if (!vistas.has(rotina.categoria)) {
         vistas.add(rotina.categoria);
-        categorias.push({ nome: rotina.categoria, cor: this.coresCategoria.obterCor(rotina.categoria) });
+        categorias.push({
+          nome: rotina.categoria,
+          cor: this.coresCategoria.obterCor(rotina.categoria),
+        });
       }
     }
 
@@ -94,7 +114,8 @@ export class Financeiro {
 
     return rotinas.filter((rotina) => {
       const combinaTermo = !termo || rotina.nome.toLowerCase().includes(termo);
-      const combinaCategoria = !categoria || categoria === CATEGORIA_FIXADOS || rotina.categoria === categoria;
+      const combinaCategoria =
+        !categoria || categoria === CATEGORIA_FIXADOS || rotina.categoria === categoria;
       const combinaFixado = categoria !== CATEGORIA_FIXADOS || fixados.includes(rotina.nome);
       return combinaTermo && combinaCategoria && combinaFixado;
     });
@@ -105,7 +126,9 @@ export class Financeiro {
     const filtradas = this.rotinasFiltradas();
 
     if (this.categoriaSelecionada() === CATEGORIA_FIXADOS) {
-      return filtradas.length ? [{ categoria: CATEGORIA_FIXADOS, cor: COR_FIXADOS, rotinas: filtradas }] : [];
+      return filtradas.length
+        ? [{ categoria: CATEGORIA_FIXADOS, cor: COR_FIXADOS, rotinas: filtradas }]
+        : [];
     }
 
     const grupos: GrupoRotinas[] = [];
@@ -115,7 +138,9 @@ export class Financeiro {
       grupos.push({
         categoria: CATEGORIA_FIXADOS,
         cor: COR_FIXADOS,
-        rotinas: [...fixadasNaLista].sort((a, b) => fixados.indexOf(a.nome) - fixados.indexOf(b.nome))
+        rotinas: [...fixadasNaLista].sort(
+          (a, b) => fixados.indexOf(a.nome) - fixados.indexOf(b.nome),
+        ),
       });
     }
 
@@ -214,12 +239,12 @@ export class Financeiro {
       next: (opcoes) => {
         this.opcoesCampos.update((atual) => ({
           ...atual,
-          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome }))
+          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome })),
         }));
       },
       error: () => {
         this.opcoesCampos.update((atual) => ({ ...atual, [campo.chave]: [] }));
-      }
+      },
     });
   }
 
@@ -277,7 +302,7 @@ export class Financeiro {
     this.relatorioCarregando.set(true);
     this.http
       .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
-        params: this.parametrosRelatorio(rotina)
+        params: this.parametrosRelatorio(rotina),
       })
       .subscribe({
         next: (dados) => {
@@ -285,9 +310,11 @@ export class Financeiro {
           this.relatorioCarregando.set(false);
         },
         error: () => {
-          this.relatorioErro.set('Não foi possível carregar o relatório. Verifique se o servidor está em execução.');
+          this.relatorioErro.set(
+            'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
+          );
           this.relatorioCarregando.set(false);
-        }
+        },
       });
   }
 
@@ -314,7 +341,7 @@ export class Financeiro {
       .get(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}/exportar`, {
         params: this.parametrosRelatorio(rotina),
         observe: 'response',
-        responseType: 'blob'
+        responseType: 'blob',
       })
       .subscribe({
         next: (resposta) => {
@@ -324,18 +351,16 @@ export class Financeiro {
             return;
           }
 
-          const nomeArquivo = this.extrairNomeArquivo(resposta.headers.get('content-disposition')) ?? `${rotina.apiEndpoint}.xlsx`;
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = nomeArquivo;
-          link.click();
-          URL.revokeObjectURL(url);
+          const nomeArquivo = extrairNomeArquivo(
+            resposta.headers.get('content-disposition'),
+            `${rotina.apiEndpoint}.xlsx`,
+          );
+          baixarBlob(blob, nomeArquivo);
           this.baixandoRelatorio.set(false);
         },
         error: () => {
           this.baixandoRelatorio.set(false);
-        }
+        },
       });
   }
 
@@ -373,13 +398,8 @@ export class Financeiro {
       },
       error: () => {
         this.filiais.set([]);
-      }
+      },
     });
-  }
-
-  private extrairNomeArquivo(contentDisposition: string | null): string | undefined {
-    const match = contentDisposition?.match(/filename="?([^"]+)"?/);
-    return match?.[1];
   }
 
   private carregarFixados(): void {

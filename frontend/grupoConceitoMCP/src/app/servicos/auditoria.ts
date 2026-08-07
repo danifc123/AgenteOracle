@@ -82,19 +82,23 @@ export class Auditoria {
     this.carregando.set(true);
     this.erro.set(null);
 
-    this.http.get<AchadoAuditoria[]>(`${MCP_API_BASE_URL}/api/auditoria`, { params: { modulo } }).subscribe({
-      next: (achados) => {
-        this.achados.set(achados);
-        this.carregando.set(false);
-        this.jaExecutou.set(true);
-        this.mudancas.update((atual) => atual + 1);
-      },
-      error: () => {
-        this.erro.set('Não foi possível rodar a auditoria. Verifique se o servidor e o Ollama estão em execução.');
-        this.carregando.set(false);
-        this.jaExecutou.set(true);
-      }
-    });
+    this.http
+      .get<AchadoAuditoria[]>(`${MCP_API_BASE_URL}/api/auditoria`, { params: { modulo } })
+      .subscribe({
+        next: (achados) => {
+          this.achados.set(achados);
+          this.carregando.set(false);
+          this.jaExecutou.set(true);
+          this.mudancas.update((atual) => atual + 1);
+        },
+        error: () => {
+          this.erro.set(
+            'Não foi possível rodar a auditoria. Verifique se o servidor e o Ollama estão em execução.',
+          );
+          this.carregando.set(false);
+          this.jaExecutou.set(true);
+        },
+      });
   }
 
   dispensar(achado: AchadoAuditoria): void {
@@ -102,7 +106,7 @@ export class Auditoria {
       next: () => {
         this.achados.update((atual) => atual.filter((item) => item !== achado));
         this.mudancas.update((atual) => atual + 1);
-      }
+      },
     });
   }
 }

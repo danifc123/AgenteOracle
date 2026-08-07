@@ -1,106 +1,118 @@
 @if (modulo(); as modulo) {
-<app-modulo-header [breadcrumb]="'Financeiro / ' + modulo.nome"
-                   [titulo]="modulo.nome"
-                   [descricao]="modulo.descricao" />
+  <app-modulo-header
+    [breadcrumb]="'Financeiro / ' + modulo.nome"
+    [titulo]="modulo.nome"
+    [descricao]="modulo.descricao"
+  />
 
-<div class="filtros-topo">
-  <app-busca class="busca"
-             placeholder="Buscar rotina..."
-             [(valor)]="termoBusca" />
+  <div class="filtros-topo">
+    <app-busca class="busca" placeholder="Buscar rotina..." [(valor)]="termoBusca" />
 
-  <app-filtro-categorias [categorias]="categoriasDisponiveis()"
-                         [(selecionada)]="categoriaSelecionada" />
-</div>
+    <app-filtro-categorias
+      [categorias]="categoriasDisponiveis()"
+      [(selecionada)]="categoriaSelecionada"
+    />
+  </div>
 
-<div class="conteudo-relatorios">
-  <div class="painel-lista">
-    <div class="painel-lista-cabecalho">
-      <span>Relatórios</span>
-      <span class="contagem">{{ rotinasFiltradas().length }} {{ rotinasFiltradas().length === 1 ? 'item' : 'itens' }}</span>
-    </div>
+  <div class="conteudo-relatorios">
+    <div class="painel-lista">
+      <div class="painel-lista-cabecalho">
+        <span>Relatórios</span>
+        <span class="contagem"
+          >{{ rotinasFiltradas().length }}
+          {{ rotinasFiltradas().length === 1 ? 'item' : 'itens' }}</span
+        >
+      </div>
 
-    <div class="painel-lista-corpo">
-      @if (gruposFiltrados().length) {
-      @for (grupo of gruposFiltrados(); track grupo.categoria) {
-      <div class="grupo-categoria">
-        <p class="grupo-titulo">
-          <span class="categoria-dot"
-                [style.background]="grupo.cor"></span>
-          {{ grupo.categoria.toUpperCase() }} ({{ grupo.rotinas.length }})
-        </p>
-        @for (rotina of grupo.rotinas; track rotina.nome) {
-        <app-rotina-item [rotina]="rotina"
-                         [selecionada]="rotinaSelecionada()?.nome === rotina.nome"
-                         (selecionar)="selecionarRotina(rotina)" />
+      <div class="painel-lista-corpo">
+        @if (gruposFiltrados().length) {
+          @for (grupo of gruposFiltrados(); track grupo.categoria) {
+            <div class="grupo-categoria">
+              <p class="grupo-titulo">
+                <span class="categoria-dot" [style.background]="grupo.cor"></span>
+                {{ grupo.categoria.toUpperCase() }} ({{ grupo.rotinas.length }})
+              </p>
+              @for (rotina of grupo.rotinas; track rotina.nome) {
+                <app-rotina-item
+                  [rotina]="rotina"
+                  [selecionada]="rotinaSelecionada()?.nome === rotina.nome"
+                  (selecionar)="selecionarRotina(rotina)"
+                />
+              }
+            </div>
+          }
+        } @else {
+          <p class="lista-vazia">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
         }
       </div>
-      }
-      } @else {
-      <p class="lista-vazia">Nenhuma rotina encontrada para "{{ termoBusca() }}".</p>
-      }
     </div>
+
+    <app-rotina-detalhe
+      [rotina]="rotinaSelecionada()"
+      [fixado]="estaFixado(rotinaSelecionada())"
+      [limiteFixadosAtingido]="limiteFixadosAtingido()"
+      [filtroInvalido]="filtroInvalido()"
+      [filiais]="filiais()"
+      [opcoesCampos]="opcoesCampos()"
+      [valoresFiltros]="valoresFiltros()"
+      [(filiaisSelecionadas)]="filiaisSelecionadas"
+      (confirmarFiltro)="confirmarFiltroSelecionada()"
+      (limparFiltros)="limparFiltrosSelecionados()"
+      (alternarFixado)="alternarFixadoSelecionada()"
+      (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)"
+    />
   </div>
-
-  <app-rotina-detalhe [rotina]="rotinaSelecionada()"
-                      [fixado]="estaFixado(rotinaSelecionada())"
-                      [limiteFixadosAtingido]="limiteFixadosAtingido()"
-                      [filtroInvalido]="filtroInvalido()"
-                      [filiais]="filiais()"
-                      [opcoesCampos]="opcoesCampos()"
-                      [valoresFiltros]="valoresFiltros()"
-                      [(filiaisSelecionadas)]="filiaisSelecionadas"
-                      (confirmarFiltro)="confirmarFiltroSelecionada()"
-                      (limparFiltros)="limparFiltrosSelecionados()"
-                      (alternarFixado)="alternarFixadoSelecionada()"
-                      (definirValorFiltro)="definirValorFiltro($event.chave, $event.valor)" />
-</div>
-
-
 } @else {
-<p class="carregando">Módulo não encontrado.</p>
+  <p class="carregando">Módulo não encontrado.</p>
 }
 
-<app-dialog [aberto]="!!rotinaEmVisualizacao()"
-            [titulo]="rotinaEmVisualizacao()?.nome ?? ''"
-            [temRodape]="true"
-            (fechar)="fecharVisualizacao()">
+<app-dialog
+  [aberto]="!!rotinaEmVisualizacao()"
+  [titulo]="rotinaEmVisualizacao()?.nome ?? ''"
+  [temRodape]="true"
+  (fechar)="fecharVisualizacao()"
+>
   @if (relatorioCarregando()) {
-  <p class="carregando">Carregando relatório...</p>
+    <p class="carregando">Carregando relatório...</p>
   } @else if (relatorioErro()) {
-  <p class="erro-exportacao">{{ relatorioErro() }}</p>
+    <p class="erro-exportacao">{{ relatorioErro() }}</p>
   } @else if (relatorioDados() && relatorioDados()!.length) {
-  <app-visualizador-excel [dados]="relatorioDados()!" />
+    <app-visualizador-excel [dados]="relatorioDados()!" />
   } @else if (rotinaEmVisualizacao()?.apiEndpoint) {
-  <p class="carregando">Nenhum dado encontrado para esse relatório.</p>
+    <p class="carregando">Nenhum dado encontrado para esse relatório.</p>
   } @else {
-  <div class="visualizacao-vazia">
-    <svg viewBox="0 0 24 24"
-         width="40"
-         height="40"
-         fill="none"
-         stroke="currentColor"
-         stroke-width="1.5">
-      <path d="M4 5h16v11H8l-4 4V5Z"
-            stroke-linecap="round"
-            stroke-linejoin="round" />
-    </svg>
-    <h3>Relatório ainda não disponível</h3>
-    <p>Assim que essa rotina for implementada, o conteúdo aparecerá aqui.</p>
-  </div>
+    <div class="visualizacao-vazia">
+      <svg
+        viewBox="0 0 24 24"
+        width="40"
+        height="40"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <h3>Relatório ainda não disponível</h3>
+      <p>Assim que essa rotina for implementada, o conteúdo aparecerá aqui.</p>
+    </div>
   }
 
-  <app-botao rodape
-             variant="primaria"
-             [disabled]="!rotinaEmVisualizacao()?.apiEndpoint || baixandoRelatorio()"
-             (clicked)="baixarRotinaEmVisualizacao()">
-    <svg viewBox="0 0 24 24"
-         width="16"
-         height="16"
-         fill="none"
-         stroke="currentColor"
-         stroke-width="1.8"
-         stroke-linecap="round"
-         stroke-linejoin="round">
+  <app-botao
+    rodape
+    variant="primaria"
+    [disabled]="!rotinaEmVisualizacao()?.apiEndpoint || baixandoRelatorio()"
+    (clicked)="baixarRotinaEmVisualizacao()"
+  >
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
       <path d="M17 21v-8H7v8" />
       <path d="M7 3v5h8" />

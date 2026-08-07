@@ -34,7 +34,9 @@ def _postgres_disponivel() -> bool:
 @pytest.fixture(autouse=True)
 def _requer_postgres_de_teste():
     if not _postgres_disponivel():
-        pytest.skip("Postgres de teste não está acessível — configure DB_BACKEND=postgres no .env e suba o banco.")
+        pytest.skip(
+            "Postgres de teste não está acessível — configure DB_BACKEND=postgres no .env e suba o banco."
+        )
 
 
 @pytest.fixture
@@ -92,6 +94,8 @@ def usuario_dev():
 @pytest.fixture
 def token_dev(mcp_app, usuario_dev):
     """Token JWT válido para `usuario_dev`."""
-    resposta = mcp_app.post("/api/auth/login", json={"usuario": usuario_dev["usuario"], "senha": usuario_dev["senha"]})
+    resposta = mcp_app.post(
+        "/api/auth/login", json={"usuario": usuario_dev["usuario"], "senha": usuario_dev["senha"]}
+    )
     assert resposta.status_code == 200
     return resposta.json()["token"]

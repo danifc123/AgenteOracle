@@ -4,7 +4,7 @@ import { Component, ElementRef, HostListener, inject, signal } from '@angular/co
   selector: 'app-menu-opcoes',
   imports: [],
   templateUrl: './menu-opcoes.html',
-  styleUrl: './menu-opcoes.scss'
+  styleUrl: './menu-opcoes.scss',
 })
 export class MenuOpcoes {
   private readonly elementRef = inject(ElementRef);

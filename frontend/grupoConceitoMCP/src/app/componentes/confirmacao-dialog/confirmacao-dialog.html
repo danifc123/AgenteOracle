@@ -1,0 +1,23 @@
+<app-dialog
+  [aberto]="aberto()"
+  [titulo]="titulo()"
+  tamanho="compacto"
+  [temRodape]="true"
+  (fechar)="cancelar.emit()"
+>
+  <p class="mensagem">{{ mensagem() }}</p>
+
+  <div rodape class="rodape-confirmacao">
+    <app-botao variant="contorno" [disabled]="confirmando()" (clicked)="cancelar.emit()">
+      Cancelar
+    </app-botao>
+    <app-botao
+      variant="perigo"
+      [loading]="confirmando()"
+      [loadingText]="textoConfirmando()"
+      (clicked)="confirmar.emit()"
+    >
+      {{ textoConfirmar() }}
+    </app-botao>
+  </div>
+</app-dialog>

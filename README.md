@@ -21,45 +21,98 @@ Oracle DB  ←→  Backend Python (MCP + REST)  ←→  Agente de IA (Ollama loc
 - **Banco:** Oracle (produção) ou Postgres (teste local), configurável via `DB_BACKEND` — veja `db/connection.py`.
 - **Histórico de relatórios:** guardado numa tabela (`relatorios_historico`) no mesmo banco relacional configurado em `DB_BACKEND` — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, usado para não repetir a mesma consulta. Relatório não fixado expira em 15h — veja `tools/financeiro/historico.py`.
 - **LLM:** [Ollama](https://ollama.com/) rodando local (sem custo de API paga).
-- **Auth Oracle:** usuário de serviço único, banco de teste/desenvolvimento.
+- **Auth Oracle:** usuário de serviço único (autenticação no banco, diferente do login de usuário do sistema — ver [Autenticação, papéis e segurança](#autenticação-papéis-e-segurança)), banco de teste/desenvolvimento.
 
 ### Consultas fixas x consultas livres
 
-- **Tools/rotas fixas**: SQL pré-definido no código para cada relatório do módulo Financeiro, sem participação da IA. Ainda a implementar — veja a lista de relatórios em `frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts`.
+- **Tools/rotas fixas**: SQL pré-definido no código para cada relatório do módulo Financeiro, sem participação da IA — ver `server/financeiro/relatorios/`. A lista completa de rotinas do módulo está em `frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts`; nem toda rotina listada ali tem rota fixa implementada ainda (aparece como "Em breve" na tela até ganhar uma).
 - **`executar_consulta_financeira`**: a IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta, usando só as *views* financeiras curadas listadas em `agent/financeiro/schema.py` (não as tabelas reais do TOTVS) — veja [Segurança do SQL livre](#segurança-do-sql-livre). O resultado é salvo/reaproveitado via o histórico.
 
 ## Estrutura do projeto
 
+Três camadas no backend, cada uma com uma responsabilidade só — vale mais
+entender esse princípio do que decorar a árvore de arquivos abaixo (que
+cresce a cada relatório novo):
+
+- **`server/`** — rotas HTTP (Starlette, registradas via `@mcp.custom_route`
+  dentro de uma função `registrar(mcp)` por módulo). Só cuida de parsing de
+  request, autenticação/autorização e formato da resposta.
+- **`tools/`** — lógica de negócio e acesso a dado. Funções chamadas tanto
+  pelas rotas HTTP (`server/`) quanto, quando expostas como MCP tool, pelo
+  próprio agente de IA (ex: `executar_consulta_financeira`).
+- **`agent/`** — orquestração do agente de IA em si (prompt, schema de views
+  liberadas pra IA, loop de chamada ao Ollama).
+
 ```
 src/agente_oracle/
-├── config.py               # configurações (lidas de .env)
-├── relatorios.py            # gerador de Excel (.xlsx) compartilhado
+├── config.py                 # configurações (lidas de .env) + validação da chave de auth no startup
+├── relatorios.py              # gerador de Excel (.xlsx) compartilhado por todo relatório
 ├── agent/
-│   ├── core.py               # loop de tool-calling genérico (sem prompt nem schema — reaproveitável por qualquer módulo)
-│   ├── cli.py                 # chat interativo de terminal (agente-oracle-chat) — hoje usa o prompt do Financeiro
+│   ├── core.py                 # loop de tool-calling genérico (sem prompt nem schema — reaproveitável por qualquer módulo)
+│   ├── cli.py                   # chat interativo de terminal (agente-oracle-chat)
+│   ├── auditoria/               # análise de qualidade de dado via IA (genérica, não sabe de nenhum módulo específico)
 │   └── financeiro/
-│       ├── prompt.py            # system prompt específico do Financeiro (monta o texto a partir de schema.py)
-│       └── schema.py            # views financeiras liberadas pra IA (nome + colunas) — fonte única usada pelo prompt e pela whitelist de segurança
+│       ├── prompt.py              # system prompt específico do Financeiro (monta o texto a partir de schema.py)
+│       ├── schema.py              # views financeiras liberadas pra IA — fonte única usada pelo prompt e pela whitelist de segurança
+│       ├── financeiro.py          # orquestração do chat do módulo Financeiro
+│       └── projecoes.py           # regressão linear + análise textual da IA, usado pelas telas de Previsão
 ├── db/
-│   └── connection.py         # pool de conexões (Oracle ou Postgres, conforme DB_BACKEND)
+│   ├── connection.py           # pool de conexões (Oracle ou Postgres, conforme DB_BACKEND)
+│   └── views/                   # definição das views curadas expostas ao agente
 ├── server/
-│   ├── app.py                 # cria o servidor MCP (FastMCP), registra os módulos, entrypoint (agente-oracle)
-│   ├── cors.py                 # headers/preflight CORS compartilhados entre as rotas
-│   └── financeiro/             # rotas HTTP do módulo Financeiro
-│       ├── relatorios/             # 1 arquivo por relatório fixo (SQL + rotas): fluxo_caixa_realizado.py (FINR01), duplicata_mercantil.py (FINR04), baixa_produtos.py (CAG06R04), posicao_titulos.py (FINR130/FINR10), posicao_titulos_pagar.py (FINR150/FINR11), relacao_baixas.py (FINR190/FINR12), extrato_bancario.py (FINR470/FINR13), retencao_impostos.py (FINR865/FINR14), movimento_financeiro_diario.py (FINR530/FIN32)
-│       │   ├── filiais.py            # lista as filiais (SA6010) pro seletor múltiplo da tela
-│       │   ├── cadastros.py           # lista clientes/fornecedores/lojas/vendedores/prefixos/tipos/naturezas/produtos/contas bancárias pros selects com busca dos filtros (fornecedores também usados pelo FINR14)
-│       │   └── filtros_sql.py         # utilitário: monta cláusula IN (...) a partir de uma lista de valores
-│       ├── historico.py           # rotas REST do histórico de relatórios gerados pela IA
+│   ├── app.py                   # monta o app Starlette (CORS + headers de segurança), entrypoint (agente-oracle)
+│   ├── cors.py                   # CORSMiddleware é a única fonte de verdade de origem permitida (ver comentário no arquivo)
+│   ├── security_headers.py       # middleware de headers de segurança padrão (X-Frame-Options, CSP, HSTS...)
+│   ├── auth/
+│   │   ├── rotas.py                # login, CRUD de usuário, troca de senha, (des)bloqueio de conta, trilha de segurança
+│   │   ├── dependencia.py          # exigir_usuario/administrador/desenvolvedor/modulo_financeiro — checagem de sessão
+│   │   ├── decorador_rota.py       # @rota_protegida — decorator usado por toda rota autenticada (ver seção própria abaixo)
+│   │   └── rate_limit.py           # limite de tentativas em memória (login, troca de senha, criação de usuário)
+│   ├── auditoria/
+│   │   └── rotas.py                # roda a auditoria ao vivo por módulo + histórico de achados
+│   ├── ferramentas/
+│   │   └── juntar_excel.py         # upload de 2 planilhas .xlsx e junção (empilha, faz JOIN ou lado-a-lado)
+│   └── financeiro/                 # rotas HTTP do módulo Financeiro
+│       ├── relatorios/               # 1 arquivo por relatório fixo (SQL + rotas), mais os compartilhados:
+│       │   ├── relatorio_customizado.py      # rotas do construtor de relatório sob demanda ("Criar Relatório")
+│       │   ├── relatorio_customizado_sql.py  # lógica pura de resolução de JOIN/montagem de SQL do item acima
+│       │   ├── filiais.py, cadastros.py      # listas pros selects de filtro (filial, cliente, vendedor, produto...)
+│       │   └── filtros_sql.py                # utilitário: monta cláusula IN (...) a partir de uma lista de valores
+│       ├── previsao.py             # rotas de Previsão (Vendas e Fluxo de Caixa) — projeção por regressão linear
+│       ├── historico.py            # rotas REST do histórico de relatórios gerados pela IA
+│       ├── layouts.py              # presets de coluna/filtro salvos por usuário na tela "Criar Relatório"
+│       ├── categoria_cores.py      # cor personalizada por categoria (usado nos gráficos)
 │       └── ia.py                   # registra as tools de IA + /api/financeiro/chat + /api/financeiro/relatorio/exportar
 └── tools/
-    ├── connectivity.py       # teste de conexão com o Oracle (genérico, qualquer módulo pode usar)
+    ├── connectivity.py         # teste de conexão com o Oracle (genérico, qualquer módulo pode usar)
+    ├── auth/
+    │   ├── usuarios.py            # CRUD de usuário, autenticação, bloqueio por tentativas erradas
+    │   ├── papeis.py               # fonte única de verdade de quem acessa o quê (ver seção própria abaixo)
+    │   ├── token.py                 # geração/verificação do JWT de sessão
+    │   ├── eventos_seguranca.py     # trilha de auditoria (login, criação/exclusão de usuário, bloqueio...)
+    │   └── cli.py                    # agente-oracle-criar-usuario — bootstrap do primeiro admin
+    ├── auditoria/
+    │   ├── historico.py            # CRUD dos achados de auditoria
+    │   └── dispensados.py           # achados que um usuário marcou como "não é problema"
+    ├── ferramentas/
+    │   └── juntar_excel.py         # lógica pura de junção de planilha (sem HTTP)
     └── financeiro/
-        ├── consulta_livre.py    # SQL livre gerado pela IA para dados financeiros, com validação de segurança
-        └── historico.py          # dedup e CRUD do histórico de relatórios do Financeiro (tabela relatorios_historico)
+        ├── consulta_livre.py       # SQL livre gerado pela IA, com validação de segurança
+        └── historico.py             # dedup e CRUD do histórico de relatórios do Financeiro
 
-frontend/grupoConceitoMCP/    # Angular — menu lateral, módulos financeiros, chat, histórico
+frontend/grupoConceitoMCP/src/app/
+├── pages/                     # uma pasta por tela, incluindo pages/modulos/{financeiro,estoque}/
+├── componentes/                # UI reutilizável entre telas (tabela, dialog, seletor de arquivo...)
+├── servicos/                    # estado compartilhado (sessão, guards) + funções puras reaproveitadas
+│                                  # entre páginas (mensagens-erro.ts, download-arquivo.ts, ordenacao-tabela.ts)
+└── dadosRelatorios/              # configuração/metadado estático dos relatórios (dado, não lógica)
 ```
+
+### Módulo Estoque
+
+O frontend já tem as telas do módulo Estoque, mas ainda não existe backend
+correspondente (sem rotas em `server/`, sem tools em `tools/`) — é trabalho
+futuro conhecido, não uma lacuna acidental.
 
 ## Setup do backend
 
@@ -104,26 +157,66 @@ npm install
 npm start
 ```
 
-Sobe em `http://localhost:4200`. Precisa do backend (`agente-oracle`) rodando para funcionar. Telas:
-
-- **Início** — página inicial.
-- **Financeiro → Específico Grupo Conceito** — lista os relatórios do módulo (ex: Fluxo de Caixa Realizado, Boleto, FINR10...); cada um aparece como "Em breve" até ter uma tool/rota fixa implementada.
-- **Financeiro → Assistente IA** — chat com o agente (usa `POST /api/financeiro/chat`); respostas que rodaram SQL mostram a consulta usada e um botão para baixar o resultado em Excel. O Estoque tem um item equivalente no menu, mas ainda como placeholder ("em breve") — não existe view/backend de estoque ainda.
-- **Histórico de relatórios** — lista os relatórios já gerados pela IA (`GET /api/relatorios/historico`), com botão de bandeira para fixar/desfixar (relatório fixado não expira), botão para baixar em Excel (sem rodar de novo no banco) e botão para apagar do histórico.
+Sobe em `http://localhost:4200`. Precisa do backend rodando para funcionar. Telas
+principais: **Início**, **Financeiro** (Assistente IA, Fluxo de Caixa, Vendas,
+Criar Relatório, Específico Grupo Conceito), **Histórico de relatórios**,
+**Auditoria**, **Usuários** (administração, só pra quem tem papel
+administrador), **Juntar Excel**. **Estoque** existe no menu mas ainda é
+placeholder (ver [Módulo Estoque](#módulo-estoque) acima).
 
 ## Rotas REST expostas pelo backend
 
-| Rota | Método | Uso |
-|---|---|---|
-| `/api/financeiro/chat` | POST | `{mensagem, historico}` → `{resposta, consultas}` — conversa com o agente |
-| `/api/financeiro/relatorio/exportar` | POST | `{sql}` → arquivo Excel — reexecuta uma consulta (normalmente uma que a IA gerou) e baixa o resultado |
-| `/api/relatorios/historico` | GET | Lista os relatórios salvos no histórico (sem os dados das linhas) |
-| `/api/relatorios/historico/{id}/exportar` | GET | Baixa em Excel um relatório salvo, a partir do dado já armazenado no histórico |
-| `/api/relatorios/historico/{id}` | PATCH | `{fixado: bool}` → fixa/desfixa um relatório (fixado não expira pelo TTL) |
-| `/api/relatorios/historico/{id}` | DELETE | Apaga um relatório do histórico (ele volta a poder ser gerado de novo pela IA) |
-| `/api/auditoria` | GET | Roda a auditoria de dados ao vivo (sob demanda) para os módulos liberados ao usuário e devolve os achados ainda não dispensados |
-| `/api/auditoria/historico` | GET | Lista todo achado já encontrado ao longo do tempo, restrito aos módulos liberados — nunca expira |
-| `/api/auditoria/dispensar` | POST | `{modulo, view, campo, valor}` → marca um achado como "não é problema" para o usuário logado |
+Cada módulo em `server/` registra as próprias rotas dentro de uma função
+`registrar(mcp)` — a lista completa e sempre atual está no próprio código
+(`grep -r "custom_route" src/agente_oracle/server` lista todas de uma vez);
+manter uma tabela separada aqui historicamente ficou desatualizada assim que
+um relatório novo era adicionado, então não vale reproduzir. Os grupos
+principais:
+
+- `/api/auth/*` — login, CRUD de usuário, perfil, senha, papéis, (des)bloqueio de conta, trilha de segurança (ver [Autenticação e papéis](#autenticação-papéis-e-segurança))
+- `/api/financeiro/*` — chat com a IA, previsão (Vendas/Fluxo de Caixa), relatório customizado, os relatórios fixos (`financeiro/relatorios/*.py`), layouts salvos, cores de categoria
+- `/api/relatorios/historico*` — histórico de relatórios gerados pela IA (fixar, apagar, baixar em Excel)
+- `/api/auditoria*` — auditoria de qualidade de dado (rodar ao vivo, histórico, dispensar achado)
+- `/api/ferramentas/juntar-excel*` — upload e junção de duas planilhas
+
+## Autenticação, papéis e segurança
+
+Login próprio do sistema (JWT, sem depender de IdP externo) — ver
+`tools/auth/`, `server/auth/`.
+
+- **Papéis**: `tools/auth/papeis.py` é a fonte única de verdade de quem
+  acessa o quê (`desenvolvedor`, `financeiro_admin`, `financeiro`,
+  `estoque_admin`, `estoque`) — nunca `if papel == "x"` espalhado pelo
+  código. `desenvolvedor` tem `acesso_total` (todo módulo, presente ou
+  futuro) e também funciona como "time de TI": só quem tem esse papel pode
+  desbloquear uma conta ou ver a trilha de eventos de segurança.
+- **Bloqueio de conta**: 3 tentativas de login erradas seguidas bloqueiam a
+  conta até um `desenvolvedor` desbloquear pela tela Usuários — separado do
+  rate limit (5 tentativas/3min, em memória, se autolimpa sozinho) que
+  protege contra automação mesmo pra usuário inexistente.
+- **Trilha de auditoria de segurança**: toda ação sensível (login
+  falho/bem-sucedido, criação/exclusão de usuário, bloqueio/desbloqueio) fica
+  registrada em `eventos_seguranca` (`GET /api/auth/eventos-seguranca`,
+  restrito a `desenvolvedor`).
+- **Toda rota autenticada usa o mesmo decorator** —
+  `server/auth/decorador_rota.py:rota_protegida` — que cuida do preflight
+  `OPTIONS` e da checagem de login/autorização (`exigir_usuario` por
+  padrão, ou uma variante como `exigir_administrador`/
+  `exigir_desenvolvedor`/`exigir_modulo_financeiro`), deixando a função da
+  rota só com a lógica de negócio, recebendo o usuário já resolvido:
+
+  ```python
+  @mcp.custom_route("/api/financeiro/algo", methods=["GET", "OPTIONS"])
+  @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+  async def minha_rota(request: Request, usuario: dict) -> Response:
+      ...
+  ```
+
+  (`/api/auth/login` é a única rota que foge desse padrão — por definição,
+  ainda não há usuário logado nela.)
+- **Primeiro usuário**: não existe tela de auto-cadastro — o primeiro admin
+  é criado via `agente-oracle-criar-usuario` (script de terminal), dali em
+  diante outros usuários são criados pela tela Usuários.
 
 ## Agente local (Ollama)
 
@@ -148,7 +241,7 @@ O LLM roda localmente, sem custo de API.
    agente-oracle-chat
    ```
 
-   Ou via navegador, na tela **Assistente IA** do frontend (`http://localhost:4200/chat`).
+   Ou via navegador, na tela **Assistente IA** do frontend (`http://localhost:4200/financeiro/chat`).
 
    Digite `sair` para encerrar o chat de terminal.
 
@@ -161,3 +254,44 @@ SQL passa por validação antes de rodar (`tools/financeiro/consulta_livre.py`):
 - Só permite as *views* financeiras curadas listadas em `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) — nunca as tabelas reais do TOTVS. Essa lista é a fonte única tanto do texto de schema que vai no prompt da IA quanto da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`), pra nunca ficar um SQL que o prompt promete mas a validação rejeita (ou o contrário). Enquanto uma view não estiver na lista, nenhuma consulta que a use é aceita.
 - Bloqueia múltiplas instruções encadeadas (`;`).
 - Aplica limite automático de linhas (`FETCH FIRST 200 ROWS ONLY` no Oracle, ou o `LIMIT` que a própria IA já tiver colocado quando o banco é Postgres) e timeout de 10s na conexão.
+
+## Testes
+
+```powershell
+# Backend — não precisa de banco (mock/sem I/O real)
+python -m pytest tests/unit -q
+
+# Backend — precisa de Postgres local rodando (DB_BACKEND=postgres no .env)
+python -m pytest tests/integration -q -m integration
+
+# Frontend
+cd frontend/grupoConceitoMCP
+npm test       # vitest — hoje cobre só um punhado de componentes/serviços
+npm run e2e    # cypress
+```
+
+`tests/unit/` espelha a estrutura de `src/agente_oracle/` e não toca banco
+nenhum. `tests/integration/` (marcado `@pytest.mark.integration`, excluído
+por padrão via `addopts` do `pyproject.toml`) sobe rotas de verdade contra um
+Postgres local — pula sozinho se não achar um rodando. O frontend tem
+cobertura de teste bem menor que o backend hoje (a maioria dos componentes
+não tem `.spec.ts`) — ao mexer numa tela sem teste, validar manualmente
+(`ng build` + testar no navegador) é o caminho, não um substituto perfeito
+mas o que o projeto usa hoje.
+
+## Lint e formatação
+
+```powershell
+# Backend (ruff)
+ruff check src tests
+ruff format src tests
+
+# Frontend
+cd frontend/grupoConceitoMCP
+npm run lint      # ESLint — TypeScript + templates Angular
+npm run format    # Prettier
+```
+
+Nenhuma dessas ferramentas roda automaticamente (não existe pipeline de CI
+configurado neste repositório) — rodar manualmente antes de abrir PR é o que
+mantém o padrão até isso mudar.

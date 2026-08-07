@@ -6,7 +6,7 @@ EXISTS`), sem precisar de migração separada — mesmo padrão de
 identificado pela tupla (módulo, view, campo, valor) que a IA já devolve,
 sem precisar de um id sintético."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from agente_oracle.db.connection import get_connection
 
@@ -50,7 +50,7 @@ def dispensar(usuario_id: str, modulo: str, view: str, campo: str, valor: str) -
             view_nome=view,
             campo=campo,
             valor=valor,
-            dispensado_em=datetime.now(timezone.utc),
+            dispensado_em=datetime.now(UTC),
         )
 
 

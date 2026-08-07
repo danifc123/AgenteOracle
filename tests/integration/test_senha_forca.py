@@ -33,7 +33,9 @@ class TestSenhaFracaNaCriacaoDeUsuario:
         )
         assert resposta.status_code == 201
 
-        mcp_app.delete(f"/api/auth/usuarios/{resposta.json()['id']}", headers={"Authorization": f"Bearer {token_dev}"})
+        mcp_app.delete(
+            f"/api/auth/usuarios/{resposta.json()['id']}", headers={"Authorization": f"Bearer {token_dev}"}
+        )
 
 
 class TestSenhaFracaNaTrocaDeSenha:

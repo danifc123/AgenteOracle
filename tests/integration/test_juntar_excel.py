@@ -23,8 +23,16 @@ class TestJuntarExcelRota:
         resposta = mcp_app.post(
             "/api/ferramentas/juntar-excel",
             files={
-                "arquivo1": ("a.xlsx", arquivo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                "arquivo2": ("b.xlsx", arquivo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                "arquivo1": (
+                    "a.xlsx",
+                    arquivo,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "arquivo2": (
+                    "b.xlsx",
+                    arquivo,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
             },
         )
         assert resposta.status_code == 401
@@ -37,13 +45,24 @@ class TestJuntarExcelRota:
             "/api/ferramentas/juntar-excel",
             headers={"Authorization": f"Bearer {token_teste}"},
             files={
-                "arquivo1": ("a.xlsx", arquivo1, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                "arquivo2": ("b.xlsx", arquivo2, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                "arquivo1": (
+                    "a.xlsx",
+                    arquivo1,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "arquivo2": (
+                    "b.xlsx",
+                    arquivo2,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
             },
         )
 
         assert resposta.status_code == 200
-        assert resposta.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        assert (
+            resposta.headers["content-type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
         assert "planilhas_combinadas" in resposta.headers["content-disposition"]
         assert ".xlsx" in resposta.headers["content-disposition"]
 
@@ -57,8 +76,16 @@ class TestJuntarExcelRota:
             "/api/ferramentas/juntar-excel",
             headers={"Authorization": f"Bearer {token_teste}"},
             files={
-                "arquivo1": ("a.xlsx", arquivo1, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                "arquivo2": ("b.xlsx", arquivo2, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                "arquivo1": (
+                    "a.xlsx",
+                    arquivo1,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "arquivo2": (
+                    "b.xlsx",
+                    arquivo2,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
             },
         )
 
@@ -72,7 +99,11 @@ class TestJuntarExcelRota:
             "/api/ferramentas/juntar-excel",
             headers={"Authorization": f"Bearer {token_teste}"},
             files={
-                "arquivo1": ("a.xlsx", arquivo1, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                "arquivo1": (
+                    "a.xlsx",
+                    arquivo1,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
             },
         )
         assert resposta.status_code == 400
@@ -101,8 +132,16 @@ class TestAnalisarJuntarExcelRota:
         resposta = mcp_app.post(
             "/api/ferramentas/juntar-excel/analisar",
             files={
-                "arquivo1": ("a.xlsx", arquivo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                "arquivo2": ("b.xlsx", arquivo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                "arquivo1": (
+                    "a.xlsx",
+                    arquivo,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "arquivo2": (
+                    "b.xlsx",
+                    arquivo,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
             },
         )
         assert resposta.status_code == 401
@@ -115,8 +154,16 @@ class TestAnalisarJuntarExcelRota:
             "/api/ferramentas/juntar-excel/analisar",
             headers={"Authorization": f"Bearer {token_teste}"},
             files={
-                "arquivo1": ("a.xlsx", arquivo1, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                "arquivo2": ("b.xlsx", arquivo2, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                "arquivo1": (
+                    "a.xlsx",
+                    arquivo1,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+                "arquivo2": (
+                    "b.xlsx",
+                    arquivo2,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
             },
         )
 

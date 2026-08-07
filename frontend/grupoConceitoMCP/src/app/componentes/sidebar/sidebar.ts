@@ -10,7 +10,7 @@ const CHAVE_COLAPSADO = 'sidebar:colapsado';
   selector: 'app-sidebar',
   imports: [RouterLink, RouterLinkActive, ConfiguracoesUsuario],
   templateUrl: './sidebar.html',
-  styleUrl: './sidebar.scss'
+  styleUrl: './sidebar.scss',
 })
 export class Sidebar {
   protected readonly sessao = inject(Sessao);

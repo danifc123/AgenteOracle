@@ -72,14 +72,14 @@ def _escrever_bloco(
     origem diferente)."""
     cores = preenchimento if isinstance(preenchimento, list) else [preenchimento] * len(cabecalho)
 
-    for indice_coluna, (valor, cor) in enumerate(zip(cabecalho, cores)):
+    for indice_coluna, (valor, cor) in enumerate(zip(cabecalho, cores, strict=True)):
         celula = planilha.cell(row=1, column=coluna_inicial + indice_coluna, value=valor)
         celula.font = Font(bold=True)
         if cor is not None:
             celula.fill = cor
 
     for indice_linha, linha in enumerate(linhas, start=2):
-        for indice_coluna, (valor, cor) in enumerate(zip(linha, cores)):
+        for indice_coluna, (valor, cor) in enumerate(zip(linha, cores, strict=True)):
             celula = planilha.cell(row=indice_linha, column=coluna_inicial + indice_coluna, value=valor)
             if cor is not None:
                 celula.fill = cor
@@ -104,7 +104,9 @@ def _juntar_por_chave_comum(
     indices_unicos_2 = [i for i in range(len(cabecalho2)) if cabecalho2[i] not in colunas_comuns]
 
     cabecalho_final = (
-        list(colunas_comuns) + [cabecalho1[i] for i in indices_unicos_1] + [cabecalho2[i] for i in indices_unicos_2]
+        list(colunas_comuns)
+        + [cabecalho1[i] for i in indices_unicos_1]
+        + [cabecalho2[i] for i in indices_unicos_2]
     )
     # Junção bem-sucedida sai inteira verde clarinho — mesmo tom do bloco
     # único do caso de colunas idênticas — sem diferenciar origem por coluna.
@@ -150,8 +152,12 @@ def _juntar_por_chave_comum(
 
 def _aplicar_largura_automatica(planilha) -> None:
     for coluna in planilha.columns:
-        maior_valor = max((len(str(celula.value)) for celula in coluna if celula.value is not None), default=0)
-        planilha.column_dimensions[coluna[0].column_letter].width = min(maior_valor + 2, _LARGURA_MAXIMA_COLUNA)
+        maior_valor = max(
+            (len(str(celula.value)) for celula in coluna if celula.value is not None), default=0
+        )
+        planilha.column_dimensions[coluna[0].column_letter].width = min(
+            maior_valor + 2, _LARGURA_MAXIMA_COLUNA
+        )
 
 
 def analisar_colunas(conteudo1: bytes, conteudo2: bytes) -> dict:

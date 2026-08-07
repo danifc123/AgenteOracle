@@ -6,7 +6,7 @@ import { CoresCategoria } from '../../servicos/cores-categoria';
   selector: 'app-rotina-item',
   imports: [],
   templateUrl: './rotina-item.html',
-  styleUrl: './rotina-item.scss'
+  styleUrl: './rotina-item.scss',
 })
 export class RotinaItem {
   private readonly coresCategoria = inject(CoresCategoria);

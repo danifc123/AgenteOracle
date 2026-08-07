@@ -25,7 +25,9 @@ def _ultimo_evento_de(eventos, tipo, usuario_afetado):
 
 class TestRotaEventosSeguranca:
     def test_sem_papel_desenvolvedor_e_negado(self, mcp_app, token_teste):
-        resposta = mcp_app.get("/api/auth/eventos-seguranca", headers={"Authorization": f"Bearer {token_teste}"})
+        resposta = mcp_app.get(
+            "/api/auth/eventos-seguranca", headers={"Authorization": f"Bearer {token_teste}"}
+        )
         assert resposta.status_code == 403
 
     def test_sem_token_e_negado(self, mcp_app):
@@ -41,28 +43,38 @@ class TestRegistroDeEventos:
         assert evento is not None
 
     def test_login_sucesso_e_registrado(self, mcp_app, usuario_teste, token_dev):
-        mcp_app.post("/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": usuario_teste["senha"]})
+        mcp_app.post(
+            "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": usuario_teste["senha"]}
+        )
 
         evento = _ultimo_evento_de(_eventos(mcp_app, token_dev), "login_sucesso", usuario_teste["usuario"])
         assert evento is not None
 
     def test_conta_bloqueada_e_registrada(self, mcp_app, usuario_teste, token_dev):
         for _ in range(LIMITE_TENTATIVAS_BLOQUEIO):
-            mcp_app.post("/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"})
+            mcp_app.post(
+                "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"}
+            )
 
         evento = _ultimo_evento_de(_eventos(mcp_app, token_dev), "conta_bloqueada", usuario_teste["usuario"])
         assert evento is not None
 
-    def test_conta_desbloqueada_e_registrada_com_quem_desbloqueou(self, mcp_app, usuario_teste, usuario_dev, token_dev):
+    def test_conta_desbloqueada_e_registrada_com_quem_desbloqueou(
+        self, mcp_app, usuario_teste, usuario_dev, token_dev
+    ):
         for _ in range(LIMITE_TENTATIVAS_BLOQUEIO):
-            mcp_app.post("/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"})
+            mcp_app.post(
+                "/api/auth/login", json={"usuario": usuario_teste["usuario"], "senha": "senha-errada"}
+            )
 
         mcp_app.patch(
             f"/api/auth/usuarios/{usuario_teste['id']}/desbloquear",
             headers={"Authorization": f"Bearer {token_dev}"},
         )
 
-        evento = _ultimo_evento_de(_eventos(mcp_app, token_dev), "conta_desbloqueada", usuario_teste["usuario"])
+        evento = _ultimo_evento_de(
+            _eventos(mcp_app, token_dev), "conta_desbloqueada", usuario_teste["usuario"]
+        )
         assert evento is not None
         assert evento["realizado_por"] == usuario_dev["usuario"]
 
@@ -72,7 +84,12 @@ class TestRegistroDeEventos:
         criado = mcp_app.post(
             "/api/auth/usuarios",
             headers={"Authorization": f"Bearer {token_dev}"},
-            json={"usuario": login, "senha": "SenhaDeTeste!123", "nome": "Teste Evento", "papeis": ["financeiro"]},
+            json={
+                "usuario": login,
+                "senha": "SenhaDeTeste!123",
+                "nome": "Teste Evento",
+                "papeis": ["financeiro"],
+            },
         )
         assert criado.status_code == 201
         id_criado = criado.json()["id"]

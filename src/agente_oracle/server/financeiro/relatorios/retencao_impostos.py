@@ -79,8 +79,9 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -258,9 +259,17 @@ ORDER BY __ORDEM__
 """
 
 _CAMPOS_OPCIONAIS = (
-    "fornecedor_ini", "fornecedor_fim", "loja_ini", "loja_fim", "tipo_pessoa",
-    "vencimento_ini", "vencimento_fim", "emissao_ini", "emissao_fim",
-    "considera_impostos", "ordenar_por",
+    "fornecedor_ini",
+    "fornecedor_fim",
+    "loja_ini",
+    "loja_fim",
+    "tipo_pessoa",
+    "vencimento_ini",
+    "vencimento_fim",
+    "emissao_ini",
+    "emissao_fim",
+    "considera_impostos",
+    "ordenar_por",
 )
 
 
@@ -296,39 +305,35 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/retencao-impostos", methods=["GET", "OPTIONS"])
-    async def listar_retencao_impostos_route(request: Request) -> JSONResponse:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_retencao_impostos_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Relação de Títulos a Pagar com Retenção de Impostos (FINR865) — endpoint JSON usado pela tela."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_titulos(*parametros)
-        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/retencao-impostos/exportar", methods=["GET", "OPTIONS"])
-    async def exportar_retencao_impostos_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_retencao_impostos_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Relação de Títulos a Pagar com Retenção de Impostos (FINR865) — exportação em Excel."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_titulos(*parametros)
-        conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Relação de Títulos a Pagar com Retenção de Impostos")
+        conteudo_xlsx = gerar_xlsx(
+            colunas, linhas, titulo="Relação de Títulos a Pagar com Retenção de Impostos"
+        )
         return Response(
             content=conteudo_xlsx,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

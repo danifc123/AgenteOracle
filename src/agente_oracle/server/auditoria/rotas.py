@@ -17,8 +17,9 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.agent.auditoria.analise import Achado, analisar_perfis, filtrar_valores_conhecidos
 from agente_oracle.agent.financeiro.auditoria import construir_perfis_financeiro
 from agente_oracle.config import settings
-from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_usuario
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.auth.decorador_rota import rota_protegida
+from agente_oracle.server.auth.dependencia import exigir_desenvolvedor
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auditoria import dispensados
 from agente_oracle.tools.auditoria import historico as historico_tools
 from agente_oracle.tools.auth import papeis
@@ -40,7 +41,8 @@ def _achado_para_json(achado: Achado) -> dict:
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/auditoria", methods=["GET", "OPTIONS"])
-    async def auditoria_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS")
+    async def auditoria_route(request: Request, usuario: dict) -> Response:
         """Roda a análise de qualidade de dados ao vivo pra UM módulo só
         (`?modulo=financeiro`) — cada departamento roda e revisa a própria
         auditoria, nunca a de outro. Devolve TODO achado ATIVO daquele
@@ -62,24 +64,23 @@ def registrar(mcp) -> None:
         (mostrado como "Ativo" na Lista de Auditoria) podia sumir do dialog
         por causa de uma dispensa antiga, de antes de dispensar passar a
         desativar — bug real que já aconteceu."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_usuario(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         modulo = request.query_params.get("modulo", "").strip()
         if not modulo:
-            return JSONResponse({"erro": "Informe o módulo a auditar."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe o módulo a auditar."}, status_code=400, headers=CORS_HEADERS
+            )
 
-        if modulo not in papeis.modulos_liberados(usuario_ou_erro.get("papeis", [])):
-            return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
+        if modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
+            return JSONResponse(
+                {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
+            )
 
         construir_perfis = _PROVEDORES_POR_MODULO.get(modulo)
         if construir_perfis is None:
             return JSONResponse(
-                {"erro": "Este módulo ainda não tem auditoria disponível."}, status_code=400, headers=CORS_HEADERS
+                {"erro": "Este módulo ainda não tem auditoria disponível."},
+                status_code=400,
+                headers=CORS_HEADERS,
             )
 
         perfis = construir_perfis()
@@ -102,7 +103,7 @@ def registrar(mcp) -> None:
 
         # Guarda todo achado novo no histórico (é o que alimenta
         # `ja_identificados` na próxima execução, de qualquer usuário).
-        historico_tools.salvar(usuario_ou_erro["sub"], achados_novos)
+        historico_tools.salvar(usuario["sub"], achados_novos)
 
         # Junta com o que já era conhecido, senão o dialog só mostraria a
         # novidade desta execução — não o que ainda está pendente de
@@ -113,7 +114,8 @@ def registrar(mcp) -> None:
         return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auditoria/historico", methods=["GET", "OPTIONS"])
-    async def auditoria_historico_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS")
+    async def auditoria_historico_route(request: Request, usuario: dict) -> Response:
         """Lista os achados que a auditoria já encontrou ao longo do tempo
         (todas as execuções, de qualquer usuário), restritos aos módulos que
         quem está consultando tem acesso — nunca expira, ao contrário de
@@ -124,40 +126,31 @@ def registrar(mcp) -> None:
         o usuário tem acesso (útil pra quem tem mais de um, ex:
         desenvolvedor); com ele, restringe a um departamento só — mesmo
         filtro que a execução ao vivo em `/api/auditoria`."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_usuario(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
-        papeis_usuario = usuario_ou_erro.get("papeis", [])
+        papeis_usuario = usuario.get("papeis", [])
         modulos_liberados = papeis.modulos_liberados(papeis_usuario)
 
         modulo = request.query_params.get("modulo", "").strip()
         if modulo:
             if modulo not in modulos_liberados:
-                return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
+                return JSONResponse(
+                    {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
+                )
             modulos_liberados = [modulo]
 
-        registros = historico_tools.listar(modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario))
+        registros = historico_tools.listar(
+            modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario)
+        )
         return JSONResponse(registros, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auditoria/historico/ativo", methods=["PATCH", "OPTIONS"])
-    async def auditoria_historico_ativo_route(request: Request) -> Response:
+    @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
+    async def auditoria_historico_ativo_route(request: Request, usuario: dict) -> Response:
         """Ativa/desativa um achado no histórico (todas as linhas daquela
         tupla `modulo/view/campo/valor` de uma vez) — só pra facilitar
         desenvolvedor testar a auditoria repetidamente: desativado, o achado
         deixa de contar em `ja_identificados` e a próxima execução volta a
         tratá-lo como novo, mesmo sem o dado ter mudado. Restrito ao papel
         `desenvolvedor` (não qualquer administrador)."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("PATCH, OPTIONS")
-
-        usuario_ou_erro = exigir_desenvolvedor(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         corpo = await request.json()
         modulo = str(corpo.get("modulo", "")).strip()
         view = str(corpo.get("view", "")).strip()
@@ -174,12 +167,15 @@ def registrar(mcp) -> None:
 
         atualizado = historico_tools.definir_ativo(modulo, view, campo, valor, ativo)
         if not atualizado:
-            return JSONResponse({"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+            )
 
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auditoria/dispensar", methods=["POST", "OPTIONS"])
-    async def dispensar_route(request: Request) -> Response:
+    @rota_protegida("POST, OPTIONS")
+    async def dispensar_route(request: Request, usuario: dict) -> Response:
         """Dispensa um achado — grava o registro por usuário (histórico de
         quem dispensou o quê, em `tools/auditoria/dispensados`) e, além
         disso, DESATIVA o achado globalmente (mesmo mecanismo do botão
@@ -189,13 +185,6 @@ def registrar(mcp) -> None:
         dado continuar errado, a IA pode reencontrar e reapontar o mesmo
         problema numa execução futura. "Dispensar" aqui não é "isto nunca é
         um problema", é "parei de olhar pra isso agora"."""
-        if request.method == "OPTIONS":
-            return resposta_preflight()
-
-        usuario_ou_erro = exigir_usuario(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         corpo = await request.json()
         modulo = str(corpo.get("modulo", "")).strip()
         view = str(corpo.get("view", "")).strip()
@@ -210,9 +199,11 @@ def registrar(mcp) -> None:
         # Revalida o módulo aqui também (não só no GET) — sem isso, um
         # usuário sem acesso a um módulo poderia gravar uma dispensa pra um
         # módulo que nem deveria saber que existe.
-        if modulo not in papeis.modulos_liberados(usuario_ou_erro.get("papeis", [])):
-            return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
+        if modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
+            return JSONResponse(
+                {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
+            )
 
-        dispensados.dispensar(usuario_ou_erro["sub"], modulo, view, campo, valor)
+        dispensados.dispensar(usuario["sub"], modulo, view, campo, valor)
         historico_tools.definir_ativo(modulo, view, campo, valor, False)
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)

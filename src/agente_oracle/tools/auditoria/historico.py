@@ -27,7 +27,7 @@ ver `server/auth/dependencia.exigir_desenvolvedor`, que restringe isso ao
 papel `desenvolvedor`."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from agente_oracle.agent.auditoria.analise import Achado
 from agente_oracle.config import settings
@@ -43,7 +43,9 @@ def _coluna_ativo_existe(cursor) -> bool:
             "WHERE table_name = 'auditoria_historico' AND column_name = 'ativo'"
         )
     else:
-        cursor.execute("SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'AUDITORIA_HISTORICO' AND COLUMN_NAME = 'ATIVO'")
+        cursor.execute(
+            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'AUDITORIA_HISTORICO' AND COLUMN_NAME = 'ATIVO'"
+        )
     return cursor.fetchone() is not None
 
 
@@ -81,7 +83,7 @@ def salvar(usuario_id: str, achados: list[Achado]) -> str | None:
         return None
 
     execucao_id = uuid.uuid4().hex
-    agora = datetime.now(timezone.utc)
+    agora = datetime.now(UTC)
 
     with get_connection() as connection:
         cursor = connection.cursor()
@@ -120,7 +122,9 @@ def ja_identificados() -> set[tuple[str, str, str, str]]:
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute("SELECT DISTINCT modulo, view_nome, campo, valor FROM auditoria_historico WHERE ativo = TRUE")
+        cursor.execute(
+            "SELECT DISTINCT modulo, view_nome, campo, valor FROM auditoria_historico WHERE ativo = TRUE"
+        )
         linhas = cursor.fetchall()
     return {(modulo, view, campo, valor) for modulo, view, campo, valor in linhas}
 

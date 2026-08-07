@@ -11,13 +11,11 @@ próprios layouts.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_connection
 
-_COLUNAS = (
-    "id, usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas, criado_em, atualizado_em"
-)
+_COLUNAS = "id, usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas, criado_em, atualizado_em"
 
 _tabela_garantida = False
 
@@ -52,7 +50,16 @@ def _carregar_json(valor):
 
 
 def _linha_para_layout(linha: tuple) -> dict:
-    id_, usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas, criado_em, atualizado_em = linha
+    (
+        id_,
+        usuario_id,
+        nome,
+        colunas_selecionadas,
+        valores_filtros,
+        filiais_selecionadas,
+        criado_em,
+        atualizado_em,
+    ) = linha
     return {
         "id": id_,
         "usuario_id": usuario_id,
@@ -72,7 +79,7 @@ def criar(
     valores_filtros: dict[str, str],
     filiais_selecionadas: list[str],
 ) -> dict:
-    agora = datetime.now(timezone.utc)
+    agora = datetime.now(UTC)
 
     try:
         with get_connection() as connection:
@@ -128,7 +135,7 @@ def atualizar(
     except ValueError:
         return None
 
-    campos: dict[str, object] = {"atualizado_em": datetime.now(timezone.utc)}
+    campos: dict[str, object] = {"atualizado_em": datetime.now(UTC)}
     trechos_set = ["atualizado_em = :atualizado_em"]
 
     if nome is not None:

@@ -1,7 +1,10 @@
 """Geração e verificação do token de login (JWT, sem estado no servidor — o
 token carrega usuário/nome/papéis assinados e expira sozinho em
-`AUTH_TOKEN_HORAS`). Trade-off aceito: não dá pra revogar um usuário na hora
-antes do token expirar."""
+`AUTH_TOKEN_HORAS`). O JWT em si não pode ser revogado antes de expirar (é
+sem estado, por design) — mas `server/auth/dependencia.py:exigir_usuario`
+confere o estado atual da conta (ativo/bloqueado) no banco a cada requisição
+autenticada, então desativar ou bloquear alguém corta o acesso na prática já
+no request seguinte, mesmo com um token ainda tecnicamente válido."""
 
 from datetime import datetime, timedelta, timezone
 

@@ -93,6 +93,16 @@
   background: var(--color-bg);
 }
 
+.badge-bloqueado {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a2f2f;
+  background: rgba(154, 47, 47, 0.12);
+}
+
 .empty-state {
   text-align: center;
   max-width: 420px;
@@ -129,6 +139,9 @@ app-select-busca {
 }
 
 .acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   white-space: nowrap;
 }
 

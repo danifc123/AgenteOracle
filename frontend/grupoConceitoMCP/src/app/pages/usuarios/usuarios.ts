@@ -7,6 +7,7 @@ import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenaca
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
 import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
+import { Sessao } from '../../servicos/sessao';
 
 interface Usuario {
   id: number;
@@ -14,6 +15,7 @@ interface Usuario {
   nome: string;
   papeis: string[];
   ativo: boolean;
+  bloqueado: boolean;
 }
 
 interface Papel {
@@ -33,6 +35,7 @@ function mensagemErro(erro: HttpErrorResponse, mensagemPadrao: string): string {
 })
 export class Usuarios {
   private readonly http = inject(HttpClient);
+  protected readonly sessao = inject(Sessao);
 
   usuarios = signal<Usuario[]>([]);
   papeisDisponiveis = signal<Papel[]>([]);
@@ -43,6 +46,7 @@ export class Usuarios {
   criando = signal(false);
   erroForm = signal<string | null>(null);
   apagandoId = signal<number | null>(null);
+  desbloqueandoId = signal<number | null>(null);
 
   formUsuario = signal('');
   formNome = signal('');
@@ -86,7 +90,7 @@ export class Usuarios {
       case 'papeis':
         return this.rotuloPapeis(usuario.papeis);
       case 'status':
-        return usuario.ativo ? 1 : 0;
+        return usuario.bloqueado ? 2 : usuario.ativo ? 1 : 0;
       default:
         return '';
     }
@@ -189,6 +193,28 @@ export class Usuarios {
       error: (erro: HttpErrorResponse) => {
         this.erro.set(mensagemErro(erro, 'Não foi possível apagar o usuário.'));
         this.apagandoId.set(null);
+      }
+    });
+  }
+
+  desbloquearUsuario(usuario: Usuario): void {
+    if (this.desbloqueandoId()) {
+      return;
+    }
+
+    this.desbloqueandoId.set(usuario.id);
+    this.erro.set(null);
+
+    this.http.patch(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}/desbloquear`, {}).subscribe({
+      next: () => {
+        this.usuarios.update((atual) =>
+          atual.map((item) => (item.id === usuario.id ? { ...item, bloqueado: false } : item))
+        );
+        this.desbloqueandoId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erro.set(mensagemErro(erro, 'Não foi possível desbloquear o usuário.'));
+        this.desbloqueandoId.set(null);
       }
     });
   }

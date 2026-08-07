@@ -42,13 +42,25 @@
             <td>{{ usuario.nome }}</td>
             <td>{{ rotuloPapeis(usuario.papeis) }}</td>
             <td>
-              @if (usuario.ativo) {
+              @if (usuario.bloqueado) {
+                <span class="badge-bloqueado">Bloqueado</span>
+              } @else if (usuario.ativo) {
                 <span class="badge-ativo">Ativo</span>
               } @else {
                 <span class="badge-inativo">Inativo</span>
               }
             </td>
             <td class="acoes">
+              @if (usuario.bloqueado && sessao.ehDesenvolvedor()) {
+                <app-botao
+                  variant="contorno"
+                  [loading]="desbloqueandoId() === usuario.id"
+                  loadingText="Desbloqueando..."
+                  (clicked)="desbloquearUsuario(usuario)"
+                >
+                  Desbloquear
+                </app-botao>
+              }
               <app-botao
                 variant="perigo"
                 [loading]="apagandoId() === usuario.id"

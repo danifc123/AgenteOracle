@@ -174,12 +174,50 @@ export class Financeiro {
     });
   }
 
-  protected estaFixado(rotina: RotinaFinanceira | null): boolean {
-    return !!rotina && this.fixados().includes(rotina.nome);
+  private carregarFixados(): void {
+    const salvos = localStorage.getItem(this.chaveFixados());
+    this.fixados.set(salvos ? (JSON.parse(salvos) as string[]) : []);
   }
 
-  protected limiteFixadosAtingido(): boolean {
-    return this.fixados().length >= LIMITE_FIXADOS;
+  private chaveFixados(): string {
+    return `financeiro:${this.moduloId()}:fixados`;
+  }
+
+  private filtrosObrigatoriosPreenchidos(rotina: RotinaFinanceira): boolean {
+    const valores = this.valoresFiltros();
+    return (rotina.filtros ?? []).every((campo) => {
+      if (!campo.obrigatorio) {
+        return true;
+      }
+      if (campo.tipo === 'periodo-data') {
+        return !!valores[`${campo.chave}_ini`]?.trim() && !!valores[`${campo.chave}_fim`]?.trim();
+      }
+      return !!valores[campo.chave]?.trim();
+    });
+  }
+
+  private parametrosRelatorio(rotina: RotinaFinanceira): HttpParams {
+    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(','));
+
+    for (const campo of rotina.filtros ?? []) {
+      params = this.aplicarCampoNosParametros(params, campo);
+    }
+
+    return params;
+  }
+
+  private aplicarCampoNosParametros(params: HttpParams, campo: CampoFiltro): HttpParams {
+    if (campo.tipo === 'periodo-data') {
+      return params
+        .set(`${campo.chave}_ini`, this.valorFiltro(`${campo.chave}_ini`))
+        .set(`${campo.chave}_fim`, this.valorFiltro(`${campo.chave}_fim`));
+    }
+
+    return params.set(campo.chave, this.valorFiltro(campo.chave));
+  }
+
+  private valorFiltro(chave: string): string {
+    return this.valoresFiltros()[chave] ?? '';
   }
 
   protected alternarFixadoSelecionada(): void {
@@ -204,125 +242,16 @@ export class Financeiro {
     this.salvarFixados([rotina.nome, ...atual]);
   }
 
-  protected selecionarRotina(rotina: RotinaFinanceira): void {
-    if (this.rotinaSelecionada()?.nome !== rotina.nome) {
-      this.valoresFiltros.set({});
-      this.filtroInvalido.set(false);
-    }
-
-    this.rotinaSelecionada.set(rotina);
-
-    if (!rotina.apiEndpoint) {
-      return;
-    }
-
-    if (!this.filiais().length) {
-      this.carregarFiliais();
-    }
-
-    for (const campo of rotina.filtros ?? []) {
-      this.carregarOpcoesCampo(campo);
-    }
+  private salvarFixados(nomes: string[]): void {
+    this.fixados.set(nomes);
+    localStorage.setItem(this.chaveFixados(), JSON.stringify(nomes));
   }
 
-  protected limparFiltrosSelecionados(): void {
-    this.filiaisSelecionadas.set([]);
-    this.valoresFiltros.set({});
-  }
-
-  private carregarOpcoesCampo(campo: CampoFiltro): void {
-    if (!campo.apiEndpoint || this.opcoesCampos()[campo.chave]) {
-      return;
-    }
-
-    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/${campo.apiEndpoint}`).subscribe({
-      next: (opcoes) => {
-        this.opcoesCampos.update((atual) => ({
-          ...atual,
-          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome })),
-        }));
-      },
-      error: () => {
-        this.opcoesCampos.update((atual) => ({ ...atual, [campo.chave]: [] }));
-      },
-    });
-  }
-
-  private valorFiltro(chave: string): string {
-    return this.valoresFiltros()[chave] ?? '';
-  }
-
-  protected definirValorFiltro(chave: string, valor: string): void {
-    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
-  }
-
-  protected confirmarFiltroSelecionada(): void {
-    const rotina = this.rotinaSelecionada();
+  protected baixarRotinaEmVisualizacao(): void {
+    const rotina = this.rotinaEmVisualizacao();
     if (rotina) {
-      this.confirmarFiltro(rotina);
+      this.baixar(rotina);
     }
-  }
-
-  private confirmarFiltro(rotina: RotinaFinanceira): void {
-    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
-      this.sinalizarFiltroInvalido();
-      return;
-    }
-
-    this.buscarRelatorio(rotina);
-  }
-
-  private filtrosObrigatoriosPreenchidos(rotina: RotinaFinanceira): boolean {
-    const valores = this.valoresFiltros();
-    return (rotina.filtros ?? []).every((campo) => {
-      if (!campo.obrigatorio) {
-        return true;
-      }
-      if (campo.tipo === 'periodo-data') {
-        return !!valores[`${campo.chave}_ini`]?.trim() && !!valores[`${campo.chave}_fim`]?.trim();
-      }
-      return !!valores[campo.chave]?.trim();
-    });
-  }
-
-  private sinalizarFiltroInvalido(): void {
-    this.filtroInvalido.set(true);
-    setTimeout(() => this.filtroInvalido.set(false), 400);
-  }
-
-  private buscarRelatorio(rotina: RotinaFinanceira): void {
-    this.rotinaEmVisualizacao.set(rotina);
-    this.relatorioDados.set(null);
-    this.relatorioErro.set(null);
-
-    if (!rotina.apiEndpoint) {
-      return;
-    }
-
-    this.relatorioCarregando.set(true);
-    this.http
-      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
-        params: this.parametrosRelatorio(rotina),
-      })
-      .subscribe({
-        next: (dados) => {
-          this.relatorioDados.set(dados);
-          this.relatorioCarregando.set(false);
-        },
-        error: () => {
-          this.relatorioErro.set(
-            'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
-          );
-          this.relatorioCarregando.set(false);
-        },
-      });
-  }
-
-  protected fecharVisualizacao(): void {
-    this.rotinaEmVisualizacao.set(null);
-    this.relatorioDados.set(null);
-    this.relatorioErro.set(null);
-    this.relatorioCarregando.set(false);
   }
 
   private baixar(rotina: RotinaFinanceira): void {
@@ -364,31 +293,98 @@ export class Financeiro {
       });
   }
 
-  protected baixarRotinaEmVisualizacao(): void {
-    const rotina = this.rotinaEmVisualizacao();
+  protected confirmarFiltroSelecionada(): void {
+    const rotina = this.rotinaSelecionada();
     if (rotina) {
-      this.baixar(rotina);
+      this.confirmarFiltro(rotina);
     }
   }
 
-  private parametrosRelatorio(rotina: RotinaFinanceira): HttpParams {
-    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(','));
+  private confirmarFiltro(rotina: RotinaFinanceira): void {
+    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
+      this.sinalizarFiltroInvalido();
+      return;
+    }
+
+    this.buscarRelatorio(rotina);
+  }
+
+  private buscarRelatorio(rotina: RotinaFinanceira): void {
+    this.rotinaEmVisualizacao.set(rotina);
+    this.relatorioDados.set(null);
+    this.relatorioErro.set(null);
+
+    if (!rotina.apiEndpoint) {
+      return;
+    }
+
+    this.relatorioCarregando.set(true);
+    this.http
+      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
+        params: this.parametrosRelatorio(rotina),
+      })
+      .subscribe({
+        next: (dados) => {
+          this.relatorioDados.set(dados);
+          this.relatorioCarregando.set(false);
+        },
+        error: () => {
+          this.relatorioErro.set(
+            'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
+          );
+          this.relatorioCarregando.set(false);
+        },
+      });
+  }
+
+  private sinalizarFiltroInvalido(): void {
+    this.filtroInvalido.set(true);
+    setTimeout(() => this.filtroInvalido.set(false), 400);
+  }
+
+  protected definirValorFiltro(chave: string, valor: string): void {
+    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
+  }
+
+  protected estaFixado(rotina: RotinaFinanceira | null): boolean {
+    return !!rotina && this.fixados().includes(rotina.nome);
+  }
+
+  protected fecharVisualizacao(): void {
+    this.rotinaEmVisualizacao.set(null);
+    this.relatorioDados.set(null);
+    this.relatorioErro.set(null);
+    this.relatorioCarregando.set(false);
+  }
+
+  protected limiteFixadosAtingido(): boolean {
+    return this.fixados().length >= LIMITE_FIXADOS;
+  }
+
+  protected limparFiltrosSelecionados(): void {
+    this.filiaisSelecionadas.set([]);
+    this.valoresFiltros.set({});
+  }
+
+  protected selecionarRotina(rotina: RotinaFinanceira): void {
+    if (this.rotinaSelecionada()?.nome !== rotina.nome) {
+      this.valoresFiltros.set({});
+      this.filtroInvalido.set(false);
+    }
+
+    this.rotinaSelecionada.set(rotina);
+
+    if (!rotina.apiEndpoint) {
+      return;
+    }
+
+    if (!this.filiais().length) {
+      this.carregarFiliais();
+    }
 
     for (const campo of rotina.filtros ?? []) {
-      params = this.aplicarCampoNosParametros(params, campo);
+      this.carregarOpcoesCampo(campo);
     }
-
-    return params;
-  }
-
-  private aplicarCampoNosParametros(params: HttpParams, campo: CampoFiltro): HttpParams {
-    if (campo.tipo === 'periodo-data') {
-      return params
-        .set(`${campo.chave}_ini`, this.valorFiltro(`${campo.chave}_ini`))
-        .set(`${campo.chave}_fim`, this.valorFiltro(`${campo.chave}_fim`));
-    }
-
-    return params.set(campo.chave, this.valorFiltro(campo.chave));
   }
 
   private carregarFiliais(): void {
@@ -402,17 +398,21 @@ export class Financeiro {
     });
   }
 
-  private carregarFixados(): void {
-    const salvos = localStorage.getItem(this.chaveFixados());
-    this.fixados.set(salvos ? (JSON.parse(salvos) as string[]) : []);
-  }
+  private carregarOpcoesCampo(campo: CampoFiltro): void {
+    if (!campo.apiEndpoint || this.opcoesCampos()[campo.chave]) {
+      return;
+    }
 
-  private salvarFixados(nomes: string[]): void {
-    this.fixados.set(nomes);
-    localStorage.setItem(this.chaveFixados(), JSON.stringify(nomes));
-  }
-
-  private chaveFixados(): string {
-    return `financeiro:${this.moduloId()}:fixados`;
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/${campo.apiEndpoint}`).subscribe({
+      next: (opcoes) => {
+        this.opcoesCampos.update((atual) => ({
+          ...atual,
+          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome })),
+        }));
+      },
+      error: () => {
+        this.opcoesCampos.update((atual) => ({ ...atual, [campo.chave]: [] }));
+      },
+    });
   }
 }

@@ -27,16 +27,14 @@ export class SeletorArquivoExcel {
     return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`;
   });
 
-  selecionarViaInput(evento: Event): void {
-    const input = evento.target as HTMLInputElement;
-    this.definirArquivo(input.files?.[0] ?? null);
-    input.value = '';
-  }
-
-  aoSoltarArquivo(evento: DragEvent): void {
-    evento.preventDefault();
-    this.arrastandoSobre.set(false);
-    this.definirArquivo(evento.dataTransfer?.files?.[0] ?? null);
+  private definirArquivo(arquivo: File | null): void {
+    if (arquivo && !arquivo.name.toLowerCase().endsWith('.xlsx')) {
+      this.erro.set('Selecione um arquivo .xlsx');
+      return;
+    }
+    this.erro.set(null);
+    this.arquivo.set(arquivo);
+    this.arquivoAlterado.emit(arquivo);
   }
 
   aoArrastarSobre(evento: DragEvent): void {
@@ -48,17 +46,19 @@ export class SeletorArquivoExcel {
     this.arrastandoSobre.set(false);
   }
 
+  aoSoltarArquivo(evento: DragEvent): void {
+    evento.preventDefault();
+    this.arrastandoSobre.set(false);
+    this.definirArquivo(evento.dataTransfer?.files?.[0] ?? null);
+  }
+
   remover(): void {
     this.definirArquivo(null);
   }
 
-  private definirArquivo(arquivo: File | null): void {
-    if (arquivo && !arquivo.name.toLowerCase().endsWith('.xlsx')) {
-      this.erro.set('Selecione um arquivo .xlsx');
-      return;
-    }
-    this.erro.set(null);
-    this.arquivo.set(arquivo);
-    this.arquivoAlterado.emit(arquivo);
+  selecionarViaInput(evento: Event): void {
+    const input = evento.target as HTMLInputElement;
+    this.definirArquivo(input.files?.[0] ?? null);
+    input.value = '';
   }
 }

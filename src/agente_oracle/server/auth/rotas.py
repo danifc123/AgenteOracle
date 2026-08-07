@@ -46,6 +46,134 @@ def _resposta_limite_excedido(espera: int, mensagem: str) -> JSONResponse:
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/auth/senha", methods=["PATCH", "OPTIONS"])
+    @rota_protegida("PATCH, OPTIONS")
+    async def alterar_senha_route(request: Request, usuario: dict) -> Response:
+        """Autoatendimento: usuário logado troca a própria senha, confirmando
+        a senha atual antes."""
+        # Namespace própria ("senha:") pra não compartilhar contador com o
+        # rate limit do login — sem isso, alguém com um token roubado (ainda
+        # válido) mas sem saber a senha atual podia tentar adivinhá-la à
+        # vontade nessa rota.
+        chave_rate_limit = f"senha:{usuario['usuario']}"
+        espera = segundos_ate_liberar(chave_rate_limit)
+        if espera is not None:
+            return _resposta_limite_excedido(
+                espera, f"Muitas tentativas. Tente de novo em {espera} segundos."
+            )
+
+        corpo = await request.json()
+        senha_atual = str(corpo.get("senha_atual", ""))
+        senha_nova = str(corpo.get("senha_nova", ""))
+
+        if not senha_nova or senha_nova == senha_atual:
+            return JSONResponse(
+                {"erro": "Informe uma senha nova diferente da atual."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        erro_senha = senha_fraca(senha_nova)
+        if erro_senha:
+            return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
+
+        sucesso = alterar_senha(usuario["usuario"], senha_atual, senha_nova)
+        if not sucesso:
+            registrar_falha(chave_rate_limit)
+            return JSONResponse({"erro": "Senha atual incorreta."}, status_code=400, headers=CORS_HEADERS)
+
+        limpar(chave_rate_limit)
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
+    @rota_protegida("DELETE, OPTIONS", exigir=exigir_administrador)
+    async def apagar_usuario_route(request: Request, usuario: dict) -> Response:
+        """Endpoint HTTP usado pela tela de administração de usuários pra
+        apagar um usuário — restrito a administradores."""
+        id_usuario = request.path_params["id"]
+        if id_usuario == usuario.get("sub"):
+            return JSONResponse(
+                {"erro": "Você não pode apagar o seu próprio usuário."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        try:
+            id_numerico = int(id_usuario)
+        except ValueError:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        usuario_apagado = deletar_usuario(id_numerico)
+        if usuario_apagado is None:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        eventos_seguranca.registrar(
+            "usuario_apagado", usuario_afetado=usuario_apagado, realizado_por=usuario["usuario"]
+        )
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/perfil", methods=["PATCH", "OPTIONS"])
+    @rota_protegida("PATCH, OPTIONS")
+    async def atualizar_perfil_route(request: Request, usuario: dict) -> Response:
+        """Autoatendimento: usuário logado atualiza o próprio nome e/ou foto
+        — nunca o de outra pessoa (o alvo é sempre quem está no token)."""
+        corpo = await request.json()
+        nome = corpo.get("nome")
+        foto = corpo.get("foto")
+
+        nome = nome.strip() if isinstance(nome, str) else None
+        if nome == "":
+            return JSONResponse(
+                {"erro": "Nome não pode ficar em branco."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        if isinstance(foto, str) and len(foto) > _TAMANHO_MAXIMO_FOTO:
+            return JSONResponse({"erro": "Imagem muito grande."}, status_code=400, headers=CORS_HEADERS)
+        foto = foto if isinstance(foto, str) else None
+
+        if nome is None and foto is None:
+            return JSONResponse({"erro": "Nada pra atualizar."}, status_code=400, headers=CORS_HEADERS)
+
+        perfil = atualizar_perfil(usuario["usuario"], nome=nome, foto=foto)
+        return JSONResponse(
+            {"usuario": perfil["usuario"], "nome": perfil["nome"], "foto": perfil.get("foto")},
+            headers=CORS_HEADERS,
+        )
+
+    @mcp.custom_route("/api/auth/usuarios/{id}/desbloquear", methods=["PATCH", "OPTIONS"])
+    @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
+    async def desbloquear_usuario_route(request: Request, usuario: dict) -> Response:
+        """Desbloqueia uma conta travada após 3 tentativas de login erradas
+        seguidas — restrito ao time de TI (papel `desenvolvedor`)."""
+        try:
+            id_numerico = int(request.path_params["id"])
+        except ValueError:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        usuario_desbloqueado = desbloquear_usuario(id_numerico)
+        if usuario_desbloqueado is None:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        eventos_seguranca.registrar(
+            "conta_desbloqueada",
+            usuario_afetado=usuario_desbloqueado,
+            realizado_por=usuario["usuario"],
+        )
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/eventos-seguranca", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_desenvolvedor)
+    async def eventos_seguranca_route(request: Request, usuario: dict) -> Response:
+        """Trilha de auditoria de login/administração de contas — restrita
+        ao time de TI (papel `desenvolvedor`), pra investigar incidentes."""
+        return JSONResponse(eventos_seguranca.listar(), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/papeis", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_administrador)
+    async def listar_papeis_route(request: Request, usuario: dict) -> Response:
+        """Endpoint HTTP usado pela tela de administração de usuários, pra
+        popular o seletor de papéis do formulário de cadastro."""
+        return JSONResponse(
+            [{"slug": papel.slug, "rotulo": papel.rotulo} for papel in papeis.PAPEIS_DISPONIVEIS],
+            headers=CORS_HEADERS,
+        )
+
     @mcp.custom_route("/api/auth/login", methods=["POST", "OPTIONS"])
     async def login_route(request: Request) -> Response:
         """Endpoint HTTP usado pela tela de login do frontend."""
@@ -98,16 +226,6 @@ def registrar(mcp) -> None:
                 "administrador": papeis.eh_administrador(dados["papeis"]),
                 "modulos": papeis.modulos_liberados(dados["papeis"]),
             },
-            headers=CORS_HEADERS,
-        )
-
-    @mcp.custom_route("/api/auth/papeis", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_administrador)
-    async def listar_papeis_route(request: Request, usuario: dict) -> Response:
-        """Endpoint HTTP usado pela tela de administração de usuários, pra
-        popular o seletor de papéis do formulário de cadastro."""
-        return JSONResponse(
-            [{"slug": papel.slug, "rotulo": papel.rotulo} for papel in papeis.PAPEIS_DISPONIVEIS],
             headers=CORS_HEADERS,
         )
 
@@ -177,121 +295,3 @@ def registrar(mcp) -> None:
             status_code=201,
             headers=CORS_HEADERS,
         )
-
-    @mcp.custom_route("/api/auth/perfil", methods=["PATCH", "OPTIONS"])
-    @rota_protegida("PATCH, OPTIONS")
-    async def atualizar_perfil_route(request: Request, usuario: dict) -> Response:
-        """Autoatendimento: usuário logado atualiza o próprio nome e/ou foto
-        — nunca o de outra pessoa (o alvo é sempre quem está no token)."""
-        corpo = await request.json()
-        nome = corpo.get("nome")
-        foto = corpo.get("foto")
-
-        nome = nome.strip() if isinstance(nome, str) else None
-        if nome == "":
-            return JSONResponse(
-                {"erro": "Nome não pode ficar em branco."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        if isinstance(foto, str) and len(foto) > _TAMANHO_MAXIMO_FOTO:
-            return JSONResponse({"erro": "Imagem muito grande."}, status_code=400, headers=CORS_HEADERS)
-        foto = foto if isinstance(foto, str) else None
-
-        if nome is None and foto is None:
-            return JSONResponse({"erro": "Nada pra atualizar."}, status_code=400, headers=CORS_HEADERS)
-
-        perfil = atualizar_perfil(usuario["usuario"], nome=nome, foto=foto)
-        return JSONResponse(
-            {"usuario": perfil["usuario"], "nome": perfil["nome"], "foto": perfil.get("foto")},
-            headers=CORS_HEADERS,
-        )
-
-    @mcp.custom_route("/api/auth/senha", methods=["PATCH", "OPTIONS"])
-    @rota_protegida("PATCH, OPTIONS")
-    async def alterar_senha_route(request: Request, usuario: dict) -> Response:
-        """Autoatendimento: usuário logado troca a própria senha, confirmando
-        a senha atual antes."""
-        # Namespace própria ("senha:") pra não compartilhar contador com o
-        # rate limit do login — sem isso, alguém com um token roubado (ainda
-        # válido) mas sem saber a senha atual podia tentar adivinhá-la à
-        # vontade nessa rota.
-        chave_rate_limit = f"senha:{usuario['usuario']}"
-        espera = segundos_ate_liberar(chave_rate_limit)
-        if espera is not None:
-            return _resposta_limite_excedido(
-                espera, f"Muitas tentativas. Tente de novo em {espera} segundos."
-            )
-
-        corpo = await request.json()
-        senha_atual = str(corpo.get("senha_atual", ""))
-        senha_nova = str(corpo.get("senha_nova", ""))
-
-        if not senha_nova or senha_nova == senha_atual:
-            return JSONResponse(
-                {"erro": "Informe uma senha nova diferente da atual."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        erro_senha = senha_fraca(senha_nova)
-        if erro_senha:
-            return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
-
-        sucesso = alterar_senha(usuario["usuario"], senha_atual, senha_nova)
-        if not sucesso:
-            registrar_falha(chave_rate_limit)
-            return JSONResponse({"erro": "Senha atual incorreta."}, status_code=400, headers=CORS_HEADERS)
-
-        limpar(chave_rate_limit)
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
-    @rota_protegida("DELETE, OPTIONS", exigir=exigir_administrador)
-    async def apagar_usuario_route(request: Request, usuario: dict) -> Response:
-        """Endpoint HTTP usado pela tela de administração de usuários pra
-        apagar um usuário — restrito a administradores."""
-        id_usuario = request.path_params["id"]
-        if id_usuario == usuario.get("sub"):
-            return JSONResponse(
-                {"erro": "Você não pode apagar o seu próprio usuário."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        try:
-            id_numerico = int(id_usuario)
-        except ValueError:
-            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        usuario_apagado = deletar_usuario(id_numerico)
-        if usuario_apagado is None:
-            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        eventos_seguranca.registrar(
-            "usuario_apagado", usuario_afetado=usuario_apagado, realizado_por=usuario["usuario"]
-        )
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/auth/usuarios/{id}/desbloquear", methods=["PATCH", "OPTIONS"])
-    @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
-    async def desbloquear_usuario_route(request: Request, usuario: dict) -> Response:
-        """Desbloqueia uma conta travada após 3 tentativas de login erradas
-        seguidas — restrito ao time de TI (papel `desenvolvedor`)."""
-        try:
-            id_numerico = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        usuario_desbloqueado = desbloquear_usuario(id_numerico)
-        if usuario_desbloqueado is None:
-            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        eventos_seguranca.registrar(
-            "conta_desbloqueada",
-            usuario_afetado=usuario_desbloqueado,
-            realizado_por=usuario["usuario"],
-        )
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/auth/eventos-seguranca", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_desenvolvedor)
-    async def eventos_seguranca_route(request: Request, usuario: dict) -> Response:
-        """Trilha de auditoria de login/administração de contas — restrita
-        ao time de TI (papel `desenvolvedor`), pra investigar incidentes."""
-        return JSONResponse(eventos_seguranca.listar(), headers=CORS_HEADERS)

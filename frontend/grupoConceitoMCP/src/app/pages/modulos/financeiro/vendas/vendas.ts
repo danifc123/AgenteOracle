@@ -21,7 +21,6 @@ interface ItemMes {
 interface RespostaVendas {
   historico: ItemMes[];
   projecao: ItemMes[];
-  analise: string;
 }
 
 interface EtapaPrevisao {
@@ -40,7 +39,6 @@ const ETAPAS_INICIAIS: EtapaPrevisao[] = [
     rotulo: 'Projetando tendência de vendas (regressão linear)',
     status: 'pendente',
   },
-  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' },
 ];
 
 @Component({
@@ -61,7 +59,6 @@ export class Vendas {
   protected readonly etapas = signal<EtapaPrevisao[]>(ETAPAS_INICIAIS);
   protected readonly vendasHistorico = signal<ItemMes[]>([]);
   protected readonly vendasProjecao = signal<ItemMes[]>([]);
-  protected readonly vendasAnalise = signal<string | null>(null);
 
   protected readonly podeGerar = computed(
     () => this.filiaisSelecionadas().length > 0 && !this.carregando(),
@@ -136,12 +133,6 @@ export class Vendas {
     });
   }
 
-  private marcarEtapaConcluida(id: string): void {
-    this.etapas.update((atual) =>
-      atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)),
-    );
-  }
-
   protected async gerarPrevisao(): Promise<void> {
     if (!this.podeGerar()) {
       return;
@@ -162,11 +153,16 @@ export class Vendas {
       this.jaGerou.set(true);
       this.vendasHistorico.set(resposta.historico);
       this.vendasProjecao.set(resposta.projecao);
-      this.vendasAnalise.set(resposta.analise);
     } catch (erroDesconhecido) {
       this.erro.set(mensagemErroPrevisao(erroDesconhecido));
     } finally {
       this.carregando.set(false);
     }
+  }
+
+  private marcarEtapaConcluida(id: string): void {
+    this.etapas.update((atual) =>
+      atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)),
+    );
   }
 }

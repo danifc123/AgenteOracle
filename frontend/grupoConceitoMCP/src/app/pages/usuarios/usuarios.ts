@@ -94,6 +94,13 @@ export class Usuarios {
     );
   });
 
+  private carregarPapeis(): void {
+    this.http.get<Papel[]>(`${MCP_API_BASE_URL}/api/auth/papeis`).subscribe({
+      next: (papeis) => this.papeisDisponiveis.set(papeis),
+      error: () => this.papeisDisponiveis.set([]),
+    });
+  }
+
   private valorColuna(usuario: Usuario, coluna: string): unknown {
     switch (coluna) {
       case 'usuario':
@@ -109,17 +116,27 @@ export class Usuarios {
     }
   }
 
-  protected ordenarPor(coluna: string): void {
-    if (this.colunaOrdenada() === coluna) {
-      this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
-    } else {
-      this.colunaOrdenada.set(coluna);
-      this.direcaoOrdenacao.set('asc');
-    }
+  abrirDialog(): void {
+    this.formUsuario.set('');
+    this.formNome.set('');
+    this.formSenha.set('');
+    this.formPapeis.set([]);
+    this.erroForm.set(null);
+    this.dialogAberto.set(true);
   }
 
-  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
-    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  apagarUsuario(usuario: Usuario): void {
+    if (this.apagandoId()) {
+      return;
+    }
+    this.usuarioParaApagar.set(usuario);
+  }
+
+  cancelarApagarUsuario(): void {
+    if (this.apagandoId()) {
+      return;
+    }
+    this.usuarioParaApagar.set(null);
   }
 
   carregarUsuarios(): void {
@@ -138,27 +155,26 @@ export class Usuarios {
     });
   }
 
-  private carregarPapeis(): void {
-    this.http.get<Papel[]>(`${MCP_API_BASE_URL}/api/auth/papeis`).subscribe({
-      next: (papeis) => this.papeisDisponiveis.set(papeis),
-      error: () => this.papeisDisponiveis.set([]),
-    });
-  }
-
-  abrirDialog(): void {
-    this.formUsuario.set('');
-    this.formNome.set('');
-    this.formSenha.set('');
-    this.formPapeis.set([]);
-    this.erroForm.set(null);
-    this.dialogAberto.set(true);
-  }
-
-  fecharDialog(): void {
-    if (this.criando()) {
+  confirmarApagarUsuario(): void {
+    const usuario = this.usuarioParaApagar();
+    if (!usuario || this.apagandoId()) {
       return;
     }
-    this.dialogAberto.set(false);
+
+    this.apagandoId.set(usuario.id);
+    this.erro.set(null);
+
+    this.http.delete(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}`).subscribe({
+      next: () => {
+        this.usuarios.update((atual) => atual.filter((item) => item.id !== usuario.id));
+        this.apagandoId.set(null);
+        this.usuarioParaApagar.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erro.set(mensagemErro(erro, 'Não foi possível apagar o usuário.'));
+        this.apagandoId.set(null);
+      },
+    });
   }
 
   criarUsuario(): void {
@@ -195,42 +211,6 @@ export class Usuarios {
       });
   }
 
-  apagarUsuario(usuario: Usuario): void {
-    if (this.apagandoId()) {
-      return;
-    }
-    this.usuarioParaApagar.set(usuario);
-  }
-
-  cancelarApagarUsuario(): void {
-    if (this.apagandoId()) {
-      return;
-    }
-    this.usuarioParaApagar.set(null);
-  }
-
-  confirmarApagarUsuario(): void {
-    const usuario = this.usuarioParaApagar();
-    if (!usuario || this.apagandoId()) {
-      return;
-    }
-
-    this.apagandoId.set(usuario.id);
-    this.erro.set(null);
-
-    this.http.delete(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}`).subscribe({
-      next: () => {
-        this.usuarios.update((atual) => atual.filter((item) => item.id !== usuario.id));
-        this.apagandoId.set(null);
-        this.usuarioParaApagar.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erro.set(mensagemErro(erro, 'Não foi possível apagar o usuário.'));
-        this.apagandoId.set(null);
-      },
-    });
-  }
-
   desbloquearUsuario(usuario: Usuario): void {
     if (this.desbloqueandoId()) {
       return;
@@ -253,5 +233,25 @@ export class Usuarios {
           this.desbloqueandoId.set(null);
         },
       });
+  }
+
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
+
+  fecharDialog(): void {
+    if (this.criando()) {
+      return;
+    }
+    this.dialogAberto.set(false);
+  }
+
+  protected ordenarPor(coluna: string): void {
+    if (this.colunaOrdenada() === coluna) {
+      this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
+    } else {
+      this.colunaOrdenada.set(coluna);
+      this.direcaoOrdenacao.set('asc');
+    }
   }
 }

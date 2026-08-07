@@ -83,29 +83,8 @@ export class TabelaDetalhe {
       });
   });
 
-  protected valorFiltro(chave: string): string {
-    return this.valoresFiltros()[chave] ?? '';
-  }
-
-  protected opcoesDaColuna(chave: string): OpcaoSelectBusca[] {
-    return this.opcoesColunas()[chave] ?? [];
-  }
-
-  protected valoresSelecionados(chave: string): string[] {
-    const valor = this.valorFiltro(chave);
-    return valor ? valor.split(',') : [];
-  }
-
-  protected definirValoresFiltro(chave: string, valores: string[]): void {
-    this.definirValorFiltro.emit({ chave, valor: valores.join(',') });
-  }
-
   protected abrirExpandido(): void {
     this.expandido.set(true);
-  }
-
-  protected fecharExpandido(): void {
-    this.expandido.set(false);
   }
 
   protected confirmar(): void {
@@ -113,8 +92,29 @@ export class TabelaDetalhe {
     this.confirmarFiltro.emit();
   }
 
+  protected definirValoresFiltro(chave: string, valores: string[]): void {
+    this.definirValorFiltro.emit({ chave, valor: valores.join(',') });
+  }
+
+  protected fecharExpandido(): void {
+    this.expandido.set(false);
+  }
+
+  protected opcoesDaColuna(chave: string): OpcaoSelectBusca[] {
+    return this.opcoesColunas()[chave] ?? [];
+  }
+
   protected salvar(): void {
     this.fecharExpandido();
     this.salvarLayout.emit();
+  }
+
+  protected valorFiltro(chave: string): string {
+    return this.valoresFiltros()[chave] ?? '';
+  }
+
+  protected valoresSelecionados(chave: string): string[] {
+    const valor = this.valorFiltro(chave);
+    return valor ? valor.split(',') : [];
   }
 }

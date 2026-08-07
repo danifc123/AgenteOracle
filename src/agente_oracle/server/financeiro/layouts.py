@@ -15,39 +15,6 @@ def _layout_para_json(layout: dict) -> dict:
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/financeiro/relatorio/layouts", methods=["GET", "POST", "OPTIONS"])
-    @rota_protegida("GET, POST, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def layouts_route(request: Request, usuario: dict) -> Response:
-        """Endpoint HTTP usado pela tela "Criar Relatório" pra listar (GET) e
-        salvar (POST) layouts — presets de colunas/filtros/filiais do usuário logado."""
-        usuario_id = int(usuario["sub"])
-
-        if request.method == "GET":
-            layouts = layouts_tools.listar(usuario_id)
-            return JSONResponse([_layout_para_json(layout) for layout in layouts], headers=CORS_HEADERS)
-
-        corpo = await request.json()
-        nome = str(corpo.get("nome") or "").strip()
-        colunas_selecionadas = corpo.get("colunas_selecionadas")
-        valores_filtros = corpo.get("valores_filtros") or {}
-        filiais_selecionadas = corpo.get("filiais_selecionadas") or []
-
-        if not nome or not isinstance(colunas_selecionadas, dict) or not colunas_selecionadas:
-            return JSONResponse(
-                {"erro": "Informe um nome e ao menos uma coluna selecionada."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        try:
-            layout = layouts_tools.criar(
-                usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas
-            )
-        except layouts_tools.LayoutJaExiste as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=409, headers=CORS_HEADERS)
-
-        return JSONResponse(_layout_para_json(layout), status_code=201, headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/financeiro/relatorio/layouts/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
     @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_modulo_financeiro)
     async def layout_detalhe_route(request: Request, usuario: dict) -> Response:
@@ -87,3 +54,36 @@ def registrar(mcp) -> None:
         if not apagado:
             return JSONResponse({"erro": "Layout não encontrado."}, status_code=404, headers=CORS_HEADERS)
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/financeiro/relatorio/layouts", methods=["GET", "POST", "OPTIONS"])
+    @rota_protegida("GET, POST, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def layouts_route(request: Request, usuario: dict) -> Response:
+        """Endpoint HTTP usado pela tela "Criar Relatório" pra listar (GET) e
+        salvar (POST) layouts — presets de colunas/filtros/filiais do usuário logado."""
+        usuario_id = int(usuario["sub"])
+
+        if request.method == "GET":
+            layouts = layouts_tools.listar(usuario_id)
+            return JSONResponse([_layout_para_json(layout) for layout in layouts], headers=CORS_HEADERS)
+
+        corpo = await request.json()
+        nome = str(corpo.get("nome") or "").strip()
+        colunas_selecionadas = corpo.get("colunas_selecionadas")
+        valores_filtros = corpo.get("valores_filtros") or {}
+        filiais_selecionadas = corpo.get("filiais_selecionadas") or []
+
+        if not nome or not isinstance(colunas_selecionadas, dict) or not colunas_selecionadas:
+            return JSONResponse(
+                {"erro": "Informe um nome e ao menos uma coluna selecionada."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
+        try:
+            layout = layouts_tools.criar(
+                usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas
+            )
+        except layouts_tools.LayoutJaExiste as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=409, headers=CORS_HEADERS)
+
+        return JSONResponse(_layout_para_json(layout), status_code=201, headers=CORS_HEADERS)

@@ -36,6 +36,37 @@ def _garantir_tabela(cursor) -> None:
     _tabela_garantida = True
 
 
+def listar(limite: int = 200) -> list[dict]:
+    """Últimos eventos, mais recentes primeiro — usado pela rota
+    `GET /api/auth/eventos-seguranca` (restrita ao time de TI)."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            """
+            SELECT id, tipo, usuario_afetado, realizado_por, detalhes, criado_em
+            FROM eventos_seguranca ORDER BY id DESC LIMIT :limite
+            """,
+            limite=limite,
+        )
+        linhas = cursor.fetchall()
+
+    return [
+        {
+            "id": id_,
+            "tipo": tipo,
+            "usuario_afetado": usuario_afetado,
+            "realizado_por": realizado_por,
+            "detalhes": json.loads(detalhes) if isinstance(detalhes, str) else detalhes,
+            # `.isoformat()` aqui — mesmo padrão de `server/financeiro/historico.py`
+            # (`_historico_para_json`) — `JSONResponse` do Starlette não serializa
+            # `datetime` sozinho, precisa virar string antes de chegar na rota.
+            "criado_em": criado_em.isoformat(),
+        }
+        for id_, tipo, usuario_afetado, realizado_por, detalhes, criado_em in linhas
+    ]
+
+
 def registrar(
     tipo: str,
     usuario_afetado: str | None = None,
@@ -67,34 +98,3 @@ def registrar(
             )
     except DatabaseError:
         pass
-
-
-def listar(limite: int = 200) -> list[dict]:
-    """Últimos eventos, mais recentes primeiro — usado pela rota
-    `GET /api/auth/eventos-seguranca` (restrita ao time de TI)."""
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            """
-            SELECT id, tipo, usuario_afetado, realizado_por, detalhes, criado_em
-            FROM eventos_seguranca ORDER BY id DESC LIMIT :limite
-            """,
-            limite=limite,
-        )
-        linhas = cursor.fetchall()
-
-    return [
-        {
-            "id": id_,
-            "tipo": tipo,
-            "usuario_afetado": usuario_afetado,
-            "realizado_por": realizado_por,
-            "detalhes": json.loads(detalhes) if isinstance(detalhes, str) else detalhes,
-            # `.isoformat()` aqui — mesmo padrão de `server/financeiro/historico.py`
-            # (`_historico_para_json`) — `JSONResponse` do Starlette não serializa
-            # `datetime` sozinho, precisa virar string antes de chegar na rota.
-            "criado_em": criado_em.isoformat(),
-        }
-        for id_, tipo, usuario_afetado, realizado_por, detalhes, criado_em in linhas
-    ]

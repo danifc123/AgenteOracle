@@ -82,6 +82,10 @@ export class Historico {
     }
   }
 
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
+
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
       this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
@@ -91,28 +95,51 @@ export class Historico {
     }
   }
 
-  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
-    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
-  }
-
   constructor() {
     this.carregarHistorico();
   }
 
-  carregarHistorico(): void {
-    this.carregando.set(true);
+  alternarFixado(relatorio: RelatorioHistorico): void {
+    if (this.fixandoId()) {
+      return;
+    }
+
+    const novoFixado = !relatorio.fixado;
+    this.fixandoId.set(relatorio.id);
     this.erro.set(null);
 
-    this.http.get<RelatorioHistorico[]>(`${MCP_API_BASE_URL}/api/relatorios/historico`).subscribe({
-      next: (relatorios) => {
-        this.relatorios.set(relatorios);
-        this.carregando.set(false);
+    this.http
+      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, {
+        fixado: novoFixado,
+      })
+      .subscribe({
+        next: () => {
+          this.fixandoId.set(null);
+          this.carregarHistorico();
+        },
+        error: () => {
+          this.erro.set('Não foi possível fixar/desfixar o relatório.');
+          this.fixandoId.set(null);
+        },
+      });
+  }
+
+  apagarRelatorio(relatorio: RelatorioHistorico): void {
+    if (this.apagandoId()) {
+      return;
+    }
+
+    this.apagandoId.set(relatorio.id);
+    this.erro.set(null);
+
+    this.http.delete(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`).subscribe({
+      next: () => {
+        this.relatorios.update((atual) => atual.filter((item) => item.id !== relatorio.id));
+        this.apagandoId.set(null);
       },
       error: () => {
-        this.erro.set(
-          'Não foi possível carregar o histórico. Verifique se o servidor está em execução.',
-        );
-        this.carregando.set(false);
+        this.erro.set('Não foi possível apagar o relatório.');
+        this.apagandoId.set(null);
       },
     });
   }
@@ -148,33 +175,22 @@ export class Historico {
       });
   }
 
-  apagarRelatorio(relatorio: RelatorioHistorico): void {
-    if (this.apagandoId()) {
-      return;
-    }
-
-    this.apagandoId.set(relatorio.id);
+  carregarHistorico(): void {
+    this.carregando.set(true);
     this.erro.set(null);
 
-    this.http.delete(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`).subscribe({
-      next: () => {
-        this.relatorios.update((atual) => atual.filter((item) => item.id !== relatorio.id));
-        this.apagandoId.set(null);
+    this.http.get<RelatorioHistorico[]>(`${MCP_API_BASE_URL}/api/relatorios/historico`).subscribe({
+      next: (relatorios) => {
+        this.relatorios.set(relatorios);
+        this.carregando.set(false);
       },
       error: () => {
-        this.erro.set('Não foi possível apagar o relatório.');
-        this.apagandoId.set(null);
+        this.erro.set(
+          'Não foi possível carregar o histórico. Verifique se o servidor está em execução.',
+        );
+        this.carregando.set(false);
       },
     });
-  }
-
-  verConsulta(relatorio: RelatorioHistorico): void {
-    this.copiado.set(false);
-    this.relatorioSelecionado.set(relatorio);
-  }
-
-  fecharConsulta(): void {
-    this.relatorioSelecionado.set(null);
   }
 
   copiarConsulta(): void {
@@ -189,28 +205,12 @@ export class Historico {
     });
   }
 
-  alternarFixado(relatorio: RelatorioHistorico): void {
-    if (this.fixandoId()) {
-      return;
-    }
+  fecharConsulta(): void {
+    this.relatorioSelecionado.set(null);
+  }
 
-    const novoFixado = !relatorio.fixado;
-    this.fixandoId.set(relatorio.id);
-    this.erro.set(null);
-
-    this.http
-      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, {
-        fixado: novoFixado,
-      })
-      .subscribe({
-        next: () => {
-          this.fixandoId.set(null);
-          this.carregarHistorico();
-        },
-        error: () => {
-          this.erro.set('Não foi possível fixar/desfixar o relatório.');
-          this.fixandoId.set(null);
-        },
-      });
+  verConsulta(relatorio: RelatorioHistorico): void {
+    this.copiado.set(false);
+    this.relatorioSelecionado.set(relatorio);
   }
 }

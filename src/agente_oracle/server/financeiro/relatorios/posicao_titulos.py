@@ -257,22 +257,6 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/financeiro/posicao-titulos", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_posicao_titulos_route(request: Request, usuario: dict) -> JSONResponse:
-        """RELATÓRIO: Posição dos Títulos a Receber (FINR130) — endpoint JSON usado pela tela."""
-        parametros = _parametros_da_query(request)
-        if parametros is None:
-            return JSONResponse(
-                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        colunas, linhas = _buscar_titulos(*parametros)
-        dados = [
-            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
-        ]
-        return JSONResponse(dados, headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/financeiro/posicao-titulos/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def exportar_posicao_titulos_route(request: Request, usuario: dict) -> Response:
@@ -293,3 +277,19 @@ def registrar(mcp) -> None:
                 **CORS_HEADERS,
             },
         )
+
+    @mcp.custom_route("/api/financeiro/posicao-titulos", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_posicao_titulos_route(request: Request, usuario: dict) -> JSONResponse:
+        """RELATÓRIO: Posição dos Títulos a Receber (FINR130) — endpoint JSON usado pela tela."""
+        parametros = _parametros_da_query(request)
+        if parametros is None:
+            return JSONResponse(
+                {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        colunas, linhas = _buscar_titulos(*parametros)
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
+        return JSONResponse(dados, headers=CORS_HEADERS)

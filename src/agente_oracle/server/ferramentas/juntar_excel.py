@@ -37,6 +37,21 @@ async def _extrair_arquivos(request: Request) -> tuple[bytes, bytes] | JSONRespo
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/ferramentas/juntar-excel/analisar", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS")
+    async def analisar_juntar_excel_route(request: Request, usuario: dict) -> Response:
+        arquivos_ou_erro = await _extrair_arquivos(request)
+        if isinstance(arquivos_ou_erro, JSONResponse):
+            return arquivos_ou_erro
+        conteudo1, conteudo2 = arquivos_ou_erro
+
+        try:
+            analise = analisar_colunas(conteudo1, conteudo2)
+        except ArquivoExcelInvalido as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+
+        return JSONResponse(analise, headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/ferramentas/juntar-excel", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS")
     async def juntar_excel_route(request: Request, usuario: dict) -> Response:
@@ -58,18 +73,3 @@ def registrar(mcp) -> None:
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{nome_arquivo}"', **CORS_HEADERS},
         )
-
-    @mcp.custom_route("/api/ferramentas/juntar-excel/analisar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS")
-    async def analisar_juntar_excel_route(request: Request, usuario: dict) -> Response:
-        arquivos_ou_erro = await _extrair_arquivos(request)
-        if isinstance(arquivos_ou_erro, JSONResponse):
-            return arquivos_ou_erro
-        conteudo1, conteudo2 = arquivos_ou_erro
-
-        try:
-            analise = analisar_colunas(conteudo1, conteudo2)
-        except ArquivoExcelInvalido as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
-
-        return JSONResponse(analise, headers=CORS_HEADERS)

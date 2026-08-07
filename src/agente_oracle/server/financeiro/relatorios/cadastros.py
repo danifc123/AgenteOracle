@@ -88,13 +88,6 @@ def _buscar_com_nome(query: str) -> list[dict[str, str]]:
         ]
 
 
-def _buscar_so_codigo(query: str) -> list[dict[str, str]]:
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(query)
-        return [{"codigo": linha[0], "nome": linha[0]} for linha in cursor.fetchall()]
-
-
 def _buscar_pronto(query: str) -> list[dict[str, str]]:
     """Query já devolve codigo/nome formatados (ex: chave composta)."""
     with get_connection() as connection:
@@ -103,12 +96,25 @@ def _buscar_pronto(query: str) -> list[dict[str, str]]:
         return [{"codigo": codigo, "nome": nome} for codigo, nome in cursor.fetchall()]
 
 
+def _buscar_so_codigo(query: str) -> list[dict[str, str]]:
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(query)
+        return [{"codigo": linha[0], "nome": linha[0]} for linha in cursor.fetchall()]
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/clientes", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_clientes_route(request: Request, usuario: dict) -> JSONResponse:
         """Clientes cadastrados (SA1010) para o campo de filtro "Cliente"."""
         return JSONResponse(_buscar_com_nome(_QUERY_CLIENTES), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/financeiro/contas-bancarias", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_contas_bancarias_route(request: Request, usuario: dict) -> JSONResponse:
+        """Contas bancárias cadastradas (SA6010) para o campo de filtro "Conta Bancária" — código é "banco|agencia|conta"."""
+        return JSONResponse(_buscar_pronto(_QUERY_CONTAS_BANCARIAS), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/fornecedores", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
@@ -122,11 +128,11 @@ def registrar(mcp) -> None:
         """Lojas cadastradas (SA1010) para o campo de filtro "Loja"."""
         return JSONResponse(_buscar_so_codigo(_QUERY_LOJAS), headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/financeiro/vendedores", methods=["GET", "OPTIONS"])
+    @mcp.custom_route("/api/financeiro/naturezas", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_vendedores_route(request: Request, usuario: dict) -> JSONResponse:
-        """Vendedores/consultores cadastrados (SA3) para o campo de filtro "Consultor"."""
-        return JSONResponse(_buscar_com_nome(_QUERY_VENDEDORES), headers=CORS_HEADERS)
+    async def listar_naturezas_route(request: Request, usuario: dict) -> JSONResponse:
+        """Naturezas financeiras (SED010) para os campos de filtro "Natureza De/Até"."""
+        return JSONResponse(_buscar_com_nome(_QUERY_NATUREZAS), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/prefixos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
@@ -134,26 +140,20 @@ def registrar(mcp) -> None:
         """Prefixos de título já usados (SE1010) para o campo de filtro "Prefixo"."""
         return JSONResponse(_buscar_so_codigo(_QUERY_PREFIXOS), headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/financeiro/tipos", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_tipos_route(request: Request, usuario: dict) -> JSONResponse:
-        """Tipos de título já usados (SE1010) para o campo de filtro "Tipo"."""
-        return JSONResponse(_buscar_so_codigo(_QUERY_TIPOS), headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/financeiro/produtos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_produtos_route(request: Request, usuario: dict) -> JSONResponse:
         """Produtos cadastrados (SB1010) para os campos de filtro "Produto De/Até"."""
         return JSONResponse(_buscar_com_nome(_QUERY_PRODUTOS), headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/financeiro/naturezas", methods=["GET", "OPTIONS"])
+    @mcp.custom_route("/api/financeiro/tipos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_naturezas_route(request: Request, usuario: dict) -> JSONResponse:
-        """Naturezas financeiras (SED010) para os campos de filtro "Natureza De/Até"."""
-        return JSONResponse(_buscar_com_nome(_QUERY_NATUREZAS), headers=CORS_HEADERS)
+    async def listar_tipos_route(request: Request, usuario: dict) -> JSONResponse:
+        """Tipos de título já usados (SE1010) para o campo de filtro "Tipo"."""
+        return JSONResponse(_buscar_so_codigo(_QUERY_TIPOS), headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/financeiro/contas-bancarias", methods=["GET", "OPTIONS"])
+    @mcp.custom_route("/api/financeiro/vendedores", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_contas_bancarias_route(request: Request, usuario: dict) -> JSONResponse:
-        """Contas bancárias cadastradas (SA6010) para o campo de filtro "Conta Bancária" — código é "banco|agencia|conta"."""
-        return JSONResponse(_buscar_pronto(_QUERY_CONTAS_BANCARIAS), headers=CORS_HEADERS)
+    async def listar_vendedores_route(request: Request, usuario: dict) -> JSONResponse:
+        """Vendedores/consultores cadastrados (SA3) para o campo de filtro "Consultor"."""
+        return JSONResponse(_buscar_com_nome(_QUERY_VENDEDORES), headers=CORS_HEADERS)

@@ -19,40 +19,6 @@ def _historico_para_json(documento: dict) -> dict:
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/relatorios/historico", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_historico_route(request: Request, usuario: dict) -> Response:
-        """Endpoint HTTP usado pela tela de histórico para listar os relatórios
-        já gerados pela IA, restritos aos módulos que quem está consultando
-        tem acesso — desenvolvedor (`acesso_total`) vê o histórico de todos os
-        módulos conhecidos, os demais só o(s) seu(s) (ex: financeiro só vê
-        relatório do financeiro), mesma regra já usada na Auditoria."""
-        modulos_liberados = papeis.modulos_liberados(usuario.get("papeis", []))
-        documentos = historico_tools.listar(modulos_liberados)
-        return JSONResponse([_historico_para_json(doc) for doc in documentos], headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def exportar_historico_route(request: Request, usuario: dict) -> Response:
-        """Endpoint HTTP usado pela tela de histórico para baixar em Excel um
-        relatório já salvo, sem rodar a consulta de novo no Oracle."""
-        documento = historico_tools.obter(request.path_params["id"])
-        if documento is None:
-            return JSONResponse(
-                {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-            )
-
-        conteudo_xlsx = gerar_xlsx(documento["colunas"], documento["linhas"], titulo="Relatório")
-        nome_arquivo = f"relatorio_{documento['_id']}.xlsx"
-        return Response(
-            content=conteudo_xlsx,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f'attachment; filename="{nome_arquivo}"',
-                **CORS_HEADERS,
-            },
-        )
-
     @mcp.custom_route("/api/relatorios/historico/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
     @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_modulo_financeiro)
     async def atualizar_ou_deletar_historico_route(request: Request, usuario: dict) -> Response:
@@ -79,3 +45,37 @@ def registrar(mcp) -> None:
                 {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
             )
         return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_historico_route(request: Request, usuario: dict) -> Response:
+        """Endpoint HTTP usado pela tela de histórico para baixar em Excel um
+        relatório já salvo, sem rodar a consulta de novo no Oracle."""
+        documento = historico_tools.obter(request.path_params["id"])
+        if documento is None:
+            return JSONResponse(
+                {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+            )
+
+        conteudo_xlsx = gerar_xlsx(documento["colunas"], documento["linhas"], titulo="Relatório")
+        nome_arquivo = f"relatorio_{documento['_id']}.xlsx"
+        return Response(
+            content=conteudo_xlsx,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{nome_arquivo}"',
+                **CORS_HEADERS,
+            },
+        )
+
+    @mcp.custom_route("/api/relatorios/historico", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_historico_route(request: Request, usuario: dict) -> Response:
+        """Endpoint HTTP usado pela tela de histórico para listar os relatórios
+        já gerados pela IA, restritos aos módulos que quem está consultando
+        tem acesso — desenvolvedor (`acesso_total`) vê o histórico de todos os
+        módulos conhecidos, os demais só o(s) seu(s) (ex: financeiro só vê
+        relatório do financeiro), mesma regra já usada na Auditoria."""
+        modulos_liberados = papeis.modulos_liberados(usuario.get("papeis", []))
+        documentos = historico_tools.listar(modulos_liberados)
+        return JSONResponse([_historico_para_json(doc) for doc in documentos], headers=CORS_HEADERS)

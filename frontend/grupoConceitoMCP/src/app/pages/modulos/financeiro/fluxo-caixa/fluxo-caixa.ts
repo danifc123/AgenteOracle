@@ -35,7 +35,6 @@ interface RespostaFluxoCaixa {
   fatias_a_pagar: FatiaApi[];
   prazo_medio_recebimento_dias: number;
   prazo_medio_pagamento_dias: number;
-  analise: string;
 }
 
 interface EtapaPrevisao {
@@ -64,7 +63,6 @@ const ETAPAS_INICIAIS: EtapaPrevisao[] = [
     rotulo: 'Projetando tendência de vendas e novas contas a pagar',
     status: 'pendente',
   },
-  { id: 'analise_ia', rotulo: 'Gerando análise com IA', status: 'pendente' },
 ];
 
 @Component({
@@ -84,7 +82,6 @@ export class FluxoCaixa {
   protected readonly erro = signal<string | null>(null);
   protected readonly etapas = signal<EtapaPrevisao[]>(ETAPAS_INICIAIS);
   protected readonly fluxoMeses = signal<ItemFluxoMes[]>([]);
-  protected readonly fluxoAnalise = signal<string | null>(null);
   protected readonly fatiasAReceber = signal<FatiaRosca[]>([]);
   protected readonly fatiasAPagar = signal<FatiaRosca[]>([]);
   protected readonly prazoMedioRecebimentoDias = signal<number | null>(null);
@@ -157,16 +154,6 @@ export class FluxoCaixa {
     });
   }
 
-  private colorirFatias(fatias: FatiaApi[]): FatiaRosca[] {
-    return fatias.map((fatia, indice) => ({ ...fatia, cor: CORES_FATIAS[indice] ?? COR_PRIMARIA }));
-  }
-
-  private marcarEtapaConcluida(id: string): void {
-    this.etapas.update((atual) =>
-      atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)),
-    );
-  }
-
   protected async gerarPrevisao(): Promise<void> {
     if (!this.podeGerar()) {
       return;
@@ -186,7 +173,6 @@ export class FluxoCaixa {
 
       this.jaGerou.set(true);
       this.fluxoMeses.set(resposta.meses);
-      this.fluxoAnalise.set(resposta.analise);
       this.fatiasAReceber.set(this.colorirFatias(resposta.fatias_a_receber));
       this.fatiasAPagar.set(this.colorirFatias(resposta.fatias_a_pagar));
       this.prazoMedioRecebimentoDias.set(resposta.prazo_medio_recebimento_dias);
@@ -196,5 +182,15 @@ export class FluxoCaixa {
     } finally {
       this.carregando.set(false);
     }
+  }
+
+  private colorirFatias(fatias: FatiaApi[]): FatiaRosca[] {
+    return fatias.map((fatia, indice) => ({ ...fatia, cor: CORES_FATIAS[indice] ?? COR_PRIMARIA }));
+  }
+
+  private marcarEtapaConcluida(id: string): void {
+    this.etapas.update((atual) =>
+      atual.map((etapa) => (etapa.id === id ? { ...etapa, status: 'concluido' } : etapa)),
+    );
   }
 }

@@ -34,6 +34,46 @@ def eh_erro_valor_duplicado(erro: Exception) -> bool:
     return "ORA-00001" in str(erro)
 
 
+@contextmanager
+def get_connection():
+    if settings.db_backend == "postgres":
+        pool = _get_postgres_pool()
+        with pool.connection() as connection:
+            yield _ConnectionAdapter(connection, "postgres")
+    else:
+        pool = _get_oracle_pool()
+        connection = pool.acquire()
+        try:
+            yield _ConnectionAdapter(connection, "oracle")
+        finally:
+            pool.release(connection)
+
+
+class _ConnectionAdapter:
+    def __init__(self, connection, backend: str):
+        self._connection = connection
+        self._backend = backend
+
+    def cursor(self) -> "_CursorAdapter":
+        return _CursorAdapter(self._connection.cursor(), self._backend)
+
+    @property
+    def call_timeout(self):
+        return getattr(self._connection, "call_timeout", None)
+
+    @call_timeout.setter
+    def call_timeout(self, milissegundos: int):
+        if self._backend == "postgres":
+            # SET não aceita bind parameter no Postgres (precisa ser um literal na
+            # própria instrução) — seguro fazer format direto aqui porque o valor
+            # vem sempre de uma constante interna (TIMEOUT_MS), nunca de entrada
+            # do usuário/IA.
+            with self._connection.cursor() as cursor:
+                cursor.execute(f"SET statement_timeout = {int(milissegundos)}")
+        else:
+            self._connection.call_timeout = milissegundos
+
+
 class _CursorAdapter:
     """Uniformiza a chamada `cursor.execute(sql, **binds)` (estilo oracledb,
     com binds nomeados `:nome`) para os dois bancos: no Oracle passa direto;
@@ -64,31 +104,6 @@ class _CursorAdapter:
     @property
     def rowcount(self) -> int:
         return self._cursor.rowcount
-
-
-class _ConnectionAdapter:
-    def __init__(self, connection, backend: str):
-        self._connection = connection
-        self._backend = backend
-
-    def cursor(self) -> _CursorAdapter:
-        return _CursorAdapter(self._connection.cursor(), self._backend)
-
-    @property
-    def call_timeout(self):
-        return getattr(self._connection, "call_timeout", None)
-
-    @call_timeout.setter
-    def call_timeout(self, milissegundos: int):
-        if self._backend == "postgres":
-            # SET não aceita bind parameter no Postgres (precisa ser um literal na
-            # própria instrução) — seguro fazer format direto aqui porque o valor
-            # vem sempre de uma constante interna (TIMEOUT_MS), nunca de entrada
-            # do usuário/IA.
-            with self._connection.cursor() as cursor:
-                cursor.execute(f"SET statement_timeout = {int(milissegundos)}")
-        else:
-            self._connection.call_timeout = milissegundos
 
 
 def _get_oracle_pool() -> oracledb.ConnectionPool:
@@ -122,18 +137,3 @@ def _get_postgres_pool() -> PostgresPool:
             open=True,
         )
     return _postgres_pool
-
-
-@contextmanager
-def get_connection():
-    if settings.db_backend == "postgres":
-        pool = _get_postgres_pool()
-        with pool.connection() as connection:
-            yield _ConnectionAdapter(connection, "postgres")
-    else:
-        pool = _get_oracle_pool()
-        connection = pool.acquire()
-        try:
-            yield _ConnectionAdapter(connection, "oracle")
-        finally:
-            pool.release(connection)

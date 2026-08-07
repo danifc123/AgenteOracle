@@ -40,17 +40,8 @@ _COLUNAS_COMPLETAS = (
 _tabela_garantida = False
 
 
-def _coluna_modulo_existe(cursor) -> bool:
-    if settings.db_backend == "postgres":
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
-        )
-    else:
-        cursor.execute(
-            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'RELATORIOS_HISTORICO' AND COLUMN_NAME = 'MODULO'"
-        )
-    return cursor.fetchone() is not None
+def _carregar_json(valor):
+    return json.loads(valor) if isinstance(valor, str) else valor
 
 
 def _garantir_tabela(cursor) -> None:
@@ -84,28 +75,17 @@ def _garantir_tabela(cursor) -> None:
     _tabela_garantida = True
 
 
-def hash_sql(sql_validado: str) -> str:
-    """Normaliza o SQL para uma forma canônica e gera um hash estável, usado
-    como chave de deduplicação: dois SQLs equivalentes (mesmas colunas em
-    ordem diferente, espaçamento ou maiúsculas/minúsculas diferentes) geram o
-    mesmo hash. Não altera o SQL que de fato roda no banco — só a versão
-    usada para comparação."""
-    sql_normalizado = " ".join(sql_validado.split()).upper()
-
-    correspondencia = _SELECT_FROM_REGEX.match(sql_normalizado)
-    if correspondencia:
-        colunas = sorted(coluna.strip() for coluna in correspondencia.group(1).split(","))
-        sql_normalizado = (
-            sql_normalizado[: correspondencia.start(1)]
-            + ", ".join(colunas)
-            + sql_normalizado[correspondencia.end(1) :]
+def _coluna_modulo_existe(cursor) -> bool:
+    if settings.db_backend == "postgres":
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
         )
-
-    return hashlib.sha256(sql_normalizado.encode("utf-8")).hexdigest()
-
-
-def _carregar_json(valor):
-    return json.loads(valor) if isinstance(valor, str) else valor
+    else:
+        cursor.execute(
+            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'RELATORIOS_HISTORICO' AND COLUMN_NAME = 'MODULO'"
+        )
+    return cursor.fetchone() is not None
 
 
 def _linha_para_documento(linha: tuple) -> dict:
@@ -142,54 +122,73 @@ def buscar_por_sql(sql_validado: str) -> dict | None:
     return _linha_para_documento(linha) if linha else None
 
 
-def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list], modulo: str) -> dict:
-    """Salva um relatório novo no histórico. Se outra chamada concorrente já
-    tiver salvo o mesmo SQL entre a busca e este insert, devolve o documento
-    já existente em vez de duplicar (a constraint única em hash_sql garante
-    isso). Por padrão, o relatório expira e é "esquecido" após
-    TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`). `modulo` é
-    quem gerou o relatório (ex: "financeiro") — usado por `listar` pra cada
-    papel só ver o histórico do(s) módulo(s) que tem acesso."""
-    agora = datetime.now(UTC)
-    hash_valor = hash_sql(sql_validado)
+def deletar(id_relatorio: str) -> bool:
+    try:
+        id_numerico = int(id_relatorio)
+    except ValueError:
+        return False
 
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
+        cursor.execute("DELETE FROM relatorios_historico WHERE id = :id", id=id_numerico)
+        return cursor.rowcount > 0
 
-        # Aproveita a escrita pra limpar fisicamente o que já expirou e não
-        # está fixado — não tem worker rodando em background pra isso aqui.
-        cursor.execute("DELETE FROM relatorios_historico WHERE fixado = FALSE AND expira_em <= now()")
 
+def desfixar(id_relatorio: str) -> bool:
+    """Desfixa um relatório: ele volta a expirar, com um novo prazo de
+    TEMPO_EXPIRACAO a partir de agora."""
+    try:
+        id_numerico = int(id_relatorio)
+    except ValueError:
+        return False
+
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
         cursor.execute(
-            f"""
-            INSERT INTO relatorios_historico
-                (hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo)
-            VALUES
-                (:hash_sql, :sql_texto, :titulo, :colunas::jsonb, :linhas::jsonb, :total_linhas, :criado_em, FALSE, :expira_em, :modulo)
-            ON CONFLICT (hash_sql) DO NOTHING
-            RETURNING {_COLUNAS_COMPLETAS}
-            """,
-            hash_sql=hash_valor,
-            sql_texto=sql_validado,
-            titulo=titulo,
-            colunas=json.dumps(colunas),
-            linhas=json.dumps(linhas),
-            total_linhas=len(linhas),
-            criado_em=agora,
-            expira_em=agora + TEMPO_EXPIRACAO,
-            modulo=modulo,
+            "UPDATE relatorios_historico SET fixado = FALSE, expira_em = :expira_em WHERE id = :id",
+            id=id_numerico,
+            expira_em=datetime.now(UTC) + TEMPO_EXPIRACAO,
         )
-        linha = cursor.fetchone()
+        return cursor.rowcount > 0
 
-        if linha is None:
-            cursor.execute(
-                f"SELECT {_COLUNAS_COMPLETAS} FROM relatorios_historico WHERE hash_sql = :hash_sql",
-                hash_sql=hash_valor,
-            )
-            linha = cursor.fetchone()
 
-    return _linha_para_documento(linha)
+def fixar(id_relatorio: str) -> bool:
+    """Fixa um relatório: ele deixa de expirar (`expira_em` vira NULL)."""
+    try:
+        id_numerico = int(id_relatorio)
+    except ValueError:
+        return False
+
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            "UPDATE relatorios_historico SET fixado = TRUE, expira_em = NULL WHERE id = :id",
+            id=id_numerico,
+        )
+        return cursor.rowcount > 0
+
+
+def hash_sql(sql_validado: str) -> str:
+    """Normaliza o SQL para uma forma canônica e gera um hash estável, usado
+    como chave de deduplicação: dois SQLs equivalentes (mesmas colunas em
+    ordem diferente, espaçamento ou maiúsculas/minúsculas diferentes) geram o
+    mesmo hash. Não altera o SQL que de fato roda no banco — só a versão
+    usada para comparação."""
+    sql_normalizado = " ".join(sql_validado.split()).upper()
+
+    correspondencia = _SELECT_FROM_REGEX.match(sql_normalizado)
+    if correspondencia:
+        colunas = sorted(coluna.strip() for coluna in correspondencia.group(1).split(","))
+        sql_normalizado = (
+            sql_normalizado[: correspondencia.start(1)]
+            + ", ".join(colunas)
+            + sql_normalizado[correspondencia.end(1) :]
+        )
+
+    return hashlib.sha256(sql_normalizado.encode("utf-8")).hexdigest()
 
 
 def listar(modulos_liberados: list[str]) -> list[dict]:
@@ -254,50 +253,51 @@ def obter(id_relatorio: str) -> dict | None:
     return _linha_para_documento(linha) if linha else None
 
 
-def deletar(id_relatorio: str) -> bool:
-    try:
-        id_numerico = int(id_relatorio)
-    except ValueError:
-        return False
+def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list], modulo: str) -> dict:
+    """Salva um relatório novo no histórico. Se outra chamada concorrente já
+    tiver salvo o mesmo SQL entre a busca e este insert, devolve o documento
+    já existente em vez de duplicar (a constraint única em hash_sql garante
+    isso). Por padrão, o relatório expira e é "esquecido" após
+    TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`). `modulo` é
+    quem gerou o relatório (ex: "financeiro") — usado por `listar` pra cada
+    papel só ver o histórico do(s) módulo(s) que tem acesso."""
+    agora = datetime.now(UTC)
+    hash_valor = hash_sql(sql_validado)
 
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute("DELETE FROM relatorios_historico WHERE id = :id", id=id_numerico)
-        return cursor.rowcount > 0
 
+        # Aproveita a escrita pra limpar fisicamente o que já expirou e não
+        # está fixado — não tem worker rodando em background pra isso aqui.
+        cursor.execute("DELETE FROM relatorios_historico WHERE fixado = FALSE AND expira_em <= now()")
 
-def fixar(id_relatorio: str) -> bool:
-    """Fixa um relatório: ele deixa de expirar (`expira_em` vira NULL)."""
-    try:
-        id_numerico = int(id_relatorio)
-    except ValueError:
-        return False
-
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
         cursor.execute(
-            "UPDATE relatorios_historico SET fixado = TRUE, expira_em = NULL WHERE id = :id",
-            id=id_numerico,
+            f"""
+            INSERT INTO relatorios_historico
+                (hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo)
+            VALUES
+                (:hash_sql, :sql_texto, :titulo, :colunas::jsonb, :linhas::jsonb, :total_linhas, :criado_em, FALSE, :expira_em, :modulo)
+            ON CONFLICT (hash_sql) DO NOTHING
+            RETURNING {_COLUNAS_COMPLETAS}
+            """,
+            hash_sql=hash_valor,
+            sql_texto=sql_validado,
+            titulo=titulo,
+            colunas=json.dumps(colunas),
+            linhas=json.dumps(linhas),
+            total_linhas=len(linhas),
+            criado_em=agora,
+            expira_em=agora + TEMPO_EXPIRACAO,
+            modulo=modulo,
         )
-        return cursor.rowcount > 0
+        linha = cursor.fetchone()
 
+        if linha is None:
+            cursor.execute(
+                f"SELECT {_COLUNAS_COMPLETAS} FROM relatorios_historico WHERE hash_sql = :hash_sql",
+                hash_sql=hash_valor,
+            )
+            linha = cursor.fetchone()
 
-def desfixar(id_relatorio: str) -> bool:
-    """Desfixa um relatório: ele volta a expirar, com um novo prazo de
-    TEMPO_EXPIRACAO a partir de agora."""
-    try:
-        id_numerico = int(id_relatorio)
-    except ValueError:
-        return False
-
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            "UPDATE relatorios_historico SET fixado = FALSE, expira_em = :expira_em WHERE id = :id",
-            id=id_numerico,
-            expira_em=datetime.now(UTC) + TEMPO_EXPIRACAO,
-        )
-        return cursor.rowcount > 0
+    return _linha_para_documento(linha)

@@ -126,12 +126,9 @@ export class EstoqueEspecificoGrupoConceito {
     return grupos;
   });
 
-  protected estaFixado(rotina: RotinaFinanceira | null): boolean {
-    return !!rotina && this.fixados().includes(rotina.nome);
-  }
-
-  protected limiteFixadosAtingido(): boolean {
-    return this.fixados().length >= LIMITE_FIXADOS;
+  private lerFixadosSalvos(): string[] {
+    const salvos = localStorage.getItem(CHAVE_FIXADOS);
+    return salvos ? (JSON.parse(salvos) as string[]) : [];
   }
 
   protected alternarFixadoSelecionada(): void {
@@ -156,21 +153,9 @@ export class EstoqueEspecificoGrupoConceito {
     this.salvarFixados([rotina.nome, ...atual]);
   }
 
-  protected selecionarRotina(rotina: RotinaFinanceira): void {
-    if (this.rotinaSelecionada()?.nome !== rotina.nome) {
-      this.valoresFiltros.set({});
-      this.filtroInvalido.set(false);
-    }
-    this.rotinaSelecionada.set(rotina);
-  }
-
-  protected limparFiltrosSelecionados(): void {
-    this.filiaisSelecionadas.set([]);
-    this.valoresFiltros.set({});
-  }
-
-  protected definirValorFiltro(chave: string, valor: string): void {
-    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
+  private salvarFixados(nomes: string[]): void {
+    this.fixados.set(nomes);
+    localStorage.setItem(CHAVE_FIXADOS, JSON.stringify(nomes));
   }
 
   protected confirmarFiltroSelecionada(): void {
@@ -208,17 +193,32 @@ export class EstoqueEspecificoGrupoConceito {
     setTimeout(() => this.filtroInvalido.set(false), 400);
   }
 
+  protected definirValorFiltro(chave: string, valor: string): void {
+    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
+  }
+
+  protected estaFixado(rotina: RotinaFinanceira | null): boolean {
+    return !!rotina && this.fixados().includes(rotina.nome);
+  }
+
   protected fecharVisualizacao(): void {
     this.rotinaEmVisualizacao.set(null);
   }
 
-  private lerFixadosSalvos(): string[] {
-    const salvos = localStorage.getItem(CHAVE_FIXADOS);
-    return salvos ? (JSON.parse(salvos) as string[]) : [];
+  protected limiteFixadosAtingido(): boolean {
+    return this.fixados().length >= LIMITE_FIXADOS;
   }
 
-  private salvarFixados(nomes: string[]): void {
-    this.fixados.set(nomes);
-    localStorage.setItem(CHAVE_FIXADOS, JSON.stringify(nomes));
+  protected limparFiltrosSelecionados(): void {
+    this.filiaisSelecionadas.set([]);
+    this.valoresFiltros.set({});
+  }
+
+  protected selecionarRotina(rotina: RotinaFinanceira): void {
+    if (this.rotinaSelecionada()?.nome !== rotina.nome) {
+      this.valoresFiltros.set({});
+      this.filtroInvalido.set(false);
+    }
+    this.rotinaSelecionada.set(rotina);
   }
 }

@@ -74,9 +74,6 @@
   <section class="cartao-previsao cartao-grafico-principal">
     <h2>Projeção de Fluxo de Caixa</h2>
     <app-grafico-serie tipo="barra" [series]="seriesFluxoCaixa()" />
-    @if (fluxoAnalise()) {
-      <p class="analise-ia">{{ fluxoAnalise() }}</p>
-    }
     @if (prazoMedioRecebimentoDias() !== null) {
       <p class="prazo-medio">
         Prazo médio: {{ prazoMedioRecebimentoDias()!.toFixed(0) }} dias pra recebimento,

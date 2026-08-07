@@ -142,6 +142,19 @@ export class Estoque {
     () => this.suprimentos().filter((item) => this.statusSuprimento(item) !== 'ok').length,
   );
 
+  protected carregarEstoque(): void {
+    if (!this.podeCarregar()) {
+      return;
+    }
+    this.jaCarregou.set(true);
+    this.movimentacoes.set(MOCK_MOVIMENTACOES);
+    this.suprimentos.set(MOCK_SUPRIMENTOS);
+  }
+
+  protected rotuloStatus(status: StatusSuprimento): string {
+    return ROTULOS_STATUS[status];
+  }
+
   protected statusSuprimento(item: ItemSuprimento): StatusSuprimento {
     if (item.estoqueAtual <= item.estoqueMinimo * 0.5) {
       return 'critico';
@@ -150,18 +163,5 @@ export class Estoque {
       return 'baixo';
     }
     return 'ok';
-  }
-
-  protected rotuloStatus(status: StatusSuprimento): string {
-    return ROTULOS_STATUS[status];
-  }
-
-  protected carregarEstoque(): void {
-    if (!this.podeCarregar()) {
-      return;
-    }
-    this.jaCarregou.set(true);
-    this.movimentacoes.set(MOCK_MOVIMENTACOES);
-    this.suprimentos.set(MOCK_SUPRIMENTOS);
   }
 }

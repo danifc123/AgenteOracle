@@ -378,10 +378,6 @@ export class GraficoSerie {
     };
   });
 
-  protected formatarValor(valor: number): string {
-    return formatarMoedaAbreviada(valor);
-  }
-
   protected aoMoverMouse(evento: MouseEvent): void {
     const svg = this.svgRef?.nativeElement;
     if (!svg) {
@@ -409,15 +405,19 @@ export class GraficoSerie {
     this.indiceHover.set(indiceMaisProximo);
   }
 
-  protected aoSairMouse(): void {
-    this.indiceHover.set(null);
-  }
-
   protected aoPassarMouseNaSerie(nome: string): void {
     this.serieEmDestaque.set(nome);
   }
 
   protected aoSairDaSerie(): void {
     this.serieEmDestaque.set(null);
+  }
+
+  protected aoSairMouse(): void {
+    this.indiceHover.set(null);
+  }
+
+  protected formatarValor(valor: number): string {
+    return formatarMoedaAbreviada(valor);
   }
 }

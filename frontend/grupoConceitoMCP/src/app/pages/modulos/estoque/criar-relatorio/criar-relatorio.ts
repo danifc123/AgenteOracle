@@ -141,28 +141,13 @@ export class EstoqueCriarRelatorio {
     return visitados;
   });
 
-  protected estaAberta(view: ViewFinanceira): boolean {
-    return this.tabelasAbertas().has(view.nome);
-  }
-
-  protected colunasDaView(view: ViewFinanceira): string[] {
-    return this.colunasSelecionadas()[view.nome] ?? [];
-  }
-
-  protected tabelaCompativel(view: ViewFinanceira): boolean {
-    const compativeis = this.tabelasCompativeis();
-    return !compativeis || compativeis.has(view.nome);
-  }
-
-  /** Acordeão: só uma tabela expandida por vez — abrir outra fecha a
-   * anterior. Tabelas sem vínculo com a seleção atual não abrem. */
-  protected alternarTabela(view: ViewFinanceira): void {
-    if (!this.tabelaCompativel(view)) {
+  protected abrirSalvarLayout(): void {
+    if (!this.totalColunasSelecionadas()) {
       return;
     }
-    this.tabelasAbertas.update((atual) =>
-      atual.has(view.nome) ? new Set() : new Set([view.nome]),
-    );
+    this.nomeNovoLayout.set('');
+    this.erroSalvarLayout.set(null);
+    this.salvarLayoutAberto.set(true);
   }
 
   protected alternarColuna(nomeView: string, nomeColuna: string): void {
@@ -191,6 +176,17 @@ export class EstoqueCriarRelatorio {
     }
   }
 
+  /** Acordeão: só uma tabela expandida por vez — abrir outra fecha a
+   * anterior. Tabelas sem vínculo com a seleção atual não abrem. */
+  protected alternarTabela(view: ViewFinanceira): void {
+    if (!this.tabelaCompativel(view)) {
+      return;
+    }
+    this.tabelasAbertas.update((atual) =>
+      atual.has(view.nome) ? new Set() : new Set([view.nome]),
+    );
+  }
+
   protected aplicarLayout(id: string | null): void {
     this.layoutSelecionadoId.set(id);
     if (!id) {
@@ -208,17 +204,24 @@ export class EstoqueCriarRelatorio {
     this.filiaisSelecionadas.set(layout.filiais_selecionadas);
   }
 
-  protected abrirSalvarLayout(): void {
-    if (!this.totalColunasSelecionadas()) {
-      return;
-    }
-    this.nomeNovoLayout.set('');
-    this.erroSalvarLayout.set(null);
-    this.salvarLayoutAberto.set(true);
+  protected colunasDaView(view: ViewFinanceira): string[] {
+    return this.colunasSelecionadas()[view.nome] ?? [];
   }
 
-  protected fecharSalvarLayout(): void {
-    this.salvarLayoutAberto.set(false);
+  protected confirmarFiltroSelecionada(): void {
+    if (!this.totalColunasSelecionadas() || !this.filiaisSelecionadas().length) {
+      this.sinalizarFiltroInvalido();
+      return;
+    }
+
+    // Sem consulta SQL ainda pra este módulo — só abre o dialog, que mostra
+    // o placeholder "relatório ainda não disponível".
+    this.relatorioAberto.set(true);
+  }
+
+  private sinalizarFiltroInvalido(): void {
+    this.filtroInvalido.set(true);
+    setTimeout(() => this.filtroInvalido.set(false), 400);
   }
 
   /** Sem backend ainda — o layout só fica guardado em memória (não
@@ -252,6 +255,18 @@ export class EstoqueCriarRelatorio {
     this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
   }
 
+  protected estaAberta(view: ViewFinanceira): boolean {
+    return this.tabelasAbertas().has(view.nome);
+  }
+
+  protected fecharSalvarLayout(): void {
+    this.salvarLayoutAberto.set(false);
+  }
+
+  protected fecharVisualizacao(): void {
+    this.relatorioAberto.set(false);
+  }
+
   protected limparFiltrosSelecionados(): void {
     this.filiaisSelecionadas.set([]);
     this.colunasSelecionadas.set({});
@@ -259,23 +274,8 @@ export class EstoqueCriarRelatorio {
     this.layoutSelecionadoId.set(null);
   }
 
-  protected confirmarFiltroSelecionada(): void {
-    if (!this.totalColunasSelecionadas() || !this.filiaisSelecionadas().length) {
-      this.sinalizarFiltroInvalido();
-      return;
-    }
-
-    // Sem consulta SQL ainda pra este módulo — só abre o dialog, que mostra
-    // o placeholder "relatório ainda não disponível".
-    this.relatorioAberto.set(true);
-  }
-
-  private sinalizarFiltroInvalido(): void {
-    this.filtroInvalido.set(true);
-    setTimeout(() => this.filtroInvalido.set(false), 400);
-  }
-
-  protected fecharVisualizacao(): void {
-    this.relatorioAberto.set(false);
+  protected tabelaCompativel(view: ViewFinanceira): boolean {
+    const compativeis = this.tabelasCompativeis();
+    return !compativeis || compativeis.has(view.nome);
   }
 }

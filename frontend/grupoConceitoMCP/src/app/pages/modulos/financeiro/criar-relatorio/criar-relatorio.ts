@@ -103,15 +103,6 @@ export class CriarRelatorio {
     this.carregarLayouts();
   }
 
-  private carregarViews(): void {
-    this.http
-      .get<ViewFinanceira[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/views`)
-      .subscribe({
-        next: (views) => this.views.set(views),
-        error: () => this.views.set([]),
-      });
-  }
-
   private carregarFiliais(): void {
     this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
       next: (filiais) => {
@@ -132,30 +123,56 @@ export class CriarRelatorio {
       });
   }
 
-  protected estaAberta(view: ViewFinanceira): boolean {
-    return this.tabelasAbertas().has(view.nome);
-  }
-
-  protected colunasDaView(view: ViewFinanceira): string[] {
-    return this.colunasSelecionadas()[view.nome] ?? [];
-  }
-
-  protected tabelaCompativel(view: ViewFinanceira): boolean {
-    const compativeis = this.tabelasCompativeis();
-    return !compativeis || compativeis.has(view.nome);
-  }
-
-  /** Acordeão: só uma tabela expandida por vez — abrir outra fecha a
-   * anterior. As colunas já marcadas em tabelas fechadas continuam
-   * selecionadas normalmente, só a exibição da lista de colunas fecha.
-   * Tabelas sem vínculo com a seleção atual não abrem. */
-  protected alternarTabela(view: ViewFinanceira): void {
-    if (!this.tabelaCompativel(view)) {
+  /** Valores distintos da coluna, pro select multiplo do filtro dela — busca
+   * uma vez só e guarda em cache (não muda enquanto a tela estiver aberta). */
+  private carregarOpcoesColuna(chave: string): void {
+    if (this.opcoesColunas()[chave]) {
       return;
     }
-    this.tabelasAbertas.update((atual) =>
-      atual.has(view.nome) ? new Set() : new Set([view.nome]),
+
+    this.http
+      .get<OpcaoSelectBusca[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/opcoes-coluna`, {
+        params: { coluna: chave },
+      })
+      .subscribe({
+        next: (opcoes) => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: opcoes })),
+        error: () => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: [] })),
+      });
+  }
+
+  private carregarViews(): void {
+    this.http
+      .get<ViewFinanceira[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/views`)
+      .subscribe({
+        next: (views) => this.views.set(views),
+        error: () => this.views.set([]),
+      });
+  }
+
+  private parametrosRelatorio(): HttpParams {
+    const colunas = Object.entries(this.colunasSelecionadas()).flatMap(([nomeView, nomesColunas]) =>
+      nomesColunas.map((nomeColuna) => `${nomeView}.${nomeColuna}`),
     );
+
+    let params = new HttpParams()
+      .set('filial', this.filiaisSelecionadas().join(','))
+      .set('colunas', colunas.join(','));
+
+    const filtros = filtrosPorColuna(this.views(), this.colunasSelecionadas(), this.valoresFiltros());
+    if (Object.keys(filtros).length) {
+      params = params.set('filtros', JSON.stringify(filtros));
+    }
+
+    return params;
+  }
+
+  protected abrirSalvarLayout(): void {
+    if (!this.totalColunasSelecionadas()) {
+      return;
+    }
+    this.nomeNovoLayout.set('');
+    this.erroSalvarLayout.set(null);
+    this.salvarLayoutAberto.set(true);
   }
 
   protected alternarColuna(nomeView: string, nomeColuna: string): void {
@@ -186,21 +203,17 @@ export class CriarRelatorio {
     }
   }
 
-  /** Valores distintos da coluna, pro select multiplo do filtro dela — busca
-   * uma vez só e guarda em cache (não muda enquanto a tela estiver aberta). */
-  private carregarOpcoesColuna(chave: string): void {
-    if (this.opcoesColunas()[chave]) {
+  /** Acordeão: só uma tabela expandida por vez — abrir outra fecha a
+   * anterior. As colunas já marcadas em tabelas fechadas continuam
+   * selecionadas normalmente, só a exibição da lista de colunas fecha.
+   * Tabelas sem vínculo com a seleção atual não abrem. */
+  protected alternarTabela(view: ViewFinanceira): void {
+    if (!this.tabelaCompativel(view)) {
       return;
     }
-
-    this.http
-      .get<OpcaoSelectBusca[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/opcoes-coluna`, {
-        params: { coluna: chave },
-      })
-      .subscribe({
-        next: (opcoes) => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: opcoes })),
-        error: () => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: [] })),
-      });
+    this.tabelasAbertas.update((atual) =>
+      atual.has(view.nome) ? new Set() : new Set([view.nome]),
+    );
   }
 
   /** Chamado ao escolher um layout salvo no select do topo — null (usuário
@@ -233,20 +246,81 @@ export class CriarRelatorio {
     }
   }
 
-  protected abrirSalvarLayout(): void {
-    if (!this.totalColunasSelecionadas()) {
+  protected baixarRelatorio(): void {
+    if (this.baixandoRelatorio()) {
       return;
     }
-    this.nomeNovoLayout.set('');
-    this.erroSalvarLayout.set(null);
-    this.salvarLayoutAberto.set(true);
+
+    this.baixandoRelatorio.set(true);
+
+    this.http
+      .get(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar`, {
+        params: this.parametrosRelatorio(),
+        observe: 'response',
+        responseType: 'blob',
+      })
+      .subscribe({
+        next: (resposta) => {
+          const blob = resposta.body;
+          if (!blob) {
+            this.baixandoRelatorio.set(false);
+            return;
+          }
+
+          const nomeArquivo = extrairNomeArquivo(
+            resposta.headers.get('content-disposition'),
+            'relatorio_customizado.xlsx',
+          );
+          baixarBlob(blob, nomeArquivo);
+          this.baixandoRelatorio.set(false);
+        },
+        error: () => {
+          this.baixandoRelatorio.set(false);
+        },
+      });
   }
 
-  protected fecharSalvarLayout(): void {
-    if (this.salvandoLayout()) {
+  protected colunasDaView(view: ViewFinanceira): string[] {
+    return this.colunasSelecionadas()[view.nome] ?? [];
+  }
+
+  protected confirmarFiltroSelecionada(): void {
+    if (!this.totalColunasSelecionadas() || !this.filiaisSelecionadas().length) {
+      this.sinalizarFiltroInvalido();
       return;
     }
-    this.salvarLayoutAberto.set(false);
+
+    this.buscarRelatorio();
+  }
+
+  private buscarRelatorio(): void {
+    this.relatorioAberto.set(true);
+    this.relatorioDados.set(null);
+    this.relatorioErro.set(null);
+    this.relatorioCarregando.set(true);
+
+    this.http
+      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado`, {
+        params: this.parametrosRelatorio(),
+      })
+      .subscribe({
+        next: (dados) => {
+          this.relatorioDados.set(dados);
+          this.relatorioCarregando.set(false);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.relatorioErro.set(
+            erro.error?.erro ??
+              'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
+          );
+          this.relatorioCarregando.set(false);
+        },
+      });
+  }
+
+  private sinalizarFiltroInvalido(): void {
+    this.filtroInvalido.set(true);
+    setTimeout(() => this.filtroInvalido.set(false), 400);
   }
 
   protected confirmarSalvarLayout(): void {
@@ -286,67 +360,15 @@ export class CriarRelatorio {
     this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
   }
 
-  protected limparFiltrosSelecionados(): void {
-    this.filiaisSelecionadas.set([]);
-    this.colunasSelecionadas.set({});
-    this.valoresFiltros.set({});
-    this.layoutSelecionadoId.set(null);
+  protected estaAberta(view: ViewFinanceira): boolean {
+    return this.tabelasAbertas().has(view.nome);
   }
 
-  protected confirmarFiltroSelecionada(): void {
-    if (!this.totalColunasSelecionadas() || !this.filiaisSelecionadas().length) {
-      this.sinalizarFiltroInvalido();
+  protected fecharSalvarLayout(): void {
+    if (this.salvandoLayout()) {
       return;
     }
-
-    this.buscarRelatorio();
-  }
-
-  private sinalizarFiltroInvalido(): void {
-    this.filtroInvalido.set(true);
-    setTimeout(() => this.filtroInvalido.set(false), 400);
-  }
-
-  private parametrosRelatorio(): HttpParams {
-    const colunas = Object.entries(this.colunasSelecionadas()).flatMap(([nomeView, nomesColunas]) =>
-      nomesColunas.map((nomeColuna) => `${nomeView}.${nomeColuna}`),
-    );
-
-    let params = new HttpParams()
-      .set('filial', this.filiaisSelecionadas().join(','))
-      .set('colunas', colunas.join(','));
-
-    const filtros = filtrosPorColuna(this.views(), this.colunasSelecionadas(), this.valoresFiltros());
-    if (Object.keys(filtros).length) {
-      params = params.set('filtros', JSON.stringify(filtros));
-    }
-
-    return params;
-  }
-
-  private buscarRelatorio(): void {
-    this.relatorioAberto.set(true);
-    this.relatorioDados.set(null);
-    this.relatorioErro.set(null);
-    this.relatorioCarregando.set(true);
-
-    this.http
-      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado`, {
-        params: this.parametrosRelatorio(),
-      })
-      .subscribe({
-        next: (dados) => {
-          this.relatorioDados.set(dados);
-          this.relatorioCarregando.set(false);
-        },
-        error: (erro: HttpErrorResponse) => {
-          this.relatorioErro.set(
-            erro.error?.erro ??
-              'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
-          );
-          this.relatorioCarregando.set(false);
-        },
-      });
+    this.salvarLayoutAberto.set(false);
   }
 
   protected fecharVisualizacao(): void {
@@ -356,37 +378,15 @@ export class CriarRelatorio {
     this.relatorioCarregando.set(false);
   }
 
-  protected baixarRelatorio(): void {
-    if (this.baixandoRelatorio()) {
-      return;
-    }
+  protected limparFiltrosSelecionados(): void {
+    this.filiaisSelecionadas.set([]);
+    this.colunasSelecionadas.set({});
+    this.valoresFiltros.set({});
+    this.layoutSelecionadoId.set(null);
+  }
 
-    this.baixandoRelatorio.set(true);
-
-    this.http
-      .get(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar`, {
-        params: this.parametrosRelatorio(),
-        observe: 'response',
-        responseType: 'blob',
-      })
-      .subscribe({
-        next: (resposta) => {
-          const blob = resposta.body;
-          if (!blob) {
-            this.baixandoRelatorio.set(false);
-            return;
-          }
-
-          const nomeArquivo = extrairNomeArquivo(
-            resposta.headers.get('content-disposition'),
-            'relatorio_customizado.xlsx',
-          );
-          baixarBlob(blob, nomeArquivo);
-          this.baixandoRelatorio.set(false);
-        },
-        error: () => {
-          this.baixandoRelatorio.set(false);
-        },
-      });
+  protected tabelaCompativel(view: ViewFinanceira): boolean {
+    const compativeis = this.tabelasCompativeis();
+    return !compativeis || compativeis.has(view.nome);
   }
 }

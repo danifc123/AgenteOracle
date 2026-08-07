@@ -24,8 +24,16 @@ export class Sidebar {
   protected readonly estoqueOpen = signal(false);
   protected readonly colapsado = signal(localStorage.getItem(CHAVE_COLAPSADO) === 'true');
 
-  toggleSidebar(): void {
-    this.sidebarOpen.update((value) => !value);
+  abrirConfiguracoes(): void {
+    this.configuracoes.abrir();
+  }
+
+  alternarColapsado(): void {
+    const novoValor = !this.colapsado();
+    this.colapsado.set(novoValor);
+    this.financeiroOpen.set(false);
+    this.estoqueOpen.set(false);
+    localStorage.setItem(CHAVE_COLAPSADO, String(novoValor));
   }
 
   closeSidebar(): void {
@@ -41,12 +49,14 @@ export class Sidebar {
     this.closeSidebar();
   }
 
-  alternarColapsado(): void {
-    const novoValor = !this.colapsado();
-    this.colapsado.set(novoValor);
+  sair(): void {
+    this.sessao.sair();
+    this.router.navigateByUrl('/login');
+  }
+
+  toggleEstoque(): void {
     this.financeiroOpen.set(false);
-    this.estoqueOpen.set(false);
-    localStorage.setItem(CHAVE_COLAPSADO, String(novoValor));
+    this.estoqueOpen.update((value) => !value);
   }
 
   /** Só um dos dois grupos fica aberto por vez (accordion) — abrir um fecha
@@ -56,17 +66,7 @@ export class Sidebar {
     this.financeiroOpen.update((value) => !value);
   }
 
-  toggleEstoque(): void {
-    this.financeiroOpen.set(false);
-    this.estoqueOpen.update((value) => !value);
-  }
-
-  abrirConfiguracoes(): void {
-    this.configuracoes.abrir();
-  }
-
-  sair(): void {
-    this.sessao.sair();
-    this.router.navigateByUrl('/login');
+  toggleSidebar(): void {
+    this.sidebarOpen.update((value) => !value);
   }
 }

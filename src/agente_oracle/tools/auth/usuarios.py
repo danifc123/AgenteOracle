@@ -35,12 +35,6 @@ TAMANHO_MINIMO_SENHA = 8
 _tabela_garantida = False
 
 
-class UsuarioJaExiste(Exception):
-    """Levantada quando `criar_usuario` recebe um `usuario` que já existe
-    (constraint única) — traduzida pra uma resposta HTTP amigável na rota,
-    em vez de deixar o erro cru do banco subir como 500."""
-
-
 def _garantir_tabela(cursor) -> None:
     global _tabela_garantida
     if _tabela_garantida:
@@ -68,10 +62,6 @@ def _garantir_tabela(cursor) -> None:
     _tabela_garantida = True
 
 
-def _carregar_papeis(valor) -> list[str]:
-    return json.loads(valor) if isinstance(valor, str) else valor
-
-
 def _linha_para_usuario(linha: tuple) -> dict:
     id_, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em = linha
     return {
@@ -88,71 +78,63 @@ def _linha_para_usuario(linha: tuple) -> dict:
     }
 
 
-def senha_fraca(senha: str) -> str | None:
-    """Devolve uma mensagem de erro se a senha não atender o mínimo de
-    segurança, ou None se estiver ok — chamado tanto na criação de usuário
-    quanto na troca de senha (`server/auth/rotas.py`)."""
-    if len(senha) < TAMANHO_MINIMO_SENHA:
-        return f"A senha precisa ter pelo menos {TAMANHO_MINIMO_SENHA} caracteres."
-    return None
+def _carregar_papeis(valor) -> list[str]:
+    return json.loads(valor) if isinstance(valor, str) else valor
 
 
-def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dict:
-    senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-    try:
-        with get_connection() as connection:
-            cursor = connection.cursor()
-            _garantir_tabela(cursor)
-            cursor.execute(
-                f"""
-                INSERT INTO usuarios (usuario, senha_hash, nome, papeis, ativo, criado_em)
-                VALUES (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em)
-                RETURNING {_COLUNAS}
-                """,
-                usuario=usuario,
-                senha_hash=senha_hash,
-                nome=nome,
-                papeis=json.dumps(papeis),
-                criado_em=datetime.now(UTC),
-            )
-            linha = cursor.fetchone()
-    except DatabaseError as erro:
-        if eh_erro_valor_duplicado(erro):
-            raise UsuarioJaExiste(f"Já existe um usuário com o login '{usuario}'.") from erro
-        raise
-
-    return _linha_para_usuario(linha)
+class UsuarioJaExiste(Exception):
+    """Levantada quando `criar_usuario` recebe um `usuario` que já existe
+    (constraint única) — traduzida pra uma resposta HTTP amigável na rota,
+    em vez de deixar o erro cru do banco subir como 500."""
 
 
-def listar_usuarios() -> list[dict]:
-    """Lista os usuários cadastrados (sem hash de senha nem foto — a tela de
-    administração não mexe em foto de ninguém, só a própria pessoa mexe na
-    dela via `/api/auth/perfil`), mais recentes primeiro."""
+def alterar_senha(usuario: str, senha_atual: str, senha_nova: str) -> bool:
+    """Autoatendimento: troca a senha do PRÓPRIO usuário, conferindo a senha
+    atual antes. Devolve False se a senha atual não bater (usuário
+    inexistente conta como não bater, mesma resposta pra não vazar
+    informação)."""
     with get_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios ORDER BY id DESC")
-        linhas = cursor.fetchall()
-
-    ocultos = ("senha_hash", "foto", "tentativas_falhas", "bloqueado_em")
-    return [
-        {chave: valor for chave, valor in _linha_para_usuario(linha).items() if chave not in ocultos}
-        for linha in linhas
-    ]
-
-
-def deletar_usuario(id_usuario: int) -> str | None:
-    """Apaga um usuário. Devolve o login apagado (útil pra quem chama
-    registrar o evento na trilha de auditoria com um nome legível, em vez
-    de só o id), ou None se o id não existir."""
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute("DELETE FROM usuarios WHERE id = :id RETURNING usuario", id=id_usuario)
+        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
         linha = cursor.fetchone()
 
-    return linha[0] if linha else None
+        if linha is None:
+            return False
+
+        dados = _linha_para_usuario(linha)
+        if not bcrypt.checkpw(senha_atual.encode("utf-8"), dados["senha_hash"].encode("utf-8")):
+            return False
+
+        novo_hash = bcrypt.hashpw(senha_nova.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        cursor.execute(
+            "UPDATE usuarios SET senha_hash = :senha_hash WHERE usuario = :usuario",
+            senha_hash=novo_hash,
+            usuario=usuario,
+        )
+
+    return True
+
+
+def atualizar_perfil(usuario: str, nome: str | None = None, foto: str | None = None) -> dict:
+    """Autoatendimento: atualiza nome e/ou foto do PRÓPRIO usuário (só os
+    campos informados). Devolve o perfil atualizado, sem o hash de senha."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        if nome is not None:
+            cursor.execute(
+                "UPDATE usuarios SET nome = :nome WHERE usuario = :usuario", nome=nome, usuario=usuario
+            )
+        if foto is not None:
+            cursor.execute(
+                "UPDATE usuarios SET foto = :foto WHERE usuario = :usuario", foto=foto, usuario=usuario
+            )
+        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
+        linha = cursor.fetchone()
+
+    dados = _linha_para_usuario(linha)
+    return {chave: valor for chave, valor in dados.items() if chave != "senha_hash"}
 
 
 def autenticar(usuario: str, senha: str) -> dict | None:
@@ -183,6 +165,67 @@ def autenticar(usuario: str, senha: str) -> dict | None:
     return {chave: valor for chave, valor in dados.items() if chave not in ocultos}
 
 
+def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dict:
+    senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    try:
+        with get_connection() as connection:
+            cursor = connection.cursor()
+            _garantir_tabela(cursor)
+            cursor.execute(
+                f"""
+                INSERT INTO usuarios (usuario, senha_hash, nome, papeis, ativo, criado_em)
+                VALUES (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em)
+                RETURNING {_COLUNAS}
+                """,
+                usuario=usuario,
+                senha_hash=senha_hash,
+                nome=nome,
+                papeis=json.dumps(papeis),
+                criado_em=datetime.now(UTC),
+            )
+            linha = cursor.fetchone()
+    except DatabaseError as erro:
+        if eh_erro_valor_duplicado(erro):
+            raise UsuarioJaExiste(f"Já existe um usuário com o login '{usuario}'.") from erro
+        raise
+
+    return _linha_para_usuario(linha)
+
+
+def deletar_usuario(id_usuario: int) -> str | None:
+    """Apaga um usuário. Devolve o login apagado (útil pra quem chama
+    registrar o evento na trilha de auditoria com um nome legível, em vez
+    de só o id), ou None se o id não existir."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute("DELETE FROM usuarios WHERE id = :id RETURNING usuario", id=id_usuario)
+        linha = cursor.fetchone()
+
+    return linha[0] if linha else None
+
+
+def desbloquear_usuario(id_usuario: int) -> str | None:
+    """Zera o bloqueio e o contador de tentativas de um usuário — ação do
+    time de TI, disparada pela tela de administração. Devolve o login
+    desbloqueado, ou None se o id não existir."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            """
+            UPDATE usuarios SET bloqueado = FALSE, tentativas_falhas = 0, bloqueado_em = NULL
+            WHERE id = :id
+            RETURNING usuario
+            """,
+            id=id_usuario,
+        )
+        linha = cursor.fetchone()
+
+    return linha[0] if linha else None
+
+
 def esta_bloqueado(usuario: str) -> bool:
     """Consulta rápida e independente de senha — usada pela rota de login pra
     decidir a mensagem de erro antes mesmo de checar o rate limit."""
@@ -193,6 +236,23 @@ def esta_bloqueado(usuario: str) -> bool:
         linha = cursor.fetchone()
 
     return bool(linha and linha[0])
+
+
+def listar_usuarios() -> list[dict]:
+    """Lista os usuários cadastrados (sem hash de senha nem foto — a tela de
+    administração não mexe em foto de ninguém, só a própria pessoa mexe na
+    dela via `/api/auth/perfil`), mais recentes primeiro."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios ORDER BY id DESC")
+        linhas = cursor.fetchall()
+
+    ocultos = ("senha_hash", "foto", "tentativas_falhas", "bloqueado_em")
+    return [
+        {chave: valor for chave, valor in _linha_para_usuario(linha).items() if chave not in ocultos}
+        for linha in linhas
+    ]
 
 
 def registrar_tentativa_falha(usuario: str) -> bool:
@@ -228,6 +288,15 @@ def registrar_tentativa_falha(usuario: str) -> bool:
     return True
 
 
+def senha_fraca(senha: str) -> str | None:
+    """Devolve uma mensagem de erro se a senha não atender o mínimo de
+    segurança, ou None se estiver ok — chamado tanto na criação de usuário
+    quanto na troca de senha (`server/auth/rotas.py`)."""
+    if len(senha) < TAMANHO_MINIMO_SENHA:
+        return f"A senha precisa ter pelo menos {TAMANHO_MINIMO_SENHA} caracteres."
+    return None
+
+
 def usuario_esta_ativo_e_desbloqueado(id_usuario: int) -> bool:
     """Consulta rápida (por id, chave primária) chamada em toda requisição
     autenticada (`server/auth/dependencia.py:exigir_usuario`) — é o que
@@ -247,72 +316,3 @@ def usuario_esta_ativo_e_desbloqueado(id_usuario: int) -> bool:
 
     ativo, bloqueado = linha
     return bool(ativo) and not bool(bloqueado)
-
-
-def desbloquear_usuario(id_usuario: int) -> str | None:
-    """Zera o bloqueio e o contador de tentativas de um usuário — ação do
-    time de TI, disparada pela tela de administração. Devolve o login
-    desbloqueado, ou None se o id não existir."""
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            """
-            UPDATE usuarios SET bloqueado = FALSE, tentativas_falhas = 0, bloqueado_em = NULL
-            WHERE id = :id
-            RETURNING usuario
-            """,
-            id=id_usuario,
-        )
-        linha = cursor.fetchone()
-
-    return linha[0] if linha else None
-
-
-def atualizar_perfil(usuario: str, nome: str | None = None, foto: str | None = None) -> dict:
-    """Autoatendimento: atualiza nome e/ou foto do PRÓPRIO usuário (só os
-    campos informados). Devolve o perfil atualizado, sem o hash de senha."""
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        if nome is not None:
-            cursor.execute(
-                "UPDATE usuarios SET nome = :nome WHERE usuario = :usuario", nome=nome, usuario=usuario
-            )
-        if foto is not None:
-            cursor.execute(
-                "UPDATE usuarios SET foto = :foto WHERE usuario = :usuario", foto=foto, usuario=usuario
-            )
-        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
-        linha = cursor.fetchone()
-
-    dados = _linha_para_usuario(linha)
-    return {chave: valor for chave, valor in dados.items() if chave != "senha_hash"}
-
-
-def alterar_senha(usuario: str, senha_atual: str, senha_nova: str) -> bool:
-    """Autoatendimento: troca a senha do PRÓPRIO usuário, conferindo a senha
-    atual antes. Devolve False se a senha atual não bater (usuário
-    inexistente conta como não bater, mesma resposta pra não vazar
-    informação)."""
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
-        linha = cursor.fetchone()
-
-        if linha is None:
-            return False
-
-        dados = _linha_para_usuario(linha)
-        if not bcrypt.checkpw(senha_atual.encode("utf-8"), dados["senha_hash"].encode("utf-8")):
-            return False
-
-        novo_hash = bcrypt.hashpw(senha_nova.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        cursor.execute(
-            "UPDATE usuarios SET senha_hash = :senha_hash WHERE usuario = :usuario",
-            senha_hash=novo_hash,
-            usuario=usuario,
-        )
-
-    return True

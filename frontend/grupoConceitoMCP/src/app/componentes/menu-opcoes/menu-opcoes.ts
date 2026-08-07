@@ -11,12 +11,12 @@ export class MenuOpcoes {
 
   protected readonly aberto = signal(false);
 
-  toggle(): void {
-    this.aberto.update((valor) => !valor);
-  }
-
   fechar(): void {
     this.aberto.set(false);
+  }
+
+  toggle(): void {
+    this.aberto.update((valor) => !valor);
   }
 
   @HostListener('document:click', ['$event'])

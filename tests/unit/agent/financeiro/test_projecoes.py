@@ -1,25 +1,4 @@
-import json
-
 from agente_oracle.agent.financeiro import projecoes as mod
-
-
-class _RespostaFake:
-    def __init__(self, conteudo: str | None):
-        self.message = type("Mensagem", (), {"content": conteudo})()
-
-
-class _OllamaClientFake:
-    """`gerar_analise` só usa `chat(...)` — um fake simples já satisfaz essa
-    interface, sem precisar de um servidor Ollama de verdade."""
-
-    def __init__(self, conteudo: str | None = None, levantar: Exception | None = None):
-        self._conteudo = conteudo
-        self._levantar = levantar
-
-    async def chat(self, **_kwargs):
-        if self._levantar:
-            raise self._levantar
-        return _RespostaFake(self._conteudo)
 
 
 class TestProjetarTendenciaLinear:
@@ -48,25 +27,3 @@ class TestProximosMeses:
 
     def test_quantidade_zero_devolve_vazio(self):
         assert mod.proximos_meses("2026-05", 0) == []
-
-
-class TestGerarAnalise:
-    async def test_devolve_analise_do_modelo(self):
-        cliente = _OllamaClientFake(conteudo=json.dumps({"analise": "Tendência de alta nas vendas."}))
-        resultado = await mod.gerar_analise(cliente, "modelo-teste", "contexto qualquer")
-        assert resultado == "Tendência de alta nas vendas."
-
-    async def test_resposta_vazia_cai_no_fallback(self):
-        cliente = _OllamaClientFake(conteudo=json.dumps({"analise": ""}))
-        resultado = await mod.gerar_analise(cliente, "modelo-teste", "contexto qualquer")
-        assert resultado == mod._ANALISE_INDISPONIVEL
-
-    async def test_json_invalido_cai_no_fallback(self):
-        cliente = _OllamaClientFake(conteudo="isso não é json")
-        resultado = await mod.gerar_analise(cliente, "modelo-teste", "contexto qualquer")
-        assert resultado == mod._ANALISE_INDISPONIVEL
-
-    async def test_falha_do_ollama_cai_no_fallback(self):
-        cliente = _OllamaClientFake(levantar=ConnectionError("Ollama fora do ar"))
-        resultado = await mod.gerar_analise(cliente, "modelo-teste", "contexto qualquer")
-        assert resultado == mod._ANALISE_INDISPONIVEL

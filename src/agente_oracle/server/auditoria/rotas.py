@@ -40,6 +40,66 @@ def _achado_para_json(achado: Achado) -> dict:
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/auditoria/historico/ativo", methods=["PATCH", "OPTIONS"])
+    @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
+    async def auditoria_historico_ativo_route(request: Request, usuario: dict) -> Response:
+        """Ativa/desativa um achado no histórico (todas as linhas daquela
+        tupla `modulo/view/campo/valor` de uma vez) — só pra facilitar
+        desenvolvedor testar a auditoria repetidamente: desativado, o achado
+        deixa de contar em `ja_identificados` e a próxima execução volta a
+        tratá-lo como novo, mesmo sem o dado ter mudado. Restrito ao papel
+        `desenvolvedor` (não qualquer administrador)."""
+        corpo = await request.json()
+        modulo = str(corpo.get("modulo", "")).strip()
+        view = str(corpo.get("view", "")).strip()
+        campo = str(corpo.get("campo", "")).strip()
+        valor = str(corpo.get("valor", "")).strip()
+        ativo = corpo.get("ativo")
+
+        if not (modulo and view and campo and valor) or not isinstance(ativo, bool):
+            return JSONResponse(
+                {"erro": "Informe modulo, view, campo, valor e ativo (booleano)."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
+        atualizado = historico_tools.definir_ativo(modulo, view, campo, valor, ativo)
+        if not atualizado:
+            return JSONResponse(
+                {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+            )
+
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auditoria/historico", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS")
+    async def auditoria_historico_route(request: Request, usuario: dict) -> Response:
+        """Lista os achados que a auditoria já encontrou ao longo do tempo
+        (todas as execuções, de qualquer usuário), restritos aos módulos que
+        quem está consultando tem acesso — nunca expira, ao contrário de
+        `/api/relatorios/historico`. Achado desativado (ver
+        `tools/auditoria/historico.definir_ativo`) só aparece pra quem tem o
+        papel `desenvolvedor` — pra usuário comum, é como se nunca tivesse
+        existido. `?modulo=` é opcional: sem ele, mostra todos os módulos que
+        o usuário tem acesso (útil pra quem tem mais de um, ex:
+        desenvolvedor); com ele, restringe a um departamento só — mesmo
+        filtro que a execução ao vivo em `/api/auditoria`."""
+        papeis_usuario = usuario.get("papeis", [])
+        modulos_liberados = papeis.modulos_liberados(papeis_usuario)
+
+        modulo = request.query_params.get("modulo", "").strip()
+        if modulo:
+            if modulo not in modulos_liberados:
+                return JSONResponse(
+                    {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
+                )
+            modulos_liberados = [modulo]
+
+        registros = historico_tools.listar(
+            modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario)
+        )
+        return JSONResponse(registros, headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/auditoria", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")
     async def auditoria_route(request: Request, usuario: dict) -> Response:
@@ -112,66 +172,6 @@ def registrar(mcp) -> None:
         achados = achados_novos + achados_ja_conhecidos
 
         return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/auditoria/historico", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS")
-    async def auditoria_historico_route(request: Request, usuario: dict) -> Response:
-        """Lista os achados que a auditoria já encontrou ao longo do tempo
-        (todas as execuções, de qualquer usuário), restritos aos módulos que
-        quem está consultando tem acesso — nunca expira, ao contrário de
-        `/api/relatorios/historico`. Achado desativado (ver
-        `tools/auditoria/historico.definir_ativo`) só aparece pra quem tem o
-        papel `desenvolvedor` — pra usuário comum, é como se nunca tivesse
-        existido. `?modulo=` é opcional: sem ele, mostra todos os módulos que
-        o usuário tem acesso (útil pra quem tem mais de um, ex:
-        desenvolvedor); com ele, restringe a um departamento só — mesmo
-        filtro que a execução ao vivo em `/api/auditoria`."""
-        papeis_usuario = usuario.get("papeis", [])
-        modulos_liberados = papeis.modulos_liberados(papeis_usuario)
-
-        modulo = request.query_params.get("modulo", "").strip()
-        if modulo:
-            if modulo not in modulos_liberados:
-                return JSONResponse(
-                    {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
-                )
-            modulos_liberados = [modulo]
-
-        registros = historico_tools.listar(
-            modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario)
-        )
-        return JSONResponse(registros, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/auditoria/historico/ativo", methods=["PATCH", "OPTIONS"])
-    @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
-    async def auditoria_historico_ativo_route(request: Request, usuario: dict) -> Response:
-        """Ativa/desativa um achado no histórico (todas as linhas daquela
-        tupla `modulo/view/campo/valor` de uma vez) — só pra facilitar
-        desenvolvedor testar a auditoria repetidamente: desativado, o achado
-        deixa de contar em `ja_identificados` e a próxima execução volta a
-        tratá-lo como novo, mesmo sem o dado ter mudado. Restrito ao papel
-        `desenvolvedor` (não qualquer administrador)."""
-        corpo = await request.json()
-        modulo = str(corpo.get("modulo", "")).strip()
-        view = str(corpo.get("view", "")).strip()
-        campo = str(corpo.get("campo", "")).strip()
-        valor = str(corpo.get("valor", "")).strip()
-        ativo = corpo.get("ativo")
-
-        if not (modulo and view and campo and valor) or not isinstance(ativo, bool):
-            return JSONResponse(
-                {"erro": "Informe modulo, view, campo, valor e ativo (booleano)."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        atualizado = historico_tools.definir_ativo(modulo, view, campo, valor, ativo)
-        if not atualizado:
-            return JSONResponse(
-                {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-            )
-
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auditoria/dispensar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS")

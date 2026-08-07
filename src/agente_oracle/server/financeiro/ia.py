@@ -88,22 +88,34 @@ def registrar(mcp) -> None:
 
         ollama_client = AsyncClient(host=settings.ollama_host)
 
-        async with (
-            streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (
-                read_stream,
-                write_stream,
-                _,
-            ),
-            ClientSession(read_stream, write_stream) as session,
-        ):
-            await session.initialize()
-            messages, eventos = await responder(
-                ollama_client,
-                settings.ollama_model,
-                session,
-                f"{PREFIXO_TOOL}executar_consulta_financeira",
-                f"{PREFIXO_TOOL}testar_conexao_oracle",
-                messages,
+        try:
+            async with (
+                streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (
+                    read_stream,
+                    write_stream,
+                    _,
+                ),
+                ClientSession(read_stream, write_stream) as session,
+            ):
+                await session.initialize()
+                messages, eventos = await responder(
+                    ollama_client,
+                    settings.ollama_model,
+                    session,
+                    f"{PREFIXO_TOOL}executar_consulta_financeira",
+                    f"{PREFIXO_TOOL}testar_conexao_oracle",
+                    messages,
+                )
+        except ConnectionError:
+            # Ollama fora do ar/inacessível — diferente de `analisar_perfis`
+            # (Auditoria), aqui não tem como degradar silenciosamente pra uma
+            # resposta vazia: o chat inteiro depende da IA responder algo.
+            # Devolve 503 em vez de deixar a ConnectionError subir crua (vira
+            # 500 sem corpo tratado).
+            return JSONResponse(
+                {"erro": "Assistente de IA indisponível no momento. Tente novamente em instantes."},
+                status_code=503,
+                headers=CORS_HEADERS,
             )
 
         return JSONResponse(

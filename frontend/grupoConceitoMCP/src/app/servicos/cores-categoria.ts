@@ -57,10 +57,6 @@ export class CoresCategoria {
     });
   }
 
-  obterCor(categoria: string): string {
-    return this.personalizadas()[categoria] ?? COR_CATEGORIA_PADRAO;
-  }
-
   private carregar(): void {
     this.http.get<CategoriaCor[]>(`${MCP_API_BASE_URL}/api/financeiro/categorias/cores`).subscribe({
       next: (cores) => {
@@ -74,6 +70,10 @@ export class CoresCategoria {
     });
   }
 
+  aplicarCorLocal(categoria: string, cor: string): void {
+    this.personalizadas.update((atual) => ({ ...atual, [categoria]: cor }));
+  }
+
   definirCor(categoria: string, cor: string) {
     return this.http.put<CategoriaCor>(
       `${MCP_API_BASE_URL}/api/financeiro/categorias/cores/${encodeURIComponent(categoria)}`,
@@ -81,8 +81,8 @@ export class CoresCategoria {
     );
   }
 
-  aplicarCorLocal(categoria: string, cor: string): void {
-    this.personalizadas.update((atual) => ({ ...atual, [categoria]: cor }));
+  obterCor(categoria: string): string {
+    return this.personalizadas()[categoria] ?? COR_CATEGORIA_PADRAO;
   }
 
   redefinirCor(categoria: string) {

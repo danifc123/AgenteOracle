@@ -7,11 +7,6 @@ from decimal import Decimal
 from starlette.requests import Request
 
 
-def serializar(valor):
-    """Converte Decimal (não serializável em JSON puro) pra float; passa o resto direto."""
-    return float(valor) if isinstance(valor, Decimal) else valor
-
-
 def filiais_da_query(request: Request) -> list[str] | None:
     """Lê o parâmetro 'filial' (obrigatório, aceita múltiplas separadas por
     vírgula). Devolve None quando nenhuma filial foi informada."""
@@ -22,3 +17,8 @@ def filiais_da_query(request: Request) -> list[str] | None:
 
 def parametros_opcionais(request: Request, campos: tuple[str, ...]) -> dict[str, str]:
     return {chave: request.query_params.get(chave, "").strip() for chave in campos}
+
+
+def serializar(valor):
+    """Converte Decimal (não serializável em JSON puro) pra float; passa o resto direto."""
+    return float(valor) if isinstance(valor, Decimal) else valor

@@ -10,25 +10,6 @@ from agente_oracle.tools.auth import papeis, usuarios
 from agente_oracle.tools.auth.token import verificar_token
 
 
-def exigir_usuario(request: Request) -> dict | JSONResponse:
-    cabecalho = request.headers.get("authorization", "")
-    if not cabecalho.startswith("Bearer "):
-        return JSONResponse({"erro": "Não autenticado."}, status_code=401, headers=CORS_HEADERS)
-
-    payload = verificar_token(cabecalho.removeprefix("Bearer "))
-    if payload is None:
-        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
-
-    # Revogação de sessão: o JWT em si não tem como ser invalidado antes de
-    # expirar (é sem estado, por design), mas checar aqui o estado atual da
-    # conta a cada request faz efeito na prática — desativar ou bloquear
-    # alguém corta o acesso já no próximo request, não só em tokens novos.
-    if not usuarios.usuario_esta_ativo_e_desbloqueado(int(payload["sub"])):
-        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
-
-    return payload
-
-
 def exigir_administrador(request: Request) -> dict | JSONResponse:
     """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
     tenha um papel administrador (ex: `financeiro_admin`, `desenvolvedor`)."""
@@ -76,3 +57,22 @@ def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
         )
 
     return resultado
+
+
+def exigir_usuario(request: Request) -> dict | JSONResponse:
+    cabecalho = request.headers.get("authorization", "")
+    if not cabecalho.startswith("Bearer "):
+        return JSONResponse({"erro": "Não autenticado."}, status_code=401, headers=CORS_HEADERS)
+
+    payload = verificar_token(cabecalho.removeprefix("Bearer "))
+    if payload is None:
+        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
+
+    # Revogação de sessão: o JWT em si não tem como ser invalidado antes de
+    # expirar (é sem estado, por design), mas checar aqui o estado atual da
+    # conta a cada request faz efeito na prática — desativar ou bloquear
+    # alguém corta o acesso já no próximo request, não só em tokens novos.
+    if not usuarios.usuario_esta_ativo_e_desbloqueado(int(payload["sub"])):
+        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
+
+    return payload

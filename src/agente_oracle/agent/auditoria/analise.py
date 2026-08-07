@@ -66,76 +66,11 @@ class Achado:
     descricao: str
 
 
-def _perfis_para_texto(perfis: list[PerfilCampo]) -> str:
-    blocos = []
-    for perfil in perfis:
-        valores_texto = ", ".join(f"'{valor}' ({ocorrencias}x)" for valor, ocorrencias in perfil.valores)
-        blocos.append(
-            f"Módulo: {perfil.modulo} | View: {perfil.view} | Campo: {perfil.campo}\nValores: {valores_texto}"
-        )
-    return "\n\n".join(blocos)
-
-
-def _achado_valido(achado: object) -> bool:
-    return isinstance(achado, dict) and all(
-        isinstance(achado.get(campo), str) and achado.get(campo)
-        for campo in ("modulo", "view", "campo", "valor", "descricao")
-    )
-
-
-def _achado_fundamentado(
-    achado: dict, perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]]
-) -> bool:
-    """Descarta achados que citam um `(modulo, view, campo)` que não estava
-    entre os perfis realmente enviados, ou um `valor` que não está entre os
-    valores daquele perfil específico — valida a tupla inteira, não só o
-    valor isolado, senão a IA poderia citar um valor real de um perfil e
-    prendê-lo a um `(view, campo)` errado. Também descarta o valor mais
-    frequente do perfil (quando há mais de um valor distinto): um achado
-    "isso é fora do padrão" citando o valor mais comum é quase sempre um
-    non-sequitur — filtro barato, não substitui a checagem semântica real."""
-    chave = (achado["modulo"], achado["view"], achado["campo"])
-    entrada = perfis_por_chave.get(chave)
-    if entrada is None:
-        return False
-
-    valores_validos, valor_mais_comum = entrada
-    valor = achado["valor"]
-    if valor not in valores_validos:
-        return False
-    return not (len(valores_validos) > 1 and valor == valor_mais_comum)
-
-
-def filtrar_valores_conhecidos(
-    perfis: list[PerfilCampo], valores_conhecidos: set[tuple[str, str, str, str]]
-) -> list[PerfilCampo]:
-    """Remove de cada perfil os valores cuja tupla `(modulo, view, campo,
-    valor)` já está em `valores_conhecidos` — usada tanto pra não gastar uma
-    chamada de IA "redescobrindo" um problema já identificado antes (ver
-    `tools/auditoria/historico.ja_identificados`) quanto, potencialmente, pra
-    qualquer outro conjunto de exclusão no mesmo formato. Se o dado mudou
-    desde então (mesmo que continue errado, com um valor diferente), a tupla
-    é outra e não é removida — só evita repetir o que já é sabido. Perfil que
-    fica sem nenhum valor depois do filtro é descartado inteiro; se todos os
-    perfis ficarem vazios, `analisar_perfis` nem chega a chamar o Ollama."""
-    perfis_filtrados = []
-    for perfil in perfis:
-        valores_restantes = tuple(
-            (valor, ocorrencias)
-            for valor, ocorrencias in perfil.valores
-            if (perfil.modulo, perfil.view, perfil.campo, valor) not in valores_conhecidos
-        )
-        if valores_restantes:
-            perfis_filtrados.append(replace(perfil, valores=valores_restantes))
-    return perfis_filtrados
-
-
 async def analisar_perfis(ollama_client: AsyncClient, modelo: str, perfis: list[PerfilCampo]) -> list[Achado]:
     """Pede à IA que analise os perfis recebidos e aponte o que parece fora
     do padrão. Nunca deixa a chamada quebrar: qualquer falha do Ollama,
     resposta vazia ou mal formada devolve lista vazia — o painel simplesmente
-    mostra "nenhum achado" nesse caso, igual a `gerar_analise` em
-    `agent/financeiro/projecoes.py`."""
+    mostra "nenhum achado" nesse caso."""
     # Perfis sem nenhum valor (view/campo sem registro) não têm o que
     # comparar — `max()` na linha abaixo quebraria com sequência vazia.
     perfis = [perfil for perfil in perfis if perfil.valores]
@@ -182,3 +117,67 @@ async def analisar_perfis(ollama_client: AsyncClient, modelo: str, perfis: list[
         for achado in achados_brutos
         if _achado_valido(achado) and _achado_fundamentado(achado, perfis_por_chave)
     ]
+
+
+def _achado_fundamentado(
+    achado: dict, perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]]
+) -> bool:
+    """Descarta achados que citam um `(modulo, view, campo)` que não estava
+    entre os perfis realmente enviados, ou um `valor` que não está entre os
+    valores daquele perfil específico — valida a tupla inteira, não só o
+    valor isolado, senão a IA poderia citar um valor real de um perfil e
+    prendê-lo a um `(view, campo)` errado. Também descarta o valor mais
+    frequente do perfil (quando há mais de um valor distinto): um achado
+    "isso é fora do padrão" citando o valor mais comum é quase sempre um
+    non-sequitur — filtro barato, não substitui a checagem semântica real."""
+    chave = (achado["modulo"], achado["view"], achado["campo"])
+    entrada = perfis_por_chave.get(chave)
+    if entrada is None:
+        return False
+
+    valores_validos, valor_mais_comum = entrada
+    valor = achado["valor"]
+    if valor not in valores_validos:
+        return False
+    return not (len(valores_validos) > 1 and valor == valor_mais_comum)
+
+
+def _achado_valido(achado: object) -> bool:
+    return isinstance(achado, dict) and all(
+        isinstance(achado.get(campo), str) and achado.get(campo)
+        for campo in ("modulo", "view", "campo", "valor", "descricao")
+    )
+
+
+def _perfis_para_texto(perfis: list[PerfilCampo]) -> str:
+    blocos = []
+    for perfil in perfis:
+        valores_texto = ", ".join(f"'{valor}' ({ocorrencias}x)" for valor, ocorrencias in perfil.valores)
+        blocos.append(
+            f"Módulo: {perfil.modulo} | View: {perfil.view} | Campo: {perfil.campo}\nValores: {valores_texto}"
+        )
+    return "\n\n".join(blocos)
+
+
+def filtrar_valores_conhecidos(
+    perfis: list[PerfilCampo], valores_conhecidos: set[tuple[str, str, str, str]]
+) -> list[PerfilCampo]:
+    """Remove de cada perfil os valores cuja tupla `(modulo, view, campo,
+    valor)` já está em `valores_conhecidos` — usada tanto pra não gastar uma
+    chamada de IA "redescobrindo" um problema já identificado antes (ver
+    `tools/auditoria/historico.ja_identificados`) quanto, potencialmente, pra
+    qualquer outro conjunto de exclusão no mesmo formato. Se o dado mudou
+    desde então (mesmo que continue errado, com um valor diferente), a tupla
+    é outra e não é removida — só evita repetir o que já é sabido. Perfil que
+    fica sem nenhum valor depois do filtro é descartado inteiro; se todos os
+    perfis ficarem vazios, `analisar_perfis` nem chega a chamar o Ollama."""
+    perfis_filtrados = []
+    for perfil in perfis:
+        valores_restantes = tuple(
+            (valor, ocorrencias)
+            for valor, ocorrencias in perfil.valores
+            if (perfil.modulo, perfil.view, perfil.campo, valor) not in valores_conhecidos
+        )
+        if valores_restantes:
+            perfis_filtrados.append(replace(perfil, valores=valores_restantes))
+    return perfis_filtrados

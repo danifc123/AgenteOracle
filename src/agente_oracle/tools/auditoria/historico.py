@@ -36,19 +36,6 @@ from agente_oracle.db.connection import get_connection
 _tabela_garantida = False
 
 
-def _coluna_ativo_existe(cursor) -> bool:
-    if settings.db_backend == "postgres":
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'auditoria_historico' AND column_name = 'ativo'"
-        )
-    else:
-        cursor.execute(
-            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'AUDITORIA_HISTORICO' AND COLUMN_NAME = 'ATIVO'"
-        )
-    return cursor.fetchone() is not None
-
-
 def _garantir_tabela(cursor) -> None:
     global _tabela_garantida
     if _tabela_garantida:
@@ -75,58 +62,17 @@ def _garantir_tabela(cursor) -> None:
     _tabela_garantida = True
 
 
-def salvar(usuario_id: str, achados: list[Achado]) -> str | None:
-    """Registra todos os achados de uma execução da auditoria, marcados com o
-    mesmo `execucao_id` (permite agrupar depois quem veio da mesma rodada).
-    Sem achado nenhum, não grava nada — devolve None nesse caso."""
-    if not achados:
-        return None
-
-    execucao_id = uuid.uuid4().hex
-    agora = datetime.now(UTC)
-
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        for achado in achados:
-            cursor.execute(
-                """
-                INSERT INTO auditoria_historico
-                    (execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em)
-                VALUES
-                    (:execucao_id, :usuario_id, :modulo, :view_nome, :campo, :valor, :descricao, :criado_em)
-                """,
-                execucao_id=execucao_id,
-                usuario_id=usuario_id,
-                modulo=achado.modulo,
-                view_nome=achado.view,
-                campo=achado.campo,
-                valor=achado.valor,
-                descricao=achado.descricao,
-                criado_em=agora,
-            )
-
-    return execucao_id
-
-
-def ja_identificados() -> set[tuple[str, str, str, str]]:
-    """Todo achado `(modulo, view, campo, valor)` ATIVO já registrado alguma
-    vez, de qualquer execução e qualquer usuário — usado por
-    `server/auditoria/rotas.py` (via `filtrar_valores_conhecidos`) pra tirar
-    esses valores dos perfis ANTES de mandar pra IA, evitando gastar uma
-    chamada de IA pra "redescobrir" um problema que já se sabe que existe e
-    ainda não foi corrigido. Global de propósito: uma vez identificado por
-    qualquer execução, não faz sentido gastar IA de novo nele pra ninguém.
-    Achado desativado (`definir_ativo(..., ativo=False)`) não conta aqui —
-    volta a ser tratado como "novo" na próxima execução."""
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
+def _coluna_ativo_existe(cursor) -> bool:
+    if settings.db_backend == "postgres":
         cursor.execute(
-            "SELECT DISTINCT modulo, view_nome, campo, valor FROM auditoria_historico WHERE ativo = TRUE"
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'auditoria_historico' AND column_name = 'ativo'"
         )
-        linhas = cursor.fetchall()
-    return {(modulo, view, campo, valor) for modulo, view, campo, valor in linhas}
+    else:
+        cursor.execute(
+            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'AUDITORIA_HISTORICO' AND COLUMN_NAME = 'ATIVO'"
+        )
+    return cursor.fetchone() is not None
 
 
 def achados_ativos(modulos_liberados: list[str]) -> list[Achado]:
@@ -198,6 +144,26 @@ def definir_ativo(modulo: str, view: str, campo: str, valor: str, ativo: bool) -
         return cursor.rowcount > 0
 
 
+def ja_identificados() -> set[tuple[str, str, str, str]]:
+    """Todo achado `(modulo, view, campo, valor)` ATIVO já registrado alguma
+    vez, de qualquer execução e qualquer usuário — usado por
+    `server/auditoria/rotas.py` (via `filtrar_valores_conhecidos`) pra tirar
+    esses valores dos perfis ANTES de mandar pra IA, evitando gastar uma
+    chamada de IA pra "redescobrir" um problema que já se sabe que existe e
+    ainda não foi corrigido. Global de propósito: uma vez identificado por
+    qualquer execução, não faz sentido gastar IA de novo nele pra ninguém.
+    Achado desativado (`definir_ativo(..., ativo=False)`) não conta aqui —
+    volta a ser tratado como "novo" na próxima execução."""
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            "SELECT DISTINCT modulo, view_nome, campo, valor FROM auditoria_historico WHERE ativo = TRUE"
+        )
+        linhas = cursor.fetchall()
+    return {(modulo, view, campo, valor) for modulo, view, campo, valor in linhas}
+
+
 def listar(modulos_liberados: list[str], incluir_desativados: bool = False, limite: int = 200) -> list[dict]:
     """Achados já registrados, do mais recente pro mais antigo, restritos aos
     módulos que quem está consultando tem acesso — mesma regra de RBAC do
@@ -245,3 +211,37 @@ def listar(modulos_liberados: list[str], incluir_desativados: bool = False, limi
         }
         for execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em, ativo in linhas
     ]
+
+
+def salvar(usuario_id: str, achados: list[Achado]) -> str | None:
+    """Registra todos os achados de uma execução da auditoria, marcados com o
+    mesmo `execucao_id` (permite agrupar depois quem veio da mesma rodada).
+    Sem achado nenhum, não grava nada — devolve None nesse caso."""
+    if not achados:
+        return None
+
+    execucao_id = uuid.uuid4().hex
+    agora = datetime.now(UTC)
+
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        for achado in achados:
+            cursor.execute(
+                """
+                INSERT INTO auditoria_historico
+                    (execucao_id, usuario_id, modulo, view_nome, campo, valor, descricao, criado_em)
+                VALUES
+                    (:execucao_id, :usuario_id, :modulo, :view_nome, :campo, :valor, :descricao, :criado_em)
+                """,
+                execucao_id=execucao_id,
+                usuario_id=usuario_id,
+                modulo=achado.modulo,
+                view_nome=achado.view,
+                campo=achado.campo,
+                valor=achado.valor,
+                descricao=achado.descricao,
+                criado_em=agora,
+            )
+
+    return execucao_id

@@ -47,32 +47,6 @@ export class Auditoria {
     this.aberto.set(true);
   }
 
-  fechar(): void {
-    this.aberto.set(false);
-  }
-
-  selecionarModulo(modulo: string): void {
-    if (this.moduloAtual() === modulo) {
-      return;
-    }
-    // Troca de departamento não pode mostrar achado de auditoria antiga de
-    // outro módulo enquanto a nova busca não roda.
-    this.achados.set([]);
-    this.jaExecutou.set(false);
-    this.erro.set(null);
-    this.moduloAtual.set(modulo);
-  }
-
-  /** Volta pro estado "nenhum módulo escolhido" — usado pelo seletor quando
-   * o usuário tem mais de uma opção e quer trocar de departamento sem
-   * fechar o painel. */
-  limparSelecao(): void {
-    this.moduloAtual.set(null);
-    this.achados.set([]);
-    this.jaExecutou.set(false);
-    this.erro.set(null);
-  }
-
   buscar(): void {
     const modulo = this.moduloAtual();
     if (!modulo) {
@@ -108,5 +82,31 @@ export class Auditoria {
         this.mudancas.update((atual) => atual + 1);
       },
     });
+  }
+
+  fechar(): void {
+    this.aberto.set(false);
+  }
+
+  /** Volta pro estado "nenhum módulo escolhido" — usado pelo seletor quando
+   * o usuário tem mais de uma opção e quer trocar de departamento sem
+   * fechar o painel. */
+  limparSelecao(): void {
+    this.moduloAtual.set(null);
+    this.achados.set([]);
+    this.jaExecutou.set(false);
+    this.erro.set(null);
+  }
+
+  selecionarModulo(modulo: string): void {
+    if (this.moduloAtual() === modulo) {
+      return;
+    }
+    // Troca de departamento não pode mostrar achado de auditoria antiga de
+    // outro módulo enquanto a nova busca não roda.
+    this.achados.set([]);
+    this.jaExecutou.set(false);
+    this.erro.set(null);
+    this.moduloAtual.set(modulo);
   }
 }

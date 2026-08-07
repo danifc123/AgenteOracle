@@ -73,8 +73,5 @@
   <section class="cartao-previsao cartao-grafico-principal">
     <h2>Projeção de Vendas</h2>
     <app-grafico-serie tipo="linha" [series]="seriesVendas()" />
-    @if (vendasAnalise()) {
-      <p class="analise-ia">{{ vendasAnalise() }}</p>
-    }
   </section>
 }

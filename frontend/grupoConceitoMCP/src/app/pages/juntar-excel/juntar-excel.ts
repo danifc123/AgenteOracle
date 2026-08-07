@@ -40,25 +40,6 @@ export class JuntarExcel {
     () => this.arquivo1() !== null && this.arquivo2() !== null,
   );
 
-  definirArquivo1(arquivo: File | null): void {
-    this.arquivo1.set(arquivo);
-    this.concluido.set(false);
-    this.atualizarAnalise();
-  }
-
-  definirArquivo2(arquivo: File | null): void {
-    this.arquivo2.set(arquivo);
-    this.concluido.set(false);
-    this.atualizarAnalise();
-  }
-
-  reiniciar(): void {
-    this.seletor1().remover();
-    this.seletor2().remover();
-    this.concluido.set(false);
-    this.erro.set(null);
-  }
-
   private atualizarAnalise(): void {
     const arquivo1 = this.arquivo1();
     const arquivo2 = this.arquivo2();
@@ -86,6 +67,18 @@ export class JuntarExcel {
           this.analisando.set(false);
         },
       });
+  }
+
+  definirArquivo1(arquivo: File | null): void {
+    this.arquivo1.set(arquivo);
+    this.concluido.set(false);
+    this.atualizarAnalise();
+  }
+
+  definirArquivo2(arquivo: File | null): void {
+    this.arquivo2.set(arquivo);
+    this.concluido.set(false);
+    this.atualizarAnalise();
   }
 
   juntar(): void {
@@ -130,5 +123,12 @@ export class JuntarExcel {
           this.enviando.set(false);
         },
       });
+  }
+
+  reiniciar(): void {
+    this.seletor1().remover();
+    this.seletor2().remover();
+    this.concluido.set(false);
+    this.erro.set(null);
   }
 }

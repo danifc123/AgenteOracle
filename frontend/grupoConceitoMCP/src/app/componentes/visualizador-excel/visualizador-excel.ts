@@ -31,6 +31,14 @@ export class VisualizadorExcel {
     return [...linhas].sort((a, b) => compararValores(a[coluna], b[coluna]) * sinal);
   });
 
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
+
+  protected ehNumero(valor: unknown): boolean {
+    return typeof valor === 'number';
+  }
+
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
       this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
@@ -38,13 +46,5 @@ export class VisualizadorExcel {
       this.colunaOrdenada.set(coluna);
       this.direcaoOrdenacao.set('asc');
     }
-  }
-
-  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
-    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
-  }
-
-  protected ehNumero(valor: unknown): boolean {
-    return typeof valor === 'number';
   }
 }

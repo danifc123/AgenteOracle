@@ -32,10 +32,6 @@ _LARANJA_CLARO = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type
 _LARGURA_MAXIMA_COLUNA = 50
 
 
-class ArquivoExcelInvalido(Exception):
-    """Levantada quando um dos arquivos enviados não é um .xlsx válido."""
-
-
 def _ler_planilha(conteudo: bytes) -> tuple[list[str], list[list]]:
     """Lê a planilha ATIVA de um .xlsx: 1ª linha vira cabeçalho, o resto vira
     linhas de dado. `data_only=True` lê o valor calculado de fórmula (não a
@@ -55,6 +51,75 @@ def _ler_planilha(conteudo: bytes) -> tuple[list[str], list[list]]:
     # em branco pra não virar dado fantasma no resultado.
     linhas_de_dados = [list(linha) for linha in linhas[1:] if any(valor is not None for valor in linha)]
     return cabecalho, linhas_de_dados
+
+
+class ArquivoExcelInvalido(Exception):
+    """Levantada quando um dos arquivos enviados não é um .xlsx válido."""
+
+
+def analisar_colunas(conteudo1: bytes, conteudo2: bytes) -> dict:
+    """Só lê os cabeçalhos das duas planilhas (sem montar o arquivo final) —
+    usado pelo frontend pra mostrar uma prévia de como a junção vai ficar
+    (empilhar, unir por coluna comum, ou lado a lado) antes do usuário
+    confirmar e baixar o resultado."""
+    cabecalho1, _ = _ler_planilha(conteudo1)
+    cabecalho2, _ = _ler_planilha(conteudo2)
+    colunas_comuns = [coluna for coluna in cabecalho1 if coluna in cabecalho2]
+
+    if cabecalho1 and set(cabecalho1) == set(cabecalho2):
+        tipo = "identicas"
+    elif colunas_comuns:
+        tipo = "parcial"
+    else:
+        tipo = "nenhuma"
+
+    return {
+        "tipo": tipo,
+        "colunas1": cabecalho1,
+        "colunas2": cabecalho2,
+        "colunas_comuns": colunas_comuns,
+    }
+
+
+def juntar_planilhas(conteudo1: bytes, conteudo2: bytes) -> bytes:
+    cabecalho1, linhas1 = _ler_planilha(conteudo1)
+    cabecalho2, linhas2 = _ler_planilha(conteudo2)
+
+    workbook = Workbook()
+    planilha = workbook.active
+    planilha.title = "Planilhas combinadas"
+
+    colunas_comuns = [coluna for coluna in cabecalho1 if coluna in cabecalho2]
+
+    if cabecalho1 and set(cabecalho1) == set(cabecalho2):
+        indices = [cabecalho2.index(coluna) for coluna in cabecalho1]
+        linhas2_reordenadas = [[linha[indice] for indice in indices] for linha in linhas2]
+        _escrever_bloco(planilha, cabecalho1, linhas1 + linhas2_reordenadas, preenchimento=None)
+    elif colunas_comuns:
+        cabecalho_final, linhas_final, cores_final = _juntar_por_chave_comum(
+            cabecalho1, linhas1, cabecalho2, linhas2, colunas_comuns
+        )
+        _escrever_bloco(planilha, cabecalho_final, linhas_final, cores_final)
+    else:
+        _escrever_bloco(planilha, cabecalho1, linhas1, _VERDE_CLARO)
+        coluna_bloco2 = len(cabecalho1) + 2  # 1 coluna em branco separando os dois blocos
+        _escrever_bloco(planilha, cabecalho2, linhas2, _LARANJA_CLARO, coluna_inicial=coluna_bloco2)
+
+    _aplicar_largura_automatica(planilha)
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _aplicar_largura_automatica(planilha) -> None:
+    for coluna in planilha.columns:
+        maior_valor = max(
+            (len(str(celula.value)) for celula in coluna if celula.value is not None), default=0
+        )
+        planilha.column_dimensions[coluna[0].column_letter].width = min(
+            maior_valor + 2, _LARGURA_MAXIMA_COLUNA
+        )
 
 
 def _escrever_bloco(
@@ -148,68 +213,3 @@ def _juntar_por_chave_comum(
                 linhas_final.append(list(chave2) + [None] * len(indices_unicos_1) + valores_unicos_2)
 
     return cabecalho_final, linhas_final, cores_final
-
-
-def _aplicar_largura_automatica(planilha) -> None:
-    for coluna in planilha.columns:
-        maior_valor = max(
-            (len(str(celula.value)) for celula in coluna if celula.value is not None), default=0
-        )
-        planilha.column_dimensions[coluna[0].column_letter].width = min(
-            maior_valor + 2, _LARGURA_MAXIMA_COLUNA
-        )
-
-
-def analisar_colunas(conteudo1: bytes, conteudo2: bytes) -> dict:
-    """Só lê os cabeçalhos das duas planilhas (sem montar o arquivo final) —
-    usado pelo frontend pra mostrar uma prévia de como a junção vai ficar
-    (empilhar, unir por coluna comum, ou lado a lado) antes do usuário
-    confirmar e baixar o resultado."""
-    cabecalho1, _ = _ler_planilha(conteudo1)
-    cabecalho2, _ = _ler_planilha(conteudo2)
-    colunas_comuns = [coluna for coluna in cabecalho1 if coluna in cabecalho2]
-
-    if cabecalho1 and set(cabecalho1) == set(cabecalho2):
-        tipo = "identicas"
-    elif colunas_comuns:
-        tipo = "parcial"
-    else:
-        tipo = "nenhuma"
-
-    return {
-        "tipo": tipo,
-        "colunas1": cabecalho1,
-        "colunas2": cabecalho2,
-        "colunas_comuns": colunas_comuns,
-    }
-
-
-def juntar_planilhas(conteudo1: bytes, conteudo2: bytes) -> bytes:
-    cabecalho1, linhas1 = _ler_planilha(conteudo1)
-    cabecalho2, linhas2 = _ler_planilha(conteudo2)
-
-    workbook = Workbook()
-    planilha = workbook.active
-    planilha.title = "Planilhas combinadas"
-
-    colunas_comuns = [coluna for coluna in cabecalho1 if coluna in cabecalho2]
-
-    if cabecalho1 and set(cabecalho1) == set(cabecalho2):
-        indices = [cabecalho2.index(coluna) for coluna in cabecalho1]
-        linhas2_reordenadas = [[linha[indice] for indice in indices] for linha in linhas2]
-        _escrever_bloco(planilha, cabecalho1, linhas1 + linhas2_reordenadas, preenchimento=None)
-    elif colunas_comuns:
-        cabecalho_final, linhas_final, cores_final = _juntar_por_chave_comum(
-            cabecalho1, linhas1, cabecalho2, linhas2, colunas_comuns
-        )
-        _escrever_bloco(planilha, cabecalho_final, linhas_final, cores_final)
-    else:
-        _escrever_bloco(planilha, cabecalho1, linhas1, _VERDE_CLARO)
-        coluna_bloco2 = len(cabecalho1) + 2  # 1 coluna em branco separando os dois blocos
-        _escrever_bloco(planilha, cabecalho2, linhas2, _LARANJA_CLARO, coluna_inicial=coluna_bloco2)
-
-    _aplicar_largura_automatica(planilha)
-
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()

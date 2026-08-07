@@ -72,94 +72,38 @@ export class ConfiguracoesUsuario {
     this.carregarLayouts();
   }
 
-  fechar(): void {
-    // Com a foto ampliada ou uma confirmação de exclusão aberta, o primeiro
-    // Esc/clique-fora só fecha essa camada — fechar o dialog inteiro junto
-    // seria surpreendente pro usuário. (Cada `app-dialog` trata Esc por
-    // conta própria via `HostListener`, então os dois `fechar()` disparam
-    // juntos numa mesma tecla — por isso esse método também precisa saber
-    // ceder a vez pra camada de cima.)
-    if (this.fotoExpandida()) {
-      this.fotoExpandida.set(false);
-      return;
-    }
-    if (this.layoutParaApagar()) {
-      this.cancelarApagarLayout();
-      return;
-    }
-    if (this.salvandoPerfil() || this.salvandoSenha()) {
-      return;
-    }
-    this.aberto.set(false);
-  }
-
-  protected clicarAvatar(inputFoto: HTMLInputElement): void {
-    if (this.fotoPreview()) {
-      this.fotoExpandida.set(true);
-    } else {
-      inputFoto.click();
-    }
-  }
-
-  protected fecharFotoExpandida(): void {
-    this.fotoExpandida.set(false);
-  }
-
-  selecionarFoto(evento: Event): void {
-    const arquivo = (evento.target as HTMLInputElement).files?.[0];
-    if (!arquivo) {
-      return;
-    }
-
-    if (!arquivo.type.startsWith('image/')) {
-      this.erroPerfil.set('Escolha um arquivo de imagem.');
-      return;
-    }
-
-    if (arquivo.size > TAMANHO_MAXIMO_ARQUIVO) {
-      this.erroPerfil.set('Imagem muito grande — escolha uma menor que 1,5MB.');
-      return;
-    }
-
-    this.erroPerfil.set(null);
-    const leitor = new FileReader();
-    leitor.onload = () => this.fotoPreview.set(leitor.result as string);
-    leitor.readAsDataURL(arquivo);
-  }
-
-  removerFoto(evento: Event): void {
-    evento.preventDefault();
-    evento.stopPropagation();
-    // String vazia (não null) sinaliza "apagar a foto que já existe" pro
-    // backend — null significa "não mexer no que já está salvo".
-    this.fotoPreview.set('');
-    this.erroPerfil.set(null);
-  }
-
-  salvarPerfil(): void {
-    if (!this.nome().trim()) {
-      this.erroPerfil.set('Nome não pode ficar em branco.');
-      return;
-    }
-
-    this.salvandoPerfil.set(true);
-    this.erroPerfil.set(null);
+  private carregarLayouts(): void {
+    this.carregandoLayouts.set(true);
+    this.erroLayouts.set(null);
 
     this.http
-      .patch<{ nome: string; foto: string | null }>(`${MCP_API_BASE_URL}/api/auth/perfil`, {
-        nome: this.nome().trim(),
-        foto: this.fotoPreview(),
-      })
+      .get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`)
       .subscribe({
-        next: (resultado) => {
-          this.sessao.atualizarPerfil({ nome: resultado.nome, foto: resultado.foto });
-          this.salvandoPerfil.set(false);
+        next: (layouts) => {
+          this.layouts.set(layouts);
+          this.carregandoLayouts.set(false);
         },
-        error: (erro: HttpErrorResponse) => {
-          this.erroPerfil.set(mensagemErro(erro, 'Não foi possível salvar o perfil.'));
-          this.salvandoPerfil.set(false);
+        error: () => {
+          this.layouts.set([]);
+          this.carregandoLayouts.set(false);
         },
       });
+  }
+
+  protected alterarCor(categoria: string, cor: string): void {
+    this.salvandoCorCategoria.set(categoria);
+    this.erroCores.set(null);
+
+    this.coresCategoria.definirCor(categoria, cor).subscribe({
+      next: () => {
+        this.coresCategoria.aplicarCorLocal(categoria, cor);
+        this.salvandoCorCategoria.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCores.set(mensagemErro(erro, 'Não foi possível salvar a cor.'));
+        this.salvandoCorCategoria.set(null);
+      },
+    });
   }
 
   alterarSenha(): void {
@@ -197,29 +141,79 @@ export class ConfiguracoesUsuario {
       });
   }
 
-  protected totalColunasLayout(layout: LayoutRelatorio): number {
-    return Object.values(layout.colunas_selecionadas).reduce(
-      (total, colunas) => total + colunas.length,
-      0,
-    );
+  protected apagarLayout(layout: LayoutRelatorio): void {
+    if (this.apagandoLayoutId()) {
+      return;
+    }
+    this.layoutParaApagar.set(layout);
   }
 
-  private carregarLayouts(): void {
-    this.carregandoLayouts.set(true);
+  protected cancelarApagarLayout(): void {
+    if (this.apagandoLayoutId()) {
+      return;
+    }
+    this.layoutParaApagar.set(null);
+  }
+
+  protected cancelarEdicaoLayout(): void {
+    this.editandoLayoutId.set(null);
+  }
+
+  protected clicarAvatar(inputFoto: HTMLInputElement): void {
+    if (this.fotoPreview()) {
+      this.fotoExpandida.set(true);
+    } else {
+      inputFoto.click();
+    }
+  }
+
+  protected confirmarApagarLayout(): void {
+    const layout = this.layoutParaApagar();
+    if (!layout || this.apagandoLayoutId()) {
+      return;
+    }
+
+    this.apagandoLayoutId.set(layout.id);
     this.erroLayouts.set(null);
 
     this.http
-      .get<LayoutRelatorio[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts`)
+      .delete(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`)
       .subscribe({
-        next: (layouts) => {
-          this.layouts.set(layouts);
-          this.carregandoLayouts.set(false);
+        next: () => {
+          this.layouts.update((atual) => atual.filter((item) => item.id !== layout.id));
+          this.apagandoLayoutId.set(null);
+          this.layoutParaApagar.set(null);
         },
-        error: () => {
-          this.layouts.set([]);
-          this.carregandoLayouts.set(false);
+        error: (erro: HttpErrorResponse) => {
+          this.erroLayouts.set(mensagemErro(erro, 'Não foi possível apagar o layout.'));
+          this.apagandoLayoutId.set(null);
         },
       });
+  }
+
+  fechar(): void {
+    // Com a foto ampliada ou uma confirmação de exclusão aberta, o primeiro
+    // Esc/clique-fora só fecha essa camada — fechar o dialog inteiro junto
+    // seria surpreendente pro usuário. (Cada `app-dialog` trata Esc por
+    // conta própria via `HostListener`, então os dois `fechar()` disparam
+    // juntos numa mesma tecla — por isso esse método também precisa saber
+    // ceder a vez pra camada de cima.)
+    if (this.fotoExpandida()) {
+      this.fotoExpandida.set(false);
+      return;
+    }
+    if (this.layoutParaApagar()) {
+      this.cancelarApagarLayout();
+      return;
+    }
+    if (this.salvandoPerfil() || this.salvandoSenha()) {
+      return;
+    }
+    this.aberto.set(false);
+  }
+
+  protected fecharFotoExpandida(): void {
+    this.fotoExpandida.set(false);
   }
 
   protected iniciarEdicaoLayout(layout: LayoutRelatorio): void {
@@ -228,8 +222,29 @@ export class ConfiguracoesUsuario {
     this.erroLayouts.set(null);
   }
 
-  protected cancelarEdicaoLayout(): void {
-    this.editandoLayoutId.set(null);
+  protected redefinirCor(categoria: string): void {
+    this.salvandoCorCategoria.set(categoria);
+    this.erroCores.set(null);
+
+    this.coresCategoria.redefinirCor(categoria).subscribe({
+      next: () => {
+        this.coresCategoria.removerCorLocal(categoria);
+        this.salvandoCorCategoria.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCores.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
+        this.salvandoCorCategoria.set(null);
+      },
+    });
+  }
+
+  removerFoto(evento: Event): void {
+    evento.preventDefault();
+    evento.stopPropagation();
+    // String vazia (não null) sinaliza "apagar a foto que já existe" pro
+    // backend — null significa "não mexer no que já está salvo".
+    this.fotoPreview.set('');
+    this.erroPerfil.set(null);
   }
 
   protected salvarEdicaoLayout(layout: LayoutRelatorio): void {
@@ -261,73 +276,58 @@ export class ConfiguracoesUsuario {
       });
   }
 
-  protected apagarLayout(layout: LayoutRelatorio): void {
-    if (this.apagandoLayoutId()) {
-      return;
-    }
-    this.layoutParaApagar.set(layout);
-  }
-
-  protected cancelarApagarLayout(): void {
-    if (this.apagandoLayoutId()) {
-      return;
-    }
-    this.layoutParaApagar.set(null);
-  }
-
-  protected confirmarApagarLayout(): void {
-    const layout = this.layoutParaApagar();
-    if (!layout || this.apagandoLayoutId()) {
+  salvarPerfil(): void {
+    if (!this.nome().trim()) {
+      this.erroPerfil.set('Nome não pode ficar em branco.');
       return;
     }
 
-    this.apagandoLayoutId.set(layout.id);
-    this.erroLayouts.set(null);
+    this.salvandoPerfil.set(true);
+    this.erroPerfil.set(null);
 
     this.http
-      .delete(`${MCP_API_BASE_URL}/api/financeiro/relatorio/layouts/${layout.id}`)
+      .patch<{ nome: string; foto: string | null }>(`${MCP_API_BASE_URL}/api/auth/perfil`, {
+        nome: this.nome().trim(),
+        foto: this.fotoPreview(),
+      })
       .subscribe({
-        next: () => {
-          this.layouts.update((atual) => atual.filter((item) => item.id !== layout.id));
-          this.apagandoLayoutId.set(null);
-          this.layoutParaApagar.set(null);
+        next: (resultado) => {
+          this.sessao.atualizarPerfil({ nome: resultado.nome, foto: resultado.foto });
+          this.salvandoPerfil.set(false);
         },
         error: (erro: HttpErrorResponse) => {
-          this.erroLayouts.set(mensagemErro(erro, 'Não foi possível apagar o layout.'));
-          this.apagandoLayoutId.set(null);
+          this.erroPerfil.set(mensagemErro(erro, 'Não foi possível salvar o perfil.'));
+          this.salvandoPerfil.set(false);
         },
       });
   }
 
-  protected alterarCor(categoria: string, cor: string): void {
-    this.salvandoCorCategoria.set(categoria);
-    this.erroCores.set(null);
+  selecionarFoto(evento: Event): void {
+    const arquivo = (evento.target as HTMLInputElement).files?.[0];
+    if (!arquivo) {
+      return;
+    }
 
-    this.coresCategoria.definirCor(categoria, cor).subscribe({
-      next: () => {
-        this.coresCategoria.aplicarCorLocal(categoria, cor);
-        this.salvandoCorCategoria.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erroCores.set(mensagemErro(erro, 'Não foi possível salvar a cor.'));
-        this.salvandoCorCategoria.set(null);
-      },
-    });
+    if (!arquivo.type.startsWith('image/')) {
+      this.erroPerfil.set('Escolha um arquivo de imagem.');
+      return;
+    }
+
+    if (arquivo.size > TAMANHO_MAXIMO_ARQUIVO) {
+      this.erroPerfil.set('Imagem muito grande — escolha uma menor que 1,5MB.');
+      return;
+    }
+
+    this.erroPerfil.set(null);
+    const leitor = new FileReader();
+    leitor.onload = () => this.fotoPreview.set(leitor.result as string);
+    leitor.readAsDataURL(arquivo);
   }
 
-  protected redefinirCor(categoria: string): void {
-    this.salvandoCorCategoria.set(categoria);
-    this.erroCores.set(null);
-
-    this.coresCategoria.redefinirCor(categoria).subscribe({
-      next: () => {
-        this.coresCategoria.removerCorLocal(categoria);
-        this.salvandoCorCategoria.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erroCores.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
-        this.salvandoCorCategoria.set(null);
-      },
-    });
+  protected totalColunasLayout(layout: LayoutRelatorio): number {
+    return Object.values(layout.colunas_selecionadas).reduce(
+      (total, colunas) => total + colunas.length,
+      0,
+    );
   }
 }

@@ -46,8 +46,20 @@ export class AuditoriaPainel {
     });
   }
 
+  protected chaveAchado(achado: AchadoAuditoria): string {
+    return `${achado.modulo}|${achado.view}|${achado.campo}|${achado.valor}`;
+  }
+
+  protected dispensar(achado: AchadoAuditoria): void {
+    this.auditoria.dispensar(achado);
+  }
+
   protected fechar(): void {
     this.auditoria.fechar();
+  }
+
+  protected rodar(): void {
+    this.auditoria.buscar();
   }
 
   protected selecionarModulo(modulo: string): void {
@@ -56,17 +68,5 @@ export class AuditoriaPainel {
 
   protected trocarModulo(): void {
     this.auditoria.limparSelecao();
-  }
-
-  protected rodar(): void {
-    this.auditoria.buscar();
-  }
-
-  protected dispensar(achado: AchadoAuditoria): void {
-    this.auditoria.dispensar(achado);
-  }
-
-  protected chaveAchado(achado: AchadoAuditoria): string {
-    return `${achado.modulo}|${achado.view}|${achado.campo}|${achado.valor}`;
   }
 }

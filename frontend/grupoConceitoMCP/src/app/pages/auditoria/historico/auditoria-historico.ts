@@ -147,6 +147,10 @@ export class AuditoriaHistorico {
     }
   }
 
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
+
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
       this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
@@ -154,9 +158,5 @@ export class AuditoriaHistorico {
       this.colunaOrdenada.set(coluna);
       this.direcaoOrdenacao.set('asc');
     }
-  }
-
-  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
-    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
   }
 }

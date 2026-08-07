@@ -53,11 +53,6 @@ export class Sessao {
    * espelha `eh_desenvolvedor` do backend (`tools/auth/papeis.py`). */
   readonly ehDesenvolvedor = () => this._dados()?.papeis.includes('desenvolvedor') ?? false;
 
-  entrar(dados: DadosSessao): void {
-    localStorage.setItem(CHAVE_SESSAO, JSON.stringify(dados));
-    this._dados.set(dados);
-  }
-
   /** Autoatendimento: mescla nome/foto atualizados na sessão já logada, sem
    * precisar relogar (usado depois de um PATCH /api/auth/perfil). */
   atualizarPerfil(dados: Partial<Pick<DadosSessao, 'nome' | 'foto'>>): void {
@@ -68,6 +63,11 @@ export class Sessao {
     const novo = { ...atual, ...dados };
     localStorage.setItem(CHAVE_SESSAO, JSON.stringify(novo));
     this._dados.set(novo);
+  }
+
+  entrar(dados: DadosSessao): void {
+    localStorage.setItem(CHAVE_SESSAO, JSON.stringify(dados));
+    this._dados.set(dados);
   }
 
   sair(): void {

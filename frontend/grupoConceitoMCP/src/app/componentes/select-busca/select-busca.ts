@@ -84,20 +84,20 @@ export class SelectBusca {
     return opcao?.rotulo ?? '';
   });
 
-  toggle(): void {
-    if (this.aberto()) {
-      this.aberto.set(false);
-      return;
-    }
-
-    this.termo.set('');
-    this.posicionarPainel();
-    this.aberto.set(true);
-    requestAnimationFrame(() => this.ajustarDirecao());
-  }
-
   protected estaSelecionada(opcao: OpcaoSelectBusca): boolean {
     return this.multiplo() ? this.valores().includes(opcao.valor) : opcao.valor === this.valor();
+  }
+
+  limpar(evento: Event): void {
+    evento.stopPropagation();
+
+    if (this.multiplo()) {
+      this.valores.set([]);
+    } else {
+      this.valor.set(null);
+    }
+
+    this.aberto.set(false);
   }
 
   selecionar(opcao: OpcaoSelectBusca): void {
@@ -114,16 +114,16 @@ export class SelectBusca {
     this.aberto.set(false);
   }
 
-  limpar(evento: Event): void {
-    evento.stopPropagation();
-
-    if (this.multiplo()) {
-      this.valores.set([]);
-    } else {
-      this.valor.set(null);
+  toggle(): void {
+    if (this.aberto()) {
+      this.aberto.set(false);
+      return;
     }
 
-    this.aberto.set(false);
+    this.termo.set('');
+    this.posicionarPainel();
+    this.aberto.set(true);
+    requestAnimationFrame(() => this.ajustarDirecao());
   }
 
   @HostListener('document:click', ['$event'])
@@ -139,15 +139,6 @@ export class SelectBusca {
     if (this.aberto()) {
       this.aberto.set(false);
     }
-  }
-
-  private posicionarPainel(): void {
-    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
-    this.posicao.set({
-      top: retangulo.bottom + 4,
-      left: retangulo.left,
-      largura: retangulo.width,
-    });
   }
 
   /** Depois que o painel é renderizado (e sua altura real é conhecida), inverte
@@ -170,5 +161,14 @@ export class SelectBusca {
         largura: retangulo.width,
       });
     }
+  }
+
+  private posicionarPainel(): void {
+    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
+    this.posicao.set({
+      top: retangulo.bottom + 4,
+      left: retangulo.left,
+      largura: retangulo.width,
+    });
   }
 }

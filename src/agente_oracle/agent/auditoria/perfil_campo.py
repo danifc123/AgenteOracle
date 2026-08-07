@@ -19,12 +19,6 @@ _PADRAO_CAMPO_SENSIVEL = re.compile(
 )
 
 
-def campo_seguro_para_auditoria(nome_campo: str) -> bool:
-    """`False` se o nome do campo soa como credencial ou valor criptografado
-    — não deve ser enviado ao LLM."""
-    return not _PADRAO_CAMPO_SENSIVEL.search(nome_campo)
-
-
 @dataclass(frozen=True)
 class PerfilCampo:
     """Um resumo (não os dados brutos) de um campo de uma view: os valores
@@ -42,3 +36,9 @@ class PerfilCampo:
             raise ValueError(
                 f"Campo '{self.campo}' parece ser credencial/hash e não pode ser auditado pela IA."
             )
+
+
+def campo_seguro_para_auditoria(nome_campo: str) -> bool:
+    """`False` se o nome do campo soa como credencial ou valor criptografado
+    — não deve ser enviado ao LLM."""
+    return not _PADRAO_CAMPO_SENSIVEL.search(nome_campo)

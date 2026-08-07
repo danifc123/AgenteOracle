@@ -20,11 +20,6 @@ _COLUNAS = "id, usuario_id, nome, colunas_selecionadas, valores_filtros, filiais
 _tabela_garantida = False
 
 
-class LayoutJaExiste(Exception):
-    """Levantada quando `criar`/`atualizar` tentam usar um nome que o mesmo
-    usuário já usa em outro layout (constraint única em usuario_id+nome)."""
-
-
 def _garantir_tabela(cursor) -> None:
     global _tabela_garantida
     if _tabela_garantida:
@@ -43,10 +38,6 @@ def _garantir_tabela(cursor) -> None:
         )
     """)
     _tabela_garantida = True
-
-
-def _carregar_json(valor):
-    return json.loads(valor) if isinstance(valor, str) else valor
 
 
 def _linha_para_layout(linha: tuple) -> dict:
@@ -72,53 +63,13 @@ def _linha_para_layout(linha: tuple) -> dict:
     }
 
 
-def criar(
-    usuario_id: int,
-    nome: str,
-    colunas_selecionadas: dict[str, list[str]],
-    valores_filtros: dict[str, str],
-    filiais_selecionadas: list[str],
-) -> dict:
-    agora = datetime.now(UTC)
-
-    try:
-        with get_connection() as connection:
-            cursor = connection.cursor()
-            _garantir_tabela(cursor)
-            cursor.execute(
-                f"""
-                INSERT INTO relatorio_layouts
-                    (usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas, criado_em, atualizado_em)
-                VALUES
-                    (:usuario_id, :nome, :colunas_selecionadas::jsonb, :valores_filtros::jsonb, :filiais_selecionadas::jsonb, :agora, :agora)
-                RETURNING {_COLUNAS}
-                """,
-                usuario_id=usuario_id,
-                nome=nome,
-                colunas_selecionadas=json.dumps(colunas_selecionadas),
-                valores_filtros=json.dumps(valores_filtros),
-                filiais_selecionadas=json.dumps(filiais_selecionadas),
-                agora=agora,
-            )
-            linha = cursor.fetchone()
-    except DatabaseError as erro:
-        if eh_erro_valor_duplicado(erro):
-            raise LayoutJaExiste(f"Você já tem um layout chamado '{nome}'.") from erro
-        raise
-
-    return _linha_para_layout(linha)
+def _carregar_json(valor):
+    return json.loads(valor) if isinstance(valor, str) else valor
 
 
-def listar(usuario_id: int) -> list[dict]:
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            f"SELECT {_COLUNAS} FROM relatorio_layouts WHERE usuario_id = :usuario_id ORDER BY nome",
-            usuario_id=usuario_id,
-        )
-        linhas = cursor.fetchall()
-    return [_linha_para_layout(linha) for linha in linhas]
+class LayoutJaExiste(Exception):
+    """Levantada quando `criar`/`atualizar` tentam usar um nome que o mesmo
+    usuário já usa em outro layout (constraint única em usuario_id+nome)."""
 
 
 def atualizar(
@@ -174,6 +125,43 @@ def atualizar(
     return _linha_para_layout(linha) if linha else None
 
 
+def criar(
+    usuario_id: int,
+    nome: str,
+    colunas_selecionadas: dict[str, list[str]],
+    valores_filtros: dict[str, str],
+    filiais_selecionadas: list[str],
+) -> dict:
+    agora = datetime.now(UTC)
+
+    try:
+        with get_connection() as connection:
+            cursor = connection.cursor()
+            _garantir_tabela(cursor)
+            cursor.execute(
+                f"""
+                INSERT INTO relatorio_layouts
+                    (usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas, criado_em, atualizado_em)
+                VALUES
+                    (:usuario_id, :nome, :colunas_selecionadas::jsonb, :valores_filtros::jsonb, :filiais_selecionadas::jsonb, :agora, :agora)
+                RETURNING {_COLUNAS}
+                """,
+                usuario_id=usuario_id,
+                nome=nome,
+                colunas_selecionadas=json.dumps(colunas_selecionadas),
+                valores_filtros=json.dumps(valores_filtros),
+                filiais_selecionadas=json.dumps(filiais_selecionadas),
+                agora=agora,
+            )
+            linha = cursor.fetchone()
+    except DatabaseError as erro:
+        if eh_erro_valor_duplicado(erro):
+            raise LayoutJaExiste(f"Você já tem um layout chamado '{nome}'.") from erro
+        raise
+
+    return _linha_para_layout(linha)
+
+
 def deletar(usuario_id: int, id_layout: str) -> bool:
     try:
         id_numerico = int(id_layout)
@@ -189,3 +177,15 @@ def deletar(usuario_id: int, id_layout: str) -> bool:
             usuario_id=usuario_id,
         )
         return cursor.rowcount > 0
+
+
+def listar(usuario_id: int) -> list[dict]:
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            f"SELECT {_COLUNAS} FROM relatorio_layouts WHERE usuario_id = :usuario_id ORDER BY nome",
+            usuario_id=usuario_id,
+        )
+        linhas = cursor.fetchall()
+    return [_linha_para_layout(linha) for linha in linhas]

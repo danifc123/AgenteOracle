@@ -56,8 +56,56 @@ LIMITE_MAXIMO_LINHAS = 200
 TIMEOUT_MS = 10_000
 
 
-class ConsultaFinanceiraInvalida(Exception):
-    """Levantada quando o SQL gerado pela IA não passa nas validações de segurança."""
+def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
+    """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
+    (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
+    novo no banco. Caso contrário, executa e salva no histórico para a
+    próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
+    sql_validado = _validar_consulta(sql)
+
+    existente = historico.buscar_por_sql(sql_validado)
+    if existente is not None:
+        return existente["colunas"], existente["linhas"], existente["titulo"], True, existente["criado_em"]
+
+    colunas, linhas_brutas = _executar(sql_validado)
+    linhas = [[_serializar(valor) for valor in linha] for linha in linhas_brutas]
+
+    documento = historico.salvar(sql_validado, titulo, colunas, linhas, modulo="financeiro")
+    return documento["colunas"], documento["linhas"], documento["titulo"], False, documento["criado_em"]
+
+
+def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
+    try:
+        with get_connection() as connection:
+            connection.call_timeout = TIMEOUT_MS
+            cursor = connection.cursor()
+            cursor.execute(sql_validado)
+            colunas = [descricao[0] for descricao in cursor.description]
+            linhas = cursor.fetchall()
+    except DatabaseError as erro:
+        # Primeira linha só, sem o "LINE 1: ..." com o SQL inteiro repetido
+        # embaixo (ruído pra quem lê, seja o modelo tentando se corrigir ou o
+        # usuário se as tentativas de correção se esgotarem).
+        mensagem_erro = str(erro).strip().splitlines()[0]
+        if eh_erro_coluna_invalida(erro):
+            raise ConsultaFinanceiraInvalida(
+                "Não é possível gerar esse relatório: a consulta faz referência a uma coluna "
+                "ou junção que não existe no banco — as tabelas pedidas não têm uma relação "
+                f"direta entre si. Detalhe técnico do erro: {mensagem_erro}"
+            ) from erro
+        raise ConsultaFinanceiraInvalida(
+            f"Não foi possível executar a consulta no banco ({mensagem_erro})."
+        ) from erro
+
+    return colunas, linhas
+
+
+def _serializar(valor):
+    if isinstance(valor, (datetime, date)):
+        return valor.isoformat()
+    if isinstance(valor, Decimal):
+        return float(valor)
+    return valor
 
 
 def _validar_consulta(sql: str) -> str:
@@ -112,56 +160,8 @@ def _validar_consulta(sql: str) -> str:
     return sql_limpo
 
 
-def _serializar(valor):
-    if isinstance(valor, (datetime, date)):
-        return valor.isoformat()
-    if isinstance(valor, Decimal):
-        return float(valor)
-    return valor
-
-
-def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
-    try:
-        with get_connection() as connection:
-            connection.call_timeout = TIMEOUT_MS
-            cursor = connection.cursor()
-            cursor.execute(sql_validado)
-            colunas = [descricao[0] for descricao in cursor.description]
-            linhas = cursor.fetchall()
-    except DatabaseError as erro:
-        # Primeira linha só, sem o "LINE 1: ..." com o SQL inteiro repetido
-        # embaixo (ruído pra quem lê, seja o modelo tentando se corrigir ou o
-        # usuário se as tentativas de correção se esgotarem).
-        mensagem_erro = str(erro).strip().splitlines()[0]
-        if eh_erro_coluna_invalida(erro):
-            raise ConsultaFinanceiraInvalida(
-                "Não é possível gerar esse relatório: a consulta faz referência a uma coluna "
-                "ou junção que não existe no banco — as tabelas pedidas não têm uma relação "
-                f"direta entre si. Detalhe técnico do erro: {mensagem_erro}"
-            ) from erro
-        raise ConsultaFinanceiraInvalida(
-            f"Não foi possível executar a consulta no banco ({mensagem_erro})."
-        ) from erro
-
-    return colunas, linhas
-
-
-def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
-    """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
-    (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
-    novo no banco. Caso contrário, executa e salva no histórico para a
-    próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
-    sql_validado = _validar_consulta(sql)
-
-    existente = historico.buscar_por_sql(sql_validado)
-    if existente is not None:
-        return existente["colunas"], existente["linhas"], existente["titulo"], True, existente["criado_em"]
-
-    colunas, linhas_brutas = _executar(sql_validado)
-    linhas = [[_serializar(valor) for valor in linha] for linha in linhas_brutas]
-
-    documento = historico.salvar(sql_validado, titulo, colunas, linhas, modulo="financeiro")
-    return documento["colunas"], documento["linhas"], documento["titulo"], False, documento["criado_em"]
+class ConsultaFinanceiraInvalida(Exception):
+    """Levantada quando o SQL gerado pela IA não passa nas validações de segurança."""
 
 
 def executar_consulta_financeira(sql: str, titulo: str) -> dict:

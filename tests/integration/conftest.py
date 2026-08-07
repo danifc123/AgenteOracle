@@ -71,3 +71,27 @@ def token_teste(mcp_app, usuario_teste):
     )
     assert resposta.status_code == 200
     return resposta.json()["token"]
+
+
+@pytest.fixture
+def usuario_dev():
+    """Mesma ideia de `usuario_teste`, mas com papel `desenvolvedor` (time de
+    TI) — usado pra testar ações restritas a esse papel, como desbloquear
+    uma conta travada."""
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    login = f"teste_dev_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    criado = usuarios_tools.criar_usuario(login, senha, "Dev de Teste (integração)", ["desenvolvedor"])
+
+    yield {"usuario": login, "senha": senha, "id": criado["id"]}
+
+    usuarios_tools.deletar_usuario(criado["id"])
+
+
+@pytest.fixture
+def token_dev(mcp_app, usuario_dev):
+    """Token JWT válido para `usuario_dev`."""
+    resposta = mcp_app.post("/api/auth/login", json={"usuario": usuario_dev["usuario"], "senha": usuario_dev["senha"]})
+    assert resposta.status_code == 200
+    return resposta.json()["token"]

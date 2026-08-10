@@ -295,3 +295,42 @@ npm run format    # Prettier
 Nenhuma dessas ferramentas roda automaticamente (não existe pipeline de CI
 configurado neste repositório) — rodar manualmente antes de abrir PR é o que
 mantém o padrão até isso mudar.
+
+## Convenções de clean code do projeto
+
+Além do lint/formatação automáticos, o projeto segue algumas convenções que
+nenhuma ferramenta cobre sozinha — vale manter em qualquer código novo:
+
+- **Camadas do backend**: `server/` só HTTP (parsing de request,
+  autenticação, forma da resposta), `tools/` só lógica de
+  negócio/acesso a dado, `agent/` só orquestração de IA — nunca misturar
+  (ver [Estrutura do projeto](#estrutura-do-projeto)). Rota autenticada
+  nova usa o decorator `@rota_protegida(metodos,
+  exigir=...)` (`server/auth/decorador_rota.py`), nunca repete o bloco de
+  `OPTIONS`+autenticação na mão.
+- **Frontend**: lógica repetida em 2+ componentes vira função pura em
+  `servicos/`, nunca copiada entre componentes. Ação destrutiva (apagar
+  algo) usa o componente `ConfirmacaoDialog`
+  (`componentes/confirmacao-dialog/`), nunca `confirm()` nativo do
+  navegador.
+- **Ordem de método/função dentro de um arquivo ou classe**: as
+  públicas/`protected` em ordem alfabética entre si; uma auxiliar privada
+  usada por um único método fica logo depois dele (aninhada, não solta em
+  outro canto do arquivo); uma auxiliar usada por 2+ métodos (ou por
+  nenhum) vira um bloco alfabético antes das públicas que dependem dela.
+  Propriedades, `signal`/`computed`, `constructor` e *lifecycle hooks*
+  (`ngOnInit`, etc.) não entram nessa reordenação — ficam sempre na
+  posição convencional (topo da classe / logo após as propriedades).
+- **Extensibilidade via dado declarativo**, não `if/else` espalhado pelo
+  código — mesmo espírito de `tools/auth/papeis.py`/`MODULOS_CONHECIDOS`:
+  um módulo novo (RH, Compras...) é uma entrada de dado nova, não uma
+  edição em N lugares diferentes.
+- **Preferir cálculo determinístico a dependência de IA** quando o
+  resultado precisa ser confiável/preciso (ex: as projeções de
+  Vendas/Fluxo de Caixa são 100% estatística, regressão linear — sem
+  Ollama envolvido; IA fica reservada pra onde o resultado *é* texto ou
+  julgamento qualitativo, como o chat e os achados de Auditoria).
+- **Mudança que é só reorganização** (sem alterar lógica) deve resultar
+  num diff com inserções = remoções (`git diff --numstat`) — se não
+  bater, alguma coisa mudou além da posição do código, vale investigar
+  antes de seguir.

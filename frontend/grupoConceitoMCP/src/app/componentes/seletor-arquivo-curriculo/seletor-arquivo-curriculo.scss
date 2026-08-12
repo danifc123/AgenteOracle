@@ -3,7 +3,9 @@
 }
 
 .seletor-wrapper {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .seletor {
@@ -12,7 +14,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 200px;
+  height: 160px;
   padding: 24px;
   text-align: center;
   cursor: pointer;
@@ -33,13 +35,6 @@
     border-color: var(--color-primary);
     background: #d9f2d9;
   }
-
-  &--preenchido {
-    border-style: solid;
-    border-color: var(--color-primary-light);
-    background: #d9f2d9;
-    color: #1b4332;
-  }
 }
 
 .icone {
@@ -58,33 +53,62 @@
   opacity: 0.75;
 }
 
-.nome-arquivo {
-  margin: 4px 0 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.tamanho-arquivo {
-  margin: 0;
-  font-size: 12.5px;
-  opacity: 0.75;
-}
-
 .erro-seletor {
-  margin: 6px 0 0;
+  margin: 0;
   font-size: 12px;
   color: #9a2f2f;
   text-align: center;
 }
 
+.lista-arquivos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item-arquivo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.icone-arquivo {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  opacity: 0.8;
+}
+
+.info-arquivo {
+  flex: 1;
+  min-width: 0;
+}
+
+.nome-arquivo {
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tamanho-arquivo {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 .remover {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,12 +116,15 @@
   height: 22px;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.12);
-  color: inherit;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 
   &:hover {
-    background: rgba(0, 0, 0, 0.22);
+    background: rgba(154, 47, 47, 0.14);
+    color: #9a2f2f;
   }
 }

@@ -1,5 +1,6 @@
 import { Component, ViewChild, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { AnaliseCurriculo } from '../../servicos/analise-curriculo';
 import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
 import { ConfiguracoesUsuario } from '../configuracoes-usuario/configuracoes-usuario';
@@ -14,6 +15,7 @@ const CHAVE_COLAPSADO = 'sidebar:colapsado';
 })
 export class Sidebar {
   protected readonly sessao = inject(Sessao);
+  protected readonly analiseCurriculo = inject(AnaliseCurriculo);
   protected readonly iniciais = iniciais;
   private readonly router = inject(Router);
 
@@ -22,6 +24,7 @@ export class Sidebar {
   protected readonly sidebarOpen = signal(false);
   protected readonly financeiroOpen = signal(false);
   protected readonly estoqueOpen = signal(false);
+  protected readonly rhOpen = signal(false);
   protected readonly colapsado = signal(localStorage.getItem(CHAVE_COLAPSADO) === 'true');
 
   abrirConfiguracoes(): void {
@@ -33,6 +36,7 @@ export class Sidebar {
     this.colapsado.set(novoValor);
     this.financeiroOpen.set(false);
     this.estoqueOpen.set(false);
+    this.rhOpen.set(false);
     localStorage.setItem(CHAVE_COLAPSADO, String(novoValor));
   }
 
@@ -40,12 +44,13 @@ export class Sidebar {
     this.sidebarOpen.set(false);
   }
 
-  /** Usado pelos links FORA dos grupos Financeiro/Estoque — navegar pra
-   * outra área fecha os dois submenus, já que deixou de fazer sentido
+  /** Usado pelos links FORA dos grupos Financeiro/Estoque/RH — navegar pra
+   * outra área fecha os três submenus, já que deixou de fazer sentido
    * continuar abertos. */
   navegarParaFora(): void {
     this.financeiroOpen.set(false);
     this.estoqueOpen.set(false);
+    this.rhOpen.set(false);
     this.closeSidebar();
   }
 
@@ -56,14 +61,22 @@ export class Sidebar {
 
   toggleEstoque(): void {
     this.financeiroOpen.set(false);
+    this.rhOpen.set(false);
     this.estoqueOpen.update((value) => !value);
   }
 
-  /** Só um dos dois grupos fica aberto por vez (accordion) — abrir um fecha
-   * o outro, se estiver aberto. */
+  /** Só um dos três grupos fica aberto por vez (accordion) — abrir um fecha
+   * os outros, se estiverem abertos. */
   toggleFinanceiro(): void {
     this.estoqueOpen.set(false);
+    this.rhOpen.set(false);
     this.financeiroOpen.update((value) => !value);
+  }
+
+  toggleRh(): void {
+    this.financeiroOpen.set(false);
+    this.estoqueOpen.set(false);
+    this.rhOpen.update((value) => !value);
   }
 
   toggleSidebar(): void {

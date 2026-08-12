@@ -131,6 +131,17 @@
   transition: transform 0.15s ease;
 }
 
+/* Notificação de análise de currículo concluída, ainda não vista — mesma
+ * linguagem visual do sino de Auditoria (`notificacao-auditoria.scss`). */
+.bolinha-nav {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e8871e;
+}
+
 .chevron.rotated {
   transform: rotate(180deg);
 }

@@ -1,0 +1,362 @@
+.selo-beta {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(232, 135, 30, 0.12);
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.filtros-topo {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.select-vaga {
+  flex: 1;
+  min-width: 260px;
+  max-width: 420px;
+}
+
+.conteudo-botao-icone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialog-analise {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog-analise-instrucao {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.estado-vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 48px 12px;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+
+  svg {
+    color: var(--color-primary-light);
+    margin-bottom: 6px;
+  }
+
+  h3 {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 16px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 420px;
+    line-height: 1.5;
+  }
+}
+
+.linha-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cartao-secao {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+
+  h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.tabela-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+
+  th,
+  td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+}
+
+.coluna-acao {
+  text-align: right;
+}
+
+.lista-vazia-tabela {
+  text-align: center;
+  color: var(--color-text-muted);
+  white-space: normal;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+
+  &--ok {
+    background: rgba(47, 158, 88, 0.14);
+    color: #2f9e58;
+  }
+
+  &--baixo {
+    background: rgba(232, 135, 30, 0.14);
+    color: #e8871e;
+  }
+
+  &--critico {
+    background: rgba(154, 47, 47, 0.14);
+    color: #9a2f2f;
+  }
+
+  &--status:not(.badge--ok):not(.badge--critico) {
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+  }
+
+  &--sugestao {
+    background: rgba(232, 135, 30, 0.12);
+    color: var(--color-accent);
+    white-space: normal;
+  }
+}
+
+.texto-mudo {
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+}
+
+.aviso-sugestao {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(232, 135, 30, 0.1);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Painel de detalhe do candidato (dentro do app-dialog) */
+
+.detalhe-candidato {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.detalhe-topo {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.selo-score {
+  flex-shrink: 0;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selo-score-miolo {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.selo-score-numero {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1;
+}
+
+.selo-score-rotulo {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.detalhe-resumo-ia {
+  flex: 1;
+  min-width: 220px;
+
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+
+  p {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--color-text);
+  }
+}
+
+.detalhe-criterios {
+  h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.criterio-linha {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 2fr auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+
+.criterio-nome {
+  color: var(--color-text-muted);
+}
+
+.criterio-barra {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.criterio-barra-preenchida {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-primary-light);
+}
+
+.criterio-nota {
+  min-width: 24px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.aviso-provisorio {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.detalhe-listas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.lista-pontos {
+  h3 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--color-text);
+  }
+
+  &--fortes h3 {
+    color: #2f9e58;
+  }
+
+  &--atencao h3 {
+    color: #e8871e;
+  }
+}
+
+.detalhe-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 720px) {
+  .filtros-topo {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .select-vaga {
+    max-width: none;
+  }
+
+  .criterio-linha {
+    grid-template-columns: 1fr;
+    row-gap: 4px;
+  }
+
+  .criterio-nota {
+    text-align: left;
+  }
+}

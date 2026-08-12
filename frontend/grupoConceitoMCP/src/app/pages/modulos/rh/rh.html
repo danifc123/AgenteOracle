@@ -1,0 +1,229 @@
+<app-modulo-header
+  breadcrumb="RH"
+  titulo="DNA Agro — Triagem Inteligente de Currículos"
+  descricao="Análise preditiva de fit cultural com o agronegócio, pra aumentar a assertividade na contratação e reduzir o tempo de preenchimento de vagas críticas."
+>
+  <span acoes class="selo-beta" title="Os critérios de pontuação ainda serão definidos com o time de RH">
+    Beta · critérios em definição com o RH
+  </span>
+</app-modulo-header>
+
+<div class="filtros-topo">
+  <app-select-busca
+    class="select-vaga"
+    rotulo="Vaga crítica *"
+    placeholder="Escolha uma vaga..."
+    [opcoes]="vagas()"
+    [(valor)]="vagaSelecionada"
+  />
+
+  <app-botao variant="primaria" [disabled]="!podeCarregar()" (clicked)="carregarCandidatos()">
+    Ver Candidatos
+  </app-botao>
+
+  <app-botao variant="contorno" (clicked)="abrirDialogAnalise()">
+    <span class="conteudo-botao-icone">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M5 15.5v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      Analisar Currículo
+    </span>
+  </app-botao>
+</div>
+
+@if (!jaCarregou()) {
+  <div class="estado-vazio">
+    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M9 12h6M9 16h6M9 8h2" stroke-linecap="round" />
+      <path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke-linejoin="round" />
+    </svg>
+    <h3>Selecione uma vaga crítica</h3>
+    <p>Escolha a vaga pra ver os candidatos já analisados e ranqueados pelo score DNA Agro.</p>
+  </div>
+} @else {
+  <div class="linha-kpis">
+    <app-cartao-kpi rotulo="Vagas Críticas Abertas" tipo="numero" [valor]="vagasCriticasAbertas()" />
+    <app-cartao-kpi rotulo="Currículos Analisados pela IA" tipo="numero" [valor]="curriculosAnalisados()" />
+    <app-cartao-kpi
+      rotulo="Tempo Médio de Preenchimento"
+      tipo="numero"
+      [valor]="tempoMedioPreenchimento()"
+      [destacarNegativo]="false"
+    />
+    <app-cartao-kpi
+      rotulo="Candidatos Alto Fit"
+      tipo="percentual"
+      [valor]="percentualAltoFit()"
+      [destacarNegativo]="false"
+    />
+  </div>
+
+  <section class="cartao-secao">
+    <h2>Candidatos ranqueados</h2>
+    <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Candidato</th>
+            <th>Score DNA Agro</th>
+            <th>Vaga sugerida</th>
+            <th>Status</th>
+            <th>Analisado pela IA</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (candidato of candidatosDaVaga(); track candidato.id) {
+            <tr>
+              <td>{{ candidato.nome }}</td>
+              <td>
+                <span
+                  class="badge"
+                  [class.badge--ok]="nivelFit(candidato.score) === 'alto'"
+                  [class.badge--baixo]="nivelFit(candidato.score) === 'medio'"
+                  [class.badge--critico]="nivelFit(candidato.score) === 'baixo'"
+                >
+                  {{ candidato.score }} · {{ rotuloFit(candidato.score) }}
+                </span>
+              </td>
+              <td>
+                @if (temVagaSugeridaDiferente(candidato)) {
+                  <span class="badge badge--sugestao" [title]="'Melhor encaixe entre as vagas abertas'">
+                    ✨ {{ vagaSugeridaTitulo(candidato) }}
+                  </span>
+                } @else {
+                  <span class="texto-mudo">Esta é a melhor vaga pra ele</span>
+                }
+              </td>
+              <td>
+                <span
+                  class="badge badge--status"
+                  [class.badge--ok]="candidato.status === 'avancado'"
+                  [class.badge--critico]="candidato.status === 'descartado'"
+                >
+                  {{ rotuloStatus(candidato.status) }}
+                </span>
+              </td>
+              <td>{{ rotuloAnalisadoHa(candidato.criado_em) }}</td>
+              <td class="coluna-acao">
+                <app-botao variant="contorno" (clicked)="abrirDetalhe(candidato)">Ver análise</app-botao>
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="6" class="lista-vazia-tabela">Nenhum candidato cadastrado ainda pra essa vaga.</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+}
+
+<app-dialog [aberto]="!!candidatoAberto()" [titulo]="candidatoAberto()?.nome ?? ''" (fechar)="fecharDetalhe()">
+  @if (candidatoAberto(); as candidato) {
+    <div class="detalhe-candidato">
+      <div class="detalhe-topo">
+        <div class="selo-score" [style]="estiloScore(candidato.score)">
+          <div class="selo-score-miolo">
+            <span class="selo-score-numero">{{ candidato.score }}</span>
+            <span class="selo-score-rotulo">{{ rotuloFit(candidato.score) }}</span>
+          </div>
+        </div>
+
+        <div class="detalhe-resumo-ia">
+          <h3>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Análise da IA
+          </h3>
+          <p>{{ candidato.resumo_ia }}</p>
+        </div>
+      </div>
+
+      <div class="detalhe-criterios">
+        <h3>Critérios avaliados</h3>
+        @for (criterio of criteriosCandidato(candidato); track criterio.nome) {
+          <div class="criterio-linha">
+            <span class="criterio-nome">{{ criterio.nome }}</span>
+            <div class="criterio-barra">
+              <div class="criterio-barra-preenchida" [style.width.%]="criterio.nota"></div>
+            </div>
+            <span class="criterio-nota">{{ criterio.nota }}</span>
+          </div>
+        }
+        <p class="aviso-provisorio">Critérios de exemplo — serão ajustados após alinhamento com o time de RH.</p>
+      </div>
+
+      @if (temVagaSugeridaDiferente(candidato)) {
+        <p class="aviso-sugestao">
+          ✨ O perfil desse candidato combina mais com <strong>{{ vagaSugeridaTitulo(candidato) }}</strong>
+          do que com a vaga atual — vale considerar remanejar.
+        </p>
+      }
+
+      <div class="detalhe-listas">
+        @if (candidato.pontos_fortes.length) {
+          <div class="lista-pontos lista-pontos--fortes">
+            <h3>Pontos fortes</h3>
+            <ul>
+              @for (ponto of candidato.pontos_fortes; track ponto) {
+                <li>{{ ponto }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        @if (candidato.pontos_atencao.length) {
+          <div class="lista-pontos lista-pontos--atencao">
+            <h3>Pontos de atenção</h3>
+            <ul>
+              @for (ponto of candidato.pontos_atencao; track ponto) {
+                <li>{{ ponto }}</li>
+              }
+            </ul>
+          </div>
+        }
+      </div>
+
+      <div class="detalhe-acoes">
+        <app-botao variant="contorno" (clicked)="atualizarStatus(candidato, 'descartado')">
+          Descartar
+        </app-botao>
+        <app-botao variant="primaria" (clicked)="atualizarStatus(candidato, 'avancado')">
+          Avançar para entrevista
+        </app-botao>
+      </div>
+    </div>
+  }
+</app-dialog>
+
+<app-dialog
+  [aberto]="dialogAnaliseAberto()"
+  titulo="Analisar Currículo"
+  [temRodape]="true"
+  (fechar)="fecharDialogAnalise()"
+>
+  <div class="dialog-analise">
+    <p class="dialog-analise-instrucao">
+      A análise roda em segundo plano — você pode continuar usando o sistema normalmente e recebe um aviso
+      assim que ela terminar.
+    </p>
+
+    <app-select-busca
+      rotulo="Vaga *"
+      placeholder="Escolha a vaga..."
+      [opcoes]="vagas()"
+      [(valor)]="vagaAnalise"
+    />
+
+    <app-seletor-arquivo-curriculo (arquivoAlterado)="definirArquivoAnalise($event)" />
+  </div>
+
+  <app-botao rodape variant="contorno" (clicked)="fecharDialogAnalise()">Cancelar</app-botao>
+  <app-botao rodape variant="primaria" [disabled]="!podeIniciarAnalise()" (clicked)="iniciarAnalise()">
+    Iniciar Análise
+  </app-botao>
+</app-dialog>

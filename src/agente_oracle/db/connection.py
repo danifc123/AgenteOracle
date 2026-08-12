@@ -1,3 +1,14 @@
+"""Duas conexões relacionais, com propósitos fixos e independentes:
+
+- `get_postgres_connection`: SEMPRE Postgres (configs `POSTGRES_*`) — estado
+  do próprio sistema (usuários, trilha de auditoria de login, histórico de
+  relatórios, layouts, cores de categoria). Nunca depende de `DB_BACKEND`.
+- `get_connection`: dado de negócio/RAG financeiro (views do Protheus) —
+  aponta pro banco escolhido em `DB_BACKEND` (Oracle em produção; Postgres
+  localmente, contra views de teste, já que o Oracle real não é acessível
+  fora de produção).
+"""
+
 import re
 from contextlib import contextmanager
 
@@ -47,6 +58,13 @@ def get_connection():
             yield _ConnectionAdapter(connection, "oracle")
         finally:
             pool.release(connection)
+
+
+@contextmanager
+def get_postgres_connection():
+    pool = _get_postgres_pool()
+    with pool.connection() as connection:
+        yield _ConnectionAdapter(connection, "postgres")
 
 
 class _ConnectionAdapter:

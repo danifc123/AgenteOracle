@@ -11,8 +11,18 @@ import pytest
 from agente_oracle.agent.auditoria.analise import Achado
 from agente_oracle.tools.auditoria import dispensados
 from agente_oracle.tools.auditoria import historico as historico_tools
+from tests.integration.conftest import views_curadas_disponiveis
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _requer_views_curadas():
+    if not views_curadas_disponiveis():
+        pytest.skip(
+            "Views curadas (vw_titulos_pagar etc.) não existem no banco de negócio/RAG "
+            "configurado — rode db/views/financeiro_science.sql (Oracle) ou confira o Postgres de teste."
+        )
 
 
 def _auth(token: str) -> dict[str, str]:

@@ -14,7 +14,7 @@ editar este arquivo): `login_sucesso`, `login_falha`, `conta_bloqueada`,
 import json
 from datetime import UTC, datetime
 
-from agente_oracle.db.connection import DatabaseError, get_connection
+from agente_oracle.db.connection import DatabaseError, get_postgres_connection
 
 _tabela_garantida = False
 
@@ -39,7 +39,7 @@ def _garantir_tabela(cursor) -> None:
 def listar(limite: int = 200) -> list[dict]:
     """Últimos eventos, mais recentes primeiro — usado pela rota
     `GET /api/auth/eventos-seguranca` (restrita ao time de TI)."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -82,7 +82,7 @@ def registrar(
     detalhes_json = json.dumps(detalhes) if detalhes is not None else None
 
     try:
-        with get_connection() as connection:
+        with get_postgres_connection() as connection:
             cursor = connection.cursor()
             _garantir_tabela(cursor)
             cursor.execute(

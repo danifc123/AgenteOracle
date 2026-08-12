@@ -33,7 +33,16 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/relatorio/views", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_views_route(request: Request, usuario: dict) -> JSONResponse:
-        """Lista as views financeiras liberadas, suas colunas e relacionamentos — usado pela tela "Criar Relatório" pra montar a lista de tabelas."""
+        """Lista as views financeiras liberadas, suas colunas e relacionamentos — usado pela tela "Criar Relatório" pra montar a lista de tabelas.
+
+        "filial" fica de fora das colunas de cada view: toda view liberada tem
+        essa coluna e ela já é filtro obrigatório aplicado globalmente (seletor
+        único no topo da tela, resolvido em `_montar_sql`) — oferecê-la também
+        como coluna marcável em cada view deixava o usuário marcar "filial" em
+        views diferentes e o relatório final saía com várias colunas "filial"
+        idênticas. `schema.py` continua com a coluna (a IA do chat e o filtro
+        automático de `_montar_sql` dependem dela) — só esta rota, que alimenta
+        especificamente esse checklist, tira ela da lista."""
         payload = [
             {
                 "nome": view.nome,
@@ -45,6 +54,7 @@ def registrar(mcp) -> None:
                         "tipo": inferir_tipo_filtro(coluna.nome),
                     }
                     for coluna in view.colunas
+                    if coluna.nome != "filial"
                 ],
                 "relacionamentos": [
                     {

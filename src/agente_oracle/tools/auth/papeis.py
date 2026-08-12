@@ -13,7 +13,7 @@ automaticamente, sem precisar editar nada aqui.
 
 from dataclasses import dataclass
 
-MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
+MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque", "rh")
 
 # Sigla curta usada em nomes de arquivo exportado (ex:
 # `planilhas_combinadas_FIN.xlsx`), pra quem baixa saber de qual time veio.
@@ -23,6 +23,7 @@ MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
 SIGLAS_MODULO: dict[str, str] = {
     "financeiro": "FIN",
     "estoque": "EST",
+    "rh": "RH",
 }
 
 
@@ -57,6 +58,8 @@ PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="financeiro", rotulo="Time do Financeiro", modulos=("financeiro",)),
     Papel(slug="estoque_admin", rotulo="Administrador do Estoque", modulos=("estoque",), administrador=True),
     Papel(slug="estoque", rotulo="Time do Estoque", modulos=("estoque",)),
+    Papel(slug="rh_admin", rotulo="Administrador do RH", modulos=("rh",), administrador=True),
+    Papel(slug="rh", rotulo="Time do RH", modulos=("rh",)),
 )
 
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}

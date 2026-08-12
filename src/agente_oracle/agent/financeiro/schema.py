@@ -322,7 +322,11 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("recebimento_pagamento", "R = recebimento, P = pagamento"),
             ColunaView("valor", "valor do lançamento"),
             ColunaView("tipo_documento", "tipo do documento (ex: RB recebimento, PG pagamento)"),
-            ColunaView("conciliado", "true se o lançamento já foi conciliado com o extrato do banco"),
+            ColunaView(
+                "conciliado",
+                "1 se o lançamento já foi conciliado com o extrato do banco, 0 se não — "
+                "não é um tipo booleano de verdade (Oracle SQL não tem), é numérico",
+            ),
         ),
     ),
 )

@@ -30,8 +30,7 @@ import uuid
 from datetime import UTC, datetime
 
 from agente_oracle.agent.auditoria.analise import Achado
-from agente_oracle.config import settings
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import get_postgres_connection
 
 _tabela_garantida = False
 
@@ -63,15 +62,10 @@ def _garantir_tabela(cursor) -> None:
 
 
 def _coluna_ativo_existe(cursor) -> bool:
-    if settings.db_backend == "postgres":
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'auditoria_historico' AND column_name = 'ativo'"
-        )
-    else:
-        cursor.execute(
-            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'AUDITORIA_HISTORICO' AND COLUMN_NAME = 'ATIVO'"
-        )
+    cursor.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'auditoria_historico' AND column_name = 'ativo'"
+    )
     return cursor.fetchone() is not None
 
 
@@ -92,7 +86,7 @@ def achados_ativos(modulos_liberados: list[str]) -> list[Achado]:
     marcadores = ", ".join(f":modulo_{indice}" for indice in range(len(modulos_liberados)))
     binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -126,7 +120,7 @@ def definir_ativo(modulo: str, view: str, campo: str, valor: str, ativo: bool) -
     IA de reanalisar aquele valor. Só pra desenvolvedor testar/depurar (ver
     `server/auth/dependencia.exigir_desenvolvedor`). Devolve True se
     encontrou e atualizou alguma linha."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -154,7 +148,7 @@ def ja_identificados() -> set[tuple[str, str, str, str]]:
     qualquer execução, não faz sentido gastar IA de novo nele pra ninguém.
     Achado desativado (`definir_ativo(..., ativo=False)`) não conta aqui —
     volta a ser tratado como "novo" na próxima execução."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -182,7 +176,7 @@ def listar(modulos_liberados: list[str], incluir_desativados: bool = False, limi
     binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
     clausula_ativo = "" if incluir_desativados else "AND ativo = TRUE"
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -223,7 +217,7 @@ def salvar(usuario_id: str, achados: list[Achado]) -> str | None:
     execucao_id = uuid.uuid4().hex
     agora = datetime.now(UTC)
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         for achado in achados:

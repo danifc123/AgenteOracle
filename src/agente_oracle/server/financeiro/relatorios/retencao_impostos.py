@@ -1,6 +1,6 @@
 """RELATÓRIO: Relação de Títulos a Pagar com Retenção de Impostos (FINR865)
 
-Tradução do ADVPL (`FINR865.PRW`) — lista títulos de `SE2` (contas a pagar)
+Tradução do ADVPL (`FINR865.PRW`) — lista títulos de `SE2010` (contas a pagar)
 que tiveram algum imposto retido (PIS/COFINS/CSLL/IRRF/ISS/INSS/SEST),
 agrupados por fornecedor, com o valor original, cada imposto retido e o
 valor líquido por título.
@@ -63,15 +63,38 @@ O que TEM fidelidade real:
   (`E2_PRET* = '1'`): mostra o valor calculado no próprio título mesmo sem
   ter sido fisicamente retido nele, exatamente como o `TReport` original.
 
-Atenção: só roda com DB_BACKEND=postgres (cast ::date). Datas em SE2 nesse
-banco de teste são VARCHAR (formato "YYYYMMDD").
+Datas em SE2010 são armazenadas como texto "YYYYMMDD" (mesmo no Oracle real) —
+comparadas via `TO_DATE(..., 'YYYYMMDD')`, que roda igual nos dois bancos.
+As colunas booleanas intermediárias das CTEs (`dedinss`, `irpf_na_baixa`,
+`pcc_retido_aqui`) viram 1/0 (`CASE WHEN`) em vez de booleano nativo — Oracle
+não tem tipo booleano utilizável em SQL puro, nem em coluna de CTE.
 
 Particularidade do dado de teste: as colunas de imposto (E2_IRRF, E2_ISS,
 E2_INSS, E2_PIS, E2_COFINS, E2_CSLL, E2_SEST, E2_VRETIRF, E2_VRETINS,
 E2_VRETPIS, E2_VRETCOF, E2_VRETCSL, E2_PRETIRF, E2_PRETINS, E2_PRETPIS,
 E2_PRETCOF, E2_PRETCSL, E2_ACRESC, E2_JUROS, E2_MULTA, E2_DECRESC,
-E2_DESCONT) foram adicionadas nesta sessão — SE2 não tinha nenhuma delas
+E2_DESCONT) foram adicionadas nesta sessão — SE2010 não tinha nenhuma delas
 antes, só os campos usados pelos relatórios anteriores (FINR130/150).
+
+Filtros opcionais corrigidos (2026-08) de `:bind = ''` para `:bind IS NULL OR
+:bind = ''` — Oracle converte bind de string vazia (e o literal `''`) em NULL,
+e `NULL = ''` nunca é TRUE, então todo filtro em branco fazia a consulta
+devolver zero linhas silenciosamente. Ver o "ACHADO IMPORTANTE" no topo de
+`_comum.py`. Este arquivo ainda consulta tabela crua do Protheus (não migrado
+pro STAGE ainda).
+
+MIGRAÇÃO PRO STAGE EM ESPERA (2026-08): investigamos `STAGE.IMPOSTORETIDO`
+(fonte real: `FK4010`) como possível substituto de `SE2010.E2_IRRF`/`E2_ISS`/
+etc. — não serve. `FK4010` (confirmado no dicionário SX3 do Protheus real) é
+um livro-razão de retenção por fornecedor+imposto+data
+(`FK4_CLIFOR`/`FK4_IMPOS`/`FK4_DATA`/`FK4_VALOR`), sem prefixo/número/parcela
+de título — não dá pra reconstruir o valor por título. Pior: a extração pro
+STAGE (`STAGE.IMPOSTORETIDO`) nem sequer carrega o fornecedor
+(`FK4_CLIFOR`/`FK4_LOJA`) — só filial, tipo, data e valor. Sem fornecedor,
+nem a versão agregada (sem quebra por título) faz sentido pro propósito do
+relatório. Decisão (2026-08): este relatório fica de fora da migração até o
+time de BI incluir o vínculo com fornecedor/título na extração do ETL, ou
+surgir outra fonte de dado.
 """
 
 from starlette.requests import Request
@@ -135,28 +158,28 @@ WITH titulos AS (
         sa2.a2_cgc,
         COALESCE(sa2.a2_calcirf, '') AS a2_calcirf,
         COALESCE(sa2.a2_minirf, '') AS a2_minirf,
-        (COALESCE(sed.ed_dedinss, '') = '1') AS dedinss
-    FROM se2
+        (CASE WHEN COALESCE(sed.ed_dedinss, '') = '1' THEN 1 ELSE 0 END) AS dedinss
+    FROM se2010 se2
     INNER JOIN sa2010 sa2
         ON sa2.a2_cod = se2.e2_fornece AND sa2.a2_loja = se2.e2_loja
        AND COALESCE(sa2.d_e_l_e_t_, ' ') = ' '
     LEFT JOIN sed010 sed ON sed.ed_codigo = se2.e2_naturez
     WHERE COALESCE(se2.d_e_l_e_t_, ' ') = ' '
       AND TRIM(se2.e2_filial) IN __FILIAL_IN__
-      AND (:fornecedor_ini = '' OR se2.e2_fornece >= :fornecedor_ini)
-      AND (:fornecedor_fim = '' OR se2.e2_fornece <= :fornecedor_fim)
-      AND (:loja_ini = '' OR se2.e2_loja >= :loja_ini)
-      AND (:loja_fim = '' OR se2.e2_loja <= :loja_fim)
-      AND (:tipo_pessoa = '' OR sa2.a2_tipo = :tipo_pessoa)
+      AND (:fornecedor_ini IS NULL OR :fornecedor_ini = '' OR se2.e2_fornece >= :fornecedor_ini)
+      AND (:fornecedor_fim IS NULL OR :fornecedor_fim = '' OR se2.e2_fornece <= :fornecedor_fim)
+      AND (:loja_ini IS NULL OR :loja_ini = '' OR se2.e2_loja >= :loja_ini)
+      AND (:loja_fim IS NULL OR :loja_fim = '' OR se2.e2_loja <= :loja_fim)
+      AND (:tipo_pessoa IS NULL OR :tipo_pessoa = '' OR sa2.a2_tipo = :tipo_pessoa)
       AND (
-            :vencimento_ini = '' OR :vencimento_fim = ''
-         OR se2.e2_vencrea::date BETWEEN :vencimento_ini::date AND :vencimento_fim::date
+            :vencimento_ini IS NULL OR :vencimento_ini = '' OR :vencimento_fim IS NULL OR :vencimento_fim = ''
+         OR TO_DATE(se2.e2_vencrea, 'YYYYMMDD') BETWEEN TO_DATE(:vencimento_ini, 'YYYYMMDD') AND TO_DATE(:vencimento_fim, 'YYYYMMDD')
       )
       AND (
-            :emissao_ini = '' OR :emissao_fim = ''
-         OR se2.e2_emissao::date BETWEEN :emissao_ini::date AND :emissao_fim::date
+            :emissao_ini IS NULL OR :emissao_ini = '' OR :emissao_fim IS NULL OR :emissao_fim = ''
+         OR TO_DATE(se2.e2_emissao, 'YYYYMMDD') BETWEEN TO_DATE(:emissao_ini, 'YYYYMMDD') AND TO_DATE(:emissao_fim, 'YYYYMMDD')
       )
-      AND se2.e2_emissao::date <= CURRENT_DATE
+      AND TO_DATE(se2.e2_emissao, 'YYYYMMDD') <= CURRENT_DATE
       AND (
             COALESCE(se2.e2_inss, 0) > 0 OR COALESCE(se2.e2_iss, 0) > 0 OR COALESCE(se2.e2_pis, 0) > 0
          OR COALESCE(se2.e2_cofins, 0) > 0 OR COALESCE(se2.e2_csll, 0) > 0 OR COALESCE(se2.e2_sest, 0) > 0
@@ -165,7 +188,7 @@ WITH titulos AS (
 ),
 calc AS (
     SELECT t.*,
-        (t.a2_calcirf = '2') AS irpf_na_baixa,
+        (CASE WHEN t.a2_calcirf = '2' THEN 1 ELSE 0 END) AS irpf_na_baixa,
         (
             CASE
                 WHEN t.a2_calcirf = '2' THEN
@@ -184,8 +207,10 @@ calc AS (
         t.e2_iss AS v_iss,
         t.e2_sest AS v_sest,
         (
-            (t.e2_pretpis NOT IN ('2', '3', '4') OR t.e2_pretcof NOT IN ('2', '3', '4') OR t.e2_pretcsl NOT IN ('2', '3', '4'))
-            AND (t.e2_pis + t.e2_cofins + t.e2_csll) > 0
+            CASE WHEN
+                (t.e2_pretpis NOT IN ('2', '3', '4') OR t.e2_pretcof NOT IN ('2', '3', '4') OR t.e2_pretcsl NOT IN ('2', '3', '4'))
+                AND (t.e2_pis + t.e2_cofins + t.e2_csll) > 0
+            THEN 1 ELSE 0 END
         ) AS pcc_retido_aqui,
         (t.e2_vretpis + t.e2_vretcof + t.e2_vretcsl - (t.e2_pis + t.e2_cofins + t.e2_csll)) AS descont_pcc,
         (CASE WHEN t.e2_juros > 0 THEN t.e2_juros + t.e2_multa ELSE t.e2_acresc + t.e2_multa END) AS valor_acrescimo,
@@ -196,9 +221,9 @@ valores AS (
     SELECT c.*,
         (
             c.e2_valor
-            + CASE WHEN c.dedinss THEN c.e2_inss ELSE 0 END
+            + CASE WHEN c.dedinss = 1 THEN c.e2_inss ELSE 0 END
             + c.e2_iss
-            + CASE WHEN c.v_irrf <> 0 AND NOT c.irpf_na_baixa THEN c.v_irrf ELSE 0 END
+            + CASE WHEN c.v_irrf <> 0 AND c.irpf_na_baixa = 0 THEN c.v_irrf ELSE 0 END
             + CASE
                 WHEN (c.e2_pretpis = '' OR c.e2_pretcof = '' OR c.e2_pretcsl = '') AND (c.e2_pis + c.e2_cofins + c.e2_csll) > 0
                 THEN c.e2_vretpis + c.e2_vretcof + c.e2_vretcsl
@@ -213,7 +238,7 @@ valores AS (
                 THEN c.e2_pis + c.e2_cofins + c.e2_csll
                 ELSE 0
               END
-            - CASE WHEN c.irpf_na_baixa AND c.e2_pretirf IN ('1', '7', '', '4') THEN c.v_irrf ELSE 0 END
+            - CASE WHEN c.irpf_na_baixa = 1 AND c.e2_pretirf IN ('1', '7', '', '4') THEN c.v_irrf ELSE 0 END
         ) AS valor_liq_prelim
     FROM calc c
 )
@@ -232,9 +257,9 @@ SELECT
     v.e2_vencrea,
     (
         v.valor_base_prelim
-        + CASE WHEN v.pcc_retido_aqui THEN v.descont_pcc ELSE 0 END
+        + CASE WHEN v.pcc_retido_aqui = 1 THEN v.descont_pcc ELSE 0 END
         + CASE
-            WHEN v.pcc_retido_aqui AND v.valor_base_prelim > __LIMIAR_10925__ AND NOT v.irpf_na_baixa
+            WHEN v.pcc_retido_aqui = 1 AND v.valor_base_prelim > __LIMIAR_10925__ AND v.irpf_na_baixa = 0
              AND (v.e2_pretpis <> '' OR v.e2_pretcof <> '' OR v.e2_pretcsl <> '')
             THEN v.descont_pcc ELSE 0
           END
@@ -250,7 +275,7 @@ SELECT
     v.v_csll AS valor_csll,
     (
         v.valor_liq_prelim
-        + CASE WHEN v.pcc_retido_aqui THEN v.descont_pcc ELSE 0 END
+        + CASE WHEN v.pcc_retido_aqui = 1 THEN v.descont_pcc ELSE 0 END
         + v.valor_acrescimo
         - v.valor_decrescimo
     ) AS valor_liquido

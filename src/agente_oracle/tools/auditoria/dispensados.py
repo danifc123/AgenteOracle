@@ -1,14 +1,14 @@
 """Achados de auditoria que um usuário já revisou e marcou como "não é
-problema" — guardados numa tabela no mesmo banco relacional configurado em
-DB_BACKEND, criada sozinha na primeira chamada (`CREATE TABLE IF NOT
-EXISTS`), sem precisar de migração separada — mesmo padrão de
+problema" — guardados numa tabela sempre no Postgres (estado do sistema —
+ver `db/connection.py`), criada sozinha na primeira chamada (`CREATE TABLE
+IF NOT EXISTS`), sem precisar de migração separada — mesmo padrão de
 `tools/financeiro/historico.py`. A dispensa é por usuário: cada achado é
 identificado pela tupla (módulo, view, campo, valor) que a IA já devolve,
 sem precisar de um id sintético."""
 
 from datetime import UTC, datetime
 
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import get_postgres_connection
 
 _tabela_garantida = False
 
@@ -36,7 +36,7 @@ def dispensar(usuario_id: str, modulo: str, view: str, campo: str, valor: str) -
     """Marca um achado como dispensado para este usuário. Se ele já tiver
     dispensado exatamente o mesmo achado antes, não faz nada (a constraint
     única evita duplicar)."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -57,7 +57,7 @@ def dispensar(usuario_id: str, modulo: str, view: str, campo: str, valor: str) -
 def listar_dispensados(usuario_id: str) -> set[tuple[str, str, str, str]]:
     """Achados (modulo, view, campo, valor) já dispensados por este usuário —
     usado para filtrar a lista de achados antes de devolver ao front."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(

@@ -5,20 +5,32 @@ MV_PAR01..MV_PAR09, todos opcionais ("Vazio=TODOS"), igual mantido aqui: só a
 filial é obrigatória (e agora aceita seleção múltipla, igual ao Fluxo de
 Caixa Realizado). Os demais campos ficam vazios quando não usados.
 
-Os campos E1_NOMCLI (nome do cliente) e E1_NMVEND1 (nome do consultor), que
-no ADVPL eram buscados linha a linha via GetAdvFVal, viraram LEFT JOIN com
-SA1010 (clientes) e SA3 (vendedores/consultores — nesse banco de teste a
-tabela não tem o sufixo "010").
+Migrado do Oracle transacional do Protheus (SE1010/SA1010/SA3010) para o
+STAGE (SCIENCE_PROD, ETL/BI) — `STAGE.DUPLICATA` é uma tabela dedicada pra
+esse conceito (já tem `DUPLICATAASSINADA`, direto), então usamos ela em vez
+de reconstruir de `CONTARECEBER`.
 
-MV_PAR09 (status da assinatura) era um combo 1/2/3 (Assinadas/Não
-assinadas/Ambas); "Ambas" nunca filtrava nada no original, então virou o
-valor vazio ('') aqui.
+ATENÇÃO — `nome_cliente` foi removido: `DUPLICATA.CLIENTE` guarda só o
+código-base do cliente (9 dígitos), sem o sufixo de loja que
+`PESSOA.CODIGO` carrega embutido (13 dígitos) — e o mesmo cliente pode ter
+várias "lojas" (várias linhas de PESSOA com o mesmo prefixo). Testado: 0%
+de match tentando `PESSOA.CODIGO = DUPLICATA.CLIENTE` (esperado, já que os
+tamanhos nem batem) — e não dá pra escolher a loja certa por prefixo sem
+arriscar mostrar o nome de outra loja do mesmo cliente. Fica só o código até
+acharmos uma chave de ligação confiável.
 
-Atenção: só roda com DB_BACKEND=postgres (mesma observação do Fluxo de Caixa
-Realizado — sintaxe de cast ::tipo). Os campos de data (vencimento) usam
-NULLIF pra aceitar vazio sem quebrar o cast ::date. E1_VENCTO nesse banco de
-teste é VARCHAR (formato "YYYYMMDD"), por isso também precisa do ::date antes
-de comparar com os limites do período.
+`VALOR`/`SALDO` em `STAGE.DUPLICATA` vêm como texto (`NVARCHAR2`), não
+número — por isso o `TO_NUMBER(...)` explícito.
+
+Filtros opcionais usam `:bind IS NULL OR :bind = ''` em vez de `:bind = ''`
+puro (nem `COALESCE(:bind, '') = ''` resolve — o literal `''` também é NULL
+no Oracle) — achado ao validar esta migração, ver `_comum.filtro_vazio` e o
+"ACHADO IMPORTANTE" no topo de `_comum.py`.
+
+O filtro "Prefixo" também ficou sem fonte de dado — `STAGE.DUPLICATA` não
+tem coluna de prefixo de documento (só `DUPLICATA`, o número em si). O
+campo continua aceito na tela, mas não filtra nada até acharmos onde esse
+dado mora no STAGE (mesma situação do filtro "Loja", ver `cadastros.py`).
 """
 
 from starlette.requests import Request
@@ -38,55 +50,41 @@ _QUERY = """
 -- Tradução do ADVPL (fPopula) — filial(is) obrigatória(s), demais opcionais
 -- =====================================================================
 SELECT
-    se1.e1_filial,
-    se1.e1_prefixo,
-    se1.e1_xdupass,
-    se1.e1_num,
-    se1.e1_parcela,
-    se1.e1_tipo,
-    se1.e1_naturez,
-    se1.e1_cliente,
-    se1.e1_loja,
-    sa1.a1_nome                AS nome_cliente,
-    se1.e1_nomcli               AS propriedade,
-    se1.e1_emissao,
-    se1.e1_vencto,
-    se1.e1_vencrea,
-    se1.e1_valor,
-    se1.e1_hist,
-    se1.e1_vend1,
-    sa3.a3_nome                AS nome_consultor
-FROM se1010 se1
-LEFT JOIN sa1010 sa1
-    ON sa1.a1_cod = se1.e1_cliente
-   AND sa1.a1_loja = se1.e1_loja
-LEFT JOIN sa3 sa3
-    ON sa3.a3_cod = se1.e1_vend1
-WHERE COALESCE(se1.d_e_l_e_t_, ' ') = ' '
-  AND TRIM(se1.e1_filial) IN __FILIAL_IN__
-  AND (:cliente = '' OR TRIM(se1.e1_cliente) = :cliente)
-  AND (:loja = '' OR TRIM(se1.e1_loja) = :loja)
+    TRIM(d.filial)                    AS filial,
+    d.duplicata,
+    d.duplicataassinada,
+    TRIM(d.tipo)                      AS tipo,
+    TRIM(d.cliente)                   AS cliente_codigo,
+    CAST(d.dataemissao AS DATE)       AS data_emissao,
+    CAST(d.datavencimento AS DATE)    AS data_vencimento,
+    TO_NUMBER(d.valor)                AS valor,
+    TO_NUMBER(d.saldo)                AS saldo,
+    TRIM(d.vendedor)                  AS vendedor_codigo,
+    vp.nome                           AS nome_consultor
+FROM STAGE.duplicata d
+LEFT JOIN STAGE.pessoa vp
+    ON vp.codigo = d.vendedor AND vp.sourcetable = 'SA3010'
+WHERE d.excluido = 0
+  AND TRIM(d.filial) IN __FILIAL_IN__
+  AND (:cliente IS NULL OR :cliente = '' OR TRIM(d.cliente) = :cliente)
   AND (
-        :vencto_ini = '' OR :vencto_fim = ''
-     OR se1.e1_vencto::date BETWEEN NULLIF(:vencto_ini, '')::date AND NULLIF(:vencto_fim, '')::date
+        :vencto_ini IS NULL OR :vencto_ini = '' OR :vencto_fim IS NULL OR :vencto_fim = ''
+     OR d.datavencimento BETWEEN TO_DATE(NULLIF(:vencto_ini, ''), 'YYYYMMDD') AND TO_DATE(NULLIF(:vencto_fim, ''), 'YYYYMMDD')
   )
-  AND (:prefixo = '' OR TRIM(se1.e1_prefixo) = :prefixo)
-  AND (:tipo = '' OR TRIM(se1.e1_tipo) = :tipo)
-  AND (:vendedor = '' OR TRIM(se1.e1_vend1) = :vendedor)
+  AND (:tipo IS NULL OR :tipo = '' OR TRIM(d.tipo) = :tipo)
+  AND (:vendedor IS NULL OR :vendedor = '' OR TRIM(d.vendedor) = :vendedor)
   AND (
-        :status_assinatura = ''
-     OR (:status_assinatura = '1' AND TRIM(se1.e1_xdupass) = 'S')
-     OR (:status_assinatura = '2' AND (TRIM(se1.e1_xdupass) = 'N' OR se1.e1_xdupass = ' '))
+        :status_assinatura IS NULL OR :status_assinatura = ''
+     OR (:status_assinatura = '1' AND d.duplicataassinada = 'SIM')
+     OR (:status_assinatura = '2' AND d.duplicataassinada <> 'SIM')
   )
-ORDER BY se1.e1_filial, se1.e1_cliente, se1.e1_loja, se1.e1_prefixo, se1.e1_num, se1.e1_parcela, se1.e1_tipo
+ORDER BY d.filial, d.cliente, d.duplicata
 """
 
 _CAMPOS_OPCIONAIS = (
     "cliente",
-    "loja",
     "vencto_ini",
     "vencto_fim",
-    "prefixo",
     "tipo",
     "vendedor",
     "status_assinatura",

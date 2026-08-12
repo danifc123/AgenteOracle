@@ -3,9 +3,10 @@ colunas (por tabela), os filtros preenchidos e as filiais escolhidas, pra o
 usuário recarregar depois sem remontar tudo na mão.
 
 Mesmo padrão de `tools/financeiro/historico.py` e `tools/auth/usuarios.py`:
-tabela própria no mesmo banco relacional configurado em DB_BACKEND, criada
-sozinha (`CREATE TABLE IF NOT EXISTS`) na primeira chamada, sem migração
-separada. Diferente do histórico, aqui os registros são escopados por usuário
+tabela própria no Postgres (estado do sistema, sempre nesse banco — ver
+`db/connection.py`), criada sozinha (`CREATE TABLE IF NOT EXISTS`) na
+primeira chamada, sem migração separada. Diferente do histórico, aqui os
+registros são escopados por usuário
 (`usuario_id`, extraído do JWT em `exigir_usuario`) — cada um só vê/mexe nos
 próprios layouts.
 """
@@ -13,7 +14,7 @@ próprios layouts.
 import json
 from datetime import UTC, datetime
 
-from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_connection
+from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_postgres_connection
 
 _COLUNAS = "id, usuario_id, nome, colunas_selecionadas, valores_filtros, filiais_selecionadas, criado_em, atualizado_em"
 
@@ -103,7 +104,7 @@ def atualizar(
         trechos_set.append("filiais_selecionadas = :filiais_selecionadas::jsonb")
 
     try:
-        with get_connection() as connection:
+        with get_postgres_connection() as connection:
             cursor = connection.cursor()
             _garantir_tabela(cursor)
             cursor.execute(
@@ -135,7 +136,7 @@ def criar(
     agora = datetime.now(UTC)
 
     try:
-        with get_connection() as connection:
+        with get_postgres_connection() as connection:
             cursor = connection.cursor()
             _garantir_tabela(cursor)
             cursor.execute(
@@ -168,7 +169,7 @@ def deletar(usuario_id: int, id_layout: str) -> bool:
     except ValueError:
         return False
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -180,7 +181,7 @@ def deletar(usuario_id: int, id_layout: str) -> bool:
 
 
 def listar(usuario_id: int) -> list[dict]:
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(

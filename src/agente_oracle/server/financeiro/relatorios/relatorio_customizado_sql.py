@@ -29,6 +29,7 @@ from starlette.requests import Request
 
 from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ViewFinanceira, inferir_tipo_filtro
 from agente_oracle.db.connection import get_connection
+from agente_oracle.server.financeiro.relatorios import _comum
 
 LIMITE_MAXIMO_LINHAS = 1000
 LIMITE_OPCOES_COLUNA = 500
@@ -131,13 +132,16 @@ def _montar_sql(
         tipo = inferir_tipo_filtro(nome_coluna)
 
         if tipo == "periodo-data":
+            # `coluna_sql` já é DATE de verdade na view (não texto "YYYYMMDD" cru
+            # do Protheus, como nos relatórios fixos) — só o bind, que chega da
+            # tela como "YYYY-MM-DD" (`<input type="date">`), precisa converter.
             for extremo, operador in (("ini", ">="), ("fim", "<=")):
                 if not filtro.get(extremo):
                     continue
                 contador_filtro += 1
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
-                condicoes_where.append(f"{coluna_sql}::date {operador} :{bind}::date")
+                condicoes_where.append(f"{coluna_sql} {operador} TO_DATE(:{bind}, 'YYYY-MM-DD')")
         elif tipo == "numero":
             for extremo, operador in (("min", ">="), ("max", "<=")):
                 if not filtro.get(extremo):
@@ -145,7 +149,7 @@ def _montar_sql(
                 contador_filtro += 1
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
-                condicoes_where.append(f"{coluna_sql} {operador} CAST(:{bind} AS NUMERIC)")
+                condicoes_where.append(f"{coluna_sql} {operador} {_comum.numero_bind(bind)}")
         else:
             valores_filtro = filtro.get("valores")
             if valores_filtro:
@@ -155,7 +159,7 @@ def _montar_sql(
                     bind = f"filtro_{contador_filtro}"
                     binds[bind] = item
                     marcadores.append(f":{bind}")
-                condicoes_where.append(f"CAST({coluna_sql} AS TEXT) IN ({', '.join(marcadores)})")
+                condicoes_where.append(f"{_comum.texto_coluna(coluna_sql)} IN ({', '.join(marcadores)})")
 
     if condicoes_where:
         sql.append(f"WHERE {' AND '.join(condicoes_where)}")

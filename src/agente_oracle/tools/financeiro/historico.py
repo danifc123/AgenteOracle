@@ -1,5 +1,5 @@
-"""Histórico de relatórios gerados pela IA — guardado numa tabela no mesmo
-banco relacional configurado em DB_BACKEND (Postgres localmente), em vez de
+"""Histórico de relatórios gerados pela IA — guardado numa tabela no Postgres
+(estado do sistema, sempre nesse banco — ver `db/connection.py`), em vez de
 um serviço externo (era MongoDB Atlas antes; trocado por não conectar de
 forma confiável no ambiente do time).
 
@@ -26,8 +26,7 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 
-from agente_oracle.config import settings
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import get_postgres_connection
 
 _SELECT_FROM_REGEX = re.compile(r"^SELECT\s+(.*?)\s+FROM\s", re.IGNORECASE | re.DOTALL)
 
@@ -76,15 +75,10 @@ def _garantir_tabela(cursor) -> None:
 
 
 def _coluna_modulo_existe(cursor) -> bool:
-    if settings.db_backend == "postgres":
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
-        )
-    else:
-        cursor.execute(
-            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'RELATORIOS_HISTORICO' AND COLUMN_NAME = 'MODULO'"
-        )
+    cursor.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
+    )
     return cursor.fetchone() is not None
 
 
@@ -108,7 +102,7 @@ def _linha_para_documento(linha: tuple) -> dict:
 
 
 def buscar_por_sql(sql_validado: str) -> dict | None:
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -128,7 +122,7 @@ def deletar(id_relatorio: str) -> bool:
     except ValueError:
         return False
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute("DELETE FROM relatorios_historico WHERE id = :id", id=id_numerico)
@@ -143,7 +137,7 @@ def desfixar(id_relatorio: str) -> bool:
     except ValueError:
         return False
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -161,7 +155,7 @@ def fixar(id_relatorio: str) -> bool:
     except ValueError:
         return False
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -205,7 +199,7 @@ def listar(modulos_liberados: list[str]) -> list[dict]:
     marcadores = ", ".join(f":modulo_{indice}" for indice in range(len(modulos_liberados)))
     binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -242,7 +236,7 @@ def obter(id_relatorio: str) -> dict | None:
     except ValueError:
         return None
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -264,7 +258,7 @@ def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list
     agora = datetime.now(UTC)
     hash_valor = hash_sql(sql_validado)
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
 

@@ -5,8 +5,8 @@ criados manualmente via `agente_oracle.tools.auth.cli` (script
 `agente-oracle-criar-usuario`).
 
 Segue o mesmo padrão de `tools/financeiro/historico.py`: tabela própria,
-criada sozinha (`CREATE TABLE IF NOT EXISTS`) na mesma conexão relacional já
-configurada em DB_BACKEND, sem migração separada.
+criada sozinha (`CREATE TABLE IF NOT EXISTS`) sempre no Postgres (estado do
+sistema — ver `db/connection.py`), sem migração separada.
 """
 
 import json
@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 
 import bcrypt
 
-from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_connection
+from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_postgres_connection
 from agente_oracle.tools.auth import eventos_seguranca
 
 _COLUNAS = "id, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em"
@@ -93,7 +93,7 @@ def alterar_senha(usuario: str, senha_atual: str, senha_nova: str) -> bool:
     atual antes. Devolve False se a senha atual não bater (usuário
     inexistente conta como não bater, mesma resposta pra não vazar
     informação)."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(f"SELECT {_COLUNAS} FROM usuarios WHERE usuario = :usuario", usuario=usuario)
@@ -119,7 +119,7 @@ def alterar_senha(usuario: str, senha_atual: str, senha_nova: str) -> bool:
 def atualizar_perfil(usuario: str, nome: str | None = None, foto: str | None = None) -> dict:
     """Autoatendimento: atualiza nome e/ou foto do PRÓPRIO usuário (só os
     campos informados). Devolve o perfil atualizado, sem o hash de senha."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         if nome is not None:
@@ -141,7 +141,7 @@ def autenticar(usuario: str, senha: str) -> dict | None:
     """Confere usuário/senha contra o hash salvo. Devolve os dados do usuário
     (sem o hash) em caso de sucesso, ou None se usuário não existir, estiver
     inativo, bloqueado, ou a senha não bater."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -169,7 +169,7 @@ def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dic
     senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     try:
-        with get_connection() as connection:
+        with get_postgres_connection() as connection:
             cursor = connection.cursor()
             _garantir_tabela(cursor)
             cursor.execute(
@@ -197,7 +197,7 @@ def deletar_usuario(id_usuario: int) -> str | None:
     """Apaga um usuário. Devolve o login apagado (útil pra quem chama
     registrar o evento na trilha de auditoria com um nome legível, em vez
     de só o id), ou None se o id não existir."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute("DELETE FROM usuarios WHERE id = :id RETURNING usuario", id=id_usuario)
@@ -210,7 +210,7 @@ def desbloquear_usuario(id_usuario: int) -> str | None:
     """Zera o bloqueio e o contador de tentativas de um usuário — ação do
     time de TI, disparada pela tela de administração. Devolve o login
     desbloqueado, ou None se o id não existir."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -229,7 +229,7 @@ def desbloquear_usuario(id_usuario: int) -> str | None:
 def esta_bloqueado(usuario: str) -> bool:
     """Consulta rápida e independente de senha — usada pela rota de login pra
     decidir a mensagem de erro antes mesmo de checar o rate limit."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute("SELECT bloqueado FROM usuarios WHERE usuario = :usuario", usuario=usuario)
@@ -242,7 +242,7 @@ def listar_usuarios() -> list[dict]:
     """Lista os usuários cadastrados (sem hash de senha nem foto — a tela de
     administração não mexe em foto de ninguém, só a própria pessoa mexe na
     dela via `/api/auth/perfil`), mais recentes primeiro."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(f"SELECT {_COLUNAS} FROM usuarios ORDER BY id DESC")
@@ -260,7 +260,7 @@ def registrar_tentativa_falha(usuario: str) -> bool:
     a conta ao atingir `LIMITE_TENTATIVAS_BLOQUEIO` — só o time de TI
     consegue desbloquear depois, via `desbloquear_usuario`. Devolve True se
     ESSA tentativa acabou de bloquear a conta."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -305,7 +305,7 @@ def usuario_esta_ativo_e_desbloqueado(id_usuario: int) -> bool:
     no request seguinte, em vez de continuar valendo até expirar (até
     `AUTH_TOKEN_HORAS` horas). Devolve False também se o id não existir mais
     (usuário apagado com uma sessão ainda aberta)."""
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute("SELECT ativo, bloqueado FROM usuarios WHERE id = :id", id=id_usuario)

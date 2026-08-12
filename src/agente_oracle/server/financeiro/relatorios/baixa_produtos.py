@@ -6,8 +6,8 @@ Produto De/Até e Data da Baixa De/Até. Igual aos demais relatórios, a filial
 virou seleção múltipla (em vez de faixa De/Até) para manter o mesmo padrão de
 tela; título e produto continuam como faixa (De/Até).
 
-ZB4 (baixa por produto) e ZB2 (tipo de produto comercial) não existiam no
-banco de teste — foram criadas com dados de exemplo ligados às baixas/títulos
+ZB4010 (baixa por produto) e ZB2010 (tipo de produto comercial) não existiam
+no banco de teste — foram criadas com dados de exemplo ligados às baixas/títulos
 que já existiam em SE5010/SE1010 (veja o script de seed que gerei na
 conversa). B1_XTPRCOM (tipo comercial do produto) também estava vazio em
 SB1010 e foi populado nesse mesmo seed.
@@ -23,9 +23,27 @@ A "Categoria Cliente" (SA1010.A1_XCDCAT, decodificada via uma tabela genérica
 banco de teste e não existe uma tabela genérica equivalente — mantido assim
 por não haver dado real pra decodificar.
 
-Atenção: só roda com DB_BACKEND=postgres (cast ::tipo). E5_DATA nesse banco
-de teste é VARCHAR (formato "YYYYMMDD"), por isso precisa do ::date antes de
-comparar com os limites do período.
+E5_DATA é armazenada como texto "YYYYMMDD" (mesmo no Oracle real) — comparada
+via `TO_DATE(..., 'YYYYMMDD')` (`_comum.data_coluna`/`data_bind`), que roda
+igual nos dois bancos.
+
+Filtros opcionais corrigidos (2026-08) de `:bind = ''` para `:bind IS NULL OR
+:bind = ''` — Oracle converte bind de string vazia (e o literal `''`) em NULL,
+e `NULL = ''` nunca é TRUE, então todo filtro em branco fazia a consulta
+devolver zero linhas silenciosamente. Ver o "ACHADO IMPORTANTE" no topo de
+`_comum.py`. Este arquivo ainda consulta tabela crua do Protheus (não migrado
+pro STAGE ainda).
+
+MIGRAÇÃO PRO STAGE EM ESPERA (2026-08): não achamos `ZB4010`/`ZB2010` (nem
+nada parecido) entre as 87 tabelas do STAGE — e, como já dizia o parágrafo
+acima desde antes desta migração, essas duas tabelas **nunca existiram de
+verdade** no Protheus do Grupo Conceito: foram fabricadas com dado de
+exemplo só pra este relatório ter algo pra testar. Diferente dos outros
+relatórios (que perderam uma coluna ou outra), aqui a base inteira do
+relatório é sintética — mesmo tratamento já combinado para
+`retencao_impostos.py`: fica de fora até existir uma fonte de dado real
+(seja no STAGE, seja confirmando que o Grupo Conceito realmente usa o
+módulo ZB de baixa por produto no Protheus real).
 """
 
 from starlette.requests import Request
@@ -70,7 +88,7 @@ SELECT
     se5.e5_banco,
     se5.e5_seq,
     se5.e5_data
-FROM zb4 zb4
+FROM zb4010 zb4
 INNER JOIN (
     SELECT
         e5_filial, e5_prefixo, e5_numero, e5_parcela, e5_tipo, e5_seq,
@@ -78,8 +96,9 @@ INNER JOIN (
     FROM se5010
     WHERE COALESCE(d_e_l_e_t_, ' ') = ' '
       AND (
-            :data_baixa_ini = '' OR :data_baixa_fim = ''
-         OR e5_data::date BETWEEN NULLIF(:data_baixa_ini, '')::date AND NULLIF(:data_baixa_fim, '')::date
+            :data_baixa_ini IS NULL OR :data_baixa_ini = '' OR :data_baixa_fim IS NULL OR :data_baixa_fim = ''
+         OR TO_DATE(e5_data, 'YYYYMMDD')
+            BETWEEN TO_DATE(NULLIF(:data_baixa_ini, ''), 'YYYYMMDD') AND TO_DATE(NULLIF(:data_baixa_fim, ''), 'YYYYMMDD')
       )
     GROUP BY e5_filial, e5_prefixo, e5_numero, e5_parcela, e5_tipo, e5_seq,
              e5_documen, e5_motbx, e5_banco, e5_clifor, e5_loja, e5_data
@@ -92,7 +111,7 @@ INNER JOIN (
 INNER JOIN sb1010 sb1
     ON COALESCE(sb1.d_e_l_e_t_, ' ') = ' '
    AND sb1.b1_cod = zb4.zb4_produt
-LEFT JOIN zb2 zb2
+LEFT JOIN zb2010 zb2
     ON COALESCE(zb2.d_e_l_e_t_, ' ') = ' '
    AND zb2.zb2_filial = zb4.zb4_filial
    AND sb1.b1_xtprcom = zb2.zb2_cod
@@ -105,14 +124,14 @@ LEFT JOIN se1010 se1
    AND se1.e1_num = zb4.zb4_num
    AND se1.e1_parcela = zb4.zb4_parcel
    AND se1.e1_tipo = zb4.zb4_tipo
-LEFT JOIN sa3 sa3
+LEFT JOIN sa3010 sa3
     ON sa3.a3_cod = se1.e1_vend1
 WHERE COALESCE(zb4.d_e_l_e_t_, ' ') = ' '
   AND TRIM(zb4.zb4_filial) IN __FILIAL_IN__
-  AND (:titulo_ini = '' OR zb4.zb4_num >= :titulo_ini)
-  AND (:titulo_fim = '' OR zb4.zb4_num <= :titulo_fim)
-  AND (:produto_ini = '' OR zb4.zb4_produt >= :produto_ini)
-  AND (:produto_fim = '' OR zb4.zb4_produt <= :produto_fim)
+  AND (:titulo_ini IS NULL OR :titulo_ini = '' OR zb4.zb4_num >= :titulo_ini)
+  AND (:titulo_fim IS NULL OR :titulo_fim = '' OR zb4.zb4_num <= :titulo_fim)
+  AND (:produto_ini IS NULL OR :produto_ini = '' OR zb4.zb4_produt >= :produto_ini)
+  AND (:produto_fim IS NULL OR :produto_fim = '' OR zb4.zb4_produt <= :produto_fim)
 ORDER BY zb4.zb4_filial, zb4.zb4_num, zb4.zb4_parcel, zb4.zb4_tipo, zb4.zb4_produt
 """
 

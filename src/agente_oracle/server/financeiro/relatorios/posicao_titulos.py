@@ -1,58 +1,54 @@
 """RELATÓRIO: Posição dos Títulos a Receber (FINR130)
 
 Tradução do ADVPL (`FINR130.PRW`, ~3.500 linhas) — o relatório real do
-Protheus é, de longe, o mais complexo que já traduzimos. Ele cobre: ~40
-parâmetros (MV_PAR01..43), 10 ordens de exibição/quebra diferentes,
-Gestão Corporativa (multi-empresa), templates de desconto "GEM", conversão
-de moeda estrangeira com taxa histórica, retenção de IR/PIS/COFINS/CSLL na
-baixa e compensação entre filiais. Isso tudo ficou de fora aqui porque:
-(a) o Grupo Conceito opera com uma única empresa/filial (0101), então
-Gestão Corporativa não se aplica; (b) GEM, multi-moeda e a retenção de
-IR/PIS/COFINS/CSLL dependem de configuração (SX6) e módulos que não temos
-como validar nesse banco de teste.
+Protheus é, de longe, o mais complexo que já traduzimos. Gestão Corporativa,
+GEM, multi-moeda e retenção de IR/PIS/COFINS/CSLL na baixa ficaram de fora
+(dependem de parametrização/módulos que não dá pra confirmar).
 
-O que TEM fidelidade real com o ADVPL original:
-- Todos os filtros em faixa (cliente, prefixo, título, banco, vencimento,
-  natureza, emissão, loja) + filial multi-select.
-- Saldo do título: atual (E1_SALDO+E1_SDACRES-E1_SDDECRE) OU **retroativo**,
-  reconstruído de verdade somando as baixas reais em SE5010 até a data-base
-  (equivalente ao MV_PAR20/SaldoTit() do original).
-- Split vencido/a vencer com base em E1_VENCTO/E1_VENCREA vs a data-base.
-- **Juros e multa reais**, calculados a partir dos campos que já existem em
-  SE1010 (E1_PORCJUR = juros ao mês, E1_VALJUR = juros fixo por dia,
-  E1_MULTA = multa percentual) — não são valores inventados.
-- **Abatimento**: títulos-filho (E1_TITPAI apontando pro título-pai) com
-  saldo em aberto são deduzidos do saldo do pai. O banco de teste não tem
-  nenhum título do tipo abatimento hoje, então esse valor sempre dá zero
-  aqui, mas a lógica está pronta pra quando existir.
-- **Reconstrução de títulos excluídos (FJU)**: quando `considerar_excluidos`
-  está ligado, títulos com D_E_L_E_T_='*' que tenham um registro em FJU
-  cuja janela (FJU_EMIS <= data-base <= FJU_DTEXCL, FJU_CART='R') ainda
-  esteja "válida" voltam a aparecer no relatório — igual ao MV_PAR43
-  original (que a própria fonte ADVPL já comentava como removido da v12,
-  então pode nem estar ativo na produção real — vale confirmar).
-- **Gate de Valores Acessórios (VA)**: verificamos se o título tem vínculo
-  em FK7/FKD (`tem_valor_acessorio`), igual ao `ExisteFKD()` original. O
-  VALOR do VA em si (`FValAcess()`) é calculado por uma função externa que
-  não está nesse arquivo — não temos como saber a fórmula real, então
-  `valor_acessorio` fica sempre 0 aqui. Preferimos deixar isso visivelmente
-  zerado a inventar uma fórmula que pareceria fiel mas estaria errada.
+Migrado do Oracle transacional do Protheus (SE1010/SE5010) para o STAGE
+(SCIENCE_PROD, ETL/BI) — `STAGE.CONTARECEBER` no lugar de `SE1010`,
+`STAGE.MOVIMENTACAOFINANCEIRA` no lugar de `SE5010`. Ver
+`db/views/financeiro_science.sql`/README ("Views curadas do Financeiro")
+pro modelo geral de PESSOA/SOURCETABLE.
 
-Atenção: só roda com DB_BACKEND=postgres (cast ::date). Datas em SE1010/
-SE5010 nesse banco de teste são VARCHAR (formato "YYYYMMDD"), comparadas
-como texto quando possível (mesma ordenação) e com ::date só onde precisa
-de aritmética de data real (dias de atraso, soma de baixas até uma data).
+O que ficou de fora nesta migração (não tinha equivalente confirmado no
+STAGE):
+- **Filtro "Banco" e "Loja"** — `STAGE.CONTARECEBER` não tem coluna de
+  banco portador (equivalente a `E1_PORTADO`) nem loja separada do código
+  da pessoa (mesma limitação estrutural documentada em `cadastros.py`).
+- **Juros/multa calculados por taxa** — a versão anterior calculava juros e
+  multa em tempo real a partir de `E1_PORCJUR`/`E1_VALJUR`/`E1_MULTA` (taxas
+  configuradas no título). `STAGE.CONTARECEBER` só tem `VALORJUROS`/
+  `VALORMULTA` como valores já realizados (tipicamente 0 num título ainda
+  aberto) — expostos como estão, sem recalcular, porque não temos mais os
+  campos de taxa pra fazer a conta.
+- **Abatimento** e **reconstrução de títulos excluídos** (`FJU010`) — mesma
+  limitação já documentada em `relacao_baixas.py`/`retencao_impostos.py`:
+  sem coluna de título-pai nem tabela equivalente a `FJU010` no STAGE.
+  `abatimento` fica sempre 0; a reconstrução de excluídos foi removida (o
+  filtro `considerar_excluidos` não existe mais).
+- **Valor Acessório (VA)** — mesma limitação de `relacao_baixas.py`
+  (`FK1`/`FK2`/`FK6`, sem equivalente): `tem_valor_acessorio` e
+  `valor_acessorio` ficam sempre 0/falso.
 
-Duas particularidades do dado de teste (não da lógica traduzida):
-- O saldo retroativo tem um GREATEST(0, ...) porque alguns SE5010 de baixa
-  seedados bem no início da conversa têm E5_VALOR maior que o E1_VALOR do
-  título (ex: título 5003) — sem isso o saldo reconstruído dava negativo.
-- FK7/FKD/FK1 já existiam no banco com 20 registros de exemplo, mas o
-  FK7_CHAVE deles é um placeholder genérico ("CHAVE-1", "CHAVE-2"...), não
-  a chave real ("SE1"+filial+prefixo+num+parcela+tipo+cliente+loja,
-  pipe-separado a partir do prefixo) que o ADVPL original monta. Por isso o
-  gate `tem_valor_acessorio` não casa com esse seed antigo de 20 registros
-  — só com o vínculo real que criamos pro título 5001 (IDDOC "VA000001").
+O que TEM fidelidade real:
+- Filtros em faixa (cliente, prefixo, título, natureza, vencimento,
+  emissão) + filial multi-select.
+- Saldo do título: atual (`CONTARECEBER.SALDO`, já calculado pelo ETL) OU
+  **retroativo**, reconstruído somando as baixas reais em
+  `MOVIMENTACAOFINANCEIRA` até a data-base — pré-agregado numa CTE (`JOIN`
+  em vez de subconsulta correlacionada por linha) porque a versão
+  correlacionada, sem filtro de cliente, chegou a estourar 2 minutos contra
+  o volume real do STAGE (36 mil títulos × 155 mil movimentações); a versão
+  agregada roda em ~9s pro conjunto inteiro, sem filtro nenhum.
+- Split vencido/a vencer com base em `DATAVENCIMENTO`/`DATAVENCIMENTOREAL`
+  vs a data-base.
+
+Datas em `CONTARECEBER`/`MOVIMENTACAOFINANCEIRA` já são `TIMESTAMP` de
+verdade no STAGE (não precisa de `TO_DATE`/YYYYMMDD).
+
+Filtros opcionais usam `:bind IS NULL OR :bind = ''` (não `:bind = ''`
+puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`.
 """
 
 from datetime import date
@@ -69,135 +65,95 @@ from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _ORDENS = {
-    "cliente": "cliente_codigo, cliente_loja",
-    "numero": "e1_num, e1_prefixo, e1_parcela",
-    "vencimento": "e1_vencrea",
-    "natureza": "e1_naturez",
-    "banco": "e1_portado",
+    "cliente": "t.cliente_codigo",
+    "numero": "t.numero, t.prefixo, t.parcela",
+    "vencimento": "t.data_vencimento_real",
+    "natureza": "t.codigonatureza",
 }
 
 _QUERY = """
 -- =====================================================================
--- RELATORIO: Posicao dos Titulos a Receber (FINR130) — versao simplificada
--- (sem Gestao Corporativa/GEM/multi-moeda/retencao de impostos na baixa)
+-- RELATORIO: Posicao dos Titulos a Receber (FINR130) — versao STAGE
+-- (abatimento/valor acessorio/titulos excluidos sem fonte confirmada)
 -- =====================================================================
 WITH titulos AS (
     SELECT
-        se1.e1_filial, se1.e1_prefixo, se1.e1_num, se1.e1_parcela, se1.e1_tipo,
-        se1.e1_cliente AS cliente_codigo, se1.e1_loja AS cliente_loja,
-        se1.e1_naturez, se1.e1_emissao, se1.e1_vencto, se1.e1_vencrea,
-        se1.e1_portado, se1.e1_situaca, se1.e1_numbco, se1.e1_hist,
-        se1.e1_valor, se1.e1_saldo, se1.e1_sdacres, se1.e1_sddecre,
-        se1.e1_porcjur, se1.e1_valjur, se1.e1_multa, se1.e1_titpai,
-        se1.r_e_c_n_o_,
-        FALSE AS titulo_reconstituido
-    FROM se1010 se1
-    WHERE COALESCE(se1.d_e_l_e_t_, ' ') = ' '
-      AND TRIM(se1.e1_filial) IN __FILIAL_IN__
-      AND (:cliente_ini = '' OR se1.e1_cliente >= :cliente_ini)
-      AND (:cliente_fim = '' OR se1.e1_cliente <= :cliente_fim)
-      AND (:prefixo_ini = '' OR se1.e1_prefixo >= :prefixo_ini)
-      AND (:prefixo_fim = '' OR se1.e1_prefixo <= :prefixo_fim)
-      AND (:titulo_ini = '' OR se1.e1_num >= :titulo_ini)
-      AND (:titulo_fim = '' OR se1.e1_num <= :titulo_fim)
-      AND (:banco_ini = '' OR se1.e1_portado >= :banco_ini)
-      AND (:banco_fim = '' OR se1.e1_portado <= :banco_fim)
-      AND (:natureza_ini = '' OR se1.e1_naturez >= :natureza_ini)
-      AND (:natureza_fim = '' OR se1.e1_naturez <= :natureza_fim)
-      AND (:loja_ini = '' OR se1.e1_loja >= :loja_ini)
-      AND (:loja_fim = '' OR se1.e1_loja <= :loja_fim)
+        TRIM(cr.codigoempresa) AS filial, TRIM(cr.prefixo) AS prefixo, TRIM(cr.numero) AS numero,
+        TRIM(cr.parcela) AS parcela, TRIM(cr.tipo) AS tipo, TRIM(cr.codigopessoa) AS cliente_codigo,
+        TRIM(cr.codigonatureza) AS codigonatureza,
+        CAST(cr.dataemissao AS DATE) AS data_emissao,
+        CAST(cr.datavencimento AS DATE) AS data_vencimento,
+        CAST(cr.datavencimentoreal AS DATE) AS data_vencimento_real,
+        cr.valortotal AS valor_original,
+        cr.saldo,
+        cr.valormulta, cr.valorjuros,
+        cr.historico
+    FROM STAGE.contareceber cr
+    WHERE cr.excluido = 0
+      AND TRIM(cr.codigoempresa) IN __FILIAL_IN__
+      AND (:cliente_ini IS NULL OR :cliente_ini = '' OR cr.codigopessoa >= :cliente_ini)
+      AND (:cliente_fim IS NULL OR :cliente_fim = '' OR cr.codigopessoa <= :cliente_fim)
+      AND (:prefixo_ini IS NULL OR :prefixo_ini = '' OR TRIM(cr.prefixo) >= :prefixo_ini)
+      AND (:prefixo_fim IS NULL OR :prefixo_fim = '' OR TRIM(cr.prefixo) <= :prefixo_fim)
+      AND (:titulo_ini IS NULL OR :titulo_ini = '' OR TRIM(cr.numero) >= :titulo_ini)
+      AND (:titulo_fim IS NULL OR :titulo_fim = '' OR TRIM(cr.numero) <= :titulo_fim)
+      AND (:natureza_ini IS NULL OR :natureza_ini = '' OR cr.codigonatureza >= :natureza_ini)
+      AND (:natureza_fim IS NULL OR :natureza_fim = '' OR cr.codigonatureza <= :natureza_fim)
       AND (
-            :vencimento_ini = '' OR :vencimento_fim = ''
-         OR se1.e1_vencrea::date BETWEEN NULLIF(:vencimento_ini, '')::date AND NULLIF(:vencimento_fim, '')::date
+            :vencimento_ini IS NULL OR :vencimento_ini = '' OR :vencimento_fim IS NULL OR :vencimento_fim = ''
+         OR cr.datavencimentoreal BETWEEN TO_DATE(NULLIF(:vencimento_ini, ''), 'YYYYMMDD') AND TO_DATE(NULLIF(:vencimento_fim, ''), 'YYYYMMDD')
       )
       AND (
-            :emissao_ini = '' OR :emissao_fim = ''
-         OR se1.e1_emissao::date BETWEEN NULLIF(:emissao_ini, '')::date AND NULLIF(:emissao_fim, '')::date
+            :emissao_ini IS NULL OR :emissao_ini = '' OR :emissao_fim IS NULL OR :emissao_fim = ''
+         OR cr.dataemissao BETWEEN TO_DATE(NULLIF(:emissao_ini, ''), 'YYYYMMDD') AND TO_DATE(NULLIF(:emissao_fim, ''), 'YYYYMMDD')
       )
-
-    UNION ALL
-
-    SELECT
-        se1.e1_filial, se1.e1_prefixo, se1.e1_num, se1.e1_parcela, se1.e1_tipo,
-        se1.e1_cliente AS cliente_codigo, se1.e1_loja AS cliente_loja,
-        se1.e1_naturez, se1.e1_emissao, se1.e1_vencto, se1.e1_vencrea,
-        se1.e1_portado, se1.e1_situaca, se1.e1_numbco, se1.e1_hist,
-        se1.e1_valor, se1.e1_saldo, se1.e1_sdacres, se1.e1_sddecre,
-        se1.e1_porcjur, se1.e1_valjur, se1.e1_multa, se1.e1_titpai,
-        se1.r_e_c_n_o_,
-        TRUE AS titulo_reconstituido
-    FROM se1010 se1
-    INNER JOIN fju ON fju.fju_recori = se1.r_e_c_n_o_
-                  AND fju.fju_cart = 'R'
-                  AND COALESCE(fju.d_e_l_e_t_, ' ') = ' '
-                  AND fju.fju_emis <= :data_base
-                  AND fju.fju_dtexcl >= :data_base
-    WHERE se1.d_e_l_e_t_ = '*'
-      AND :considerar_excluidos = '1'
-      AND TRIM(se1.e1_filial) IN __FILIAL_IN__
-      AND (:cliente_ini = '' OR se1.e1_cliente >= :cliente_ini)
-      AND (:cliente_fim = '' OR se1.e1_cliente <= :cliente_fim)
-      AND (:prefixo_ini = '' OR se1.e1_prefixo >= :prefixo_ini)
-      AND (:prefixo_fim = '' OR se1.e1_prefixo <= :prefixo_fim)
-      AND (:titulo_ini = '' OR se1.e1_num >= :titulo_ini)
-      AND (:titulo_fim = '' OR se1.e1_num <= :titulo_fim)
+),
+baixado_ate_data_base AS (
+    -- Pré-agregado (JOIN) em vez de subconsulta correlacionada por título —
+    -- ver docstring do módulo (correlacionada estourava 2 min sem filtro).
+    SELECT TRIM(mf.filialorigem) AS filial, TRIM(mf.prefixo) AS prefixo, TRIM(mf.numero) AS numero,
+           TRIM(mf.parcela) AS parcela, TRIM(mf.tipo) AS tipo, TRIM(mf.codigopessoa) AS cliente_codigo,
+           SUM(mf.valor) AS valor_baixado
+    FROM STAGE.movimentacaofinanceira mf
+    WHERE mf.excluido = 0 AND mf.tipomovimentacao = 'RECEBER'
+      AND mf.datamovimentacao <= TO_DATE(:data_base, 'YYYYMMDD')
+    GROUP BY mf.filialorigem, mf.prefixo, mf.numero, mf.parcela, mf.tipo, mf.codigopessoa
 )
 SELECT
-    t.e1_filial,
-    t.e1_prefixo,
-    t.e1_num,
-    t.e1_parcela,
-    t.e1_tipo,
+    t.filial,
+    t.prefixo,
+    t.numero,
+    t.parcela,
+    t.tipo,
     t.cliente_codigo,
-    sa1.a1_nome AS nome_cliente,
-    t.e1_naturez,
-    sed.ed_descric AS nome_natureza,
-    t.e1_emissao,
-    t.e1_vencto,
-    t.e1_vencrea,
-    t.e1_portado,
-    sa6.a6_nreduz AS nome_banco,
-    t.e1_valor,
+    p.nome AS nome_cliente,
+    t.codigonatureza,
+    n.descricao AS nome_natureza,
+    t.data_emissao,
+    t.data_vencimento,
+    t.data_vencimento_real,
+    t.valor_original,
     (
         CASE WHEN :saldo_retroativo = '1' THEN
-            GREATEST(0, t.e1_valor - COALESCE((
-                SELECT SUM(se5.e5_valor)
-                FROM se5010 se5
-                WHERE se5.e5_filial = t.e1_filial AND se5.e5_prefixo = t.e1_prefixo
-                  AND se5.e5_numero = t.e1_num AND se5.e5_parcela = t.e1_parcela
-                  AND se5.e5_tipo = t.e1_tipo AND se5.e5_clifor = t.cliente_codigo
-                  AND se5.e5_loja = t.cliente_loja
-                  AND COALESCE(se5.d_e_l_e_t_, ' ') = ' '
-                  AND se5.e5_data::date <= :data_base::date
-            ), 0))
-        ELSE t.e1_saldo + COALESCE(t.e1_sdacres, 0) - COALESCE(t.e1_sddecre, 0)
+            GREATEST(0, t.valor_original - COALESCE(bx.valor_baixado, 0))
+        ELSE t.saldo
         END
     ) AS saldo,
-    COALESCE((
-        SELECT SUM(ab.e1_saldo)
-        FROM se1010 ab
-        WHERE COALESCE(ab.d_e_l_e_t_, ' ') = ' '
-          AND TRIM(ab.e1_tipo) = ANY (string_to_array(:tipos_abatimento, '|'))
-          AND ab.e1_titpai = TRIM(t.e1_prefixo) || TRIM(t.e1_num) || TRIM(t.e1_parcela) || TRIM(t.e1_tipo) || TRIM(t.cliente_codigo) || TRIM(t.cliente_loja)
-    ), 0) AS abatimento,
-    (:data_base::date - t.e1_vencto::date) AS dias_atraso,
-    (:data_base::date > t.e1_vencrea::date) AS vencido,
-    t.e1_porcjur,
-    t.e1_valjur,
-    t.e1_multa,
-    t.e1_hist,
-    t.titulo_reconstituido,
-    EXISTS (
-        SELECT 1 FROM fk7
-        WHERE fk7.fk7_filial = t.e1_filial
-          AND COALESCE(fk7.d_e_l_e_t_, ' ') = ' '
-          AND fk7.fk7_chave = 'SE1' || TRIM(t.e1_filial) || '|' || TRIM(t.e1_prefixo) || '|' || TRIM(t.e1_num) || '|' || TRIM(t.e1_parcela) || '|' || TRIM(t.e1_tipo) || '|' || TRIM(t.cliente_codigo) || '|' || TRIM(t.cliente_loja)
-    ) AS tem_valor_acessorio,
+    0 AS abatimento,
+    (TO_DATE(:data_base, 'YYYYMMDD') - t.data_vencimento) AS dias_atraso,
+    (CASE WHEN TO_DATE(:data_base, 'YYYYMMDD') > t.data_vencimento_real THEN 1 ELSE 0 END) AS vencido,
+    t.valormulta,
+    t.valorjuros,
+    t.historico,
+    0 AS titulo_reconstituido,
+    0 AS tem_valor_acessorio,
     0 AS valor_acessorio
 FROM titulos t
-LEFT JOIN sa1010 sa1 ON sa1.a1_cod = t.cliente_codigo AND sa1.a1_loja = t.cliente_loja
-LEFT JOIN sed010 sed ON sed.ed_codigo = t.e1_naturez
-LEFT JOIN sa6010 sa6 ON sa6.a6_cod = t.e1_portado
+LEFT JOIN baixado_ate_data_base bx
+    ON bx.filial = t.filial AND bx.prefixo = t.prefixo AND bx.numero = t.numero
+   AND bx.parcela = t.parcela AND bx.tipo = t.tipo AND bx.cliente_codigo = t.cliente_codigo
+LEFT JOIN STAGE.pessoa p ON p.codigo = t.cliente_codigo AND p.sourcetable = 'SA1010'
+LEFT JOIN STAGE.natureza n ON n.codigo = t.codigonatureza
 ORDER BY __ORDEM__
 """
 
@@ -208,23 +164,15 @@ _CAMPOS_OPCIONAIS = (
     "prefixo_fim",
     "titulo_ini",
     "titulo_fim",
-    "banco_ini",
-    "banco_fim",
     "natureza_ini",
     "natureza_fim",
-    "loja_ini",
-    "loja_fim",
     "vencimento_ini",
     "vencimento_fim",
     "emissao_ini",
     "emissao_fim",
     "saldo_retroativo",
-    "considerar_excluidos",
-    "abatimentos",
     "ordenar_por",
 )
-
-_TIPOS_ABATIMENTO_PADRAO = "AB|FA"
 
 
 def _buscar_titulos(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
@@ -232,9 +180,6 @@ def _buscar_titulos(filiais: list[str], opcionais: dict[str, str]) -> tuple[list
 
     ordenar_por = opcionais.pop("ordenar_por", "") or "cliente"
     ordem_sql = _ORDENS.get(ordenar_por, _ORDENS["cliente"])
-
-    abatimentos = opcionais.pop("abatimentos", "") or "1"
-    opcionais["tipos_abatimento"] = "" if abatimentos == "3" else _TIPOS_ABATIMENTO_PADRAO
 
     opcionais.setdefault("data_base", date.today().strftime("%Y%m%d"))
 

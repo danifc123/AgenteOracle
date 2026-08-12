@@ -1,9 +1,13 @@
 """Fixtures dos testes de integração — exigem o Postgres de teste local
-(`DB_BACKEND=postgres`, configurado no `.env`) rodando de verdade.
+(configs `POSTGRES_*` do `.env`) rodando de verdade. Independente de
+`DB_BACKEND`: login/token de usuário (`token_teste`/`usuario_teste` abaixo)
+sempre passam por `get_postgres_connection()` (ver `db/connection.py`), que
+nunca depende desse valor — só a query de dado de negócio/RAG depende, e é
+isso que `test_relatorios_oracle_hml.py` verifica à parte.
 
 Toda a pasta `tests/integration/` pula automaticamente (em vez de falhar) se
-esse banco não estiver acessível, para o resto da suíte continuar utilizável
-sem depender de infraestrutura externa.
+o Postgres de teste não estiver acessível, para o resto da suíte continuar
+utilizável sem depender de infraestrutura externa.
 """
 
 import uuid
@@ -12,11 +16,10 @@ import psycopg
 import pytest
 
 from agente_oracle.config import settings
+from agente_oracle.db.connection import DatabaseError, get_connection
 
 
 def _postgres_disponivel() -> bool:
-    if settings.db_backend != "postgres":
-        return False
     try:
         with psycopg.connect(
             host=settings.postgres_host,
@@ -28,6 +31,22 @@ def _postgres_disponivel() -> bool:
         ):
             return True
     except psycopg.Error:
+        return False
+
+
+def views_curadas_disponiveis() -> bool:
+    """As views curadas (`vw_titulos_pagar` etc.) existem no banco de
+    negócio/RAG configurado em `DB_BACKEND`? No Postgres de teste elas já
+    existem (criadas manualmente); no Oracle, dependem do DBA rodar
+    `db/views/financeiro_science.sql` — ver `test_relatorios_oracle_hml.py`, que
+    testa os relatórios fixos (raw tables) à parte disso."""
+    try:
+        with get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM vw_titulos_pagar")
+            cursor.fetchone()
+        return True
+    except DatabaseError:
         return False
 
 

@@ -18,8 +18,10 @@ Oracle DB  ←→  Backend Python (MCP + REST)  ←→  Agente de IA (Ollama loc
 
 - **Transporte do agente:** [MCP](https://modelcontextprotocol.io/) via Streamable HTTP — servidor central expõe *tools* que qualquer cliente MCP (o chat deste projeto, ou outro agente) pode descobrir e chamar.
 - **Transporte do frontend:** rotas REST comuns (`/api/...`) no mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usadas para telas que não precisam de IA.
-- **Banco:** Oracle (produção) ou Postgres (teste local), configurável via `DB_BACKEND` — veja `db/connection.py`.
-- **Histórico de relatórios:** guardado numa tabela (`relatorios_historico`) no mesmo banco relacional configurado em `DB_BACKEND` — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, usado para não repetir a mesma consulta. Relatório não fixado expira em 15h — veja `tools/financeiro/historico.py`.
+- **Banco — dois bancos, dois propósitos fixos** (veja `db/connection.py`):
+  - **Postgres**: sempre este banco (configs `POSTGRES_*`), independente de `DB_BACKEND` — guarda o estado do próprio sistema: usuários (`usuarios`), trilha de auditoria de login/administração (`eventos_seguranca`), histórico de relatórios gerados (`relatorios_historico`), layouts salvos (`relatorio_layouts`), cores de categoria (`categoria_cores`) e histórico de achados de auditoria (`auditoria_historico`).
+  - **Oracle (ou Postgres local de teste)**: dado de negócio/RAG financeiro — as *views* do Protheus consultadas por `executar_consulta_financeira` e pelas rotas fixas de relatório. Controlado por `DB_BACKEND`: `oracle` em produção; `postgres` localmente (contra *views* de teste), já que o Oracle real de produção não é acessível fora do ambiente de produção.
+- **Histórico de relatórios:** guardado numa tabela (`relatorios_historico`) sempre no Postgres — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, usado para não repetir a mesma consulta. Relatório não fixado expira em 15h — veja `tools/financeiro/historico.py`.
 - **LLM:** [Ollama](https://ollama.com/) rodando local (sem custo de API paga).
 - **Auth Oracle:** usuário de serviço único (autenticação no banco, diferente do login de usuário do sistema — ver [Autenticação, papéis e segurança](#autenticação-papéis-e-segurança)), banco de teste/desenvolvimento.
 
@@ -57,7 +59,7 @@ src/agente_oracle/
 │       ├── financeiro.py          # orquestração do chat do módulo Financeiro
 │       └── projecoes.py           # regressão linear + análise textual da IA, usado pelas telas de Previsão
 ├── db/
-│   ├── connection.py           # pool de conexões (Oracle ou Postgres, conforme DB_BACKEND)
+│   ├── connection.py           # duas conexões fixas: Postgres sempre (estado do sistema) + negócio/RAG (Oracle ou Postgres, conforme DB_BACKEND)
 │   └── views/                   # definição das views curadas expostas ao agente
 ├── server/
 │   ├── app.py                   # monta o app Starlette (CORS + headers de segurança), entrypoint (agente-oracle)
@@ -129,7 +131,7 @@ futuro conhecido, não uma lacuna acidental.
    pip install -e ".[dev]"
    ```
 
-3. Copie o arquivo de variáveis de ambiente e preencha com as credenciais do Oracle (ou do Postgres local, se `DB_BACKEND=postgres`):
+3. Copie o arquivo de variáveis de ambiente e preencha as credenciais dos dois bancos — `POSTGRES_*` (sempre usado, estado do sistema) e `ORACLE_*`/`DB_BACKEND` (dado de negócio/RAG financeiro; `DB_BACKEND=postgres` localmente, contra *views* de teste, se não tiver acesso ao Oracle real):
 
    ```powershell
    copy .env.example .env
@@ -186,10 +188,10 @@ Login próprio do sistema (JWT, sem depender de IdP externo) — ver
 
 - **Papéis**: `tools/auth/papeis.py` é a fonte única de verdade de quem
   acessa o quê (`desenvolvedor`, `financeiro_admin`, `financeiro`,
-  `estoque_admin`, `estoque`) — nunca `if papel == "x"` espalhado pelo
-  código. `desenvolvedor` tem `acesso_total` (todo módulo, presente ou
-  futuro) e também funciona como "time de TI": só quem tem esse papel pode
-  desbloquear uma conta ou ver a trilha de eventos de segurança.
+  `estoque_admin`, `estoque`, `rh_admin`, `rh`) — nunca `if papel == "x"`
+  espalhado pelo código. `desenvolvedor` tem `acesso_total` (todo módulo,
+  presente ou futuro) e também funciona como "time de TI": só quem tem esse
+  papel pode desbloquear uma conta ou ver a trilha de eventos de segurança.
 - **Bloqueio de conta**: 3 tentativas de login erradas seguidas bloqueiam a
   conta até um `desenvolvedor` desbloquear pela tela Usuários — separado do
   rate limit (5 tentativas/3min, em memória, se autolimpa sozinho) que
@@ -254,6 +256,38 @@ SQL passa por validação antes de rodar (`tools/financeiro/consulta_livre.py`):
 - Só permite as *views* financeiras curadas listadas em `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) — nunca as tabelas reais do TOTVS. Essa lista é a fonte única tanto do texto de schema que vai no prompt da IA quanto da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`), pra nunca ficar um SQL que o prompt promete mas a validação rejeita (ou o contrário). Enquanto uma view não estiver na lista, nenhuma consulta que a use é aceita.
 - Bloqueia múltiplas instruções encadeadas (`;`).
 - Aplica limite automático de linhas (`FETCH FIRST 200 ROWS ONLY` no Oracle, ou o `LIMIT` que a própria IA já tiver colocado quando o banco é Postgres) e timeout de 10s na conexão.
+
+## Views curadas do Financeiro (Oracle) — modelo de "papel" em STAGE.PESSOA
+
+As views que alimentam `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) são definidas
+em `db/views/*.sql` — hoje `financeiro_science.sql`, em cima do banco de negócio/RAG
+real (`SCIENCE_PROD`, schema `STAGE`, o ETL/BI da empresa; `financeiro.sql` é a versão
+anterior, em cima do Oracle transacional do Protheus, mantida só de referência).
+Ninguém roda `CREATE VIEW` automaticamente — o SQL é escrito aqui e aplicado manualmente
+por quem tiver permissão (hoje, via DBA/SQL Developer), porque a política do projeto é
+nunca alterar/criar nada nesses bancos por conta própria (só leitura).
+
+**Por que `SA1010`/`SA2010`/`SA3010` aparecem espalhados nos `JOIN`s**: no `STAGE`,
+`PESSOA` é um cadastro único (nome, CNPJ/CPF, endereço) compartilhado por cliente,
+fornecedor e vendedor — só que o `CODIGO` dessa tabela **não é único sozinho**. A mesma
+pessoa pode aparecer mais de uma vez em `PESSOA` com o mesmo código, uma vez por
+"papel" — ex: um produtor que é cliente (compra insumo) E fornecedor (vende grão) da
+mesma empresa gera duas linhas com o mesmo `CODIGO`, uma vinda de `SA1010` (clientes no
+Protheus) e outra de `SA2010` (fornecedores). `PESSOA.SOURCETABLE` guarda de qual tabela
+Protheus aquela linha veio — por isso todo `JOIN` com `PESSOA` também filtra esse campo:
+
+```sql
+LEFT JOIN STAGE.pessoa p
+    ON p.codigo = cr.codigopessoa AND p.sourcetable = 'SA1010'  -- só o papel "cliente"
+```
+
+Sem esse filtro, o `JOIN` casa com as duas linhas e duplica o resultado (testado: sem o
+filtro, 9.873 clientes viravam 12.242 linhas — 24% de duplicação). Os três valores
+usados nas views atuais: `SA1010` = papel cliente, `SA2010` = papel fornecedor, `SA3010`
+= papel vendedor (só usado em `vw_faturamento.vendedor_nome`). Uma view nova que junte
+com `PESSOA` **sempre** precisa desse filtro de papel — esquecer é o tipo de bug que não
+aparece em teste com poucos dados, só quando alguém do mundo real acumula mais de um
+papel.
 
 ## Testes
 

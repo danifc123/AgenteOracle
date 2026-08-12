@@ -8,28 +8,49 @@
 
   @for (id of idsToastsVisiveis(); track id) {
     @if (notificacaoPorId(id); as notificacao) {
-      <div class="toast" [class.toast--nao-salvo]="!notificacao.salvo">
-        <span class="toast-icone" aria-hidden="true">{{ notificacao.salvo ? '✓' : '!' }}</span>
+      <div class="toast">
+        <span class="toast-icone" aria-hidden="true">✓</span>
         <div class="toast-texto">
           <p class="toast-titulo">Análise concluída</p>
-          @if (notificacao.salvo) {
-            <p class="toast-descricao">{{ notificacao.candidatoNome }} · {{ notificacao.vagaTitulo }}</p>
-          } @else {
-            <p class="toast-descricao">
-              {{ notificacao.candidatoNome }} — {{ notificacao.score }}% de compatibilidade, abaixo do
-              mínimo exigido. Candidato não cadastrado.
-            </p>
-          }
+          <p class="toast-descricao">{{ notificacao.candidatoNome }} entrou no pool de candidatos.</p>
         </div>
         <div class="toast-acoes">
-          @if (notificacao.salvo) {
-            <button type="button" class="toast-botao" (click)="verResultado(id)">Ver resultado</button>
-          }
+          <button type="button" class="toast-botao" (click)="verResultado(id)">Ver candidato</button>
           <button
             type="button"
             class="toast-fechar"
             (click)="descartar(id)"
             aria-label="Dispensar notificação"
+            title="Dispensar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    } @else if (erroPorId(id); as erro) {
+      <div class="toast toast--erro">
+        <span class="toast-icone" aria-hidden="true">!</span>
+        <div class="toast-texto">
+          <p class="toast-titulo">Não foi possível analisar</p>
+          <p class="toast-descricao">{{ erro.mensagem }}</p>
+        </div>
+        <div class="toast-acoes">
+          <button
+            type="button"
+            class="toast-fechar"
+            (click)="descartarErro(id)"
+            aria-label="Dispensar aviso"
             title="Dispensar"
           >
             <svg

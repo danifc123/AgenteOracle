@@ -1,5 +1,5 @@
 import { Component, effect, inject, signal } from '@angular/core';
-import { AnaliseCurriculo, NotificacaoAnalise } from '../../servicos/analise-curriculo';
+import { AnaliseCurriculo, ErroAnalise, NotificacaoAnalise } from '../../servicos/analise-curriculo';
 
 /** Duração que um toast fica visível antes de sumir sozinho — a notificação
  * em si continua existindo no serviço (não vista) até o usuário interagir,
@@ -39,11 +39,19 @@ export class NotificacaoAnaliseCurriculo {
         this.idsToastsVisiveis.update((atual) => [...atual, notificacao.id]);
         setTimeout(() => this.removerToast(notificacao.id), DURACAO_TOAST_MS);
       }
+      for (const erro of this.analise.erros()) {
+        if (erro.vista || this.idsJaMostrados.has(erro.id)) {
+          continue;
+        }
+        this.idsJaMostrados.add(erro.id);
+        this.idsToastsVisiveis.update((atual) => [...atual, erro.id]);
+        setTimeout(() => this.removerToast(erro.id), DURACAO_TOAST_MS);
+      }
     });
   }
 
-  // removerToast é usada por descartar E verResultado — compartilhada,
-  // fica antes das duas.
+  // removerToast é usada por descartar, descartarErro E verResultado —
+  // compartilhada, fica antes das três.
   private removerToast(notificacaoId: string): void {
     this.idsToastsVisiveis.update((atual) => atual.filter((item) => item !== notificacaoId));
   }
@@ -51,6 +59,15 @@ export class NotificacaoAnaliseCurriculo {
   protected descartar(notificacaoId: string): void {
     this.analise.marcarComoVista(notificacaoId);
     this.removerToast(notificacaoId);
+  }
+
+  protected descartarErro(erroId: string): void {
+    this.analise.marcarErroComoVisto(erroId);
+    this.removerToast(erroId);
+  }
+
+  protected erroPorId(erroId: string): ErroAnalise | null {
+    return this.analise.erros().find((item) => item.id === erroId) ?? null;
   }
 
   protected notificacaoPorId(notificacaoId: string): NotificacaoAnalise | null {

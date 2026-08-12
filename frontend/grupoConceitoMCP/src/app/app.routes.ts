@@ -10,8 +10,8 @@ import { EstoqueCriarRelatorio } from './pages/modulos/estoque/criar-relatorio/c
 import { EstoqueEspecificoGrupoConceito } from './pages/modulos/estoque/especifico-grupo-conceito/especifico-grupo-conceito';
 import { EstoqueChat } from './pages/modulos/estoque/chat/estoque-chat';
 import { Chat } from './pages/modulos/financeiro/chat/chat';
-import { CadastrarVagas } from './pages/modulos/rh/cadastrar-vagas/cadastrar-vagas';
-import { Rh } from './pages/modulos/rh/rh';
+import { AnaliseCandidato } from './pages/modulos/rh/analise-candidato/analise-candidato';
+import { SelecionarCandidato } from './pages/modulos/rh/selecionar-candidato/selecionar-candidato';
 import { Login } from './pages/login/login';
 import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
 import { JuntarExcel } from './pages/juntar-excel/juntar-excel';
@@ -37,8 +37,9 @@ export const routes: Routes = [
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },
       { path: 'estoque/chat', component: EstoqueChat },
       { path: 'estoque', component: Estoque },
-      { path: 'rh', component: Rh },
-      { path: 'rh/cadastrar-vagas', component: CadastrarVagas },
+      { path: 'rh', redirectTo: 'rh/analise-candidato' },
+      { path: 'rh/analise-candidato', component: AnaliseCandidato },
+      { path: 'rh/selecionar-candidato', component: SelecionarCandidato },
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },

@@ -1,0 +1,103 @@
+:host {
+  display: block;
+}
+
+.seletor-wrapper {
+  position: relative;
+}
+
+.seletor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 200px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-primary-light);
+  }
+
+  &--arrastando {
+    border-style: solid;
+    border-color: var(--color-primary);
+    background: #d9f2d9;
+  }
+
+  &--preenchido {
+    border-style: solid;
+    border-color: var(--color-primary-light);
+    background: #d9f2d9;
+    color: #1b4332;
+  }
+}
+
+.icone {
+  opacity: 0.75;
+}
+
+.titulo-seletor {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.instrucao {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.nome-arquivo {
+  margin: 4px 0 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tamanho-arquivo {
+  margin: 0;
+  font-size: 12.5px;
+  opacity: 0.75;
+}
+
+.erro-seletor {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #9a2f2f;
+  text-align: center;
+}
+
+.remover {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.12);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.22);
+  }
+}

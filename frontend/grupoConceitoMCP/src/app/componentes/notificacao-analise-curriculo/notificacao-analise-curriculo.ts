@@ -42,6 +42,12 @@ export class NotificacaoAnaliseCurriculo {
     });
   }
 
+  // removerToast é usada por descartar E verResultado — compartilhada,
+  // fica antes das duas.
+  private removerToast(notificacaoId: string): void {
+    this.idsToastsVisiveis.update((atual) => atual.filter((item) => item !== notificacaoId));
+  }
+
   protected descartar(notificacaoId: string): void {
     this.analise.marcarComoVista(notificacaoId);
     this.removerToast(notificacaoId);
@@ -59,9 +65,5 @@ export class NotificacaoAnaliseCurriculo {
   protected verResultado(notificacaoId: string): void {
     this.removerToast(notificacaoId);
     this.analise.abrirResultado(notificacaoId);
-  }
-
-  private removerToast(notificacaoId: string): void {
-    this.idsToastsVisiveis.update((atual) => atual.filter((item) => item !== notificacaoId));
   }
 }

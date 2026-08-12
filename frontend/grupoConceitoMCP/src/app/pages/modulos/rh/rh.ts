@@ -130,17 +130,12 @@ export class Rh {
     this.analiseCurriculo.carregarCandidatos(Number(vagaId));
   }
 
-  protected definirArquivoAnalise(arquivo: File | null): void {
-    this.arquivoAnalise.set(arquivo);
-  }
-
   protected criteriosCandidato(candidato: Candidato) {
     return candidato.criterios;
   }
 
-  private diasDesde(dataIso: string): number {
-    const diffMs = Date.now() - new Date(dataIso).getTime();
-    return Math.max(0, Math.round(diffMs / 86_400_000));
+  protected definirArquivoAnalise(arquivo: File | null): void {
+    this.arquivoAnalise.set(arquivo);
   }
 
   protected estiloScore(score: number): Record<string, string> {
@@ -173,6 +168,14 @@ export class Rh {
   protected rotuloAnalisadoHa(criadoEm: string): string {
     const dias = this.diasDesde(criadoEm);
     return dias === 0 ? 'hoje' : dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
+  }
+
+  /** diasDesde só é usada por rotuloAnalisadoHa (fora o computed
+   * `tempoMedioPreenchimento`, que fica no topo da classe e não entra
+   * nessa reordenação), logo depois dela. */
+  private diasDesde(dataIso: string): number {
+    const diffMs = Date.now() - new Date(dataIso).getTime();
+    return Math.max(0, Math.round(diffMs / 86_400_000));
   }
 
   protected rotuloFit(score: number): string {

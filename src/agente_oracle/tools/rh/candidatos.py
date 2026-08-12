@@ -94,10 +94,9 @@ class SemVagaAtiva(Exception):
     """Levantada quando não há nenhuma vaga ativa cadastrada pra analisar o currículo contra ela."""
 
 
-def _carregar_json(valor):
-    return json.loads(valor) if isinstance(valor, str) else valor
-
-
+# _garantir_tabela e _linha_para_candidato são usadas por mais de uma função
+# pública (atualizar_status, criar_candidato, listar) — bloco compartilhado,
+# em ordem alfabética, antes das públicas que dependem delas.
 def _garantir_tabela(cursor) -> None:
     global _tabela_garantida
     if _tabela_garantida:
@@ -119,35 +118,6 @@ def _garantir_tabela(cursor) -> None:
         )
     """)
     _tabela_garantida = True
-
-
-def _gerar_nome(nomes_usados: set[str]) -> str:
-    disponiveis = [nome for nome in _POOL_NOMES_MOCK if nome not in nomes_usados]
-    if disponiveis:
-        return random.choice(disponiveis)
-    return f"Candidato {len(nomes_usados) + 1}"
-
-
-def _gerar_resultado_vaga(nome: str) -> dict:
-    score = round(35 + random.random() * 60)
-    nivel = nivel_fit(score)
-    criterios = [
-        {"nome": dimensao, "nota": max(15, min(99, round(score + (random.random() * 20 - 10))))}
-        for dimensao in DIMENSOES_DNA_AGRO
-    ]
-    return {
-        "score": score,
-        "criterios": criterios,
-        "resumo_ia": random.choice(_TEMPLATES_RESUMO_IA[nivel])(nome),
-        "pontos_fortes": []
-        if nivel == "baixo"
-        else ["Perfil extraído pela IA com aderência aos critérios avaliados da vaga"],
-        "pontos_atencao": (
-            []
-            if nivel == "alto"
-            else ["Análise gerada automaticamente pela IA — vale confirmar os pontos abaixo em entrevista"]
-        ),
-    }
 
 
 def _linha_para_candidato(linha: tuple) -> dict:
@@ -182,12 +152,9 @@ def _linha_para_candidato(linha: tuple) -> dict:
     }
 
 
-def nivel_fit(score: int) -> str:
-    if score >= 75:
-        return "alto"
-    if score >= 50:
-        return "medio"
-    return "baixo"
+# _carregar_json só é usada por _linha_para_candidato, logo depois dela.
+def _carregar_json(valor):
+    return json.loads(valor) if isinstance(valor, str) else valor
 
 
 def atualizar_status(id_candidato: int, status: str) -> dict | None:
@@ -270,6 +237,37 @@ def criar_candidato(vaga_id: int, nome_arquivo: str) -> dict:
     return candidato
 
 
+# _gerar_nome e _gerar_resultado_vaga só são usadas por criar_candidato,
+# logo depois dela.
+def _gerar_nome(nomes_usados: set[str]) -> str:
+    disponiveis = [nome for nome in _POOL_NOMES_MOCK if nome not in nomes_usados]
+    if disponiveis:
+        return random.choice(disponiveis)
+    return f"Candidato {len(nomes_usados) + 1}"
+
+
+def _gerar_resultado_vaga(nome: str) -> dict:
+    score = round(35 + random.random() * 60)
+    nivel = nivel_fit(score)
+    criterios = [
+        {"nome": dimensao, "nota": max(15, min(99, round(score + (random.random() * 20 - 10))))}
+        for dimensao in DIMENSOES_DNA_AGRO
+    ]
+    return {
+        "score": score,
+        "criterios": criterios,
+        "resumo_ia": random.choice(_TEMPLATES_RESUMO_IA[nivel])(nome),
+        "pontos_fortes": []
+        if nivel == "baixo"
+        else ["Perfil extraído pela IA com aderência aos critérios avaliados da vaga"],
+        "pontos_atencao": (
+            []
+            if nivel == "alto"
+            else ["Análise gerada automaticamente pela IA — vale confirmar os pontos abaixo em entrevista"]
+        ),
+    }
+
+
 def listar(vaga_id: int) -> list[dict]:
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
@@ -280,3 +278,11 @@ def listar(vaga_id: int) -> list[dict]:
         )
         linhas = cursor.fetchall()
     return [_linha_para_candidato(linha) for linha in linhas]
+
+
+def nivel_fit(score: int) -> str:
+    if score >= 75:
+        return "alto"
+    if score >= 50:
+        return "medio"
+    return "baixo"

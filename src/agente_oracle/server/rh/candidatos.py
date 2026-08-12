@@ -33,6 +33,37 @@ def _candidato_para_json(candidato: dict) -> dict:
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/rh/candidatos/analisar", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_rh)
+    async def analisar_curriculo_route(request: Request, usuario: dict) -> Response:
+        """Recebe o currículo (multipart) + a vaga escolhida, "analisa" (mock)
+        contra todas as vagas ativas e cadastra o candidato se a melhor
+        compatibilidade encontrada bater o limite mínimo."""
+        formulario = await request.form()
+        arquivo = formulario.get("arquivo")
+        if not isinstance(arquivo, UploadFile):
+            return JSONResponse({"erro": "Envie o currículo."}, status_code=400, headers=CORS_HEADERS)
+
+        try:
+            vaga_id = int(formulario.get("vaga_id", ""))
+        except (TypeError, ValueError):
+            return JSONResponse({"erro": "Informe a vaga."}, status_code=400, headers=CORS_HEADERS)
+
+        conteudo = await arquivo.read()
+        if len(conteudo) > _TAMANHO_MAXIMO_ARQUIVO:
+            return JSONResponse(
+                {"erro": "Arquivo muito grande (máx. 15MB)."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        await asyncio.sleep(random.uniform(*_DURACAO_MOCK_SEGUNDOS))
+
+        try:
+            candidato = candidatos_tools.criar_candidato(vaga_id, arquivo.filename or "curriculo")
+        except candidatos_tools.SemVagaAtiva as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+
+        return JSONResponse(_candidato_para_json(candidato), status_code=201, headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/rh/candidatos/{id}", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_modulo_rh)
     async def candidato_detalhe_route(request: Request, usuario: dict) -> Response:
@@ -65,34 +96,3 @@ def registrar(mcp) -> None:
         return JSONResponse(
             [_candidato_para_json(candidato) for candidato in candidatos], headers=CORS_HEADERS
         )
-
-    @mcp.custom_route("/api/rh/candidatos/analisar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_rh)
-    async def analisar_curriculo_route(request: Request, usuario: dict) -> Response:
-        """Recebe o currículo (multipart) + a vaga escolhida, "analisa" (mock)
-        contra todas as vagas ativas e cadastra o candidato se a melhor
-        compatibilidade encontrada bater o limite mínimo."""
-        formulario = await request.form()
-        arquivo = formulario.get("arquivo")
-        if not isinstance(arquivo, UploadFile):
-            return JSONResponse({"erro": "Envie o currículo."}, status_code=400, headers=CORS_HEADERS)
-
-        try:
-            vaga_id = int(formulario.get("vaga_id", ""))
-        except (TypeError, ValueError):
-            return JSONResponse({"erro": "Informe a vaga."}, status_code=400, headers=CORS_HEADERS)
-
-        conteudo = await arquivo.read()
-        if len(conteudo) > _TAMANHO_MAXIMO_ARQUIVO:
-            return JSONResponse(
-                {"erro": "Arquivo muito grande (máx. 15MB)."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        await asyncio.sleep(random.uniform(*_DURACAO_MOCK_SEGUNDOS))
-
-        try:
-            candidato = candidatos_tools.criar_candidato(vaga_id, arquivo.filename or "curriculo")
-        except candidatos_tools.SemVagaAtiva as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
-
-        return JSONResponse(_candidato_para_json(candidato), status_code=201, headers=CORS_HEADERS)

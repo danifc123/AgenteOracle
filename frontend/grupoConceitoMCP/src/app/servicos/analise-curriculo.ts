@@ -183,22 +183,7 @@ export class AnaliseCurriculo {
     });
   }
 
-  limparCandidatoParaAbrir(): void {
-    this.candidatoParaAbrir.set(null);
-  }
-
-  /** Vagas mais o `titulo` de `vagaId`, pronto pra exibição — usado pelas
-   * telas que só precisam do nome (ex: coluna "vaga sugerida"). */
-  tituloVaga(vagaId: number): string {
-    return this.vagas().find((item) => item.id === vagaId)?.titulo ?? '';
-  }
-
-  marcarComoVista(notificacaoId: string): void {
-    this.notificacoes.update((atual) =>
-      atual.map((item) => (item.id === notificacaoId ? { ...item, vista: true } : item)),
-    );
-  }
-
+  /** concluirAnalise só é usada por iniciarAnalise, logo depois dela. */
   private concluirAnalise(analiseId: string, candidato: Candidato): void {
     this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
 
@@ -220,5 +205,21 @@ export class AnaliseCurriculo {
         vista: false,
       },
     ]);
+  }
+
+  limparCandidatoParaAbrir(): void {
+    this.candidatoParaAbrir.set(null);
+  }
+
+  marcarComoVista(notificacaoId: string): void {
+    this.notificacoes.update((atual) =>
+      atual.map((item) => (item.id === notificacaoId ? { ...item, vista: true } : item)),
+    );
+  }
+
+  /** Vagas mais o `titulo` de `vagaId`, pronto pra exibição — usado pelas
+   * telas que só precisam do nome (ex: coluna "vaga sugerida"). */
+  tituloVaga(vagaId: number): string {
+    return this.vagas().find((item) => item.id === vagaId)?.titulo ?? '';
   }
 }

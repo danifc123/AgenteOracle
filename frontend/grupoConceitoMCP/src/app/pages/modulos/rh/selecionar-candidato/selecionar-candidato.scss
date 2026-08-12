@@ -67,10 +67,11 @@
   padding: 14px 16px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+}
 
-  app-botao {
-    align-self: flex-start;
-  }
+.linha-acoes-resultado {
+  display: flex;
+  gap: 8px;
 }
 
 .cartao-resultado-cabecalho {
@@ -136,5 +137,83 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.detalhe-candidato {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resumo-completo {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-text);
+  white-space: pre-line;
+}
+
+.secao-detalhe {
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+
+  h3 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  p {
+    margin: 0 0 4px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text);
+  }
+}
+
+.lista-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-flex;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(47, 158, 88, 0.1);
+  color: #2f9e58;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.experiencia-item {
+  margin-bottom: 10px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  .experiencia-cargo {
+    font-weight: 600;
+  }
+
+  .experiencia-periodo {
+    color: var(--color-text-muted);
+    font-size: 12px;
+  }
+
+  ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+  }
+}
+
+.formacao-item {
   color: var(--color-text-muted);
 }

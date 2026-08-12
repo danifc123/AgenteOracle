@@ -2,12 +2,13 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../app-config';
 import { mensagemErro } from './mensagens-erro';
-import { NivelSenioridade } from './analise-curriculo';
+import { NivelSenioridade, PerfilEstruturado } from './analise-curriculo';
 
 export interface ResultadoBusca {
   candidato_id: number;
   nome: string;
   resumo_perfil: string;
+  perfil_estruturado: PerfilEstruturado;
   nivel_senioridade: NivelSenioridade;
   area_atuacao_principal: string;
   posicao: number;

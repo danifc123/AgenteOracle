@@ -94,6 +94,10 @@ class TestBuscarCandidatos:
 
         assert resultados[0].nivel_senioridade == "senior"
         assert resultados[0].area_atuacao_principal == "Dados"
+        assert resultados[0].perfil_estruturado == {
+            "nivel_senioridade": "senior",
+            "area_atuacao_principal": "Dados",
+        }
 
     async def test_candidato_sem_perfil_estruturado_usa_valores_padrao(self):
         candidatos = [_candidato(1, [1.0, 0.0], "Ana")]

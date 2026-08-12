@@ -22,6 +22,7 @@ def _resultado_para_json(resultado: ResultadoBusca) -> dict:
         "candidato_id": resultado.candidato_id,
         "nome": resultado.nome,
         "resumo_perfil": resultado.resumo_perfil,
+        "perfil_estruturado": resultado.perfil_estruturado,
         "nivel_senioridade": resultado.nivel_senioridade,
         "area_atuacao_principal": resultado.area_atuacao_principal,
         "posicao": resultado.posicao,

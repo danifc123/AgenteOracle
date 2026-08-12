@@ -63,6 +63,7 @@ class ResultadoBusca:
     candidato_id: int
     nome: str
     resumo_perfil: str
+    perfil_estruturado: dict
     nivel_senioridade: str
     area_atuacao_principal: str
     posicao: int
@@ -195,6 +196,7 @@ def _resultado_fundamentado(
         candidato_id=candidato_id,
         nome=candidato["nome"],
         resumo_perfil=candidato["resumo_perfil"],
+        perfil_estruturado=estruturado,
         nivel_senioridade=estruturado.get("nivel_senioridade") or "nao_identificado",
         area_atuacao_principal=estruturado.get("area_atuacao_principal") or "Não identificado",
         posicao=posicao,

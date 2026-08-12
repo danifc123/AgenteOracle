@@ -9,6 +9,7 @@ const CHAVE_SESSAO = 'sessao:usuario';
 const ROTULOS_MODULO: Record<string, string> = {
   financeiro: 'Financeiro',
   estoque: 'Estoque',
+  rh: 'RH',
 };
 
 export function rotuloModulo(modulo: string): string {

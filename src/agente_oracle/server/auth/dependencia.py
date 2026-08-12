@@ -59,6 +59,19 @@ def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
     return resultado
 
 
+def exigir_modulo_rh(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
+    tenha acesso ao módulo RH — usada em toda rota `/api/rh/*`."""
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "rh"):
+        return JSONResponse({"erro": "Acesso restrito ao módulo RH."}, status_code=403, headers=CORS_HEADERS)
+
+    return resultado
+
+
 def exigir_usuario(request: Request) -> dict | JSONResponse:
     cabecalho = request.headers.get("authorization", "")
     if not cabecalho.startswith("Bearer "):

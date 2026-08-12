@@ -45,16 +45,6 @@ def eh_erro_valor_duplicado(erro: Exception) -> bool:
     return "ORA-00001" in str(erro)
 
 
-def eh_erro_violacao_fk(erro: Exception) -> bool:
-    """Detecta, de forma independente do banco, se o erro é uma violação de
-    chave estrangeira — ex: apagar uma vaga (`rh_vagas`) que ainda tem
-    candidato vinculado (`rh_candidatos.vaga_id`) (ORA-02292 no Oracle,
-    sqlstate 23503 no Postgres)."""
-    if isinstance(erro, psycopg.Error):
-        return getattr(erro, "sqlstate", None) == "23503"
-    return "ORA-02292" in str(erro)
-
-
 @contextmanager
 def get_connection():
     if settings.db_backend == "postgres":

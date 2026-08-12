@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:7b"
+    ollama_embedding_model: str = "nomic-embed-text"
 
     auth_secret_key: str = ""
     auth_token_horas: int = 12

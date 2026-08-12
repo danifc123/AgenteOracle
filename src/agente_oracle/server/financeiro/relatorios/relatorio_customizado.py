@@ -30,6 +30,71 @@ _ERRO_PARAMETROS = (
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_relatorio_customizado_route(request: Request, usuario: dict) -> Response:
+        """Mesma consulta da rota acima, mas devolvendo um arquivo Excel (.xlsx) para download."""
+        parametros = parametros_da_query(request)
+        if parametros is None:
+            return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
+
+        try:
+            colunas, linhas = buscar_relatorio_customizado(*parametros)
+        except RelatorioCustomizadoInvalido as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+
+        conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Relatório Customizado")
+        return Response(
+            content=conteudo_xlsx,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": 'attachment; filename="relatorio_customizado.xlsx"',
+                **CORS_HEADERS,
+            },
+        )
+
+    @mcp.custom_route("/api/financeiro/relatorio-customizado", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def gerar_relatorio_customizado_route(request: Request, usuario: dict) -> JSONResponse:
+        """Monta e executa o SELECT (com JOINs resolvidos automaticamente) para as colunas/filial escolhidas na tela "Criar Relatório"."""
+        parametros = parametros_da_query(request)
+        if parametros is None:
+            return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
+
+        try:
+            colunas, linhas = buscar_relatorio_customizado(*parametros)
+        except RelatorioCustomizadoInvalido as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
+        return JSONResponse(dados, headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/financeiro/relatorio/opcoes-coluna", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def listar_opcoes_coluna_route(request: Request, usuario: dict) -> JSONResponse:
+        """Valores distintos de uma coluna do tipo "texto" (formato view.coluna) — usado pra popular o select multiplo do filtro dessa coluna."""
+        token = request.query_params.get("coluna", "").strip()
+        validado = validar_coluna(token)
+        if validado is None:
+            return JSONResponse(
+                {"erro": "Informe uma coluna válida (formato view.coluna)."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
+        nome_view, nome_coluna = validado
+        if inferir_tipo_filtro(nome_coluna) != "texto":
+            return JSONResponse(
+                {"erro": "Essa coluna não tem filtro por lista de valores."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
+        valores = buscar_opcoes_coluna(nome_view, nome_coluna)
+        return JSONResponse([{"valor": valor, "rotulo": valor} for valor in valores], headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/financeiro/relatorio/views", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_views_route(request: Request, usuario: dict) -> JSONResponse:
@@ -69,68 +134,3 @@ def registrar(mcp) -> None:
             for view in VIEWS_DISPONIVEIS
         ]
         return JSONResponse(payload, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/financeiro/relatorio/opcoes-coluna", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_opcoes_coluna_route(request: Request, usuario: dict) -> JSONResponse:
-        """Valores distintos de uma coluna do tipo "texto" (formato view.coluna) — usado pra popular o select multiplo do filtro dessa coluna."""
-        token = request.query_params.get("coluna", "").strip()
-        validado = validar_coluna(token)
-        if validado is None:
-            return JSONResponse(
-                {"erro": "Informe uma coluna válida (formato view.coluna)."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        nome_view, nome_coluna = validado
-        if inferir_tipo_filtro(nome_coluna) != "texto":
-            return JSONResponse(
-                {"erro": "Essa coluna não tem filtro por lista de valores."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        valores = buscar_opcoes_coluna(nome_view, nome_coluna)
-        return JSONResponse([{"valor": valor, "rotulo": valor} for valor in valores], headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/financeiro/relatorio-customizado", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def gerar_relatorio_customizado_route(request: Request, usuario: dict) -> JSONResponse:
-        """Monta e executa o SELECT (com JOINs resolvidos automaticamente) para as colunas/filial escolhidas na tela "Criar Relatório"."""
-        parametros = parametros_da_query(request)
-        if parametros is None:
-            return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
-
-        try:
-            colunas, linhas = buscar_relatorio_customizado(*parametros)
-        except RelatorioCustomizadoInvalido as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
-
-        dados = [
-            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
-        ]
-        return JSONResponse(dados, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def exportar_relatorio_customizado_route(request: Request, usuario: dict) -> Response:
-        """Mesma consulta da rota acima, mas devolvendo um arquivo Excel (.xlsx) para download."""
-        parametros = parametros_da_query(request)
-        if parametros is None:
-            return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
-
-        try:
-            colunas, linhas = buscar_relatorio_customizado(*parametros)
-        except RelatorioCustomizadoInvalido as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
-
-        conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Relatório Customizado")
-        return Response(
-            content=conteudo_xlsx,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": 'attachment; filename="relatorio_customizado.xlsx"',
-                **CORS_HEADERS,
-            },
-        )

@@ -90,10 +90,6 @@ _COLUNAS = (
 _tabela_garantida = False
 
 
-class SemVagaAtiva(Exception):
-    """Levantada quando não há nenhuma vaga ativa cadastrada pra analisar o currículo contra ela."""
-
-
 # _garantir_tabela e _linha_para_candidato são usadas por mais de uma função
 # pública (atualizar_status, criar_candidato, listar) — bloco compartilhado,
 # em ordem alfabética, antes das públicas que dependem delas.
@@ -155,6 +151,10 @@ def _linha_para_candidato(linha: tuple) -> dict:
 # _carregar_json só é usada por _linha_para_candidato, logo depois dela.
 def _carregar_json(valor):
     return json.loads(valor) if isinstance(valor, str) else valor
+
+
+class SemVagaAtiva(Exception):
+    """Levantada quando não há nenhuma vaga ativa cadastrada pra analisar o currículo contra ela."""
 
 
 def atualizar_status(id_candidato: int, status: str) -> dict | None:

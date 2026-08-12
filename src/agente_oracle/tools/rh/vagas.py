@@ -15,12 +15,6 @@ _COLUNAS = "id, titulo, localizacao, ativa, criado_em"
 _tabela_garantida = False
 
 
-class VagaComCandidatosVinculados(Exception):
-    """Levantada ao tentar apagar uma vaga que já tem candidato analisado
-    vinculado (`rh_candidatos.vaga_id`) — desativar (`ativa=False`) em vez
-    de apagar é o caminho pra esse caso."""
-
-
 def _garantir_tabela(cursor) -> None:
     global _tabela_garantida
     if _tabela_garantida:
@@ -40,6 +34,12 @@ def _garantir_tabela(cursor) -> None:
 def _linha_para_vaga(linha: tuple) -> dict:
     id_, titulo, localizacao, ativa, criado_em = linha
     return {"id": id_, "titulo": titulo, "localizacao": localizacao, "ativa": ativa, "criado_em": criado_em}
+
+
+class VagaComCandidatosVinculados(Exception):
+    """Levantada ao tentar apagar uma vaga que já tem candidato analisado
+    vinculado (`rh_candidatos.vaga_id`) — desativar (`ativa=False`) em vez
+    de apagar é o caminho pra esse caso."""
 
 
 def atualizar(

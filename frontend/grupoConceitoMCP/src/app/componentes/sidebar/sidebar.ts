@@ -73,10 +73,14 @@ export class Sidebar {
     this.financeiroOpen.update((value) => !value);
   }
 
+  /** Clicar no grupo "RH" também marca toda notificação/erro pendente como
+   * visto — a bolinha laranja some assim que o usuário entra no módulo, em
+   * vez de exigir que ele veja/dispense cada toast um por um. */
   toggleRh(): void {
     this.financeiroOpen.set(false);
     this.estoqueOpen.set(false);
     this.rhOpen.update((value) => !value);
+    this.analiseCurriculo.marcarTudoComoVisto();
   }
 
   toggleSidebar(): void {

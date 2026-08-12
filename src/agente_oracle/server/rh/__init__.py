@@ -1,6 +1,6 @@
-from agente_oracle.server.rh import candidatos, vagas
+from agente_oracle.server.rh import busca, candidatos
 
 
 def registrar(mcp) -> None:
-    vagas.registrar(mcp)
     candidatos.registrar(mcp)
+    busca.registrar(mcp)

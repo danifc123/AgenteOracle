@@ -1,98 +1,43 @@
-"""Candidatos analisados pela IA (mock) contra as vagas críticas — tabela
-própria no Postgres, mesmo padrão de `tools/rh/vagas.py`/
-`tools/financeiro/layouts.py` (`CREATE TABLE IF NOT EXISTS`, sem migração
-separada).
+"""Pool de candidatos analisados pela IA — tabela própria no Postgres,
+mesmo padrão de `tools/financeiro/layouts.py` (`CREATE TABLE IF NOT
+EXISTS`, sem migração separada).
 
-MOCK (2026-08): a "análise da IA" (pontuação, critérios, texto) é toda
-gerada aqui por sorteio pseudo-aleatório — os critérios reais do "DNA Agro"
-ainda dependem de um levantamento de requisitos com o time de RH (ver
-`DIMENSOES_DNA_AGRO`, abaixo). Quando esse levantamento acontecer, só
-`_gerar_resultado_vaga` precisa trocar por uma chamada de IA de verdade —
-o resto (persistência condicionada ao limite, "vaga sugerida", status do
-candidato) já fica pronto.
+Modelo novo (2026-08, substituindo o de "vaga cadastrada + score fixo
+contra 6 dimensões"): todo currículo analisado com sucesso vira candidato
+no pool, com um resumo de perfil escrito pela IA
+(`agent/rh/perfil_candidato.py`) e um embedding desse resumo
+(`agent/rh/embeddings.py`) — não tem mais gate de compatibilidade mínima
+nem vínculo com uma vaga específica. A busca por candidato ideal pra uma
+vaga acontece depois, sob demanda, em `agent/rh/busca_candidatos.py`
+(`listar_para_busca`, abaixo, é o que alimenta essa busca).
 
-`criar_candidato` analisa o currículo contra TODAS as vagas ativas (não só
-a escolhida no upload) — cada vaga recebe seu próprio score independente,
-e a "vaga sugerida" é a de maior score. A decisão de salvar no Postgres usa
-o MAIOR score entre todas as vagas (não só o da vaga escolhida): um
-candidato bom que aplicou pra vaga errada não se perde, e é exatamente pra
-isso que a vaga sugerida existe — a tela mostra as duas informações lado a
-lado (score da vaga escolhida + vaga sugerida), então nunca fica ambíguo
-por que um candidato com score baixo pra vaga X apareceu na lista.
+O currículo original fica guardado (`arquivo`, `BYTEA`) pra poder ser
+baixado de novo depois — ver `buscar_arquivo`.
 """
 
 import json
-import random
 from datetime import UTC, datetime
 
+from ollama import AsyncClient
+
+from agente_oracle.agent.rh.embeddings import gerar_embedding
+from agente_oracle.agent.rh.perfil_candidato import gerar_perfil
 from agente_oracle.db.connection import get_postgres_connection
-from agente_oracle.tools.rh import vagas as vagas_tools
+from agente_oracle.tools.rh.extracao_curriculo import extrair_texto
 
-LIMITE_COMPATIBILIDADE_MINIMA = 70  # placeholder — RH ainda vai definir o valor real
-
-DIMENSOES_DNA_AGRO: tuple[str, ...] = (
-    "Vivência e afinidade com rotina de campo",
-    "Adaptabilidade a sazonalidade e clima",
-    "Mobilidade geográfica",
-    "Resiliência e tolerância à pressão",
-    "Alinhamento a valores do agronegócio",
-    "Experiência técnica no setor",
-)
-
-_POOL_NOMES_MOCK: tuple[str, ...] = (
-    "Gustavo Ribeiro Camargo",
-    "Larissa Nascimento Vieira",
-    "Eduardo Martins Sales",
-    "Camila Ferreira Lopes",
-    "Vinícius Oliveira Peixoto",
-    "Beatriz Almeida Sant'Anna",
-    "Rodrigo Souza Marchetti",
-    "Fernanda Castro Guimarães",
-)
-
-_TEMPLATES_RESUMO_IA = {
-    "alto": [
-        lambda nome: (
-            f"{nome} demonstra forte vivência prática em rotina de campo e boa aderência aos valores "
-            "do agronegócio, com histórico consistente na área."
-        ),
-        lambda nome: (
-            f"A trajetória de {nome} indica forte identificação com o setor, mobilidade compatível com "
-            "a vaga e boa resiliência a rotinas sazonais."
-        ),
-    ],
-    "medio": [
-        lambda nome: (
-            f"{nome} tem experiência relevante, mas o currículo não deixa claro o nível de vivência "
-            "recente em rotina de campo — fit plausível, com pontos a confirmar em entrevista."
-        ),
-        lambda nome: (
-            f"Boa base técnica identificada no currículo de {nome}, porém com sinais mistos de "
-            "afinidade direta com o dia a dia do agronegócio."
-        ),
-    ],
-    "baixo": [
-        lambda nome: (
-            f"O currículo de {nome} não apresenta indícios claros de vivência ou afinidade com o agronegócio."
-        ),
-        lambda nome: (
-            f"{nome} tem um perfil predominantemente fora do setor agro, com baixa aderência aos "
-            "critérios avaliados."
-        ),
-    ],
-}
-
-_COLUNAS = (
-    "id, nome, vaga_id, vaga_sugerida_id, score, scores_por_vaga, resumo_ia, "
-    "criterios, pontos_fortes, pontos_atencao, status, criado_em"
-)
+_COLUNAS_CANDIDATO = "id, nome, resumo_perfil, perfil_estruturado, status, criado_em"
+_COLUNAS_BUSCA = "id, nome, resumo_perfil, perfil_estruturado, embedding"
 
 _tabela_garantida = False
 
 
-# _garantir_tabela e _linha_para_candidato são usadas por mais de uma função
-# pública (atualizar_status, criar_candidato, listar) — bloco compartilhado,
-# em ordem alfabética, antes das públicas que dependem delas.
+# _carregar_json, _garantir_tabela e _linha_para_candidato são usadas por
+# mais de uma função pública — bloco compartilhado, em ordem alfabética,
+# antes das públicas que dependem delas.
+def _carregar_json(valor):
+    return json.loads(valor) if isinstance(valor, str) else valor
+
+
 def _garantir_tabela(cursor) -> None:
     global _tabela_garantida
     if _tabela_garantida:
@@ -101,60 +46,37 @@ def _garantir_tabela(cursor) -> None:
         CREATE TABLE IF NOT EXISTS rh_candidatos (
             id BIGSERIAL PRIMARY KEY,
             nome VARCHAR NOT NULL,
-            vaga_id BIGINT NOT NULL REFERENCES rh_vagas(id),
-            vaga_sugerida_id BIGINT NOT NULL REFERENCES rh_vagas(id),
-            score INTEGER NOT NULL,
-            scores_por_vaga JSONB NOT NULL,
-            resumo_ia TEXT NOT NULL,
-            criterios JSONB NOT NULL,
-            pontos_fortes JSONB NOT NULL,
-            pontos_atencao JSONB NOT NULL,
-            status VARCHAR NOT NULL DEFAULT 'pendente',
+            resumo_perfil TEXT NOT NULL,
+            perfil_estruturado JSONB NOT NULL DEFAULT '{}',
+            embedding JSONB NOT NULL,
+            nome_arquivo VARCHAR NOT NULL,
+            tipo_arquivo VARCHAR NOT NULL,
+            arquivo BYTEA NOT NULL,
+            status VARCHAR NOT NULL DEFAULT 'ativo',
             criado_em TIMESTAMPTZ NOT NULL
         )
     """)
+    # A tabela pode já existir de antes de `perfil_estruturado` existir
+    # (ambiente já em uso) — `CREATE TABLE IF NOT EXISTS` não adiciona
+    # coluna em tabela que já existe, então garante na mão, sem migração
+    # separada. Candidato já cadastrado antes disso fica com `{}` (só o
+    # resumo livre continua disponível pra ele, sem os campos granulares).
+    cursor.execute(
+        "ALTER TABLE rh_candidatos ADD COLUMN IF NOT EXISTS perfil_estruturado JSONB NOT NULL DEFAULT '{}'"
+    )
     _tabela_garantida = True
 
 
 def _linha_para_candidato(linha: tuple) -> dict:
-    (
-        id_,
-        nome,
-        vaga_id,
-        vaga_sugerida_id,
-        score,
-        scores_por_vaga,
-        resumo_ia,
-        criterios,
-        pontos_fortes,
-        pontos_atencao,
-        status,
-        criado_em,
-    ) = linha
+    id_, nome, resumo_perfil, perfil_estruturado, status, criado_em = linha
     return {
         "id": id_,
         "nome": nome,
-        "vaga_id": vaga_id,
-        "vaga_sugerida_id": vaga_sugerida_id,
-        "score": score,
-        "scores_por_vaga": _carregar_json(scores_por_vaga),
-        "resumo_ia": resumo_ia,
-        "criterios": _carregar_json(criterios),
-        "pontos_fortes": _carregar_json(pontos_fortes),
-        "pontos_atencao": _carregar_json(pontos_atencao),
+        "resumo_perfil": resumo_perfil,
+        "perfil_estruturado": _carregar_json(perfil_estruturado),
         "status": status,
         "criado_em": criado_em,
-        "salvo": True,
     }
-
-
-# _carregar_json só é usada por _linha_para_candidato, logo depois dela.
-def _carregar_json(valor):
-    return json.loads(valor) if isinstance(valor, str) else valor
-
-
-class SemVagaAtiva(Exception):
-    """Levantada quando não há nenhuma vaga ativa cadastrada pra analisar o currículo contra ela."""
 
 
 def atualizar_status(id_candidato: int, status: str) -> dict | None:
@@ -162,7 +84,7 @@ def atualizar_status(id_candidato: int, status: str) -> dict | None:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
-            f"UPDATE rh_candidatos SET status = :status WHERE id = :id RETURNING {_COLUNAS}",
+            f"UPDATE rh_candidatos SET status = :status WHERE id = :id RETURNING {_COLUNAS_CANDIDATO}",
             id=id_candidato,
             status=status,
         )
@@ -170,41 +92,45 @@ def atualizar_status(id_candidato: int, status: str) -> dict | None:
     return _linha_para_candidato(linha) if linha else None
 
 
-def criar_candidato(vaga_id: int, nome_arquivo: str) -> dict:
-    vagas_ativas = vagas_tools.listar(somente_ativas=True)
-    if not vagas_ativas:
-        raise SemVagaAtiva("Não há vagas ativas cadastradas pra analisar o currículo.")
-
+def buscar_arquivo(id_candidato: int) -> dict | None:
+    """Currículo original (nome/tipo/bytes) — usado só pela rota de
+    download, nunca devolvido junto da listagem (evita carregar o binário
+    à toa numa resposta JSON que ninguém vai usar)."""
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute("SELECT nome FROM rh_candidatos")
-        nomes_usados = {linha[0] for linha in cursor.fetchall()}
+        cursor.execute(
+            "SELECT nome_arquivo, tipo_arquivo, arquivo FROM rh_candidatos WHERE id = :id",
+            id=id_candidato,
+        )
+        linha = cursor.fetchone()
+    return _linha_para_arquivo(linha) if linha else None
 
-    nome = _gerar_nome(nomes_usados)
-    resultados_por_vaga = {vaga["id"]: _gerar_resultado_vaga(nome) for vaga in vagas_ativas}
-    vaga_sugerida_id = max(resultados_por_vaga, key=lambda id_vaga: resultados_por_vaga[id_vaga]["score"])
-    melhor_score = resultados_por_vaga[vaga_sugerida_id]["score"]
-    resultado_vaga_escolhida = resultados_por_vaga.get(vaga_id, resultados_por_vaga[vaga_sugerida_id])
-    scores_por_vaga = {str(id_vaga): resultado["score"] for id_vaga, resultado in resultados_por_vaga.items()}
 
-    if melhor_score < LIMITE_COMPATIBILIDADE_MINIMA:
-        return {
-            "id": None,
-            "nome": nome,
-            "vaga_id": vaga_id,
-            "vaga_sugerida_id": vaga_sugerida_id,
-            "score": resultado_vaga_escolhida["score"],
-            "melhor_score": melhor_score,
-            "scores_por_vaga": scores_por_vaga,
-            "resumo_ia": resultado_vaga_escolhida["resumo_ia"],
-            "criterios": resultado_vaga_escolhida["criterios"],
-            "pontos_fortes": resultado_vaga_escolhida["pontos_fortes"],
-            "pontos_atencao": resultado_vaga_escolhida["pontos_atencao"],
-            "status": "pendente",
-            "criado_em": datetime.now(UTC),
-            "salvo": False,
-        }
+# _linha_para_arquivo só é usada por buscar_arquivo, logo depois dela.
+def _linha_para_arquivo(linha: tuple) -> dict:
+    nome_arquivo, tipo_arquivo, arquivo = linha
+    return {"nome_arquivo": nome_arquivo, "tipo_arquivo": tipo_arquivo, "arquivo": bytes(arquivo)}
+
+
+async def criar_candidato(
+    ollama_client: AsyncClient,
+    modelo: str,
+    modelo_embedding: str,
+    nome_arquivo: str,
+    conteudo_arquivo: bytes,
+) -> dict:
+    """Extrai o texto do currículo, pede um resumo de perfil pra IA, gera o
+    embedding desse resumo, e cadastra o candidato no pool — sempre, sem
+    gate de compatibilidade mínima (isso não existe mais aqui; a
+    compatibilidade com uma vaga é calculada sob demanda em
+    `agent/rh/busca_candidatos.py`, não no momento do cadastro). Levanta
+    `ArquivoCurriculoInvalido` (arquivo ilegível) ou `AnaliseIndisponivel`
+    (IA fora do ar/resposta inválida) sem cadastrar nada nesses casos."""
+    texto_curriculo = extrair_texto(nome_arquivo, conteudo_arquivo)
+    perfil = await gerar_perfil(ollama_client, modelo, texto_curriculo)
+    embedding = await gerar_embedding(ollama_client, modelo_embedding, perfil.resumo_objetivo)
+    tipo_arquivo = "pdf" if nome_arquivo.lower().endswith(".pdf") else "docx"
 
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
@@ -212,77 +138,60 @@ def criar_candidato(vaga_id: int, nome_arquivo: str) -> dict:
         cursor.execute(
             f"""
             INSERT INTO rh_candidatos
-                (nome, vaga_id, vaga_sugerida_id, score, scores_por_vaga, resumo_ia, criterios,
-                 pontos_fortes, pontos_atencao, status, criado_em)
+                (nome, resumo_perfil, perfil_estruturado, embedding, nome_arquivo, tipo_arquivo,
+                 arquivo, status, criado_em)
             VALUES
-                (:nome, :vaga_id, :vaga_sugerida_id, :score, :scores_por_vaga::jsonb, :resumo_ia,
-                 :criterios::jsonb, :pontos_fortes::jsonb, :pontos_atencao::jsonb, 'pendente', :agora)
-            RETURNING {_COLUNAS}
+                (:nome, :resumo_perfil, :perfil_estruturado::jsonb, :embedding::jsonb, :nome_arquivo,
+                 :tipo_arquivo, :arquivo, 'ativo', :agora)
+            RETURNING {_COLUNAS_CANDIDATO}
             """,
-            nome=nome,
-            vaga_id=vaga_id,
-            vaga_sugerida_id=vaga_sugerida_id,
-            score=resultado_vaga_escolhida["score"],
-            scores_por_vaga=json.dumps(scores_por_vaga),
-            resumo_ia=resultado_vaga_escolhida["resumo_ia"],
-            criterios=json.dumps(resultado_vaga_escolhida["criterios"]),
-            pontos_fortes=json.dumps(resultado_vaga_escolhida["pontos_fortes"]),
-            pontos_atencao=json.dumps(resultado_vaga_escolhida["pontos_atencao"]),
+            nome=perfil.nome_candidato,
+            resumo_perfil=perfil.resumo_objetivo,
+            perfil_estruturado=json.dumps(perfil.campos_estruturados()),
+            embedding=json.dumps(embedding),
+            nome_arquivo=nome_arquivo,
+            tipo_arquivo=tipo_arquivo,
+            arquivo=conteudo_arquivo,
             agora=datetime.now(UTC),
         )
         linha = cursor.fetchone()
-
-    candidato = _linha_para_candidato(linha)
-    candidato["melhor_score"] = melhor_score
-    return candidato
+    return _linha_para_candidato(linha)
 
 
-# _gerar_nome e _gerar_resultado_vaga só são usadas por criar_candidato,
-# logo depois dela.
-def _gerar_nome(nomes_usados: set[str]) -> str:
-    disponiveis = [nome for nome in _POOL_NOMES_MOCK if nome not in nomes_usados]
-    if disponiveis:
-        return random.choice(disponiveis)
-    return f"Candidato {len(nomes_usados) + 1}"
-
-
-def _gerar_resultado_vaga(nome: str) -> dict:
-    score = round(35 + random.random() * 60)
-    nivel = nivel_fit(score)
-    criterios = [
-        {"nome": dimensao, "nota": max(15, min(99, round(score + (random.random() * 20 - 10))))}
-        for dimensao in DIMENSOES_DNA_AGRO
-    ]
-    return {
-        "score": score,
-        "criterios": criterios,
-        "resumo_ia": random.choice(_TEMPLATES_RESUMO_IA[nivel])(nome),
-        "pontos_fortes": []
-        if nivel == "baixo"
-        else ["Perfil extraído pela IA com aderência aos critérios avaliados da vaga"],
-        "pontos_atencao": (
-            []
-            if nivel == "alto"
-            else ["Análise gerada automaticamente pela IA — vale confirmar os pontos abaixo em entrevista"]
-        ),
-    }
-
-
-def listar(vaga_id: int) -> list[dict]:
+def listar(*, status: str | None = None) -> list[dict]:
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute(
-            f"SELECT {_COLUNAS} FROM rh_candidatos WHERE vaga_id = :vaga_id ORDER BY score DESC",
-            vaga_id=vaga_id,
-        )
+        if status:
+            cursor.execute(
+                f"SELECT {_COLUNAS_CANDIDATO} FROM rh_candidatos WHERE status = :status ORDER BY criado_em DESC",
+                status=status,
+            )
+        else:
+            cursor.execute(f"SELECT {_COLUNAS_CANDIDATO} FROM rh_candidatos ORDER BY criado_em DESC")
         linhas = cursor.fetchall()
     return [_linha_para_candidato(linha) for linha in linhas]
 
 
-def nivel_fit(score: int) -> str:
-    if score >= 75:
-        return "alto"
-    if score >= 50:
-        return "medio"
-    return "baixo"
+def listar_para_busca() -> list[dict]:
+    """Candidatos `ativo` com o embedding do perfil — só os campos que
+    `agent/rh/busca_candidatos.py` precisa pra fazer a busca (retrieval +
+    ranking), não a listagem completa da tela."""
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(f"SELECT {_COLUNAS_BUSCA} FROM rh_candidatos WHERE status = 'ativo'")
+        linhas = cursor.fetchall()
+    return [_linha_para_busca(linha) for linha in linhas]
+
+
+# _linha_para_busca só é usada por listar_para_busca, logo depois dela.
+def _linha_para_busca(linha: tuple) -> dict:
+    id_, nome, resumo_perfil, perfil_estruturado, embedding = linha
+    return {
+        "id": id_,
+        "nome": nome,
+        "resumo_perfil": resumo_perfil,
+        "perfil_estruturado": _carregar_json(perfil_estruturado),
+        "embedding": _carregar_json(embedding),
+    }

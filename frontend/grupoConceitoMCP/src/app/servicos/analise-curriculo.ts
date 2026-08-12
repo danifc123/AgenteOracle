@@ -1,147 +1,142 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MCP_API_BASE_URL } from '../app-config';
+import { baixarBlob, extrairNomeArquivo } from './download-arquivo';
+import { mensagemErro } from './mensagens-erro';
 
-export interface VagaCritica {
-  id: number;
-  titulo: string;
-  localizacao: string;
-  ativa: boolean;
-  criado_em: string;
+export type StatusCandidato = 'ativo' | 'contratado' | 'descartado';
+
+export type NivelSenioridade = 'estagiario' | 'junior' | 'pleno' | 'senior' | 'especialista' | 'nao_identificado';
+export type StatusFormacao = 'concluido' | 'cursando' | 'nao_identificado';
+
+export interface HabilidadesTecnicas {
+  linguagens: string[];
+  frameworks_bibliotecas: string[];
+  bancos_de_dados: string[];
+  ferramentas_plataformas: string[];
+  metodologias: string[];
 }
 
-export type NivelFit = 'alto' | 'medio' | 'baixo';
-export type StatusCandidato = 'pendente' | 'avancado' | 'descartado';
+export interface ExperienciaProfissional {
+  empresa: string;
+  cargo: string;
+  data_inicio: string | null;
+  data_fim: string | null;
+  principais_responsabilidades: string[];
+  tecnologias_utilizadas: string[];
+}
 
-export interface CriterioCandidato {
-  nome: string;
-  nota: number;
+export interface FormacaoAcademica {
+  curso: string;
+  instituicao: string;
+  status: StatusFormacao;
+}
+
+/** Campos granulares extraídos do currículo pela IA — ver
+ * `agent/rh/perfil_candidato.py`. Candidato cadastrado antes dessa extração
+ * existir fica com um objeto vazio (`{}` no banco), então todo consumo
+ * daqui trata os campos como possivelmente ausentes, nunca assume presença. */
+export interface PerfilEstruturado {
+  nivel_senioridade?: NivelSenioridade;
+  anos_experiencia_total?: number | null;
+  area_atuacao_principal?: string;
+  areas_atuacao_secundarias?: string[];
+  habilidades_tecnicas?: HabilidadesTecnicas;
+  experiencias_profissionais?: ExperienciaProfissional[];
+  formacao_academica?: FormacaoAcademica[];
+  certificacoes?: string[];
+  idiomas?: string[];
 }
 
 export interface Candidato {
-  id: number | null;
+  id: number;
   nome: string;
-  vaga_id: number;
-  vaga_sugerida_id: number;
-  score: number;
-  melhor_score?: number;
-  scores_por_vaga: Record<string, number>;
-  resumo_ia: string;
-  criterios: CriterioCandidato[];
-  pontos_fortes: string[];
-  pontos_atencao: string[];
+  resumo_perfil: string;
+  perfil_estruturado: PerfilEstruturado;
   status: StatusCandidato;
   criado_em: string;
-  salvo: boolean;
 }
+
+export const ROTULOS_SENIORIDADE: Record<NivelSenioridade, string> = {
+  estagiario: 'Estagiário',
+  junior: 'Júnior',
+  pleno: 'Pleno',
+  senior: 'Sênior',
+  especialista: 'Especialista',
+  nao_identificado: 'Não identificado',
+};
+
+export const ROTULOS_STATUS_FORMACAO: Record<StatusFormacao, string> = {
+  concluido: 'Concluído',
+  cursando: 'Cursando',
+  nao_identificado: 'Não identificado',
+};
 
 export interface AnaliseEmAndamento {
   id: string;
   nomeArquivo: string;
-  vagaId: number;
 }
 
 export interface NotificacaoAnalise {
   id: string;
-  candidatoId: number | null;
-  vagaId: number;
+  candidatoId: number;
   candidatoNome: string;
-  vagaTitulo: string;
-  score: number;
-  salvo: boolean;
+  vista: boolean;
+}
+
+/** Análise que não chegou a terminar — IA (Ollama) fora do ar, currículo
+ * ilegível, etc. Separado de `NotificacaoAnalise` porque não existe
+ * candidato nenhum envolvido — só uma mensagem de erro pra mostrar. */
+export interface ErroAnalise {
+  id: string;
+  mensagem: string;
   vista: boolean;
 }
 
 export const ROTULOS_STATUS: Record<StatusCandidato, string> = {
-  pendente: 'Pendente',
-  avancado: 'Avançado',
+  ativo: 'Ativo',
+  contratado: 'Contratado',
   descartado: 'Descartado',
 };
 
-export const ROTULOS_FIT: Record<NivelFit, string> = {
-  alto: 'Alto fit',
-  medio: 'Fit médio',
-  baixo: 'Baixo fit',
-};
-
-export const CORES_FIT: Record<NivelFit, string> = {
-  alto: '#2f9e58',
-  medio: '#e8871e',
-  baixo: '#9a2f2f',
-};
-
-export function nivelFit(score: number): NivelFit {
-  if (score >= 75) {
-    return 'alto';
-  }
-  if (score >= 50) {
-    return 'medio';
-  }
-  return 'baixo';
-}
-
 /** MÓDULO RH — ANÁLISE DE CURRÍCULO EM SEGUNDO PLANO (2026-08)
  *
- * Client HTTP do backend real (`server/rh/candidatos.py`, `server/rh/vagas.py`)
- * — vagas e candidatos agora são persistidos no Postgres (a "análise da IA"
- * em si ainda é mock no backend, ver docstring de `tools/rh/candidatos.py`;
- * o que mudou aqui é só onde o dado mora, não o quão real é o score).
+ * Client HTTP do backend real (`server/rh/candidatos.py`) — todo currículo
+ * analisado com sucesso vira candidato no pool (Postgres), com um resumo
+ * de perfil escrito pela IA (Ollama, `agent/rh/perfil_candidato.py`) e um
+ * embedding desse resumo (usado depois pra busca, ver
+ * `servicos/busca-candidatos.ts`). Não existe mais o conceito de "vaga
+ * cadastrada" nem de nota mínima pra ser salvo — todo candidato analisado
+ * entra no pool; a compatibilidade com uma vaga específica é calculada sob
+ * demanda, na hora da busca, não no momento do cadastro.
  *
- * Continua sendo um serviço global (mesmo papel que `Auditoria` cumpre pro
- * sino/painel de auditoria): `iniciarAnalise` dispara o POST e NÃO espera a
- * resposta antes de devolver o controle pra tela — o componente fecha o
- * dialog na hora, e o `subscribe` só atualiza `notificacoes`/`candidatos`
- * quando o backend realmente terminar (POST fica "pendurado" por alguns
- * segundos no servidor simulando o processamento — ver
- * `server/rh/candidatos.py`). Isso preserva a experiência de "roda em
- * segundo plano" mesmo sem fila/job assíncrono de verdade.
+ * Serviço global (mesmo papel que `Auditoria` cumpre pro sino/painel de
+ * auditoria): `iniciarAnalise` dispara o POST e NÃO espera a resposta
+ * antes de devolver o controle pra tela — o componente fecha o dialog na
+ * hora, e o `subscribe` só atualiza `notificacoes`/`erros`/`candidatos`
+ * quando o backend realmente terminar (a chamada de IA real — perfil +
+ * embedding — é o que leva alguns segundos). Cada arquivo de uma seleção
+ * múltipla vira uma chamada independente (`iniciarAnalise` uma vez por
+ * arquivo), então currículos de um mesmo lote podem terminar em momentos
+ * diferentes, cada um com seu próprio toast.
  */
 @Injectable({ providedIn: 'root' })
 export class AnaliseCurriculo {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
 
-  /** Vaga cujos candidatos estão em `candidatos()` no momento — usado só
-   * pra decidir se um candidato recém-analisado deve ser inserido direto
-   * na lista já carregada ou se basta ficar salvo no banco (aparece
-   * sozinho na próxima vez que essa vaga for carregada). */
-  private vagaCandidatosCarregados: number | null = null;
-
-  readonly vagas = signal<VagaCritica[]>([]);
   readonly candidatos = signal<Candidato[]>([]);
   readonly emAndamento = signal<AnaliseEmAndamento[]>([]);
   readonly notificacoes = signal<NotificacaoAnalise[]>([]);
-  /** Setado por `abrirResultado` (só depois que o candidato é buscado do
-   * backend de novo — pode ter vindo de outra tela, sem os candidatos
-   * dessa vaga carregados) — a tela `/rh` observa isso pra abrir o
-   * candidato certo automaticamente quando o usuário clica "Ver resultado"
-   * vindo de qualquer outra tela do sistema. */
-  readonly candidatoParaAbrir = signal<Candidato | null>(null);
+  readonly erros = signal<ErroAnalise[]>([]);
 
   readonly notificacoesNaoVistas = computed(() => this.notificacoes().filter((notificacao) => !notificacao.vista));
-
-  constructor() {
-    this.carregarVagas();
-  }
+  readonly errosNaoVistos = computed(() => this.erros().filter((erro) => !erro.vista));
 
   abrirResultado(notificacaoId: string): void {
-    const notificacao = this.notificacoes().find((item) => item.id === notificacaoId);
-    if (!notificacao || notificacao.candidatoId === null) {
-      return;
-    }
     this.marcarComoVista(notificacaoId);
-    this.router.navigateByUrl('/rh');
-
-    this.vagaCandidatosCarregados = notificacao.vagaId;
-    this.http
-      .get<Candidato[]>(`${MCP_API_BASE_URL}/api/rh/candidatos`, { params: { vaga_id: notificacao.vagaId } })
-      .subscribe({
-        next: (candidatos) => {
-          this.candidatos.set(candidatos);
-          this.candidatoParaAbrir.set(candidatos.find((item) => item.id === notificacao.candidatoId) ?? null);
-        },
-      });
+    this.router.navigateByUrl('/rh/analise-candidato');
   }
 
   atualizarStatusCandidato(id: number, status: StatusCandidato): void {
@@ -152,63 +147,71 @@ export class AnaliseCurriculo {
     });
   }
 
-  carregarCandidatos(vagaId: number): void {
-    this.vagaCandidatosCarregados = vagaId;
+  /** Baixa o currículo original — via `HttpClient` (não um `<a href>`
+   * direto), porque a rota exige o token de autenticação no header, que só
+   * a chamada passando pelo interceptor de auth carrega. Recebe só
+   * `id`/`nome` (não o `Candidato` inteiro) pra também servir a tela de
+   * busca, que lida com `ResultadoBusca`, não com `Candidato`. */
+  baixarCurriculo(candidato: { id: number; nome: string }): void {
     this.http
-      .get<Candidato[]>(`${MCP_API_BASE_URL}/api/rh/candidatos`, { params: { vaga_id: vagaId } })
+      .get(`${MCP_API_BASE_URL}/api/rh/candidatos/${candidato.id}/curriculo`, {
+        observe: 'response',
+        responseType: 'blob',
+      })
+      .subscribe({
+        next: (resposta) => {
+          const blob = resposta.body;
+          if (!blob) {
+            return;
+          }
+          const nomeArquivo = extrairNomeArquivo(
+            resposta.headers.get('content-disposition'),
+            `${candidato.nome}.pdf`,
+          );
+          baixarBlob(blob, nomeArquivo);
+        },
+      });
+  }
+
+  carregarCandidatos(status?: StatusCandidato): void {
+    this.http
+      .get<Candidato[]>(`${MCP_API_BASE_URL}/api/rh/candidatos`, { params: status ? { status } : {} })
       .subscribe({
         next: (candidatos) => this.candidatos.set(candidatos),
         error: () => this.candidatos.set([]),
       });
   }
 
-  carregarVagas(): void {
-    this.http.get<VagaCritica[]>(`${MCP_API_BASE_URL}/api/rh/vagas`).subscribe({
-      next: (vagas) => this.vagas.set(vagas),
-      error: () => this.vagas.set([]),
-    });
-  }
-
-  iniciarAnalise(arquivo: File, vagaId: number): void {
+  iniciarAnalise(arquivo: File): void {
     const id = `analise-${Date.now()}-${Math.round(Math.random() * 1000)}`;
-    this.emAndamento.update((atual) => [...atual, { id, nomeArquivo: arquivo.name, vagaId }]);
+    this.emAndamento.update((atual) => [...atual, { id, nomeArquivo: arquivo.name }]);
 
     const formData = new FormData();
     formData.append('arquivo', arquivo);
-    formData.append('vaga_id', String(vagaId));
 
     this.http.post<Candidato>(`${MCP_API_BASE_URL}/api/rh/candidatos/analisar`, formData).subscribe({
       next: (candidato) => this.concluirAnalise(id, candidato),
-      error: () => this.emAndamento.update((atual) => atual.filter((item) => item.id !== id)),
+      error: (erro: HttpErrorResponse) => this.falharAnalise(id, erro),
     });
   }
 
-  /** concluirAnalise só é usada por iniciarAnalise, logo depois dela. */
+  /** concluirAnalise e falharAnalise só são usadas por iniciarAnalise,
+   * logo depois dela (nessa ordem — sucesso e falha do mesmo POST). */
   private concluirAnalise(analiseId: string, candidato: Candidato): void {
     this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
-
-    if (candidato.salvo && candidato.vaga_id === this.vagaCandidatosCarregados) {
-      this.candidatos.update((atual) => [...atual, candidato]);
-    }
-
-    const vaga = this.vagas().find((item) => item.id === candidato.vaga_id);
+    this.candidatos.update((atual) => [candidato, ...atual]);
     this.notificacoes.update((atual) => [
       ...atual,
-      {
-        id: `notif-${candidato.id ?? analiseId}`,
-        candidatoId: candidato.id,
-        vagaId: candidato.vaga_id,
-        candidatoNome: candidato.nome,
-        vagaTitulo: vaga?.titulo ?? '',
-        score: candidato.score,
-        salvo: candidato.salvo,
-        vista: false,
-      },
+      { id: `notif-${candidato.id}`, candidatoId: candidato.id, candidatoNome: candidato.nome, vista: false },
     ]);
   }
 
-  limparCandidatoParaAbrir(): void {
-    this.candidatoParaAbrir.set(null);
+  private falharAnalise(analiseId: string, erro: HttpErrorResponse): void {
+    this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
+    this.erros.update((atual) => [
+      ...atual,
+      { id: `erro-${analiseId}`, mensagem: mensagemErro(erro, 'Não foi possível analisar o currículo.'), vista: false },
+    ]);
   }
 
   marcarComoVista(notificacaoId: string): void {
@@ -217,9 +220,16 @@ export class AnaliseCurriculo {
     );
   }
 
-  /** Vagas mais o `titulo` de `vagaId`, pronto pra exibição — usado pelas
-   * telas que só precisam do nome (ex: coluna "vaga sugerida"). */
-  tituloVaga(vagaId: number): string {
-    return this.vagas().find((item) => item.id === vagaId)?.titulo ?? '';
+  marcarErroComoVisto(erroId: string): void {
+    this.erros.update((atual) => atual.map((item) => (item.id === erroId ? { ...item, vista: true } : item)));
+  }
+
+  /** Marca toda notificação/erro pendente como visto de uma vez — chamado
+   * ao clicar no grupo "RH" da sidebar (ver `Sidebar.toggleRh`), pra a
+   * bolinha vermelha sumir assim que o usuário entra no módulo, sem
+   * precisar ver toast por toast. */
+  marcarTudoComoVisto(): void {
+    this.notificacoes.update((atual) => atual.map((item) => ({ ...item, vista: true })));
+    this.erros.update((atual) => atual.map((item) => ({ ...item, vista: true })));
   }
 }

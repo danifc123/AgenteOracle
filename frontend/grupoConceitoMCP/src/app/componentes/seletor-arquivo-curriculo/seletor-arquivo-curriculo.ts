@@ -1,4 +1,5 @@
 import { Component, output, signal } from '@angular/core';
+import { formatarTamanhoArquivo } from '../../servicos/formatar-tamanho-arquivo';
 
 // ".doc" (formato binário antigo do Word) fica de fora — não existe
 // biblioteca pura Python confiável pra extrair texto dele no backend
@@ -70,7 +71,6 @@ export class SeletorArquivoCurriculo {
   }
 
   protected tamanhoFormatado(arquivo: File): string {
-    const kb = arquivo.size / 1024;
-    return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`;
+    return formatarTamanhoArquivo(arquivo.size);
   }
 }

@@ -1,4 +1,5 @@
 import { Component, computed, input, output, signal } from '@angular/core';
+import { formatarTamanhoArquivo } from '../../servicos/formatar-tamanho-arquivo';
 
 export type CorSeletorArquivo = 'verde' | 'laranja';
 
@@ -20,11 +21,7 @@ export class SeletorArquivoExcel {
 
   protected readonly tamanhoFormatado = computed(() => {
     const arquivo = this.arquivo();
-    if (!arquivo) {
-      return '';
-    }
-    const kb = arquivo.size / 1024;
-    return kb < 1024 ? `${kb.toFixed(0)} KB` : `${(kb / 1024).toFixed(1)} MB`;
+    return arquivo ? formatarTamanhoArquivo(arquivo.size) : '';
   });
 
   private definirArquivo(arquivo: File | null): void {

@@ -1,9 +1,11 @@
 import { Component, ViewChild, inject, signal } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { AnaliseCurriculo } from '../../servicos/analise-curriculo';
 import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
 import { ConfiguracoesUsuario } from '../configuracoes-usuario/configuracoes-usuario';
+import { GRUPOS_MENU } from './itens-menu';
 
 const CHAVE_COLAPSADO = 'sidebar:colapsado';
 
@@ -18,13 +20,13 @@ export class Sidebar {
   protected readonly analiseCurriculo = inject(AnaliseCurriculo);
   protected readonly iniciais = iniciais;
   private readonly router = inject(Router);
+  private readonly sanitizer = inject(DomSanitizer);
 
   @ViewChild(ConfiguracoesUsuario) private readonly configuracoes!: ConfiguracoesUsuario;
 
+  protected readonly grupos = GRUPOS_MENU;
   protected readonly sidebarOpen = signal(false);
-  protected readonly financeiroOpen = signal(false);
-  protected readonly estoqueOpen = signal(false);
-  protected readonly rhOpen = signal(false);
+  protected readonly grupoAberto = signal<string | null>(null);
   protected readonly colapsado = signal(localStorage.getItem(CHAVE_COLAPSADO) === 'true');
 
   abrirConfiguracoes(): void {
@@ -34,9 +36,7 @@ export class Sidebar {
   alternarColapsado(): void {
     const novoValor = !this.colapsado();
     this.colapsado.set(novoValor);
-    this.financeiroOpen.set(false);
-    this.estoqueOpen.set(false);
-    this.rhOpen.set(false);
+    this.grupoAberto.set(null);
     localStorage.setItem(CHAVE_COLAPSADO, String(novoValor));
   }
 
@@ -44,13 +44,14 @@ export class Sidebar {
     this.sidebarOpen.set(false);
   }
 
-  /** Usado pelos links FORA dos grupos Financeiro/Estoque/RH — navegar pra
-   * outra área fecha os três submenus, já que deixou de fazer sentido
-   * continuar abertos. */
+  protected iconeSeguro(svg: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(svg);
+  }
+
+  /** Usado pelos links FORA dos grupos com submenu — navegar pra outra área
+   * fecha o grupo aberto, já que deixou de fazer sentido continuar aberto. */
   navegarParaFora(): void {
-    this.financeiroOpen.set(false);
-    this.estoqueOpen.set(false);
-    this.rhOpen.set(false);
+    this.grupoAberto.set(null);
     this.closeSidebar();
   }
 
@@ -59,28 +60,15 @@ export class Sidebar {
     this.router.navigateByUrl('/login');
   }
 
-  toggleEstoque(): void {
-    this.financeiroOpen.set(false);
-    this.rhOpen.set(false);
-    this.estoqueOpen.update((value) => !value);
-  }
-
-  /** Só um dos três grupos fica aberto por vez (accordion) — abrir um fecha
-   * os outros, se estiverem abertos. */
-  toggleFinanceiro(): void {
-    this.estoqueOpen.set(false);
-    this.rhOpen.set(false);
-    this.financeiroOpen.update((value) => !value);
-  }
-
-  /** Clicar no grupo "RH" também marca toda notificação/erro pendente como
-   * visto — a bolinha laranja some assim que o usuário entra no módulo, em
-   * vez de exigir que ele veja/dispense cada toast um por um. */
-  toggleRh(): void {
-    this.financeiroOpen.set(false);
-    this.estoqueOpen.set(false);
-    this.rhOpen.update((value) => !value);
-    this.analiseCurriculo.marcarTudoComoVisto();
+  /** Só um grupo fica aberto por vez (accordion). Clicar no grupo "RH"
+   * também marca toda notificação/erro pendente como visto — a bolinha
+   * laranja some assim que o usuário entra no módulo, em vez de exigir que
+   * ele veja/dispense cada toast um por um. */
+  protected toggleGrupo(chave: string): void {
+    this.grupoAberto.update((atual) => (atual === chave ? null : chave));
+    if (chave === 'rh') {
+      this.analiseCurriculo.marcarTudoComoVisto();
+    }
   }
 
   toggleSidebar(): void {

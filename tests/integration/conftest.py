@@ -16,7 +16,25 @@ import psycopg
 import pytest
 
 from agente_oracle.config import settings
-from agente_oracle.db.connection import DatabaseError, get_connection
+from agente_oracle.db.connection import DatabaseError, get_connection, get_postgres_connection
+
+# Tabelas de trilha de auditoria — nunca expiram por design (ver docstrings
+# de `tools/auth/eventos_seguranca.py`/`tools/auditoria/historico.py`), então
+# nenhum código de produção tem uma função de apagar linha. A grande maioria
+# dos testes de integração passa por login de verdade (fixtures `token_teste`/
+# `token_dev` abaixo) ou aciona rotas do módulo de Auditoria, e cada um desses
+# grava uma linha real nessas tabelas — como é o MESMO Postgres que a
+# aplicação de verdade usa pra esse estado (`get_postgres_connection` não
+# depende de `DB_BACKEND`), sem limpeza esse "lixo de teste" ficava pra
+# sempre visível nas telas reais (log de segurança, Auditoria). Ver
+# `_limpar_trilhas_de_auditoria` abaixo.
+_TABELAS_TRILHA_AUDITORIA = (
+    "eventos_seguranca",
+    "auditoria_historico",
+    "auditoria_dispensados",
+    "ti_acessos_dados",
+    "ti_seguranca_historico",
+)
 
 
 def _postgres_disponivel() -> bool:
@@ -56,6 +74,48 @@ def _requer_postgres_de_teste():
         pytest.skip(
             "Postgres de teste não está acessível — configure DB_BACKEND=postgres no .env e suba o banco."
         )
+
+
+def _garantir_tabelas_trilha_auditoria() -> None:
+    """Chama as próprias funções de consulta de cada módulo (que já fazem
+    `CREATE TABLE IF NOT EXISTS` sozinhas) pra garantir que as tabelas
+    existem antes do checkpoint — evita duplicar essa criação aqui, e evita
+    o `SELECT MAX(id)` do checkpoint falhar com "tabela não existe" na
+    primeira vez que a suíte roda contra um Postgres novo."""
+    from agente_oracle.tools.auditoria import dispensados, historico
+    from agente_oracle.tools.auth import eventos_seguranca
+    from agente_oracle.tools.ti import acessos_dados, historico_seguranca
+
+    eventos_seguranca.listar(limite=1)
+    historico.achados_ativos(["financeiro"])
+    dispensados.listar_dispensados("_")
+    acessos_dados.perfil_acessos(dias=1)
+    historico_seguranca.achados_ativos()
+
+
+@pytest.fixture(autouse=True)
+def _limpar_trilhas_de_auditoria(_requer_postgres_de_teste):
+    """Apaga, no fim de CADA teste, só as linhas de `_TABELAS_TRILHA_AUDITORIA`
+    inseridas DURANTE esse teste (por id, comparado com um checkpoint tirado
+    antes) — nunca o que já existia. Roda mesmo se o teste falhar (o teardown
+    de uma fixture com `yield` sempre executa), que é justamente o cenário
+    que motivou isso: um teste falhar DEPOIS de já ter gravado o evento/achado,
+    deixando lixo pra trás sem ninguém perceber."""
+    _garantir_tabelas_trilha_auditoria()
+
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        checkpoints = {}
+        for tabela in _TABELAS_TRILHA_AUDITORIA:
+            cursor.execute(f"SELECT COALESCE(MAX(id), 0) FROM {tabela}")
+            checkpoints[tabela] = cursor.fetchone()[0]
+
+    yield
+
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        for tabela, checkpoint in checkpoints.items():
+            cursor.execute(f"DELETE FROM {tabela} WHERE id > :id", id=checkpoint)
 
 
 @pytest.fixture

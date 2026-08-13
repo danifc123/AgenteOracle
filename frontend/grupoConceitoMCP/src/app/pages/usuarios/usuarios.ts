@@ -93,20 +93,6 @@ export class Usuarios {
       rotulo: papel.rotulo,
     }));
 
-  protected rotuloPapeis(slugs: string[]): string {
-    const disponiveis = this.papeisDisponiveis();
-    return slugs
-      .map((slug) => disponiveis.find((papel) => papel.slug === slug)?.rotulo ?? slug)
-      .join(', ');
-  }
-
-  /** Só usuários do Financeiro têm filial de verdade hoje — botão
-   * "Gerenciar filiais" some da linha de quem não tem nenhum papel desse
-   * módulo (RH, Estoque ainda não usam filial). */
-  protected usuarioTemFinanceiro(usuario: Usuario): boolean {
-    return usuario.papeis.some((papel) => PAPEIS_FINANCEIRO.includes(papel));
-  }
-
   protected readonly colunaOrdenada = signal<string | null>(null);
   protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>(null);
 
@@ -327,6 +313,13 @@ export class Usuarios {
     }
   }
 
+  protected rotuloPapeis(slugs: string[]): string {
+    const disponiveis = this.papeisDisponiveis();
+    return slugs
+      .map((slug) => disponiveis.find((papel) => papel.slug === slug)?.rotulo ?? slug)
+      .join(', ');
+  }
+
   salvarFiliaisBloqueadas(): void {
     const usuario = this.usuarioFiliais();
     if (!usuario || this.salvandoFiliais()) {
@@ -351,5 +344,12 @@ export class Usuarios {
           this.salvandoFiliais.set(false);
         },
       });
+  }
+
+  /** Só usuários do Financeiro têm filial de verdade hoje — botão
+   * "Gerenciar filiais" some da linha de quem não tem nenhum papel desse
+   * módulo (RH, Estoque ainda não usam filial). */
+  protected usuarioTemFinanceiro(usuario: Usuario): boolean {
+    return usuario.papeis.some((papel) => PAPEIS_FINANCEIRO.includes(papel));
   }
 }

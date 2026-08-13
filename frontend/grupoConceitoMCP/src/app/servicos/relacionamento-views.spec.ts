@@ -1,4 +1,4 @@
-import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { ViewFinanceira } from '../dadosRelatorios/views-financeiras';
 import { construirGrafoRelacionamentos, tabelasAlcancaveis } from './relacionamento-views';
 
 function view(nome: string, viewDestino?: string): ViewFinanceira {

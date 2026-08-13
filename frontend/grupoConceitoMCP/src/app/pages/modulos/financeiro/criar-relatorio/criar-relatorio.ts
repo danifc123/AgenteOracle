@@ -14,7 +14,7 @@ import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
 import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
 import { filtrosPorColuna } from './filtros-relatorio';
-import { construirGrafoRelacionamentos, tabelasAlcancaveis } from './relacionamento-views';
+import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views';
 
 interface Filial {
   codigo: string;

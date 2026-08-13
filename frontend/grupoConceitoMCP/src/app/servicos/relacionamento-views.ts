@@ -1,4 +1,4 @@
-import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { ViewFinanceira } from '../dadosRelatorios/views-financeiras';
 
 /** Grafo não-direcionado das views a partir dos relacionamentos declarados
  * (mesma ideia do `_grafo_relacionamentos` do backend, em

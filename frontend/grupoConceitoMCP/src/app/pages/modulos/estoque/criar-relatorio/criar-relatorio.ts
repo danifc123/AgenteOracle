@@ -9,6 +9,7 @@ import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
 import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
 import { MOCK_VIEWS_ESTOQUE } from '../../../../dadosRelatorios/views-estoque';
+import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views';
 
 // Dado de mentira só pra construir/ajustar os componentes visuais — troca
 // pra dados reais assim que existir a consulta SQL desse módulo (ver
@@ -94,23 +95,9 @@ export class EstoqueCriarRelatorio {
     this.layouts().map((layout) => ({ valor: String(layout.id), rotulo: layout.nome })),
   );
 
-  /** Grafo não-direcionado das views a partir dos relacionamentos declarados
-   * — usado só pra decidir quais tabelas ficam bloqueadas na lista, mesma
-   * lógica do "Criar Relatório" do Financeiro. */
-  private readonly grafoRelacionamentos = computed(() => {
-    const grafo = new Map<string, Set<string>>();
-    for (const view of this.views()) {
-      grafo.set(view.nome, grafo.get(view.nome) ?? new Set());
-      for (const rel of view.relacionamentos) {
-        if (!grafo.has(rel.viewDestino)) {
-          grafo.set(rel.viewDestino, new Set());
-        }
-        grafo.get(view.nome)!.add(rel.viewDestino);
-        grafo.get(rel.viewDestino)!.add(view.nome);
-      }
-    }
-    return grafo;
-  });
+  private readonly grafoRelacionamentos = computed(() =>
+    construirGrafoRelacionamentos(this.views()),
+  );
 
   /** Nomes das tabelas alcançáveis a partir da seleção atual (colunas já
    * marcadas), direto ou por relacionamento indireto. `null` quando nada
@@ -120,25 +107,7 @@ export class EstoqueCriarRelatorio {
       .filter(([, colunas]) => colunas.length > 0)
       .map(([nomeView]) => nomeView);
 
-    if (!selecionadas.length) {
-      return null;
-    }
-
-    const grafo = this.grafoRelacionamentos();
-    const visitados = new Set(selecionadas);
-    const fila = [...selecionadas];
-
-    while (fila.length) {
-      const atual = fila.shift()!;
-      for (const vizinho of grafo.get(atual) ?? []) {
-        if (!visitados.has(vizinho)) {
-          visitados.add(vizinho);
-          fila.push(vizinho);
-        }
-      }
-    }
-
-    return visitados;
+    return tabelasAlcancaveis(this.grafoRelacionamentos(), selecionadas);
   });
 
   protected abrirSalvarLayout(): void {

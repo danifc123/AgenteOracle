@@ -1,46 +1,18 @@
 <app-dialog [aberto]="aberto()" titulo="Configurações" tamanho="compacto" (fechar)="fechar()">
   <div class="config-layout">
     <div class="config-tabs" role="tablist" aria-label="Seções de configuração">
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="secaoAtiva() === 'perfil'"
-        class="config-tab"
-        [class.ativo]="secaoAtiva() === 'perfil'"
-        (click)="secaoAtiva.set('perfil')"
-      >
-        Perfil
-      </button>
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="secaoAtiva() === 'senha'"
-        class="config-tab"
-        [class.ativo]="secaoAtiva() === 'senha'"
-        (click)="secaoAtiva.set('senha')"
-      >
-        Senha
-      </button>
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="secaoAtiva() === 'layouts'"
-        class="config-tab"
-        [class.ativo]="secaoAtiva() === 'layouts'"
-        (click)="secaoAtiva.set('layouts')"
-      >
-        Layouts salvos
-      </button>
-      <button
-        type="button"
-        role="tab"
-        [attr.aria-selected]="secaoAtiva() === 'cores'"
-        class="config-tab"
-        [class.ativo]="secaoAtiva() === 'cores'"
-        (click)="secaoAtiva.set('cores')"
-      >
-        Cores das categorias
-      </button>
+      @for (aba of ABAS; track aba.id) {
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="secaoAtiva() === aba.id"
+          class="config-tab"
+          [class.ativo]="secaoAtiva() === aba.id"
+          (click)="secaoAtiva.set(aba.id)"
+        >
+          {{ aba.rotulo }}
+        </button>
+      }
     </div>
 
     <div class="config-conteudo">

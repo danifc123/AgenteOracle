@@ -26,6 +26,12 @@ export class ConfiguracoesUsuario {
 
   protected readonly aberto = signal(false);
   protected readonly secaoAtiva = signal<'perfil' | 'senha' | 'layouts' | 'cores'>('perfil');
+  protected readonly ABAS = [
+    { id: 'perfil', rotulo: 'Perfil' },
+    { id: 'senha', rotulo: 'Senha' },
+    { id: 'layouts', rotulo: 'Layouts salvos' },
+    { id: 'cores', rotulo: 'Cores das categorias' },
+  ] as const;
 
   protected readonly nome = signal('');
   protected readonly fotoPreview = signal<string | null>(null);

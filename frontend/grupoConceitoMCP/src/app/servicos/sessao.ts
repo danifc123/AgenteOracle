@@ -11,6 +11,7 @@ const ROTULOS_MODULO: Record<string, string> = {
   financeiro: 'Financeiro',
   estoque: 'Estoque',
   rh: 'RH',
+  ti: 'TI',
 };
 
 export function rotuloModulo(modulo: string): string {

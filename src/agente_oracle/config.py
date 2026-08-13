@@ -16,6 +16,19 @@ class Settings(BaseSettings):
     oracle_pool_increment: int = 1
     oracle_client_lib_dir: str | None = None
 
+    # Conexão separada e independente com o Oracle do Protheus (login/
+    # auditoria de usuário, ver `tools/ti/protheus_login.py`) — nunca
+    # reaproveita as credenciais do STAGE acima. Opcional: sem `protheus_dsn`
+    # configurado, a detecção de segurança do TI simplesmente não usa essa
+    # fonte, sem quebrar nada (ver `db/connection.py::protheus_configurado`).
+    protheus_dsn: str = ""
+    protheus_user: str = ""
+    protheus_password: str = ""
+    protheus_schema: str = "PROTHMG"
+    protheus_pool_min: int = 1
+    protheus_pool_max: int = 2
+    protheus_pool_increment: int = 1
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "agente_oracle"

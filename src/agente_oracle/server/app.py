@@ -1,7 +1,7 @@
 from mcp.server.fastmcp import FastMCP
 
 from agente_oracle.config import settings, validar_auth_secret_key
-from agente_oracle.server import auditoria, auth, ferramentas, financeiro, rh
+from agente_oracle.server import auditoria, auth, ferramentas, financeiro, rh, ti
 from agente_oracle.server.security_headers import HeadersDeSegurancaMiddleware
 
 mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
@@ -11,6 +11,7 @@ financeiro.registrar(mcp)
 rh.registrar(mcp)
 auditoria.registrar(mcp)
 ferramentas.registrar(mcp)
+ti.registrar(mcp)
 
 
 def criar_app():

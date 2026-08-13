@@ -26,6 +26,8 @@ DatabaseError = (oracledb.DatabaseError, psycopg.Error)
 
 _oracle_pool: oracledb.ConnectionPool | None = None
 _postgres_pool: PostgresPool | None = None
+_protheus_pool: oracledb.ConnectionPool | None = None
+_oracle_client_inicializado = False
 
 
 def eh_erro_coluna_invalida(erro: Exception) -> bool:
@@ -65,6 +67,28 @@ def get_postgres_connection():
     pool = _get_postgres_pool()
     with pool.connection() as connection:
         yield _ConnectionAdapter(connection, "postgres")
+
+
+@contextmanager
+def get_protheus_connection():
+    """Conexão só-leitura e independente com o Oracle do Protheus (login/
+    auditoria de usuário — `tools/ti/protheus_login.py`), separada da
+    conexão de negócio (`get_connection`, que fala com o STAGE/BI) — pool
+    próprio, nunca compartilha nada com o STAGE. Só chamar depois de
+    conferir `protheus_configurado()`."""
+    pool = _get_protheus_pool()
+    connection = pool.acquire()
+    try:
+        yield _ConnectionAdapter(connection, "oracle")
+    finally:
+        pool.release(connection)
+
+
+def protheus_configurado() -> bool:
+    """`False` quando `PROTHEUS_DSN` não foi definido no `.env` — quem
+    chama trata isso como "sem essa fonte de dado disponível", nunca como
+    erro (ver `tools/ti/protheus_login.py`)."""
+    return bool(settings.protheus_dsn)
 
 
 class _ConnectionAdapter:
@@ -124,11 +148,22 @@ class _CursorAdapter:
         return self._cursor.rowcount
 
 
+def _garantir_oracle_client_inicializado() -> None:
+    """`oracledb.init_oracle_client` só pode ser chamado uma vez por
+    processo — como `_get_oracle_pool` e `_get_protheus_pool` são dois
+    pools independentes que podem precisar dele, essa checagem evita
+    chamar duas vezes (o que derrubaria o segundo pool com erro)."""
+    global _oracle_client_inicializado
+    if _oracle_client_inicializado or not settings.oracle_client_lib_dir:
+        return
+    oracledb.init_oracle_client(lib_dir=settings.oracle_client_lib_dir)
+    _oracle_client_inicializado = True
+
+
 def _get_oracle_pool() -> oracledb.ConnectionPool:
     global _oracle_pool
     if _oracle_pool is None:
-        if settings.oracle_client_lib_dir:
-            oracledb.init_oracle_client(lib_dir=settings.oracle_client_lib_dir)
+        _garantir_oracle_client_inicializado()
         _oracle_pool = oracledb.create_pool(
             user=settings.oracle_user,
             password=settings.oracle_password,
@@ -155,3 +190,18 @@ def _get_postgres_pool() -> PostgresPool:
             open=True,
         )
     return _postgres_pool
+
+
+def _get_protheus_pool() -> oracledb.ConnectionPool:
+    global _protheus_pool
+    if _protheus_pool is None:
+        _garantir_oracle_client_inicializado()
+        _protheus_pool = oracledb.create_pool(
+            user=settings.protheus_user,
+            password=settings.protheus_password,
+            dsn=settings.protheus_dsn,
+            min=settings.protheus_pool_min,
+            max=settings.protheus_pool_max,
+            increment=settings.protheus_pool_increment,
+        )
+    return _protheus_pool

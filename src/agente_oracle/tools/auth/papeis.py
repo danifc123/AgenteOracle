@@ -13,7 +13,7 @@ automaticamente, sem precisar editar nada aqui.
 
 from dataclasses import dataclass
 
-MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque", "rh")
+MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque", "rh", "ti")
 
 # Sigla curta usada em nomes de arquivo exportado (ex:
 # `planilhas_combinadas_FIN.xlsx`), pra quem baixa saber de qual time veio.
@@ -24,6 +24,7 @@ SIGLAS_MODULO: dict[str, str] = {
     "financeiro": "FIN",
     "estoque": "EST",
     "rh": "RH",
+    "ti": "TI",
 }
 
 
@@ -48,7 +49,13 @@ class Papel:
 # dois. Não é um bug — é uma decisão de design que vale reavaliar mais pra
 # frente, não uma ação pendente.
 PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
-    Papel(slug="desenvolvedor", rotulo="Desenvolvedor", acesso_total=True, administrador=True),
+    Papel(
+        slug="desenvolvedor",
+        rotulo="Desenvolvedor",
+        modulos=("ti",),
+        acesso_total=True,
+        administrador=True,
+    ),
     Papel(
         slug="financeiro_admin",
         rotulo="Administrador do Financeiro",
@@ -60,6 +67,8 @@ PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="estoque", rotulo="Time do Estoque", modulos=("estoque",)),
     Papel(slug="rh_admin", rotulo="Administrador do RH", modulos=("rh",), administrador=True),
     Papel(slug="rh", rotulo="Time do RH", modulos=("rh",)),
+    Papel(slug="ti_admin", rotulo="Administrador de TI", modulos=("ti",), administrador=True),
+    Papel(slug="ti_infraestrutura", rotulo="Infraestrutura de TI", modulos=("ti",)),
 )
 
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}

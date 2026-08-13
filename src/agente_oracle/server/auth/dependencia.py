@@ -72,6 +72,19 @@ def exigir_modulo_rh(request: Request) -> dict | JSONResponse:
     return resultado
 
 
+def exigir_modulo_ti(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
+    tenha acesso ao módulo TI — usada em toda rota `/api/ti/*`."""
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "ti"):
+        return JSONResponse({"erro": "Acesso restrito ao módulo TI."}, status_code=403, headers=CORS_HEADERS)
+
+    return resultado
+
+
 def exigir_usuario(request: Request) -> dict | JSONResponse:
     cabecalho = request.headers.get("authorization", "")
     if not cabecalho.startswith("Bearer "):

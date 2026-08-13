@@ -542,6 +542,35 @@
       <span class="nav-label">Lista de Auditoria</span>
     </a>
 
+    @if (sessao.modulos().includes('ti')) {
+      <a
+        class="nav-link"
+        routerLink="/ti/seguranca"
+        routerLinkActive="active"
+        [title]="colapsado() ? 'Segurança de TI' : null"
+        (click)="navegarParaFora()"
+      >
+        <span class="nav-icon">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path
+              d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path d="M12 8v5M12 16.5h.01" stroke-linecap="round" />
+          </svg>
+        </span>
+        <span class="nav-label">Segurança de TI</span>
+      </a>
+    }
+
     <a
       class="nav-link"
       routerLink="/juntar-excel"

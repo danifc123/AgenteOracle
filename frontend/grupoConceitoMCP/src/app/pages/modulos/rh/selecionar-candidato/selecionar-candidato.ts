@@ -1,13 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
+import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import {
-  AnaliseCurriculo,
-  ROTULOS_SENIORIDADE,
-  ROTULOS_STATUS_FORMACAO,
-  StatusFormacao,
-} from '../../../../servicos/analise-curriculo';
+import { AnaliseCurriculo, ROTULOS_SENIORIDADE } from '../../../../servicos/analise-curriculo';
 import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos';
 
 /** MÓDULO RH — TELA "SELECIONAR CANDIDATO" (2026-08)
@@ -20,7 +16,7 @@ import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-cand
  */
 @Component({
   selector: 'app-selecionar-candidato',
-  imports: [Botao, Dialog, ModuloHeader],
+  imports: [Botao, DetalheCandidato, Dialog, ModuloHeader],
   templateUrl: './selecionar-candidato.html',
   styleUrl: './selecionar-candidato.scss',
 })
@@ -57,9 +53,5 @@ export class SelecionarCandidato {
 
   protected rotuloSenioridade(resultado: ResultadoBusca): string {
     return ROTULOS_SENIORIDADE[resultado.nivel_senioridade];
-  }
-
-  protected rotuloStatusFormacao(status: StatusFormacao): string {
-    return ROTULOS_STATUS_FORMACAO[status];
   }
 }

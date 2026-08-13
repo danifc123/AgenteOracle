@@ -60,95 +60,11 @@
   (fechar)="fecharDetalhe()"
 >
   @if (candidatoAberto(); as candidato) {
-    <div class="detalhe-candidato">
-      <p class="resumo-completo">{{ candidato.resumo_perfil }}</p>
-
-      <div class="linha-meta-badges">
-        <span class="badge-meta">{{ rotuloSenioridade(candidato) }}</span>
-        @if (candidato.perfil_estruturado.area_atuacao_principal) {
-          <span class="badge-meta">{{ candidato.perfil_estruturado.area_atuacao_principal }}</span>
-        }
-        @if (candidato.perfil_estruturado.anos_experiencia_total) {
-          <span class="badge-meta">{{ candidato.perfil_estruturado.anos_experiencia_total }} anos de experiência</span>
-        }
-      </div>
-
-      @if (candidato.perfil_estruturado.habilidades_tecnicas; as habilidades) {
-        @if (
-          habilidades.linguagens.length ||
-          habilidades.frameworks_bibliotecas.length ||
-          habilidades.bancos_de_dados.length ||
-          habilidades.ferramentas_plataformas.length
-        ) {
-          <div class="secao-detalhe">
-            <h3>Habilidades técnicas</h3>
-            <div class="lista-tags">
-              @for (item of habilidades.linguagens; track item) {
-                <span class="tag">{{ item }}</span>
-              }
-              @for (item of habilidades.frameworks_bibliotecas; track item) {
-                <span class="tag">{{ item }}</span>
-              }
-              @for (item of habilidades.bancos_de_dados; track item) {
-                <span class="tag">{{ item }}</span>
-              }
-              @for (item of habilidades.ferramentas_plataformas; track item) {
-                <span class="tag">{{ item }}</span>
-              }
-            </div>
-          </div>
-        }
-      }
-
-      @if (candidato.perfil_estruturado.experiencias_profissionais?.length) {
-        <div class="secao-detalhe">
-          <h3>Experiência profissional</h3>
-          @for (experiencia of candidato.perfil_estruturado.experiencias_profissionais; track $index) {
-            <div class="experiencia-item">
-              <p class="experiencia-cargo">{{ experiencia.cargo }} — {{ experiencia.empresa }}</p>
-              <p class="experiencia-periodo">
-                {{ experiencia.data_inicio || '?' }} a {{ experiencia.data_fim || 'atual' }}
-              </p>
-              @if (experiencia.principais_responsabilidades.length) {
-                <ul>
-                  @for (responsabilidade of experiencia.principais_responsabilidades; track responsabilidade) {
-                    <li>{{ responsabilidade }}</li>
-                  }
-                </ul>
-              }
-            </div>
-          }
-        </div>
-      }
-
-      @if (candidato.perfil_estruturado.formacao_academica?.length) {
-        <div class="secao-detalhe">
-          <h3>Formação acadêmica</h3>
-          @for (formacao of candidato.perfil_estruturado.formacao_academica; track $index) {
-            <p class="formacao-item">
-              {{ formacao.curso }} — {{ formacao.instituicao }} ({{ rotuloStatusFormacao(formacao.status) }})
-            </p>
-          }
-        </div>
-      }
-
-      @if (candidato.perfil_estruturado.certificacoes?.length || candidato.perfil_estruturado.idiomas?.length) {
-        <div class="secao-detalhe">
-          @if (candidato.perfil_estruturado.certificacoes; as certificacoes) {
-            @if (certificacoes.length) {
-              <p><strong>Certificações:</strong> {{ certificacoes.join(', ') }}</p>
-            }
-          }
-          @if (candidato.perfil_estruturado.idiomas; as idiomas) {
-            @if (idiomas.length) {
-              <p><strong>Idiomas:</strong> {{ idiomas.join(', ') }}</p>
-            }
-          }
-        </div>
-      }
-
-      <p class="meta-candidato">Cadastrado em {{ dataFormatada(candidato.criado_em) }}</p>
-    </div>
+    <app-detalhe-candidato
+      [resumo]="candidato.resumo_perfil"
+      [perfilEstruturado]="candidato.perfil_estruturado"
+      [dataCadastro]="dataFormatada(candidato.criado_em)"
+    />
   }
 
   @if (candidatoAberto(); as candidato) {

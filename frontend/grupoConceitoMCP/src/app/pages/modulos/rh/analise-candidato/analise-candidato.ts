@@ -1,17 +1,15 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
+import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { SeletorArquivoCurriculo } from '../../../../componentes/seletor-arquivo-curriculo/seletor-arquivo-curriculo';
 import {
   AnaliseCurriculo,
   Candidato,
-  ROTULOS_SENIORIDADE,
   ROTULOS_STATUS,
-  ROTULOS_STATUS_FORMACAO,
   StatusCandidato,
-  StatusFormacao,
 } from '../../../../servicos/analise-curriculo';
 
 const LIMITE_RESUMO_TRUNCADO = 140;
@@ -32,7 +30,7 @@ const LIMITE_RESUMO_TRUNCADO = 140;
  */
 @Component({
   selector: 'app-analise-candidato',
-  imports: [Botao, CartaoKpi, Dialog, ModuloHeader, SeletorArquivoCurriculo],
+  imports: [Botao, CartaoKpi, DetalheCandidato, Dialog, ModuloHeader, SeletorArquivoCurriculo],
   templateUrl: './analise-candidato.html',
   styleUrl: './analise-candidato.scss',
 })
@@ -98,16 +96,7 @@ export class AnaliseCandidato {
     return resumo.length > LIMITE_RESUMO_TRUNCADO ? `${resumo.slice(0, LIMITE_RESUMO_TRUNCADO)}...` : resumo;
   }
 
-  protected rotuloSenioridade(candidato: Candidato): string {
-    const nivel = candidato.perfil_estruturado.nivel_senioridade;
-    return nivel ? ROTULOS_SENIORIDADE[nivel] : ROTULOS_SENIORIDADE['nao_identificado'];
-  }
-
   protected rotuloStatus(status: StatusCandidato): string {
     return ROTULOS_STATUS[status];
-  }
-
-  protected rotuloStatusFormacao(status: StatusFormacao): string {
-    return ROTULOS_STATUS_FORMACAO[status];
   }
 }

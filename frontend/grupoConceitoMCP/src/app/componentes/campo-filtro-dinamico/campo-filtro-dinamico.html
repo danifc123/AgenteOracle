@@ -1,3 +1,18 @@
+<ng-template #botaoLimpar let-ariaLabel="ariaLabel" let-emissor="emissor">
+  <button type="button" class="botao-limpar" [attr.aria-label]="ariaLabel" (click)="emissor.emit('')">
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+    >
+      <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </button>
+</ng-template>
+
 @switch (campo().tipo) {
   @case ('texto') {
     <div class="campo-grupo">
@@ -13,23 +28,9 @@
           [attr.aria-label]="campo().rotulo"
         />
         @if (valor()) {
-          <button
-            type="button"
-            class="botao-limpar"
-            aria-label="Limpar campo"
-            (click)="valorChange.emit('')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
+          <ng-container
+            *ngTemplateOutlet="botaoLimpar; context: { ariaLabel: 'Limpar campo', emissor: valorChange }"
+          />
         }
       </div>
     </div>
@@ -58,23 +59,9 @@
           [attr.aria-label]="campo().rotulo + ' - início'"
         />
         @if (valorIni()) {
-          <button
-            type="button"
-            class="botao-limpar"
-            aria-label="Limpar início"
-            (click)="valorIniChange.emit('')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
+          <ng-container
+            *ngTemplateOutlet="botaoLimpar; context: { ariaLabel: 'Limpar início', emissor: valorIniChange }"
+          />
         }
       </div>
     </div>
@@ -92,23 +79,9 @@
           [attr.aria-label]="campo().rotulo + ' - fim'"
         />
         @if (valorFim()) {
-          <button
-            type="button"
-            class="botao-limpar"
-            aria-label="Limpar fim"
-            (click)="valorFimChange.emit('')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
+          <ng-container
+            *ngTemplateOutlet="botaoLimpar; context: { ariaLabel: 'Limpar fim', emissor: valorFimChange }"
+          />
         }
       </div>
     </div>
@@ -128,23 +101,9 @@
           [attr.aria-label]="campo().rotulo + ' - mínimo'"
         />
         @if (valorIni()) {
-          <button
-            type="button"
-            class="botao-limpar"
-            aria-label="Limpar mínimo"
-            (click)="valorIniChange.emit('')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
+          <ng-container
+            *ngTemplateOutlet="botaoLimpar; context: { ariaLabel: 'Limpar mínimo', emissor: valorIniChange }"
+          />
         }
       </div>
     </div>
@@ -162,23 +121,9 @@
           [attr.aria-label]="campo().rotulo + ' - máximo'"
         />
         @if (valorFim()) {
-          <button
-            type="button"
-            class="botao-limpar"
-            aria-label="Limpar máximo"
-            (click)="valorFimChange.emit('')"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
+          <ng-container
+            *ngTemplateOutlet="botaoLimpar; context: { ariaLabel: 'Limpar máximo', emissor: valorFimChange }"
+          />
         }
       </div>
     </div>

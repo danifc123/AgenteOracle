@@ -31,7 +31,7 @@
 } @else if (erro()) {
   <p class="erro-previsao">{{ erro() }}</p>
 } @else if (!jaGerou()) {
-  <div class="estado-vazio">
+  <app-estado-vazio titulo="Selecione a(s) filial(is)">
     <svg
       viewBox="0 0 24 24"
       width="40"
@@ -52,12 +52,11 @@
       <path d="M3 10h18" stroke-linecap="round" />
       <circle cx="8" cy="14.5" r="1.4" />
     </svg>
-    <h3>Selecione a(s) filial(is)</h3>
     <p>
       Escolha uma ou mais filiais e gere a projeção de fluxo de caixa com base nos títulos já
       lançados no sistema.
     </p>
-  </div>
+  </app-estado-vazio>
 } @else {
   <div class="linha-kpis">
     <app-cartao-kpi rotulo="A Receber" [valor]="totalAReceber()" [destacarNegativo]="false" />

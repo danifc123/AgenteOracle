@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Busca } from '../../../../componentes/busca/busca';
 import { Dialog } from '../../../../componentes/dialog/dialog';
+import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import {
   FiltroCategorias,
   OpcaoCategoria,
@@ -33,7 +34,7 @@ interface GrupoRotinas {
 
 @Component({
   selector: 'app-estoque-especifico-grupo-conceito',
-  imports: [Busca, Dialog, ModuloHeader, RotinaItem, RotinaDetalhe, FiltroCategorias],
+  imports: [Busca, Dialog, ModuloHeader, RotinaItem, RotinaDetalhe, FiltroCategorias, EstadoVazio],
   templateUrl: './especifico-grupo-conceito.html',
   styleUrl: './especifico-grupo-conceito.scss',
 })

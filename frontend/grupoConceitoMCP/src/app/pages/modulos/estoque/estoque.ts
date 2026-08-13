@@ -1,6 +1,7 @@
 import { Component, computed, signal } from '@angular/core';
 import { Botao } from '../../../componentes/botao/botao';
 import { CartaoKpi } from '../../../componentes/cartao-kpi/cartao-kpi';
+import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../componentes/select-busca/select-busca';
 
@@ -113,7 +114,7 @@ const MOCK_SUPRIMENTOS: ItemSuprimento[] = [
 
 @Component({
   selector: 'app-estoque',
-  imports: [ModuloHeader, SelectBusca, Botao, CartaoKpi],
+  imports: [ModuloHeader, SelectBusca, Botao, CartaoKpi, EstadoVazio],
   templateUrl: './estoque.html',
   styleUrl: './estoque.scss',
 })

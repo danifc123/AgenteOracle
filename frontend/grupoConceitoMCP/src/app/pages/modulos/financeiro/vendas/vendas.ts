@@ -3,6 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
+import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
@@ -43,7 +44,7 @@ const ETAPAS_INICIAIS: EtapaPrevisao[] = [
 
 @Component({
   selector: 'app-vendas',
-  imports: [ModuloHeader, SelectBusca, Botao, GraficoSerie, CartaoKpi],
+  imports: [ModuloHeader, SelectBusca, Botao, GraficoSerie, CartaoKpi, EstadoVazio],
   templateUrl: './vendas.html',
   styleUrl: './vendas.scss',
 })

@@ -81,7 +81,7 @@
   } @else if (rotinaEmVisualizacao()?.apiEndpoint) {
     <p class="carregando">Nenhum dado encontrado para esse relatório.</p>
   } @else {
-    <div class="visualizacao-vazia">
+    <app-estado-vazio titulo="Relatório ainda não disponível" variante="simples">
       <svg
         viewBox="0 0 24 24"
         width="40"
@@ -92,9 +92,8 @@
       >
         <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
-      <h3>Relatório ainda não disponível</h3>
       <p>Assim que essa rotina for implementada, o conteúdo aparecerá aqui.</p>
-    </div>
+    </app-estado-vazio>
   }
 
   <app-botao

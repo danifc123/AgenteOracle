@@ -20,7 +20,7 @@
 </div>
 
 @if (!jaCarregou()) {
-  <div class="estado-vazio">
+  <app-estado-vazio titulo="Selecione a(s) filial(is)">
     <svg
       viewBox="0 0 24 24"
       width="40"
@@ -33,9 +33,8 @@
       <path d="M3 8v8l9 5 9-5V8" stroke-linecap="round" stroke-linejoin="round" />
       <path d="M12 13v8" stroke-linecap="round" />
     </svg>
-    <h3>Selecione a(s) filial(is)</h3>
     <p>Escolha uma ou mais filiais pra ver as movimentações e os níveis de suprimento.</p>
-  </div>
+  </app-estado-vazio>
 } @else {
   <div class="linha-kpis">
     <app-cartao-kpi

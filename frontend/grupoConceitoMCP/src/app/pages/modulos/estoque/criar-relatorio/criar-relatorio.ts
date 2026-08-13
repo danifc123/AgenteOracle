@@ -2,6 +2,7 @@ import { Component, computed, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
 import { Busca } from '../../../../componentes/busca/busca';
 import { Dialog } from '../../../../componentes/dialog/dialog';
+import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { TabelaDetalhe } from '../../../../componentes/tabela-detalhe/tabela-detalhe';
@@ -52,7 +53,7 @@ const MOCK_OPCOES_COLUNA: Record<string, OpcaoSelectBusca[]> = {
 
 @Component({
   selector: 'app-estoque-criar-relatorio',
-  imports: [Busca, Dialog, Botao, ModuloHeader, TabelaItem, TabelaDetalhe, SelectBusca],
+  imports: [Busca, Dialog, Botao, ModuloHeader, TabelaItem, TabelaDetalhe, SelectBusca, EstadoVazio],
   templateUrl: './criar-relatorio.html',
   styleUrl: './criar-relatorio.scss',
 })

@@ -7,6 +7,7 @@ import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
 import { Busca } from '../../../componentes/busca/busca';
 import { Dialog } from '../../../componentes/dialog/dialog';
+import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import {
   FiltroCategorias,
   OpcaoCategoria,
@@ -50,6 +51,7 @@ interface GrupoRotinas {
     RotinaItem,
     RotinaDetalhe,
     FiltroCategorias,
+    EstadoVazio,
   ],
   templateUrl: './financeiro.html',
   styleUrl: './financeiro.scss',

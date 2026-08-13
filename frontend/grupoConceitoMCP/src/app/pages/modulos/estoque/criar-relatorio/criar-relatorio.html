@@ -68,7 +68,7 @@
   titulo="Relatório personalizado"
   (fechar)="fecharVisualizacao()"
 >
-  <div class="visualizacao-vazia">
+  <app-estado-vazio titulo="Relatório ainda não disponível" variante="simples">
     <svg
       viewBox="0 0 24 24"
       width="40"
@@ -79,12 +79,11 @@
     >
       <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
-    <h3>Relatório ainda não disponível</h3>
     <p>
       Ainda não existe a consulta SQL desse módulo — assim que ela for criada, o conteúdo aparecerá
       aqui.
     </p>
-  </div>
+  </app-estado-vazio>
 </app-dialog>
 
 <app-dialog

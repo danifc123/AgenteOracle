@@ -13,6 +13,7 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_rh
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.rh import candidatos as candidatos_tools
+from agente_oracle.tools.ti import acessos_dados
 
 
 # _resultado_para_json só é usada dentro de buscar_candidatos_route, logo
@@ -58,6 +59,7 @@ def registrar(mcp) -> None:
         except AnaliseIndisponivel as erro:
             return JSONResponse({"erro": str(erro)}, status_code=503, headers=CORS_HEADERS)
 
+        acessos_dados.registrar(usuario["sub"], "rh", "busca:candidatos", len(resultados))
         return JSONResponse(
             [_resultado_para_json(resultado) for resultado in resultados], headers=CORS_HEADERS
         )

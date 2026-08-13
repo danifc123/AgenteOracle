@@ -22,6 +22,7 @@ from agente_oracle.server.auth.dependencia import exigir_modulo_rh
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.rh import candidatos as candidatos_tools
 from agente_oracle.tools.rh.extracao_curriculo import ArquivoCurriculoInvalido
+from agente_oracle.tools.ti import acessos_dados
 
 _TAMANHO_MAXIMO_ARQUIVO = 15_000_000
 
@@ -86,6 +87,7 @@ def registrar(mcp) -> None:
         if arquivo is None:
             return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
 
+        acessos_dados.registrar(usuario["sub"], "rh", "candidatos:curriculo", 1)
         media_type = _MEDIA_TYPES.get(arquivo["tipo_arquivo"], "application/octet-stream")
         return Response(
             content=arquivo["arquivo"],
@@ -121,6 +123,7 @@ def registrar(mcp) -> None:
         """Lista os candidatos do pool, opcionalmente filtrados por status."""
         status = request.query_params.get("status", "").strip() or None
         candidatos = candidatos_tools.listar(status=status)
+        acessos_dados.registrar(usuario["sub"], "rh", "candidatos:listar", len(candidatos))
         return JSONResponse(
             [_candidato_para_json(candidato) for candidato in candidatos], headers=CORS_HEADERS
         )

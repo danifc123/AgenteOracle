@@ -42,6 +42,7 @@ def registrar(mcp) -> None:
         except RelatorioCustomizadoInvalido as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
+        _comum.registrar_acesso(usuario, "relatorio_customizado:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Relatório Customizado")
         return Response(
             content=conteudo_xlsx,
@@ -65,6 +66,7 @@ def registrar(mcp) -> None:
         except RelatorioCustomizadoInvalido as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
+        _comum.registrar_acesso(usuario, "relatorio_customizado:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

@@ -176,6 +176,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_baixas(*parametros)
+        _comum.registrar_acesso(usuario, "baixa_produtos:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Baixa por Produtos")
         return Response(
             content=conteudo_xlsx,
@@ -197,6 +198,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_baixas(*parametros)
+        _comum.registrar_acesso(usuario, "baixa_produtos:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

@@ -171,6 +171,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_extrato(*parametros)
+        _comum.registrar_acesso(usuario, "extrato_bancario:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Extrato Bancário")
         return Response(
             content=conteudo_xlsx,
@@ -194,6 +195,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_extrato(*parametros)
+        _comum.registrar_acesso(usuario, "extrato_bancario:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

@@ -24,6 +24,7 @@ from agente_oracle.db.connection import get_connection
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.server.financeiro.relatorios import _comum
 
 _QUERY_CLIENTES = """
     SELECT DISTINCT TRIM(c.codigopessoa) AS codigo, p.nome AS nome
@@ -118,7 +119,9 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_clientes_route(request: Request, usuario: dict) -> JSONResponse:
         """Clientes cadastrados (STAGE.CLIENTE) para o campo de filtro "Cliente"."""
-        return JSONResponse(_buscar_com_nome(_QUERY_CLIENTES), headers=CORS_HEADERS)
+        clientes = _buscar_com_nome(_QUERY_CLIENTES)
+        _comum.registrar_acesso(usuario, "cadastros:clientes", len(clientes))
+        return JSONResponse(clientes, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/contas-bancarias", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
@@ -130,7 +133,9 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_fornecedores_route(request: Request, usuario: dict) -> JSONResponse:
         """Fornecedores cadastrados (STAGE.FORNECEDOR) para o campo de filtro "Fornecedor"."""
-        return JSONResponse(_buscar_com_nome(_QUERY_FORNECEDORES), headers=CORS_HEADERS)
+        fornecedores = _buscar_com_nome(_QUERY_FORNECEDORES)
+        _comum.registrar_acesso(usuario, "cadastros:fornecedores", len(fornecedores))
+        return JSONResponse(fornecedores, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/lojas", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
@@ -156,7 +161,9 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_produtos_route(request: Request, usuario: dict) -> JSONResponse:
         """Produtos cadastrados (STAGE.PRODUTO) para os campos de filtro "Produto De/Até"."""
-        return JSONResponse(_buscar_com_nome(_QUERY_PRODUTOS), headers=CORS_HEADERS)
+        produtos = _buscar_com_nome(_QUERY_PRODUTOS)
+        _comum.registrar_acesso(usuario, "cadastros:produtos", len(produtos))
+        return JSONResponse(produtos, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/tipos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
@@ -168,4 +175,6 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
     async def listar_vendedores_route(request: Request, usuario: dict) -> JSONResponse:
         """Vendedores/consultores cadastrados (STAGE.VENDEDOR) para o campo de filtro "Consultor"."""
-        return JSONResponse(_buscar_com_nome(_QUERY_VENDEDORES), headers=CORS_HEADERS)
+        vendedores = _buscar_com_nome(_QUERY_VENDEDORES)
+        _comum.registrar_acesso(usuario, "cadastros:vendedores", len(vendedores))
+        return JSONResponse(vendedores, headers=CORS_HEADERS)

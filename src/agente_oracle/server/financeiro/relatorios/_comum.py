@@ -36,6 +36,7 @@ from agente_oracle.config import settings
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import restricoes_filial
+from agente_oracle.tools.ti import acessos_dados
 
 
 def exigir_filiais_liberadas(request: Request) -> dict | JSONResponse:
@@ -111,6 +112,15 @@ def pertence_lista(expressao: str, bind: str, delimitador: str = "|") -> str:
         f"INSTR('{delimitador}' || :{bind} || '{delimitador}', "
         f"'{delimitador}' || {expressao} || '{delimitador}') > 0"
     )
+
+
+def registrar_acesso(usuario: dict, recurso: str, quantidade: int) -> None:
+    """Loga quem exportou/listou o quê e quantos registros vieram —
+    pré-requisito pro agente de detecção de segurança do módulo TI
+    (`agent/ti/deteccao_seguranca.py`) ter volume de acesso a dado real pra
+    analisar. Chamar logo antes de devolver a resposta, no ponto em que a
+    quantidade de linhas já é conhecida."""
+    acessos_dados.registrar(usuario["sub"], "financeiro", recurso, quantidade)
 
 
 def serializar(valor):

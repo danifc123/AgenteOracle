@@ -180,6 +180,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_movimento(*parametros)
+        _comum.registrar_acesso(usuario, "movimento_financeiro_diario:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Resumo Bancário / Movimento Financeiro Diário")
         return Response(
             content=conteudo_xlsx,
@@ -201,6 +202,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_movimento(*parametros)
+        _comum.registrar_acesso(usuario, "movimento_financeiro_diario:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

@@ -327,6 +327,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)
+        _comum.registrar_acesso(usuario, "fluxo_caixa_realizado:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Fluxo de Caixa Realizado")
         return Response(
             content=conteudo_xlsx,
@@ -348,6 +349,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_fluxo_caixa_realizado(*parametros)
+        _comum.registrar_acesso(usuario, "fluxo_caixa_realizado:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

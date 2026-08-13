@@ -196,6 +196,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_titulos(*parametros)
+        _comum.registrar_acesso(usuario, "posicao_titulos_pagar:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Posição dos Títulos a Pagar")
         return Response(
             content=conteudo_xlsx,
@@ -217,6 +218,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_titulos(*parametros)
+        _comum.registrar_acesso(usuario, "posicao_titulos_pagar:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

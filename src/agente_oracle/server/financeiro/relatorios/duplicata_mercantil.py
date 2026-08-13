@@ -122,6 +122,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_duplicatas(*parametros)
+        _comum.registrar_acesso(usuario, "duplicata_mercantil:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Duplicata Mercantil")
         return Response(
             content=conteudo_xlsx,
@@ -143,6 +144,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_duplicatas(*parametros)
+        _comum.registrar_acesso(usuario, "duplicata_mercantil:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

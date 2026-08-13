@@ -339,6 +339,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_titulos(*parametros)
+        _comum.registrar_acesso(usuario, "retencao_impostos:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(
             colunas, linhas, titulo="Relação de Títulos a Pagar com Retenção de Impostos"
         )
@@ -362,6 +363,7 @@ def registrar(mcp) -> None:
             )
 
         colunas, linhas = _buscar_titulos(*parametros)
+        _comum.registrar_acesso(usuario, "retencao_impostos:listar", len(linhas))
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]

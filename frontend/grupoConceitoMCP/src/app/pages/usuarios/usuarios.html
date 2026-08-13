@@ -59,6 +59,11 @@
               }
             </td>
             <td class="acoes">
+              @if (sessao.modulos().includes('financeiro') && usuarioTemFinanceiro(usuario)) {
+                <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
+                  Gerenciar filiais
+                </app-botao>
+              }
               @if (usuario.bloqueado && sessao.ehDesenvolvedor()) {
                 <app-botao
                   variant="contorno"
@@ -148,6 +153,50 @@
       (clicked)="criarUsuario()"
     >
       Criar usuário
+    </app-botao>
+  </div>
+</app-dialog>
+
+<app-dialog
+  [aberto]="dialogFiliaisAberto()"
+  [titulo]="'Filiais bloqueadas — ' + (usuarioFiliais()?.nome ?? '')"
+  [temRodape]="true"
+  (fechar)="fecharDialogFiliais()"
+>
+  <div class="form-usuario">
+    <p class="dialog-filiais-instrucao">
+      Marque as filiais que este usuário NÃO pode ver nos relatórios do Financeiro. Por padrão,
+      toda filial fica liberada.
+    </p>
+
+    @if (carregandoFiliaisBloqueadas()) {
+      <p class="carregando">Carregando...</p>
+    } @else {
+      <app-select-busca
+        rotulo="Filiais bloqueadas"
+        placeholder="Nenhuma filial bloqueada"
+        [multiplo]="true"
+        [opcoes]="opcoesFiliais()"
+        [(valores)]="formFiliaisBloqueadas"
+      />
+    }
+
+    @if (erroFiliais()) {
+      <p class="erro">{{ erroFiliais() }}</p>
+    }
+  </div>
+
+  <div rodape class="rodape-form">
+    <app-botao variant="contorno" [disabled]="salvandoFiliais()" (clicked)="fecharDialogFiliais()"
+      >Cancelar</app-botao
+    >
+    <app-botao
+      variant="primaria"
+      [loading]="salvandoFiliais()"
+      loadingText="Salvando..."
+      (clicked)="salvarFiliaisBloqueadas()"
+    >
+      Salvar
     </app-botao>
   </div>
 </app-dialog>

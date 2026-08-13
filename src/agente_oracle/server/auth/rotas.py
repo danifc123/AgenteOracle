@@ -5,7 +5,7 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_administrador, exigir_desenvolvedor
 from agente_oracle.server.auth.rate_limit import limpar, registrar_falha, segundos_ate_liberar
 from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
-from agente_oracle.tools.auth import eventos_seguranca, papeis
+from agente_oracle.tools.auth import eventos_seguranca, papeis, restricoes_filial
 from agente_oracle.tools.auth.token import gerar_token
 from agente_oracle.tools.auth.usuarios import (
     UsuarioJaExiste,
@@ -163,6 +163,50 @@ def registrar(mcp) -> None:
         """Trilha de auditoria de login/administração de contas — restrita
         ao time de TI (papel `desenvolvedor`), pra investigar incidentes."""
         return JSONResponse(eventos_seguranca.listar(), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/auth/usuarios/{id}/filiais-bloqueadas", methods=["GET", "PUT", "OPTIONS"])
+    @rota_protegida("GET, PUT, OPTIONS", exigir=exigir_administrador)
+    async def filiais_bloqueadas_route(request: Request, usuario: dict) -> Response:
+        """Coordenador (admin de um módulo, ex: `financeiro_admin`) consulta
+        (GET) ou define (PUT) quais filiais um usuário do seu módulo não
+        pode ver nos relatórios (`tools/auth/restricoes_filial.py`) —
+        restrito a quem já tem acesso ao módulo informado, pra um admin de
+        um módulo não mexer em restrição de outro que não é o dele."""
+        try:
+            id_usuario = int(request.path_params["id"])
+        except ValueError:
+            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        corpo = await request.json() if request.method == "PUT" else None
+        modulo = str(
+            corpo.get("modulo", "") if corpo is not None else request.query_params.get("modulo", "")
+        ).strip()
+
+        if modulo not in papeis.MODULOS_CONHECIDOS or not papeis.tem_acesso_modulo(
+            usuario.get("papeis", []), modulo
+        ):
+            return JSONResponse(
+                {"erro": "Módulo inválido ou fora do seu escopo."}, status_code=403, headers=CORS_HEADERS
+            )
+
+        if request.method == "GET":
+            filiais = restricoes_filial.filiais_bloqueadas(id_usuario, modulo)
+            return JSONResponse({"filiais": sorted(filiais)}, headers=CORS_HEADERS)
+
+        filiais_pedidas = corpo.get("filiais", [])
+        if not isinstance(filiais_pedidas, list) or not all(
+            isinstance(item, str) for item in filiais_pedidas
+        ):
+            return JSONResponse({"erro": "Lista de filiais inválida."}, status_code=400, headers=CORS_HEADERS)
+
+        filiais = restricoes_filial.definir_bloqueadas(id_usuario, modulo, filiais_pedidas)
+        eventos_seguranca.registrar(
+            "filiais_bloqueadas_atualizadas",
+            usuario_afetado=str(id_usuario),
+            realizado_por=usuario["usuario"],
+            detalhes={"modulo": modulo, "filiais": filiais},
+        )
+        return JSONResponse({"filiais": filiais}, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auth/papeis", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_administrador)

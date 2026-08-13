@@ -12,7 +12,6 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, inferir_tipo_filtro
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import (
@@ -31,7 +30,7 @@ _ERRO_PARAMETROS = (
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def exportar_relatorio_customizado_route(request: Request, usuario: dict) -> Response:
         """Mesma consulta da rota acima, mas devolvendo um arquivo Excel (.xlsx) para download."""
         parametros = parametros_da_query(request)
@@ -54,7 +53,7 @@ def registrar(mcp) -> None:
         )
 
     @mcp.custom_route("/api/financeiro/relatorio-customizado", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def gerar_relatorio_customizado_route(request: Request, usuario: dict) -> JSONResponse:
         """Monta e executa o SELECT (com JOINs resolvidos automaticamente) para as colunas/filial escolhidas na tela "Criar Relatório"."""
         parametros = parametros_da_query(request)
@@ -72,7 +71,7 @@ def registrar(mcp) -> None:
         return JSONResponse(dados, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/relatorio/opcoes-coluna", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def listar_opcoes_coluna_route(request: Request, usuario: dict) -> JSONResponse:
         """Valores distintos de uma coluna do tipo "texto" (formato view.coluna) — usado pra popular o select multiplo do filtro dessa coluna."""
         token = request.query_params.get("coluna", "").strip()
@@ -96,7 +95,7 @@ def registrar(mcp) -> None:
         return JSONResponse([{"valor": valor, "rotulo": valor} for valor in valores], headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/relatorio/views", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def listar_views_route(request: Request, usuario: dict) -> JSONResponse:
         """Lista as views financeiras liberadas, suas colunas e relacionamentos — usado pela tela "Criar Relatório" pra montar a lista de tabelas.
 

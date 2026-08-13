@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "nomic-embed-text"
 
     auth_secret_key: str = ""
-    auth_token_horas: int = 12
+    # 8h = uma jornada de trabalho — depois disso o token expira sozinho e o
+    # usuário precisa logar de novo, mesmo com a aba aberta o tempo todo.
+    auth_token_horas: int = 8
 
     @property
     def allowed_origins_list(self) -> list[str]:

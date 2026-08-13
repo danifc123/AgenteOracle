@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 import bcrypt
 
 from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_postgres_connection
-from agente_oracle.tools.auth import eventos_seguranca
+from agente_oracle.tools.auth import eventos_seguranca, restricoes_filial
 
 _COLUNAS = "id, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em"
 
@@ -203,6 +203,8 @@ def deletar_usuario(id_usuario: int) -> str | None:
         cursor.execute("DELETE FROM usuarios WHERE id = :id RETURNING usuario", id=id_usuario)
         linha = cursor.fetchone()
 
+    if linha:
+        restricoes_filial.remover_usuario(id_usuario)
     return linha[0] if linha else None
 
 

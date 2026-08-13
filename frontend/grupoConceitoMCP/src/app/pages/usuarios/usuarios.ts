@@ -25,6 +25,16 @@ interface Papel {
   rotulo: string;
 }
 
+interface Filial {
+  codigo: string;
+  nome: string;
+}
+
+/** Papéis do módulo Financeiro — únicos com filial de verdade hoje (ver
+ * `tools/auth/restricoes_filial.py`). Lista curta e fixa de propósito, não
+ * vale a pena buscar do backend só pra isso. */
+const PAPEIS_FINANCEIRO = ['financeiro', 'financeiro_admin'];
+
 @Component({
   selector: 'app-usuarios',
   imports: [Botao, ConfirmacaoDialog, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca],
@@ -59,10 +69,23 @@ export class Usuarios {
   formSenha = signal('');
   formPapeis = signal<string[]>([]);
 
+  filiaisDisponiveis = signal<Filial[]>([]);
+  dialogFiliaisAberto = signal(false);
+  usuarioFiliais = signal<Usuario | null>(null);
+  formFiliaisBloqueadas = signal<string[]>([]);
+  carregandoFiliaisBloqueadas = signal(false);
+  salvandoFiliais = signal(false);
+  erroFiliais = signal<string | null>(null);
+
   constructor() {
     this.carregarUsuarios();
     this.carregarPapeis();
   }
+
+  protected readonly opcoesFiliais = () =>
+    this.filiaisDisponiveis().map(
+      (filial): OpcaoSelectBusca => ({ valor: filial.codigo, rotulo: `${filial.codigo} - ${filial.nome}` }),
+    );
 
   protected readonly opcoesPapeis = () =>
     this.papeisDisponiveis().map((papel): OpcaoSelectBusca => ({
@@ -75,6 +98,13 @@ export class Usuarios {
     return slugs
       .map((slug) => disponiveis.find((papel) => papel.slug === slug)?.rotulo ?? slug)
       .join(', ');
+  }
+
+  /** Só usuários do Financeiro têm filial de verdade hoje — botão
+   * "Gerenciar filiais" some da linha de quem não tem nenhum papel desse
+   * módulo (RH, Estoque ainda não usam filial). */
+  protected usuarioTemFinanceiro(usuario: Usuario): boolean {
+    return usuario.papeis.some((papel) => PAPEIS_FINANCEIRO.includes(papel));
   }
 
   protected readonly colunaOrdenada = signal<string | null>(null);
@@ -93,6 +123,16 @@ export class Usuarios {
       (a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal,
     );
   });
+
+  private carregarFiliaisDisponiveis(): void {
+    if (this.filiaisDisponiveis().length) {
+      return;
+    }
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
+      next: (filiais) => this.filiaisDisponiveis.set(filiais),
+      error: () => this.filiaisDisponiveis.set([]),
+    });
+  }
 
   private carregarPapeis(): void {
     this.http.get<Papel[]>(`${MCP_API_BASE_URL}/api/auth/papeis`).subscribe({
@@ -123,6 +163,31 @@ export class Usuarios {
     this.formPapeis.set([]);
     this.erroForm.set(null);
     this.dialogAberto.set(true);
+  }
+
+  abrirDialogFiliais(usuario: Usuario): void {
+    this.usuarioFiliais.set(usuario);
+    this.erroFiliais.set(null);
+    this.formFiliaisBloqueadas.set([]);
+    this.dialogFiliaisAberto.set(true);
+    this.carregarFiliaisDisponiveis();
+
+    this.carregandoFiliaisBloqueadas.set(true);
+    this.http
+      .get<{ filiais: string[] }>(
+        `${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}/filiais-bloqueadas`,
+        { params: { modulo: 'financeiro' } },
+      )
+      .subscribe({
+        next: (resposta) => {
+          this.formFiliaisBloqueadas.set(resposta.filiais);
+          this.carregandoFiliaisBloqueadas.set(false);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erroFiliais.set(mensagemErro(erro, 'Não foi possível carregar as filiais bloqueadas.'));
+          this.carregandoFiliaisBloqueadas.set(false);
+        },
+      });
   }
 
   apagarUsuario(usuario: Usuario): void {
@@ -246,6 +311,13 @@ export class Usuarios {
     this.dialogAberto.set(false);
   }
 
+  fecharDialogFiliais(): void {
+    if (this.salvandoFiliais()) {
+      return;
+    }
+    this.dialogFiliaisAberto.set(false);
+  }
+
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
       this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
@@ -253,5 +325,31 @@ export class Usuarios {
       this.colunaOrdenada.set(coluna);
       this.direcaoOrdenacao.set('asc');
     }
+  }
+
+  salvarFiliaisBloqueadas(): void {
+    const usuario = this.usuarioFiliais();
+    if (!usuario || this.salvandoFiliais()) {
+      return;
+    }
+
+    this.salvandoFiliais.set(true);
+    this.erroFiliais.set(null);
+
+    this.http
+      .put<{ filiais: string[] }>(`${MCP_API_BASE_URL}/api/auth/usuarios/${usuario.id}/filiais-bloqueadas`, {
+        modulo: 'financeiro',
+        filiais: this.formFiliaisBloqueadas(),
+      })
+      .subscribe({
+        next: () => {
+          this.salvandoFiliais.set(false);
+          this.dialogFiliaisAberto.set(false);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erroFiliais.set(mensagemErro(erro, 'Não foi possível salvar as filiais bloqueadas.'));
+          this.salvandoFiliais.set(false);
+        },
+      });
   }
 }

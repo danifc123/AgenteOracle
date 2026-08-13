@@ -37,13 +37,14 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from agente_oracle.agent.financeiro.projecoes import projetar_tendencia_linear, proximos_meses
 from agente_oracle.db.connection import get_connection
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 _MESES_HISTORICO = 24  # 2 anos de histórico como base da tendência (Vendas e Fluxo de Caixa)
-_MESES_EXIBICAO_VENDAS = 12  # gráfico de Vendas só mostra os últimos 12 meses — o cálculo continua usando os 24
+_MESES_EXIBICAO_VENDAS = (
+    12  # gráfico de Vendas só mostra os últimos 12 meses — o cálculo continua usando os 24
+)
 _MESES_PROJECAO = 3
 _MESES_JANELA_FLUXO_CAIXA = 6
 _DIAS_CORTE_PERIODO = 90
@@ -271,7 +272,7 @@ def _resumo_participacoes(grupos: list[tuple[float, float]]) -> tuple[float, lis
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/previsao/fluxo-caixa", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def previsao_fluxo_caixa_route(request: Request, usuario: dict) -> Response:
         """Títulos em aberto (a receber/a pagar): bucket mensal (vencido +
         próximos 6 meses) pro gráfico, totais + corte de 90 dias pros
@@ -363,7 +364,7 @@ def registrar(mcp) -> None:
         return StreamingResponse(gerador(), media_type="application/x-ndjson", headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/previsao/vendas", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def previsao_vendas_route(request: Request, usuario: dict) -> Response:
         """Faturamento dos últimos `_MESES_HISTORICO` meses + projeção dos
         próximos `_MESES_PROJECAO` por regressão linear. A reta usa os

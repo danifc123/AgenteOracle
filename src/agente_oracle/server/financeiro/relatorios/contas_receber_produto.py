@@ -43,7 +43,6 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
@@ -149,7 +148,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], list[str], dict[s
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/contas-receber-produto/exportar", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def exportar_contas_receber_produto_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Contas a Receber com Descrição do Produto — exportação em Excel."""
         parametros = _parametros_da_query(request)
@@ -170,7 +169,7 @@ def registrar(mcp) -> None:
         )
 
     @mcp.custom_route("/api/financeiro/contas-receber-produto", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def listar_contas_receber_produto_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Contas a Receber com Descrição do Produto — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)

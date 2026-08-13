@@ -30,8 +30,44 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from agente_oracle.config import settings
+from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
+from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.tools.auth import restricoes_filial
+
+
+def exigir_filiais_liberadas(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_modulo_financeiro`, mais a exigência de que
+    nenhuma filial pedida em `?filial=` esteja bloqueada pro usuário logado
+    (`tools/auth/restricoes_filial.py`) — usada em todo relatório/exportação
+    do Financeiro que filtra por filial, pra que o coordenador consiga
+    restringir o acesso de alguém a uma filial específica mesmo que ela
+    tenha acesso ao módulo como um todo.
+
+    Lê `?filial=` direto da query string (em vez de reusar
+    `filiais_da_query`, que já descarta a diferença entre "não informado" e
+    "lista vazia") — isso cobre de graça toda rota que usa esse mesmo nome
+    de parâmetro, inclusive `relatorio_customizado_sql.py`, que faz o
+    próprio parsing e não passa por `filiais_da_query`."""
+    resultado = exigir_modulo_financeiro(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    bruto = request.query_params.get("filial", "").strip()
+    filiais_pedidas = {item.strip() for item in bruto.split(",") if item.strip()}
+    if not filiais_pedidas:
+        return resultado
+
+    bloqueadas = restricoes_filial.filiais_bloqueadas(int(resultado["sub"]), "financeiro")
+    if filiais_pedidas & bloqueadas:
+        return JSONResponse(
+            {"erro": "Você não tem acesso a uma ou mais filiais selecionadas."},
+            status_code=403,
+            headers=CORS_HEADERS,
+        )
+    return resultado
 
 
 def filiais_da_query(request: Request) -> list[str] | None:

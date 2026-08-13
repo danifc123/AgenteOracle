@@ -67,7 +67,6 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
@@ -227,7 +226,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/relacao-baixas/exportar", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def exportar_relacao_baixas_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Relação de Baixas (FINR190) — exportação em Excel."""
         parametros = _parametros_da_query(request)
@@ -250,7 +249,7 @@ def registrar(mcp) -> None:
         )
 
     @mcp.custom_route("/api/financeiro/relacao-baixas", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def listar_relacao_baixas_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Relação de Baixas (FINR190) — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)

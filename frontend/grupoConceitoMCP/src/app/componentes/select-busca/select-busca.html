@@ -64,6 +64,17 @@
       </div>
       <ul class="opcoes">
         @if (opcoesFiltradas().length) {
+          @if (multiplo()) {
+            <li>
+              <button type="button" class="opcao opcao--todos" (click)="alternarTodos()">
+                <span
+                  class="opcao-checkbox"
+                  [class.opcao-checkbox--marcada]="todosSelecionados()"
+                ></span>
+                {{ todosSelecionados() ? 'Desmarcar todos' : 'Marcar todos' }}
+              </button>
+            </li>
+          }
           @for (opcao of opcoesFiltradas(); track opcao.valor) {
             <li>
               <button

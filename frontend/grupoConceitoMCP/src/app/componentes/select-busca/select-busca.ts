@@ -59,6 +59,15 @@ export class SelectBusca {
     return opcoes.filter((opcao) => opcao.rotulo.toLowerCase().includes(termo));
   });
 
+  /** Só faz sentido em modo múltiplo — compara contra `opcoesFiltradas()`
+   * (não `opcoes()` inteiro), então "marcar/desmarcar todos" age sobre o
+   * que está visível na busca atual, mesmo padrão de outras listas com
+   * filtro + seleção em massa. */
+  protected readonly todosSelecionados = computed(() => {
+    const filtradas = this.opcoesFiltradas();
+    return filtradas.length > 0 && filtradas.every((opcao) => this.valores().includes(opcao.valor));
+  });
+
   protected readonly temSelecao = computed(() => {
     return this.multiplo() ? this.valores().length > 0 : !!this.valor();
   });
@@ -86,6 +95,18 @@ export class SelectBusca {
 
   protected estaSelecionada(opcao: OpcaoSelectBusca): boolean {
     return this.multiplo() ? this.valores().includes(opcao.valor) : opcao.valor === this.valor();
+  }
+
+  /** Marca/desmarca de uma vez todas as opções que estão visíveis na busca
+   * atual (`opcoesFiltradas()`) — opção escondida pelo filtro no momento
+   * não é mexida, só as que aparecem na lista agora. */
+  alternarTodos(): void {
+    const filtradas = this.opcoesFiltradas().map((opcao) => opcao.valor);
+    if (this.todosSelecionados()) {
+      this.valores.update((atual) => atual.filter((valor) => !filtradas.includes(valor)));
+    } else {
+      this.valores.update((atual) => [...new Set([...atual, ...filtradas])]);
+    }
   }
 
   limpar(evento: Event): void {

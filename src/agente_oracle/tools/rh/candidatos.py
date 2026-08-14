@@ -150,9 +150,21 @@ async def criar_candidato(
     reconsiderado volta a `ativo` ou se um colaborador muda de status
     continua sendo uma ação explícita do RH (botões de
     Reativar/Descartar/Marcar como contratado), nunca um efeito colateral
-    automático de analisar um currículo. Levanta `ArquivoCurriculoInvalido`
-    (arquivo ilegível) ou `AnaliseIndisponivel` (IA fora do ar/resposta
-    inválida) sem cadastrar nada nesses casos."""
+    automático de analisar um currículo.
+
+    O dict devolvido inclui `situacao` (`"novo"`, `"atualizado"` ou
+    `"sem_alteracao"`) — pra tela avisar o usuário do que de fato
+    aconteceu em vez de tratar todo upload como se fosse sempre um
+    candidato novo. "sem_alteracao" é decidido comparando o arquivo
+    (bytes) reenviado contra o já salvo pro candidato encontrado — mesmo
+    arquivo, byte a byte, é o sinal mais confiável de "nada mudou de
+    verdade" (o resumo escrito pela IA pode variar de leve entre duas
+    chamadas mesmo pro mesmo currículo, então comparar texto gerado seria
+    um sinal ruim pra essa decisão).
+
+    Levanta `ArquivoCurriculoInvalido` (arquivo ilegível) ou
+    `AnaliseIndisponivel` (IA fora do ar/resposta inválida) sem cadastrar
+    nada nesses casos."""
     texto_curriculo = extrair_texto(nome_arquivo, conteudo_arquivo)
     perfil = await gerar_perfil(ollama_client, modelo, texto_curriculo)
     embedding = await gerar_embedding(ollama_client, modelo_embedding, perfil.resumo_objetivo)
@@ -168,8 +180,13 @@ async def criar_candidato(
             for id_, nome, embedding_existente in cursor.fetchall()
         ]
         id_duplicata = _id_duplicata(perfil.nome_candidato, embedding, candidatos_existentes)
-
+        situacao = "novo"
         if id_duplicata is not None:
+            cursor.execute("SELECT arquivo FROM rh_candidatos WHERE id = :id", id=id_duplicata)
+            (arquivo_existente,) = cursor.fetchone()
+            situacao = "sem_alteracao" if bytes(arquivo_existente) == conteudo_arquivo else "atualizado"
+
+        if situacao == "atualizado":
             cursor.execute(
                 f"""
                 UPDATE rh_candidatos SET
@@ -190,6 +207,8 @@ async def criar_candidato(
                 arquivo=conteudo_arquivo,
                 agora=datetime.now(UTC),
             )
+        elif situacao == "sem_alteracao":
+            cursor.execute(f"SELECT {_COLUNAS_CANDIDATO} FROM rh_candidatos WHERE id = :id", id=id_duplicata)
         else:
             cursor.execute(
                 f"""
@@ -211,7 +230,10 @@ async def criar_candidato(
                 agora=datetime.now(UTC),
             )
         linha = cursor.fetchone()
-    return _linha_para_candidato(linha)
+
+    candidato = _linha_para_candidato(linha)
+    candidato["situacao"] = situacao
+    return candidato
 
 
 # _id_duplicata só é usada por criar_candidato, logo depois dela.

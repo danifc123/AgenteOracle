@@ -78,10 +78,17 @@ export interface AnaliseEmAndamento {
   nomeArquivo: string;
 }
 
+/** O que `criar_candidato` (backend) decidiu fazer com o currículo
+ * analisado — `tools/rh/candidatos.py` upserta por identidade (nome +
+ * embedding), então nem todo upload vira candidato novo. `sem_alteracao`
+ * é quando o arquivo reenviado é byte a byte igual ao já salvo. */
+export type SituacaoAnalise = 'novo' | 'atualizado' | 'sem_alteracao';
+
 export interface NotificacaoAnalise {
   id: string;
   candidatoId: number;
   candidatoNome: string;
+  situacao: SituacaoAnalise;
   vista: boolean;
 }
 
@@ -189,15 +196,17 @@ export class AnaliseCurriculo {
     const formData = new FormData();
     formData.append('arquivo', arquivo);
 
-    this.http.post<Candidato>(`${MCP_API_BASE_URL}/api/rh/candidatos/analisar`, formData).subscribe({
-      next: (candidato) => this.concluirAnalise(id, candidato),
-      error: (erro: HttpErrorResponse) => this.falharAnalise(id, erro),
-    });
+    this.http
+      .post<Candidato & { situacao: SituacaoAnalise }>(`${MCP_API_BASE_URL}/api/rh/candidatos/analisar`, formData)
+      .subscribe({
+        next: (candidato) => this.concluirAnalise(id, candidato),
+        error: (erro: HttpErrorResponse) => this.falharAnalise(id, erro),
+      });
   }
 
   /** concluirAnalise e falharAnalise só são usadas por iniciarAnalise,
    * logo depois dela (nessa ordem — sucesso e falha do mesmo POST). */
-  private concluirAnalise(analiseId: string, candidato: Candidato): void {
+  private concluirAnalise(analiseId: string, candidato: Candidato & { situacao: SituacaoAnalise }): void {
     this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
     // Backend faz upsert (`criar_candidato`): currículo repetido volta com o
     // MESMO id de um candidato que já está nesta lista, em vez de um id novo.
@@ -207,7 +216,13 @@ export class AnaliseCurriculo {
     this.candidatos.update((atual) => [candidato, ...atual.filter((item) => item.id !== candidato.id)]);
     this.notificacoes.update((atual) => [
       ...atual,
-      { id: `notif-${candidato.id}`, candidatoId: candidato.id, candidatoNome: candidato.nome, vista: false },
+      {
+        id: `notif-${candidato.id}`,
+        candidatoId: candidato.id,
+        candidatoNome: candidato.nome,
+        situacao: candidato.situacao,
+        vista: false,
+      },
     ]);
   }
 

@@ -11,7 +11,7 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
-  max-width: min(340px, calc(100vw - 40px));
+  max-width: min(400px, calc(100vw - 40px));
 }
 
 .chip-andamento {
@@ -78,6 +78,11 @@
   color: #2f9e58;
   font-size: 13px;
   font-weight: 700;
+
+  &--aviso {
+    background: none;
+    color: #e8871e;
+  }
 }
 
 .toast--erro .toast-icone {
@@ -101,9 +106,7 @@
   margin: 0;
   font-size: 12.5px;
   color: var(--color-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .toast-acoes {

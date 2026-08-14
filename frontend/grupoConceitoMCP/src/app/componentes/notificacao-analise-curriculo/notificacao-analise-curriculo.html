@@ -9,10 +9,20 @@
   @for (id of idsToastsVisiveis(); track id) {
     @if (notificacaoPorId(id); as notificacao) {
       <div class="toast">
-        <span class="toast-icone" aria-hidden="true">✓</span>
+        <span class="toast-icone" [class.toast-icone--aviso]="notificacao.situacao !== 'novo'" aria-hidden="true">
+          @if (notificacao.situacao === 'novo') {
+            ✓
+          } @else {
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 3.5 2.3 20h19.4L12 3.5Z" stroke-linejoin="round" />
+              <path d="M12 9.5v4" stroke-linecap="round" />
+              <path d="M12 16.8h.01" stroke-linecap="round" />
+            </svg>
+          }
+        </span>
         <div class="toast-texto">
           <p class="toast-titulo">Análise concluída</p>
-          <p class="toast-descricao">{{ notificacao.candidatoNome }} entrou no pool de candidatos.</p>
+          <p class="toast-descricao">{{ descricaoToast(notificacao) }}</p>
         </div>
         <div class="toast-acoes">
           <button type="button" class="toast-botao" (click)="verResultado(id)">Ver candidato</button>

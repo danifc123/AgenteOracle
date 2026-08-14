@@ -66,6 +66,17 @@ export class NotificacaoAnaliseCurriculo {
     this.removerToast(erroId);
   }
 
+  protected descricaoToast(notificacao: NotificacaoAnalise): string {
+    switch (notificacao.situacao) {
+      case 'atualizado':
+        return `${notificacao.candidatoNome}: candidato atualizado.`;
+      case 'sem_alteracao':
+        return `${notificacao.candidatoNome}: candidato já está atualizado.`;
+      default:
+        return `${notificacao.candidatoNome} entrou no pool de candidatos.`;
+    }
+  }
+
   protected erroPorId(erroId: string): ErroAnalise | null {
     return this.analise.erros().find((item) => item.id === erroId) ?? null;
   }

@@ -199,7 +199,12 @@ export class AnaliseCurriculo {
    * logo depois dela (nessa ordem — sucesso e falha do mesmo POST). */
   private concluirAnalise(analiseId: string, candidato: Candidato): void {
     this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
-    this.candidatos.update((atual) => [candidato, ...atual]);
+    // Backend faz upsert (`criar_candidato`): currículo repetido volta com o
+    // MESMO id de um candidato que já está nesta lista, em vez de um id novo.
+    // Sem filtrar o id existente aqui, ele entraria duplicado nessa lista
+    // local mesmo o banco tendo só uma linha — daí o "aparece duas vezes na
+    // tela" mesmo sem duplicata nenhuma no Postgres.
+    this.candidatos.update((atual) => [candidato, ...atual.filter((item) => item.id !== candidato.id)]);
     this.notificacoes.update((atual) => [
       ...atual,
       { id: `notif-${candidato.id}`, candidatoId: candidato.id, candidatoNome: candidato.nome, vista: false },

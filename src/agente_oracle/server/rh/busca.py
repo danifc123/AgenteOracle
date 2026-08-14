@@ -15,6 +15,8 @@ from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.rh import candidatos as candidatos_tools
 from agente_oracle.tools.ti import acessos_dados
 
+_STATUS_BUSCAVEIS = {"ativo", "descartado"}
+
 
 # _resultado_para_json só é usada dentro de buscar_candidatos_route, logo
 # depois dela (via registrar).
@@ -45,7 +47,11 @@ def registrar(mcp) -> None:
                 {"erro": "Descreva a necessidade da vaga."}, status_code=400, headers=CORS_HEADERS
             )
 
-        candidatos = candidatos_tools.listar_para_busca()
+        status = str(corpo.get("status") or "ativo").strip()
+        if status not in _STATUS_BUSCAVEIS:
+            return JSONResponse({"erro": "Status inválido pra busca."}, status_code=400, headers=CORS_HEADERS)
+
+        candidatos = candidatos_tools.listar_para_busca(status=status)
         ollama_client = AsyncClient(host=settings.ollama_host)
 
         try:

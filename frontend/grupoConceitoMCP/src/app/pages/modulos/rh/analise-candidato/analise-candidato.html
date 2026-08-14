@@ -9,8 +9,7 @@
 </div>
 
 <div class="linha-kpis">
-  <app-cartao-kpi rotulo="Candidatos no Pool" tipo="numero" [valor]="totalCandidatos()" />
-  <app-cartao-kpi rotulo="Ativos" tipo="numero" [valor]="totalAtivos()" [destacarNegativo]="false" />
+  <app-cartao-kpi rotulo="Candidatos Ativos" tipo="numero" [valor]="totalAtivos()" [destacarNegativo]="false" />
 </div>
 
 <section class="cartao-secao">
@@ -26,7 +25,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (candidato of analiseCurriculo.candidatos(); track candidato.id) {
+        @for (candidato of candidatosAtivos(); track candidato.id) {
           <tr>
             <td>{{ candidato.nome }}</td>
             <td class="coluna-resumo">{{ resumoTruncado(candidato) }}</td>

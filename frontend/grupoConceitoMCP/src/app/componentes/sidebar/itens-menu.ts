@@ -94,6 +94,16 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         rotulo: 'Selecionar Candidato',
         iconeSvg: `<circle cx="11" cy="11" r="6.5" /><path d="m20 20-3.8-3.8" stroke-linecap="round" />`,
       },
+      {
+        rota: '/rh/repescagem',
+        rotulo: 'Repescagem',
+        iconeSvg: `<path d="M4 4v6h6" stroke-linecap="round" stroke-linejoin="round" /><path d="M20 20v-6h-6" stroke-linecap="round" stroke-linejoin="round" /><path d="M5.5 15a7 7 0 0 0 12.3 2.5M18.5 9a7 7 0 0 0-12.3-2.5" stroke-linecap="round" />`,
+      },
+      {
+        rota: '/rh/colaboradores',
+        rotulo: 'Colaboradores',
+        iconeSvg: `<circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" /><path d="m15 13 2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />`,
+      },
     ],
   },
   {

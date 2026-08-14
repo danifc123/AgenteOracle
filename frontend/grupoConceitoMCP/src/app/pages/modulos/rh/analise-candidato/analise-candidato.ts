@@ -41,13 +41,13 @@ export class AnaliseCandidato {
   protected readonly arquivosSelecionados = signal<File[]>([]);
   protected readonly candidatoAberto = signal<Candidato | null>(null);
 
-  protected readonly totalCandidatos = computed(() => this.analiseCurriculo.candidatos().length);
-  protected readonly totalAtivos = computed(
-    () => this.analiseCurriculo.candidatos().filter((candidato) => candidato.status === 'ativo').length,
+  protected readonly candidatosAtivos = computed(() =>
+    this.analiseCurriculo.candidatos().filter((candidato) => candidato.status === 'ativo'),
   );
+  protected readonly totalAtivos = computed(() => this.candidatosAtivos().length);
 
   constructor() {
-    this.analiseCurriculo.carregarCandidatos();
+    this.analiseCurriculo.carregarCandidatos('ativo');
   }
 
   protected abrirDetalhe(candidato: Candidato): void {

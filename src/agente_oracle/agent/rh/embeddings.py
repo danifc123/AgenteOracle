@@ -22,9 +22,14 @@ class AnaliseIndisponivel(Exception):
 
 def similaridade_cosseno(vetor_a: list[float], vetor_b: list[float]) -> float:
     """1.0 = vetores idênticos em direção, 0.0 = ortogonais (sem relação),
-    -1.0 = opostos. Devolve 0.0 se algum vetor for nulo (norma zero) em vez
-    de dividir por zero — não deveria acontecer com embedding de verdade,
-    mas evita derrubar a busca inteira por causa de um dado esquisito."""
+    -1.0 = opostos. Devolve 0.0 se algum vetor for nulo (norma zero) ou se os
+    dois tiverem dimensões diferentes (candidato embedado com um
+    `ollama_embedding_model` antigo, antes do modelo configurado ter mudado)
+    em vez de dividir por zero ou levantar erro — não deveria acontecer com
+    embedding de verdade, mas evita derrubar a busca inteira por causa de um
+    dado esquisito."""
+    if len(vetor_a) != len(vetor_b):
+        return 0.0
     produto_escalar = sum(a * b for a, b in zip(vetor_a, vetor_b, strict=True))
     norma_a = math.sqrt(sum(a * a for a in vetor_a))
     norma_b = math.sqrt(sum(b * b for b in vetor_b))

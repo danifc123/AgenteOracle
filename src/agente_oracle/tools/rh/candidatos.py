@@ -16,6 +16,7 @@ baixado de novo depois — ver `buscar_arquivo`.
 """
 
 import json
+import unicodedata
 from datetime import UTC, datetime
 
 from ollama import AsyncClient
@@ -176,16 +177,21 @@ def listar(*, status: str | None = None) -> list[dict]:
 def listar_para_busca() -> list[dict]:
     """Candidatos `ativo` com o embedding do perfil — só os campos que
     `agent/rh/busca_candidatos.py` precisa pra fazer a busca (retrieval +
-    ranking), não a listagem completa da tela."""
+    ranking), não a listagem completa da tela. Colapsa candidato com nome
+    repetido (currículo reenviado, upload em duplicidade) numa linha só,
+    pra busca nunca rankear a mesma pessoa duas vezes."""
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute(f"SELECT {_COLUNAS_BUSCA} FROM rh_candidatos WHERE status = 'ativo'")
+        cursor.execute(
+            f"SELECT {_COLUNAS_BUSCA} FROM rh_candidatos WHERE status = 'ativo' ORDER BY criado_em DESC"
+        )
         linhas = cursor.fetchall()
-    return [_linha_para_busca(linha) for linha in linhas]
+    return _sem_duplicatas([_linha_para_busca(linha) for linha in linhas])
 
 
-# _linha_para_busca só é usada por listar_para_busca, logo depois dela.
+# _linha_para_busca e _sem_duplicatas só são usadas por listar_para_busca,
+# logo depois dela, em ordem alfabética entre si.
 def _linha_para_busca(linha: tuple) -> dict:
     id_, nome, resumo_perfil, perfil_estruturado, embedding = linha
     return {
@@ -195,3 +201,27 @@ def _linha_para_busca(linha: tuple) -> dict:
         "perfil_estruturado": _carregar_json(perfil_estruturado),
         "embedding": _carregar_json(embedding),
     }
+
+
+def _sem_duplicatas(candidatos: list[dict]) -> list[dict]:
+    """Mantém só a primeira ocorrência de cada nome normalizado — assume
+    que `candidatos` já vem ordenado por `criado_em DESC`, então "primeira
+    ocorrência" é sempre a análise mais recente daquela pessoa."""
+    vistos = set()
+    resultado = []
+    for candidato in candidatos:
+        chave = _nome_normalizado(candidato["nome"])
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        resultado.append(candidato)
+    return resultado
+
+
+# _nome_normalizado só é usada por _sem_duplicatas, logo depois dela.
+def _nome_normalizado(nome: str) -> str:
+    """Normaliza pra comparar "é a mesma pessoa": ignora acento, caixa e
+    espaço repetido/nas pontas — só pra decidir duplicidade, nunca pra
+    exibição."""
+    sem_acento = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
+    return " ".join(sem_acento.casefold().split())

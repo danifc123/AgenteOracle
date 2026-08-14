@@ -13,17 +13,13 @@ acesso a dado exportado (`tools/ti/acessos_dados.py`). Cada achado carrega
 afetado — a resposta a um achado no Protheus é diferente (escala pro time
 que administra o Protheus, não só TI interno)."""
 
-import json
 from dataclasses import dataclass
 
 from ollama import AsyncClient
 
+from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.ti.perfil_login import PerfilLogin, PerfilLoginProtheus
 from agente_oracle.tools.ti.acessos_dados import PerfilAcesso
-
-# Mesma constante usada em financeiro.py/analise.py — evita reservar mais
-# RAM do que o prompt (perfis agregados) precisa.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
 
 _TIPOS_ACHADO = ("tentativa_invasao", "acesso_dados_suspeito")
 _SISTEMAS = ("agente_oracle", "protheus")
@@ -108,13 +104,12 @@ async def detectar(
                 },
             ],
             format=_ACHADOS_SCHEMA,
-            options=_OPCOES_OLLAMA,
+            options=OPCOES_OLLAMA_PADRAO,
         )
-        corpo = json.loads(resposta.message.content or "{}")
     except Exception:
         return []
 
-    achados_brutos = corpo.get("achados")
+    achados_brutos = resposta_json_como_dict(resposta.message.content).get("achados")
     if not isinstance(achados_brutos, list):
         return []
 

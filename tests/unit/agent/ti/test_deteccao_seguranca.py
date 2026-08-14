@@ -173,3 +173,8 @@ class TestDetectar:
         cliente = _OllamaClientFake(conteudo=json.dumps({}))
         resultado = await mod.detectar(cliente, "modelo-teste", [_perfil_login("joao")], [], [])
         assert resultado == []
+
+    async def test_json_valido_mas_nao_objeto_devolve_lista_vazia(self):
+        cliente = _OllamaClientFake(conteudo=json.dumps(None))
+        resultado = await mod.detectar(cliente, "modelo-teste", [_perfil_login("joao")], [], [])
+        assert resultado == []

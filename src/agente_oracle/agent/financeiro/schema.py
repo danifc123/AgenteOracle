@@ -68,7 +68,6 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("parcela", "número da parcela"),
             ColunaView("tipo", "tipo do título (ex: NF)"),
             ColunaView("fornecedor_codigo", "código do fornecedor"),
-            ColunaView("fornecedor_loja", "loja do fornecedor"),
             ColunaView("fornecedor_nome", "nome do fornecedor"),
             ColunaView("natureza_codigo", "código da natureza financeira"),
             ColunaView("natureza_descricao", "descrição da natureza financeira"),
@@ -85,8 +84,8 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         relacionamentos=(
             RelacionamentoView(
                 view_destino="vw_fornecedores",
-                colunas_locais=("fornecedor_codigo", "fornecedor_loja"),
-                colunas_destino=("codigo", "loja"),
+                colunas_locais=("fornecedor_codigo",),
+                colunas_destino=("codigo",),
                 descricao=(
                     "Dado de fornecedor que não está aqui (cnpj_cpf, tipo_pessoa, "
                     "nome_reduzido, estado) só existe em vw_fornecedores."
@@ -104,7 +103,6 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("parcela", "número da parcela"),
             ColunaView("tipo", "tipo do título (ex: NF, NP)"),
             ColunaView("cliente_codigo", "código do cliente"),
-            ColunaView("cliente_loja", "loja do cliente"),
             ColunaView("cliente_nome", "nome do cliente"),
             ColunaView("natureza_codigo", "código da natureza financeira"),
             ColunaView("natureza_descricao", "descrição da natureza financeira"),
@@ -121,8 +119,8 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         relacionamentos=(
             RelacionamentoView(
                 view_destino="vw_clientes",
-                colunas_locais=("cliente_codigo", "cliente_loja"),
-                colunas_destino=("codigo", "loja"),
+                colunas_locais=("cliente_codigo",),
+                colunas_destino=("codigo",),
                 descricao=(
                     "Dado de cliente que não está aqui (cnpj_cpf, tipo_pessoa, "
                     "nome_reduzido, estado) só existe em vw_clientes."
@@ -134,16 +132,10 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         nome="vw_fornecedores",
         descricao="Cadastro de fornecedores.",
         colunas=(
-            ColunaView("filial", "código da filial"),
             ColunaView(
                 "codigo",
                 "código do fornecedor — aqui o nome da coluna é `codigo`, NUNCA "
                 "`fornecedor_codigo` (esse nome com prefixo só existe em vw_titulos_pagar).",
-            ),
-            ColunaView(
-                "loja",
-                "loja do fornecedor — aqui o nome da coluna é `loja`, NUNCA "
-                "`fornecedor_loja` (esse nome com prefixo só existe em vw_titulos_pagar).",
             ),
             ColunaView("nome", "razão social / nome completo"),
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
@@ -162,16 +154,10 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         nome="vw_clientes",
         descricao="Cadastro de clientes.",
         colunas=(
-            ColunaView("filial", "código da filial"),
             ColunaView(
                 "codigo",
                 "código do cliente — aqui o nome da coluna é `codigo`, NUNCA "
                 "`cliente_codigo` (esse nome com prefixo só existe em vw_titulos_receber).",
-            ),
-            ColunaView(
-                "loja",
-                "loja do cliente — aqui o nome da coluna é `loja`, NUNCA "
-                "`cliente_loja` (esse nome com prefixo só existe em vw_titulos_receber).",
             ),
             ColunaView("nome", "razão social / nome completo"),
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
@@ -197,7 +183,6 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("numero_pedido", "número do pedido de venda"),
             ColunaView("item", "número do item dentro do pedido"),
             ColunaView("cliente_codigo", "código do cliente"),
-            ColunaView("cliente_loja", "loja do cliente"),
             ColunaView("cliente_nome", "razão social / nome completo do cliente"),
             ColunaView("data_emissao", "data de emissão do pedido"),
             ColunaView("tipo_pedido", "tipo do pedido de venda"),
@@ -207,7 +192,6 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("produto_codigo", "código do produto"),
             ColunaView("produto_descricao", "descrição do produto"),
             ColunaView("grupo_produto_codigo", "código do grupo do produto"),
-            ColunaView("tes_codigo", "código do tipo de entrada/saída (TES) do item"),
             ColunaView("quantidade_pedida", "quantidade total pedida no item"),
             ColunaView("quantidade_atendida", "quantidade já entregue/faturada do item"),
             ColunaView(
@@ -226,8 +210,8 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         relacionamentos=(
             RelacionamentoView(
                 view_destino="vw_clientes",
-                colunas_locais=("cliente_codigo", "cliente_loja"),
-                colunas_destino=("codigo", "loja"),
+                colunas_locais=("cliente_codigo",),
+                colunas_destino=("codigo",),
                 descricao="Dado de cliente que não está aqui (cnpj_cpf, estado etc.) só existe em vw_clientes.",
             ),
             RelacionamentoView(
@@ -255,7 +239,6 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("pedido", "número do pedido de venda que originou esta nota"),
             ColunaView("item_pedido", "número do item do pedido que originou este item de nota"),
             ColunaView("cliente_codigo", "código do cliente (ou fornecedor, se a nota for de devolução)"),
-            ColunaView("cliente_loja", "loja do cliente"),
             ColunaView("cliente_nome", "razão social / nome completo do cliente"),
             ColunaView("cliente_cnpj_cpf", "CNPJ ou CPF do cliente"),
             ColunaView("cliente_municipio", "município do cliente"),
@@ -266,12 +249,9 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("vendedor_codigo", "código do vendedor"),
             ColunaView("vendedor_nome", "nome do vendedor"),
             ColunaView("tipo_frete", "código do tipo de frete (CIF/FOB/etc.)"),
-            ColunaView("veiculo", "placa do veículo de transporte"),
             ColunaView("produto_codigo", "código do produto"),
             ColunaView("produto_descricao", "descrição do produto"),
             ColunaView("grupo_produto_codigo", "código do grupo do produto"),
-            ColunaView("tes_codigo", "código do tipo de entrada/saída (TES) do item"),
-            ColunaView("centro_custo_codigo", "código do centro de custo do item"),
             ColunaView("codigo_safra", "código da safra vinculada ao pedido de origem"),
             ColunaView("natureza_codigo", "código da natureza financeira do pedido de origem"),
             ColunaView("natureza_descricao", "descrição da natureza financeira"),
@@ -279,16 +259,12 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("valor_unitario", "valor unitário de venda do item"),
             ColunaView("valor_total", "valor total do item (quantidade x valor unitário)"),
             ColunaView("custo", "custo do item na data do faturamento"),
-            ColunaView("valor_frete", "valor de frete rateado no item"),
-            ColunaView("quantidade_devolvida", "quantidade já devolvida deste item"),
-            ColunaView("valor_devolvido", "valor já devolvido deste item"),
-            ColunaView("valor_liquido", "valor_total menos valor_devolvido"),
         ),
         relacionamentos=(
             RelacionamentoView(
                 view_destino="vw_clientes",
-                colunas_locais=("cliente_codigo", "cliente_loja"),
-                colunas_destino=("codigo", "loja"),
+                colunas_locais=("cliente_codigo",),
+                colunas_destino=("codigo",),
                 descricao="Dado de cliente que não está aqui (cnpj_cpf duplicado, estado etc.) também existe em vw_clientes.",
             ),
             RelacionamentoView(
@@ -299,8 +275,8 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ),
             RelacionamentoView(
                 view_destino="vw_titulos_receber",
-                colunas_locais=("filial", "nota_fiscal", "serie", "cliente_codigo", "cliente_loja"),
-                colunas_destino=("filial", "numero", "prefixo", "cliente_codigo", "cliente_loja"),
+                colunas_locais=("filial", "nota_fiscal", "serie", "cliente_codigo"),
+                colunas_destino=("filial", "numero", "prefixo", "cliente_codigo"),
                 descricao=(
                     "Títulos a receber gerados por esta nota fiscal (considere apenas os títulos "
                     "com tipo = 'NF' em vw_titulos_receber)."

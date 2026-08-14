@@ -62,7 +62,15 @@ def logins_recentes(dias: int) -> list[dict]:
 def tentativas_bloqueio_recentes() -> list[dict]:
     """Estado de bloqueio por tentativa de login errada, por usuário — só
     as 3 colunas necessárias de `SYS_USR`. NUNCA `USR_PSWMD5` nem qualquer
-    outra coluna de credencial, mesmo que pareça conveniente no futuro."""
+    outra coluna de credencial, mesmo que pareça conveniente no futuro.
+
+    `usuario` vem de `USR_USERSOLOGON`, não `USR_CODIGO` — de propósito:
+    é o MESMO formato que `logins_recentes` usa (`SYS_USR_LOGIN.
+    USR_USERSOLOGON`), pra `agent/ti/perfil_login.py::perfil_logins_protheus`
+    conseguir cruzar as duas fontes por igualdade direta de string.
+    `USR_CODIGO` (código interno do Protheus) e `USR_USERSOLOGON` (login de
+    domínio/Windows capturado no acesso) não têm uma correspondência 1:1
+    confiável — cruzar por `USR_CODIGO` nunca bateria de verdade."""
     if not protheus_configurado():
         return []
 
@@ -70,7 +78,7 @@ def tentativas_bloqueio_recentes() -> list[dict]:
         with get_protheus_connection() as connection:
             cursor = connection.cursor()
             cursor.execute(f"""
-                SELECT USR_CODIGO, USR_MSBLQL, USR_QTDTENTBLQ
+                SELECT USR_USERSOLOGON, USR_MSBLQL, USR_QTDTENTBLQ
                 FROM {settings.protheus_schema}.SYS_USR
                 WHERE D_E_L_E_T_ = ' '
             """)
@@ -80,9 +88,9 @@ def tentativas_bloqueio_recentes() -> list[dict]:
 
     return [
         {
-            "usuario": (codigo or "").strip(),
+            "usuario": (usuario or "").strip(),
             "bloqueado": (bloqueado or "").strip() == "1",
             "tentativas": tentativas or 0,
         }
-        for codigo, bloqueado, tentativas in linhas
+        for usuario, bloqueado, tentativas in linhas
     ]

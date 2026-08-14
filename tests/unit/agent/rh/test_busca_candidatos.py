@@ -152,3 +152,23 @@ class TestBuscarCandidatos:
         cliente = _OllamaClientFake(embedding=[1.0, 0.0], conteudo_chat=conteudo)
         with pytest.raises(AnaliseIndisponivel):
             await mod.buscar_candidatos(cliente, "modelo-teste", "modelo-embed", "descrição", candidatos)
+
+    async def test_resposta_json_valida_mas_nao_objeto_levanta_indisponivel(self):
+        candidatos = [_candidato(1, [1.0, 0.0])]
+        cliente = _OllamaClientFake(embedding=[1.0, 0.0], conteudo_chat=json.dumps(None))
+        with pytest.raises(AnaliseIndisponivel):
+            await mod.buscar_candidatos(cliente, "modelo-teste", "modelo-embed", "descrição", candidatos)
+
+    async def test_candidato_com_embedding_de_dimensao_diferente_nao_derruba_a_busca(self):
+        # Candidato 1 tem embedding "antigo" (2 dimensões, modelo trocado
+        # depois) — a busca não deve quebrar por causa dele, só tratar a
+        # similaridade dele como 0 e seguir com os outros candidatos.
+        candidatos = [_candidato(1, [1.0, 0.0, 0.0]), _candidato(2, [1.0, 0.0])]
+        conteudo = _ranking_json({"candidato_id": 2, "posicao": 1, "justificativa": "..."})
+        cliente = _OllamaClientFake(embedding=[1.0, 0.0], conteudo_chat=conteudo)
+
+        resultados = await mod.buscar_candidatos(
+            cliente, "modelo-teste", "modelo-embed", "descrição", candidatos
+        )
+
+        assert [resultado.candidato_id for resultado in resultados] == [2]

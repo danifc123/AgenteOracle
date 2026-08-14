@@ -19,3 +19,6 @@ class TestSimilaridadeCosseno:
 
     def test_vetor_nulo_devolve_zero_em_vez_de_dividir_por_zero(self):
         assert mod.similaridade_cosseno([0.0, 0.0], [1.0, 2.0]) == 0.0
+
+    def test_dimensoes_diferentes_devolve_zero_em_vez_de_levantar_erro(self):
+        assert mod.similaridade_cosseno([1.0, 2.0], [1.0, 2.0, 3.0]) == 0.0

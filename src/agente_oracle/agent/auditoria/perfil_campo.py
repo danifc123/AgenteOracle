@@ -13,8 +13,17 @@ from dataclasses import dataclass
 # (que não tem nenhum campo desses). CPF/CNPJ tem tratamento próprio
 # (mascarado em `agent/financeiro/auditoria.py::_mascarar_documento`) e não
 # entra nesse filtro.
+#
+# `chave` sozinho (nome ambíguo) ou combinado com termo de segredo/
+# criptografia é bloqueado, mas isso NÃO usa substring livre — "chave" faz
+# parte de jargão comum de banco/fiscal que não é segredo nenhum (chave
+# primária/estrangeira, chave de acesso da NFe) e bloquear isso derrubaria a
+# auditoria inteira do módulo à toa (`PerfilCampo.__post_init__` levanta
+# `ValueError`, ver abaixo).
 _PADRAO_CAMPO_SENSIVEL = re.compile(
-    r"(senha|password|passwd|hash|token|secret|segredo|chave|api_key|pin|cvv)",
+    r"senha|password|passwd|hash|token|secret|segredo|api_key|pin|cvv"
+    r"|\bchave\b|chave[_-]?(secreta|privada|publica|mestra|criptograf\w*"
+    r"|simetrica|assimetrica|certificado|assinatura|api)",
     re.IGNORECASE,
 )
 

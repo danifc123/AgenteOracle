@@ -18,6 +18,14 @@ class TestNormalizarValorMonetario:
     def test_string_nao_numerica_devolve_none(self):
         assert mod._normalizar_valor_monetario("abc") is None
 
+    def test_ponto_como_separador_de_milhar_sem_decimal(self):
+        # "1.234" sem vírgula em lugar nenhum é 1234 (milhar), nunca 1,234
+        # (fração) — valor monetário não tem 3 casas decimais de verdade.
+        assert mod._normalizar_valor_monetario("1.234") == 1234.0
+
+    def test_ponto_como_separador_de_milhar_duplo(self):
+        assert mod._normalizar_valor_monetario("12.345.678") == 12345678.0
+
 
 class TestValoresMonetariosNoTexto:
     def test_extrai_varios_valores_do_texto(self):

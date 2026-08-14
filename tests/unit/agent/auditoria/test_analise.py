@@ -177,3 +177,32 @@ class TestAnalisarPerfis:
         cliente = _OllamaClientFake(conteudo=json.dumps({}))
         resultado = await mod.analisar_perfis(cliente, "modelo-teste", [self._PERFIL])
         assert resultado == []
+
+    async def test_json_valido_mas_nao_objeto_devolve_lista_vazia(self):
+        cliente = _OllamaClientFake(conteudo=json.dumps(None))
+        resultado = await mod.analisar_perfis(cliente, "modelo-teste", [self._PERFIL])
+        assert resultado == []
+
+    async def test_perfis_com_mesma_chave_unem_valores_em_vez_de_sobrescrever(self):
+        # Dois perfis pra (financeiro, vw_clientes, filial) — hoje não
+        # acontece na prática (só o provider do Financeiro existe), mas é
+        # a infraestrutura compartilhada que outros providers vão usar.
+        perfil_a = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("AAAA", 5), ("0101", 40))
+        )
+        perfil_b = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0102", 30), ("0101", 40))
+        )
+        conteudo = _achados_json(
+            {
+                "modulo": "financeiro",
+                "view": "vw_clientes",
+                "campo": "filial",
+                "valor": "AAAA",
+                "descricao": "Analise a filial AAAA, ela parece estar fora do padrão.",
+            }
+        )
+        cliente = _OllamaClientFake(conteudo=conteudo)
+        resultado = await mod.analisar_perfis(cliente, "modelo-teste", [perfil_a, perfil_b])
+        assert len(resultado) == 1
+        assert resultado[0].valor == "AAAA"

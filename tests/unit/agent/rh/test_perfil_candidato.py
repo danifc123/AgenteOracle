@@ -134,6 +134,11 @@ class TestGerarPerfil:
         with pytest.raises(AnaliseIndisponivel):
             await mod.gerar_perfil(cliente, "modelo-teste", "texto")
 
+    async def test_json_valido_mas_nao_objeto_levanta_indisponivel(self):
+        cliente = _OllamaClientFake(conteudo=json.dumps(None))
+        with pytest.raises(AnaliseIndisponivel):
+            await mod.gerar_perfil(cliente, "modelo-teste", "texto")
+
     async def test_falha_do_ollama_levanta_indisponivel(self):
         cliente = _OllamaClientFake(levantar=ConnectionError("Ollama fora do ar"))
         with pytest.raises(AnaliseIndisponivel):

@@ -6,7 +6,17 @@ from agente_oracle.agent.auditoria.perfil_campo import PerfilCampo, campo_seguro
 class TestCampoSeguroParaAuditoria:
     @pytest.mark.parametrize(
         "campo",
-        ["filial", "estado", "tipo_pessoa", "cnpj_cpf", "situacao", "descricao"],
+        [
+            "filial",
+            "estado",
+            "tipo_pessoa",
+            "cnpj_cpf",
+            "situacao",
+            "descricao",
+            "chave_primaria",
+            "chave_estrangeira",
+            "chave_nfe",
+        ],
     )
     def test_campos_normais_sao_seguros(self, campo: str) -> None:
         assert campo_seguro_para_auditoria(campo) is True
@@ -24,6 +34,8 @@ class TestCampoSeguroParaAuditoria:
             "secret",
             "segredo_cliente",
             "chave_criptografia",
+            "chave_secreta",
+            "chave",
             "pin_cartao",
             "cvv",
             "SENHA",

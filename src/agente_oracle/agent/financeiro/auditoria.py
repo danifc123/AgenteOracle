@@ -17,14 +17,13 @@ from agente_oracle.server.financeiro.relatorios import _comum
 
 _MODULO = "financeiro"
 
-# `filial` existe (e deveria seguir o mesmo padrão de numeração) em todas
-# essas views; `estado`/`tipo_pessoa`/`cnpj_cpf` só existem no cadastro.
+# `filial` existe (e deveria seguir o mesmo padrão de numeração) nessas
+# views de título/faturamento; cadastro (vw_clientes/vw_fornecedores) não
+# tem coluna `filial` no STAGE — só `estado`/`tipo_pessoa`/`cnpj_cpf`.
 _VIEWS_COM_FILIAL = (
     "vw_titulos_pagar",
     "vw_titulos_receber",
     "vw_faturamento",
-    "vw_clientes",
-    "vw_fornecedores",
 )
 _VIEWS_CADASTRO = ("vw_clientes", "vw_fornecedores")
 

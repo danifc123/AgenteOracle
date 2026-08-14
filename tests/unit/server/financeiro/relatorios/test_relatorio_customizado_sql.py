@@ -33,17 +33,13 @@ class TestResolverCaminhoJoin:
 
     def test_relacionamento_direto(self):
         arestas = _resolver_caminho_join(["vw_titulos_receber", "vw_clientes"])
-        assert arestas == [
-            ("vw_titulos_receber", "vw_clientes", ("cliente_codigo", "cliente_loja"), ("codigo", "loja"))
-        ]
+        assert arestas == [("vw_titulos_receber", "vw_clientes", ("cliente_codigo",), ("codigo",))]
 
     def test_relacionamento_no_sentido_inverso_da_declaracao(self):
         # `vw_clientes` não declara relacionamento nenhum (é sempre o lado
         # "destino") — o grafo precisa funcionar nos dois sentidos.
         arestas = _resolver_caminho_join(["vw_clientes", "vw_titulos_receber"])
-        assert arestas == [
-            ("vw_clientes", "vw_titulos_receber", ("codigo", "loja"), ("cliente_codigo", "cliente_loja"))
-        ]
+        assert arestas == [("vw_clientes", "vw_titulos_receber", ("codigo",), ("cliente_codigo",))]
 
     def test_caminho_indireto_por_view_intermediaria(self):
         # vw_titulos_pagar -> vw_fornecedores não tem caminho declarado até

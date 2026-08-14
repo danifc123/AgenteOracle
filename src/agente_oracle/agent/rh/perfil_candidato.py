@@ -27,16 +27,12 @@ cai num valor vazio/neutro em vez de descartar a análise inteira — perder
 uma lista de certificações não deveria custar recomeçar o currículo do
 zero."""
 
-import json
 from dataclasses import dataclass, field
 
 from ollama import AsyncClient
 
+from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel
-
-# Mesma constante usada em financeiro.py/analise.py — evita reservar mais
-# RAM do que o prompt (texto do currículo) precisa.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
 
 _NIVEIS_SENIORIDADE = ("estagiario", "junior", "pleno", "senior", "especialista", "nao_identificado")
 _STATUS_FORMACAO = ("concluido", "cursando", "nao_identificado")
@@ -201,11 +197,12 @@ async def gerar_perfil(ollama_client: AsyncClient, modelo: str, texto_curriculo:
                 {"role": "user", "content": f"CURRÍCULO:\n{texto_curriculo}"},
             ],
             format=_SCHEMA,
-            options=_OPCOES_OLLAMA,
+            options=OPCOES_OLLAMA_PADRAO,
         )
-        corpo = json.loads(resposta.message.content or "{}")
     except Exception as erro:
         raise AnaliseIndisponivel("Não foi possível analisar o currículo com a IA no momento.") from erro
+
+    corpo = resposta_json_como_dict(resposta.message.content)
 
     nome_candidato = _texto(corpo.get("nome_candidato"))
     resumo_objetivo = _texto(corpo.get("resumo_objetivo"))

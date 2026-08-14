@@ -10,16 +10,12 @@ pra IA, que rankeia e justifica cada um contra a descrição da vaga. Mesma
 rede de segurança de sempre: `candidato_id` que a IA cita precisa estar no
 shortlist que foi realmente enviado, nunca aceita um id inventado."""
 
-import json
 from dataclasses import dataclass
 
 from ollama import AsyncClient
 
+from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embedding, similaridade_cosseno
-
-# Mesma constante usada em financeiro.py/analise.py — evita reservar mais
-# RAM do que o prompt (descrição da vaga + shortlist de candidatos) precisa.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
 
 # Quantos candidatos (dos mais similares por embedding) vão pro shortlist
 # que a IA efetivamente lê e rankeia — retrieval antes de generation, não
@@ -103,13 +99,12 @@ async def buscar_candidatos(
                 {"role": "user", "content": _prompt_usuario(descricao_vaga, [c for c, _ in shortlist])},
             ],
             format=_SCHEMA,
-            options=_OPCOES_OLLAMA,
+            options=OPCOES_OLLAMA_PADRAO,
         )
-        corpo = json.loads(resposta.message.content or "{}")
     except Exception as erro:
         raise AnaliseIndisponivel("Não foi possível buscar candidatos com a IA no momento.") from erro
 
-    resultados_brutos = corpo.get("resultados")
+    resultados_brutos = resposta_json_como_dict(resposta.message.content).get("resultados")
     if not isinstance(resultados_brutos, list):
         raise AnaliseIndisponivel("A IA devolveu uma resposta em formato inesperado.")
 

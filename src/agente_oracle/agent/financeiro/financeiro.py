@@ -10,16 +10,7 @@ from typing import Any
 from mcp import ClientSession
 from ollama import AsyncClient
 
-from agente_oracle.agent.core import conteudo_do_resultado
-
-# O Ollama reserva RAM proporcional ao tamanho de contexto configurado, e o
-# padrão dele (65536 tokens) é muito maior do que qualquer conversa aqui
-# precisa — nosso system prompt + histórico + resultado de consulta cabem
-# folgados bem abaixo disso. Numa máquina com pouca RAM livre, esse exagero
-# pode fazer o Ollama estourar memória e reiniciar sozinho no meio de uma
-# resposta. 16384 dá espaço de sobra (inclusive pra um relatório grande, até
-# o limite de 200 linhas) consumindo uma fração da memória.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
+from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, conteudo_do_resultado, resposta_json_como_dict
 
 # Formato forçado da decisão do modelo (ver `responder`). Em vez do mecanismo
 # de tool-calling em texto livre do Ollama — onde o modelo podia "esquecer"
@@ -96,13 +87,9 @@ async def responder(
     eventos: list[dict[str, Any]] = []
 
     resposta = await ollama_client.chat(
-        model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=_OPCOES_OLLAMA
+        model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=OPCOES_OLLAMA_PADRAO
     )
-    try:
-        decisao = json.loads(resposta.message.content or "{}")
-    except json.JSONDecodeError:
-        decisao = {}
-
+    decisao = resposta_json_como_dict(resposta.message.content)
     acao = decisao.get("acao")
 
     if acao == "testar_conexao":
@@ -154,12 +141,9 @@ async def responder(
                 }
             )
             resposta_correcao = await ollama_client.chat(
-                model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=_OPCOES_OLLAMA
+                model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=OPCOES_OLLAMA_PADRAO
             )
-            try:
-                nova_decisao = json.loads(resposta_correcao.message.content or "{}")
-            except json.JSONDecodeError:
-                nova_decisao = {}
+            nova_decisao = resposta_json_como_dict(resposta_correcao.message.content)
 
             if nova_decisao.get("acao") != "consultar_dados" or not nova_decisao.get("sql"):
                 # O modelo desistiu (não pediu pra tentar de novo) em vez de
@@ -217,12 +201,9 @@ async def responder(
                 }
             )
             resposta2 = await ollama_client.chat(
-                model=modelo, messages=messages, format=_RESPOSTA_TEXTO_SCHEMA, options=_OPCOES_OLLAMA
+                model=modelo, messages=messages, format=_RESPOSTA_TEXTO_SCHEMA, options=OPCOES_OLLAMA_PADRAO
             )
-            try:
-                texto_final = json.loads(resposta2.message.content or "{}").get("resposta")
-            except json.JSONDecodeError:
-                texto_final = None
+            texto_final = resposta_json_como_dict(resposta2.message.content).get("resposta")
 
             valores_fundamentados = _valores_numericos_do_resultado(conteudo)
             if not texto_final or (_valores_monetarios_no_texto(texto_final) - valores_fundamentados):
@@ -287,12 +268,22 @@ def _valores_monetarios_no_texto(texto: str) -> set[float]:
 def _normalizar_valor_monetario(bruto: str) -> float | None:
     """Interpreta um número monetário em texto livre aceitando tanto o formato
     brasileiro (1.234,56) quanto o americano (1,234.56), que o modelo às vezes
-    mistura — o separador decimal é sempre o que aparece por último na string."""
+    mistura — o separador decimal é sempre o que aparece por último na string.
+
+    Exceção: um único "." sem vírgula em lugar nenhum e com exatamente 3
+    dígitos depois (ex: "1.234") é separador de milhar, não decimal — valor
+    monetário nunca tem 3 casas decimais de verdade (só 0, 1 ou 2, os
+    centavos), então isso nunca seria uma fração."""
     ultimo_ponto = bruto.rfind(".")
     ultima_virgula = bruto.rfind(",")
-    limpo = (
-        bruto.replace(".", "").replace(",", ".") if ultima_virgula > ultimo_ponto else bruto.replace(",", "")
-    )
+
+    if ultima_virgula > ultimo_ponto:
+        limpo = bruto.replace(".", "").replace(",", ".")
+    else:
+        limpo = bruto.replace(",", "")
+        if ultima_virgula == -1 and ultimo_ponto != -1 and len(bruto) - ultimo_ponto - 1 == 3:
+            limpo = limpo.replace(".", "")
+
     try:
         return round(float(limpo), 2)
     except ValueError:

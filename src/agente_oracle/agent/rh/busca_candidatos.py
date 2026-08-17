@@ -22,9 +22,16 @@ from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embeddi
 # manda o pool inteiro pra IA.
 _TOP_N_SHORTLIST = 8
 
+_SUGESTAO_DESCRICAO_PADRAO = (
+    "Descreva a necessidade da vaga com mais detalhe — habilidades técnicas, senioridade, área de "
+    "atuação — pra uma busca mais precisa. Nome de candidato não é usado como critério de busca."
+)
+
 _SCHEMA = {
     "type": "object",
     "properties": {
+        "descricao_insuficiente": {"type": "boolean"},
+        "sugestao_descricao": {"type": "string"},
         "resultados": {
             "type": "array",
             "items": {
@@ -36,9 +43,9 @@ _SCHEMA = {
                 },
                 "required": ["candidato_id", "posicao", "justificativa"],
             },
-        }
+        },
     },
-    "required": ["resultados"],
+    "required": ["descricao_insuficiente", "sugestao_descricao", "resultados"],
 }
 
 _PROMPT_SISTEMA = (
@@ -50,8 +57,28 @@ _PROMPT_SISTEMA = (
     "candidato mais adequado — com uma justificativa curta e específica pra cada um, citando o "
     "que no perfil dele conecta (ou não conecta bem) com a descrição da vaga. Pode incluir menos "
     "candidatos do que recebeu se algum for claramente inadequado, mas nunca invente um "
-    "candidato que não estava na lista."
+    "candidato que não estava na lista.\n\n"
+    "Duas regras importantes:\n"
+    "1. Nome do candidato NUNCA é critério de adequação — julgue e justifique só por habilidade "
+    "técnica, experiência, senioridade e área de atuação que conectam com o que foi descrito. Um "
+    "nome citado na descrição da vaga (coincidência, ou tentativa de simplesmente escolher uma "
+    "pessoa específica em vez de avaliar fit real) não é motivo pra ranquear alguém melhor.\n"
+    "2. Se, ignorando qualquer nome, a descrição da vaga não trouxer nenhum critério real pra "
+    "comparar candidato (não menciona habilidade, senioridade, área, responsabilidade ou requisito "
+    "nenhum — por exemplo, só cita um nome, ou é curta e vaga demais pra avaliar), marque "
+    "`descricao_insuficiente: true`, escreva em `sugestao_descricao` uma frase curta orientando o "
+    "que detalhar, e devolva `resultados` vazio — não force um ranking sem base real. Caso "
+    "contrário, `descricao_insuficiente: false`, `sugestao_descricao` pode ficar vazia."
 )
+
+
+class DescricaoVagaInsuficiente(Exception):
+    """Levantada quando a IA avalia que a descrição da vaga não trouxe
+    critério real pra comparar candidato (ex: só cita um nome) — a busca
+    não força um ranking sem base, pede pro RH detalhar a necessidade em
+    vez disso. Separada de `AnaliseIndisponivel` porque aqui a IA
+    respondeu normalmente; o problema é a entrada do usuário, não a IA
+    fora do ar."""
 
 
 @dataclass(frozen=True)
@@ -104,7 +131,16 @@ async def buscar_candidatos(
     except Exception as erro:
         raise AnaliseIndisponivel("Não foi possível buscar candidatos com a IA no momento.") from erro
 
-    resultados_brutos = resposta_json_como_dict(resposta.message.content).get("resultados")
+    corpo = resposta_json_como_dict(resposta.message.content)
+
+    if corpo.get("descricao_insuficiente") is True:
+        sugestao = corpo.get("sugestao_descricao")
+        mensagem = (
+            sugestao.strip() if isinstance(sugestao, str) and sugestao.strip() else _SUGESTAO_DESCRICAO_PADRAO
+        )
+        raise DescricaoVagaInsuficiente(mensagem)
+
+    resultados_brutos = corpo.get("resultados")
     if not isinstance(resultados_brutos, list):
         raise AnaliseIndisponivel("A IA devolveu uma resposta em formato inesperado.")
 

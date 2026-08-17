@@ -6,7 +6,11 @@ from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.agent.rh.busca_candidatos import ResultadoBusca, buscar_candidatos
+from agente_oracle.agent.rh.busca_candidatos import (
+    DescricaoVagaInsuficiente,
+    ResultadoBusca,
+    buscar_candidatos,
+)
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel
 from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
@@ -64,6 +68,8 @@ def registrar(mcp) -> None:
             )
         except AnaliseIndisponivel as erro:
             return JSONResponse({"erro": str(erro)}, status_code=503, headers=CORS_HEADERS)
+        except DescricaoVagaInsuficiente as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
         acessos_dados.registrar(usuario["sub"], "rh", "busca:candidatos", len(resultados))
         return JSONResponse(

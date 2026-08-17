@@ -60,6 +60,10 @@ def _ranking_json(*resultados: dict) -> str:
     return json.dumps({"resultados": list(resultados)})
 
 
+def _insuficiente_json(sugestao: str = "") -> str:
+    return json.dumps({"descricao_insuficiente": True, "sugestao_descricao": sugestao, "resultados": []})
+
+
 class TestBuscarCandidatos:
     async def test_resposta_valida_devolve_ranking_ordenado_por_posicao(self):
         candidatos = [_candidato(1, [1.0, 0.0], "Ana"), _candidato(2, [1.0, 0.0], "Bruno")]
@@ -158,6 +162,27 @@ class TestBuscarCandidatos:
         cliente = _OllamaClientFake(embedding=[1.0, 0.0], conteudo_chat=json.dumps(None))
         with pytest.raises(AnaliseIndisponivel):
             await mod.buscar_candidatos(cliente, "modelo-teste", "modelo-embed", "descrição", candidatos)
+
+    async def test_descricao_insuficiente_levanta_com_sugestao_da_ia(self):
+        candidatos = [_candidato(1, [1.0, 0.0])]
+        conteudo = _insuficiente_json("Descreva a senioridade e a área de atuação necessárias.")
+        cliente = _OllamaClientFake(embedding=[1.0, 0.0], conteudo_chat=conteudo)
+
+        with pytest.raises(mod.DescricaoVagaInsuficiente, match="senioridade e a área"):
+            await mod.buscar_candidatos(
+                cliente, "modelo-teste", "modelo-embed", "alguém chamado Ana", candidatos
+            )
+
+    async def test_descricao_insuficiente_sem_sugestao_usa_mensagem_padrao(self):
+        candidatos = [_candidato(1, [1.0, 0.0])]
+        conteudo = _insuficiente_json("")
+        cliente = _OllamaClientFake(embedding=[1.0, 0.0], conteudo_chat=conteudo)
+
+        with pytest.raises(mod.DescricaoVagaInsuficiente) as excinfo:
+            await mod.buscar_candidatos(
+                cliente, "modelo-teste", "modelo-embed", "alguém chamado Ana", candidatos
+            )
+        assert str(excinfo.value) == mod._SUGESTAO_DESCRICAO_PADRAO
 
     async def test_candidato_com_embedding_de_dimensao_diferente_nao_derruba_a_busca(self):
         # Candidato 1 tem embedding "antigo" (2 dimensões, modelo trocado

@@ -1,55 +1,132 @@
 <app-modulo-header
   breadcrumb="RH"
   titulo="Análise de Candidato"
-  descricao="Suba um ou mais currículos — a IA analisa cada um em segundo plano e monta o perfil do candidato pro pool de busca."
+  descricao="Suba currículos pro pool de candidatos ativos, ou descreva uma vaga pra IA buscar quem encaixa melhor — tudo nesta tela."
 />
 
-<div class="barra-acoes">
-  <app-botao variant="primaria" (clicked)="abrirDialogAnalise()">Analisar Currículos</app-botao>
-</div>
-
-<div class="linha-kpis">
-  <app-cartao-kpi rotulo="Candidatos Ativos" tipo="numero" [valor]="totalAtivos()" [destacarNegativo]="false" />
-</div>
-
 <section class="cartao-secao">
-  <h2>Candidatos</h2>
-  <div class="tabela-scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Resumo do perfil</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (candidato of candidatosAtivos(); track candidato.id) {
-          <tr>
-            <td>{{ candidato.nome }}</td>
-            <td class="coluna-resumo">{{ resumoTruncado(candidato) }}</td>
-            <td>
-              <span
-                class="badge"
-                [class.badge--ok]="candidato.status === 'ativo'"
-                [class.badge--critico]="candidato.status === 'descartado'"
-              >
-                {{ rotuloStatus(candidato.status) }}
-              </span>
-            </td>
-            <td class="coluna-acao">
-              <app-botao variant="contorno" (clicked)="abrirDetalhe(candidato)">Ver perfil</app-botao>
-            </td>
-          </tr>
-        } @empty {
-          <tr>
-            <td colspan="4" class="lista-vazia-tabela">Nenhum candidato cadastrado ainda.</td>
-          </tr>
-        }
-      </tbody>
-    </table>
+  <div class="abas" role="tablist" aria-label="Modo de análise de candidato">
+    <button
+      type="button"
+      role="tab"
+      class="aba"
+      [attr.aria-selected]="modo() === 'lista'"
+      [class.aba--ativa]="modo() === 'lista'"
+      (click)="modo.set('lista')"
+    >
+      Candidatos Ativos
+      <span class="aba-contagem">{{ candidatosAtivos().length }}</span>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      class="aba"
+      [attr.aria-selected]="modo() === 'busca'"
+      [class.aba--ativa]="modo() === 'busca'"
+      (click)="modo.set('busca')"
+    >
+      Buscar por Vaga
+    </button>
   </div>
+
+  @if (modo() === 'lista') {
+    <div class="barra-acoes-aba">
+      <app-botao variant="primaria" (clicked)="abrirDialogAnalise()">Analisar Currículos</app-botao>
+    </div>
+
+    @if (candidatosAtivos().length) {
+      <div class="tabela-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Resumo do perfil</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (candidato of candidatosAtivos(); track candidato.id) {
+              <tr>
+                <td>{{ candidato.nome }}</td>
+                <td class="coluna-resumo">{{ resumoTruncado(candidato) }}</td>
+                <td class="coluna-acao">
+                  <app-botao variant="contorno" (clicked)="abrirDetalhe(candidato)">Ver perfil</app-botao>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <app-estado-vazio titulo="Nenhum candidato ativo" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke-linejoin="round" />
+          <path d="M9 12h6M9 16h6M9 8h2" stroke-linecap="round" />
+        </svg>
+        <p>Suba um currículo pra começar a montar o pool de candidatos.</p>
+      </app-estado-vazio>
+    }
+  } @else {
+    <div class="formulario-busca">
+      <label class="campo-descricao">
+        <span>Descrição da necessidade da vaga</span>
+        <textarea
+          [value]="descricao()"
+          (input)="descricao.set($any($event.target).value)"
+          rows="5"
+          placeholder="Ex: Preciso de alguém com experiência em manejo de gado de corte, disponibilidade pra viajar entre fazendas e vivência liderando equipe de campo..."
+        ></textarea>
+      </label>
+
+      <app-botao
+        variant="primaria"
+        [loading]="busca.carregando()"
+        loadingText="Buscando..."
+        [disabled]="!descricao().trim()"
+        (clicked)="buscar()"
+      >
+        Buscar Candidatos
+      </app-botao>
+    </div>
+
+    @if (busca.erro()) {
+      <p class="erro-busca">{{ busca.erro() }}</p>
+    } @else if (!busca.carregando() && busca.resultados().length) {
+      <div class="lista-resultados">
+        @for (resultado of busca.resultados(); track resultado.candidato_id) {
+          <div class="cartao-resultado">
+            <div class="cartao-resultado-cabecalho">
+              <span class="posicao">#{{ resultado.posicao }}</span>
+              <h3>{{ resultado.nome }}</h3>
+              <span class="similaridade">{{ percentual(resultado.similaridade) }} de similaridade</span>
+            </div>
+            <div class="linha-meta-badges">
+              <span class="badge-meta">{{ rotuloSenioridade(resultado) }}</span>
+              @if (resultado.area_atuacao_principal) {
+                <span class="badge-meta">{{ resultado.area_atuacao_principal }}</span>
+              }
+            </div>
+            <p class="justificativa">{{ resultado.justificativa }}</p>
+            <p class="resumo-perfil">{{ resultado.resumo_perfil }}</p>
+            <div class="linha-acoes-resultado">
+              <app-botao variant="contorno" (clicked)="abrirPerfil(resultado)">Ver perfil</app-botao>
+              <app-botao variant="contorno" (clicked)="baixarCurriculoResultado(resultado)">
+                Baixar currículo
+              </app-botao>
+            </div>
+          </div>
+        }
+      </div>
+    } @else if (!busca.carregando() && buscaFeita()) {
+      <app-estado-vazio titulo="Nenhum candidato encontrado" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m20 20-3.8-3.8" stroke-linecap="round" />
+        </svg>
+        <p>Nenhum candidato ativo bateu bem com essa descrição — tente detalhar mais a necessidade da vaga.</p>
+      </app-estado-vazio>
+    }
+  }
 </section>
 
 <app-dialog
@@ -79,6 +156,23 @@
           Marcar como contratado
         </app-botao>
       }
+    </ng-container>
+  }
+</app-dialog>
+
+<app-dialog
+  [aberto]="!!resultadoAberto()"
+  [titulo]="resultadoAberto()?.nome ?? ''"
+  [temRodape]="true"
+  (fechar)="fecharPerfil()"
+>
+  @if (resultadoAberto(); as resultado) {
+    <app-detalhe-candidato [resumo]="resultado.resumo_perfil" [perfilEstruturado]="resultado.perfil_estruturado" />
+  }
+
+  @if (resultadoAberto(); as resultado) {
+    <ng-container rodape>
+      <app-botao variant="contorno" (clicked)="baixarCurriculoResultado(resultado)">Baixar currículo</app-botao>
     </ng-container>
   }
 </app-dialog>

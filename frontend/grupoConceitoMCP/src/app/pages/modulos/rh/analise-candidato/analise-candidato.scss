@@ -1,29 +1,78 @@
-.barra-acoes {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 16px;
-}
-
-.linha-kpis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
 .cartao-secao {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 18px 20px;
-  margin-bottom: 16px;
+}
 
-  h2 {
-    margin: 0 0 14px;
-    font-size: 15px;
-    font-weight: 600;
+.abas {
+  display: flex;
+  gap: 22px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.aba {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 12px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--color-primary);
+    transform: scaleX(0);
+    transition: transform 0.15s ease;
+  }
+
+  &:hover {
     color: var(--color-text);
   }
+
+  &--ativa {
+    color: var(--color-primary);
+
+    &::after {
+      transform: scaleX(1);
+    }
+  }
+}
+
+.aba-contagem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.barra-acoes-aba {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
 }
 
 .tabela-scroll {
@@ -62,31 +111,128 @@ table {
   white-space: nowrap;
 }
 
-.lista-vazia-tabela {
-  text-align: center;
-  color: var(--color-text-muted);
-  white-space: normal;
+.formulario-busca {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
-.badge {
+.campo-descricao {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+
+  textarea {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 400;
+    resize: vertical;
+    min-height: 100px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-primary-light);
+    }
+  }
+}
+
+.erro-busca {
+  margin: 0;
+  color: #9a2f2f;
+  font-size: 14px;
+}
+
+.lista-resultados {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cartao-resultado {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.linha-acoes-resultado {
+  display: flex;
+  gap: 8px;
+}
+
+.cartao-resultado-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+    flex: 1;
+  }
+}
+
+.posicao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.similaridade {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.linha-meta-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.badge-meta {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
   border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text);
   font-size: 12px;
   font-weight: 600;
-  background: var(--color-bg);
+}
+
+.justificativa {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.resumo-perfil {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--color-text-muted);
-
-  &--ok {
-    background: rgba(47, 158, 88, 0.14);
-    color: #2f9e58;
-  }
-
-  &--critico {
-    background: rgba(154, 47, 47, 0.14);
-    color: #9a2f2f;
-  }
 }
 
 .dialog-analise {

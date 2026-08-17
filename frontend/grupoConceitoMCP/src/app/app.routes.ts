@@ -13,7 +13,6 @@ import { Chat } from './pages/modulos/financeiro/chat/chat';
 import { AnaliseCandidato } from './pages/modulos/rh/analise-candidato/analise-candidato';
 import { Colaboradores } from './pages/modulos/rh/colaboradores/colaboradores';
 import { Repescagem } from './pages/modulos/rh/repescagem/repescagem';
-import { SelecionarCandidato } from './pages/modulos/rh/selecionar-candidato/selecionar-candidato';
 import { SegurancaTi } from './pages/modulos/ti/seguranca/seguranca';
 import { Login } from './pages/login/login';
 import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
@@ -42,7 +41,7 @@ export const routes: Routes = [
       { path: 'estoque', component: Estoque },
       { path: 'rh', redirectTo: 'rh/analise-candidato' },
       { path: 'rh/analise-candidato', component: AnaliseCandidato },
-      { path: 'rh/selecionar-candidato', component: SelecionarCandidato },
+      { path: 'rh/selecionar-candidato', redirectTo: 'rh/analise-candidato' },
       { path: 'rh/repescagem', component: Repescagem },
       { path: 'rh/colaboradores', component: Colaboradores },
       { path: 'ti/seguranca', component: SegurancaTi },

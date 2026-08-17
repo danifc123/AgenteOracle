@@ -90,11 +90,6 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         iconeSvg: `<path d="M9 12h6M9 16h6M9 8h2" stroke-linecap="round" /><path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke-linejoin="round" />`,
       },
       {
-        rota: '/rh/selecionar-candidato',
-        rotulo: 'Selecionar Candidato',
-        iconeSvg: `<circle cx="11" cy="11" r="6.5" /><path d="m20 20-3.8-3.8" stroke-linecap="round" />`,
-      },
-      {
         rota: '/rh/repescagem',
         rotulo: 'Repescagem',
         iconeSvg: `<path d="M4 4v6h6" stroke-linecap="round" stroke-linejoin="round" /><path d="M20 20v-6h-6" stroke-linecap="round" stroke-linejoin="round" /><path d="M5.5 15a7 7 0 0 0 12.3 2.5M18.5 9a7 7 0 0 0-12.3-2.5" stroke-linecap="round" />`,

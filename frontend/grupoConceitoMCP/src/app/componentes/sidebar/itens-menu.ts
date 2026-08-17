@@ -111,6 +111,11 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         rotulo: 'Segurança de TI',
         iconeSvg: `<path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M12 8v5M12 16.5h.01" stroke-linecap="round" />`,
       },
+      {
+        rota: '/ti/chamados',
+        rotulo: 'Central de Chamados',
+        iconeSvg: `<path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M8 10h8M8 13h5" stroke-linecap="round" />`,
+      },
     ],
   },
 ];

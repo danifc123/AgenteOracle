@@ -1,0 +1,119 @@
+<app-modulo-header
+  breadcrumb="TI"
+  titulo="Central de Chamados"
+  descricao="Prova de conceito com dado mockado (ainda sem conexão real com o GLPI) — a IA analisa cada chamado novo e só libera pra fila de atendimento quando tem informação suficiente."
+/>
+
+<div class="barra-acoes">
+  <app-botao
+    variant="primaria"
+    [loading]="verificando()"
+    loadingText="Verificando..."
+    (clicked)="verificarChamadosNovos()"
+  >
+    Verificar Chamados Novos
+  </app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+<section class="cartao-secao">
+  <h2>Chamados</h2>
+  @if (carregando()) {
+    <p class="carregando">Carregando...</p>
+  } @else if (chamados().length === 0) {
+    <app-estado-vazio titulo="Nenhum chamado" variante="simples">
+      <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <p>Nenhum chamado cadastrado ainda.</p>
+    </app-estado-vazio>
+  } @else {
+    <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Categoria</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (chamado of chamados(); track chamado.id) {
+            <tr>
+              <td>{{ chamado.titulo }}</td>
+              <td>{{ chamado.categoria }}</td>
+              <td>
+                <span
+                  class="badge"
+                  [class.badge--ok]="chamado.status === 'fila_atendimento'"
+                  [class.badge--aviso]="chamado.status === 'aguardando_usuario'"
+                >
+                  {{ rotuloStatus(chamado.status) }}
+                </span>
+              </td>
+              <td class="coluna-acao">
+                <app-botao variant="contorno" (clicked)="abrirDetalhe(chamado)">Ver chamado</app-botao>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+<app-dialog
+  [aberto]="!!chamadoAberto()"
+  [titulo]="chamadoAberto()?.titulo ?? ''"
+  [temRodape]="chamadoAberto()?.status === 'aguardando_usuario'"
+  (fechar)="fecharDetalhe()"
+>
+  @if (chamadoAberto(); as chamado) {
+    <div class="detalhe-chamado">
+      <div class="linha-meta-badges">
+        <span class="badge-meta">{{ chamado.categoria }}</span>
+        <span class="badge-meta">{{ chamado.solicitante }}</span>
+        <span class="badge-meta">{{ chamado.criado_em | date: 'dd/MM/yyyy HH:mm' }}</span>
+      </div>
+      <p class="descricao-chamado">{{ chamado.descricao }}</p>
+
+      @if (chamado.status === 'aguardando_usuario' && chamado.avaliacao_mensagem) {
+        <div class="aviso-ia">
+          <strong>A IA identificou que falta informação:</strong>
+          <p>{{ chamado.avaliacao_mensagem }}</p>
+        </div>
+
+        @if (chamado.reportado_em) {
+          <div class="preview-email">
+            <strong>E-mail (mock) enviado em {{ chamado.reportado_em | date: 'dd/MM/yyyy HH:mm' }}</strong>
+            <p class="preview-email-campo"><span>Para:</span> {{ chamado.email }}</p>
+            <p class="preview-email-campo">
+              <span>Assunto:</span> Chamado #{{ chamado.id }} precisa de mais informação
+            </p>
+            <p class="preview-email-corpo">
+              Olá, {{ chamado.solicitante }}! O chamado #{{ chamado.id }} ("{{ chamado.titulo }}") ainda não
+              tem informação suficiente pra nossa equipe de TI atender: {{ chamado.avaliacao_mensagem }}
+              Enquanto não for detalhado, o chamado continua em espera e não entra na fila de atendimento.
+            </p>
+          </div>
+        } @else {
+          <p class="ainda-nao-reportado">O usuário ainda não foi avisado sobre esse chamado.</p>
+        }
+      }
+    </div>
+  }
+
+  @if (chamadoAberto(); as chamado) {
+    @if (chamado.status === 'aguardando_usuario') {
+      <ng-container rodape>
+        <app-botao variant="primaria" [loading]="reportando()" loadingText="Enviando..." (clicked)="reportar(chamado)">
+          {{ chamado.reportado_em ? 'Reportar novamente' : 'Reportar ao usuário' }}
+        </app-botao>
+      </ng-container>
+    }
+  }
+</app-dialog>

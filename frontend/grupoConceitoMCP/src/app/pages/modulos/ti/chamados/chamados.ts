@@ -29,7 +29,7 @@ const ROTULOS_STATUS: Record<StatusChamado, string> = {
   fila_atendimento: 'Na fila',
 };
 
-/** MÓDULO TI — TELA "CENTRAL DE CHAMADOS" (2026-08)
+/** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
  * Prova de conceito do item "Service Desk IA" da planilha de demandas —
  * hoje roda sobre dado mockado (`tools/ti/glpi.py::ClienteGLPIMock`,

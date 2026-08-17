@@ -113,7 +113,7 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       },
       {
         rota: '/ti/chamados',
-        rotulo: 'Central de Chamados',
+        rotulo: 'Auditoria de Chamados',
         iconeSvg: `<path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M8 10h8M8 13h5" stroke-linecap="round" />`,
       },
     ],

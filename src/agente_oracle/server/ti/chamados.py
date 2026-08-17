@@ -1,4 +1,4 @@
-"""Rotas da Central de Chamados (TI) — lógica de dado mora em
+"""Rotas da Auditoria de Chamados (TI) — lógica de dado mora em
 `tools/ti/glpi.py` (hoje um mock, ver docstring do módulo), a decisão de
 "tem informação suficiente" em `agent/ti/qualidade_chamado.py`; este
 módulo só orquestra os dois e cuida do HTTP, mesmo espírito de

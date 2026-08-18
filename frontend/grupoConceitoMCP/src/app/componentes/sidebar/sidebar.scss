@@ -13,10 +13,9 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  // Sem overflow-y aqui de propósito: por spec, overflow-y:auto força
-  // overflow-x a virar auto também, e isso criava uma barra de scroll
-  // horizontal por causa do balão do .nav-label (colapsado) que sai
-  // fora da largura do sidebar.
+  // Sem overflow aqui de propósito — o scroll fica só dentro de `.nav`
+  // (ver comentário lá), pra abrir um grupo grande (ex: Financeiro com 9
+  // itens) nunca esticar o sidebar/página inteira, só a lista de módulos.
   transition:
     width 0.2s ease,
     padding 0.2s ease;
@@ -68,6 +67,34 @@
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  // `min-height: 0` é o que permite este item flex encolher menor que o
+  // próprio conteúdo — sem isso, `overflow-y: auto` abaixo não faz nada
+  // (o item flex insiste em crescer do tamanho do conteúdo, empurrando
+  // o sidebar/página inteira, que é exatamente o bug do scroll geral).
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  // Scrollbar discreta, um tom mais claro que o verde do menu — só pra dar
+  // o indício de que existe mais conteúdo, sem chamar muita atenção.
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.34);
+  }
 }
 
 .nav-link {
@@ -161,7 +188,12 @@
     margin 0.25s ease;
 
   &.aberto {
-    max-height: 240px;
+    // 240px cabia bem quando o maior grupo (Financeiro) tinha uns 5 itens —
+    // com 9 itens (~350px), o conteúdo passava desse limite e, como o
+    // overflow vira "visible" depois da animação (comentário abaixo), vazava
+    // visualmente por cima do grupo seguinte. 480px dá folga pra uns 12
+    // itens sem precisar reajustar de novo tão cedo.
+    max-height: 480px;
     margin: 2px 0 6px;
     opacity: 1;
     // Overflow só libera depois que a animação de abertura termina — antes
@@ -288,6 +320,17 @@
 .sidebar.colapsado {
   width: 72px;
   padding: 20px 10px;
+
+  // Recolhido, o balão de rótulo (`.nav-label` no hover, mais abaixo) sai
+  // por `position: absolute` pra além da borda direita do ícone — com
+  // `overflow` restrito em `.nav` (regra normal, acima), esse balão seria
+  // cortado ou geraria barra horizontal (mesmo problema de spec que o
+  // scroll geral do sidebar tinha antes). Volta pra `visible` aqui, igual
+  // já era antes desta rodada — modo recolhido não tem a lista de módulos
+  // grande o bastante pra precisar de scroll interno.
+  .nav {
+    overflow: visible;
+  }
 
   .brand {
     padding: 6px 0 22px;

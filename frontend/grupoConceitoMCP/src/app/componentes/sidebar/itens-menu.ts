@@ -59,6 +59,16 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         rotulo: 'Simulação de Cenários',
         iconeSvg: `<path d="M4 19h16" stroke-linecap="round" /><path d="M4 15c3-1 4 3 7 2s3-6 6-5" stroke-linecap="round" stroke-linejoin="round" /><path d="M4 11c3-2 4 2 7 1s3-5 6-4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.45" />`,
       },
+      {
+        rota: '/financeiro/classificacao-contabil',
+        rotulo: 'Classificação Contábil',
+        iconeSvg: `<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 9h8M8 13h5" stroke-linecap="round" /><path d="m9 17 2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />`,
+      },
+      {
+        rota: '/financeiro/score-inadimplencia',
+        rotulo: 'Score de Inadimplência',
+        iconeSvg: `<circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" /><path d="M15.5 5v4.5M15.5 12.5h.01" stroke-linecap="round" />`,
+      },
     ],
   },
   {

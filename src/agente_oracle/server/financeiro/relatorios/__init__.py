@@ -19,6 +19,7 @@ from agente_oracle.server.financeiro.relatorios import (
     fluxo_caixa_realizado,
     movimento_financeiro_diario,
     orcamento_base_zero,
+    otimizador_pagamento,
     posicao_titulos,
     posicao_titulos_pagar,
     posicao_titulos_vendedor,
@@ -45,3 +46,4 @@ def registrar(mcp) -> None:
     relatorio_customizado.registrar(mcp)
     desvio_margem.registrar(mcp)
     orcamento_base_zero.registrar(mcp)
+    otimizador_pagamento.registrar(mcp)

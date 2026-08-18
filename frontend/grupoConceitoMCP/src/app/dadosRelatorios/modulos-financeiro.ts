@@ -484,6 +484,13 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           'Sugestão de orçamento de despesa por categoria para os próximos 12 meses, calculada a partir da tendência dos últimos 12 meses — sem partir de um orçamento anterior.',
         apiEndpoint: 'orcamento-base-zero',
       },
+      {
+        nome: 'Otimizador de Pagamento',
+        categoria: 'Contas a Pagar e Fluxo de Caixa',
+        descricao:
+          'Para cada título a pagar em aberto, recomenda a melhor data de pagamento com base no histórico real de desconto/multa/juros já praticado pelo próprio fornecedor.',
+        apiEndpoint: 'otimizador-pagamento',
+      },
     ],
   },
 ];

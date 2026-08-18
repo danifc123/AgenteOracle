@@ -12,6 +12,8 @@ import { EstoqueChat } from './pages/modulos/estoque/chat/estoque-chat';
 import { Chat } from './pages/modulos/financeiro/chat/chat';
 import { DespesasSuspeitas } from './pages/modulos/financeiro/despesas-suspeitas/despesas-suspeitas';
 import { SimulacaoMonteCarlo } from './pages/modulos/financeiro/simulacao-monte-carlo/simulacao-monte-carlo';
+import { ClassificacaoContabil } from './pages/modulos/financeiro/classificacao-contabil/classificacao-contabil';
+import { ScoreInadimplenciaComponent } from './pages/modulos/financeiro/score-inadimplencia/score-inadimplencia';
 import { AnaliseCandidato } from './pages/modulos/rh/analise-candidato/analise-candidato';
 import { Colaboradores } from './pages/modulos/rh/colaboradores/colaboradores';
 import { Repescagem } from './pages/modulos/rh/repescagem/repescagem';
@@ -39,6 +41,8 @@ export const routes: Routes = [
       { path: 'financeiro/chat', component: Chat },
       { path: 'financeiro/despesas-suspeitas', component: DespesasSuspeitas },
       { path: 'financeiro/simulacao-monte-carlo', component: SimulacaoMonteCarlo },
+      { path: 'financeiro/classificacao-contabil', component: ClassificacaoContabil },
+      { path: 'financeiro/score-inadimplencia', component: ScoreInadimplenciaComponent },
       { path: 'financeiro/:moduloId', component: Financeiro },
       { path: 'estoque/criar-relatorio', component: EstoqueCriarRelatorio },
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },

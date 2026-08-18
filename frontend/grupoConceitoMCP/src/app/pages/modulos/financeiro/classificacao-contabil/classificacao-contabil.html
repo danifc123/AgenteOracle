@@ -1,0 +1,73 @@
+<app-modulo-header
+  breadcrumb="Financeiro / Classificação Contábil"
+  titulo="Classificação Contábil"
+  descricao="Sugere a conta contábil de lançamentos ainda sem classificação, com base em lançamentos parecidos já classificados — só sugere conta com precedente real, nunca inventa um código novo."
+/>
+
+<div class="filtros-topo">
+  <app-select-busca
+    class="select-filial"
+    rotulo="Filial(is) *"
+    placeholder="Filial(is)..."
+    [multiplo]="true"
+    [opcoes]="filiais()"
+    [(valores)]="filiaisSelecionadas"
+  />
+
+  <app-botao
+    variant="primaria"
+    [disabled]="!filiaisSelecionadas().length"
+    [loading]="analisando()"
+    loadingText="Analisando..."
+    (clicked)="analisar()"
+  >
+    Analisar Lançamentos
+  </app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+@if (jaAnalisou()) {
+  <section class="cartao-secao">
+    <h2>Sugestões de Classificação</h2>
+    @if (sugestoes().length === 0) {
+      <app-estado-vazio titulo="Nenhuma sugestão confiável encontrada" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M8 9h8M8 13h5" stroke-linecap="round" />
+          <path d="m9 17 2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <p>
+          Não há lançamento sem conta com um padrão de histórico confiável nos últimos 12 meses dessas
+          filiais.
+        </p>
+      </app-estado-vazio>
+    } @else {
+      <div class="lista-sugestoes">
+        @for (sugestao of sugestoes(); track sugestao.documento + sugestao.linha) {
+          <div class="cartao-sugestao">
+            <div class="cartao-sugestao-cabecalho">
+              <span class="badge-confianca" [class]="classeConfianca(sugestao.confianca_percentual)">
+                {{ sugestao.confianca_percentual }}% de confiança
+              </span>
+              <span class="valor-sugestao">{{ formatarValor(sugestao.valor) }}</span>
+            </div>
+            <p class="historico-sugestao">{{ sugestao.historico }}</p>
+            <p class="conta-sugestao">
+              Conta sugerida: <strong>{{ sugestao.conta_sugerida }}</strong>
+              @if (sugestao.conta_descricao_sugerida) {
+                — {{ sugestao.conta_descricao_sugerida }}
+              }
+            </p>
+            <p class="rodape-sugestao">
+              Documento {{ sugestao.documento }}-{{ sugestao.linha }} · baseado em
+              {{ sugestao.suporte_historico }} lançamentos parecidos já classificados
+            </p>
+          </div>
+        }
+      </div>
+    }
+  </section>
+}

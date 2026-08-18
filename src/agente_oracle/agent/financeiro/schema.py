@@ -80,6 +80,14 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "0 = título já quitado; qualquer valor MAIOR QUE 0 = título em aberto "
                 "(use 'saldo_aberto > 0', nunca 'saldo_aberto = 1')",
             ),
+            ColunaView("valor_desconto", "valor de desconto obtido no pagamento (0 se não houve)"),
+            ColunaView("valor_multa", "valor de multa paga por atraso (0 se não houve)"),
+            ColunaView("valor_juros", "valor de juros pago por atraso (0 se não houve)"),
+            ColunaView(
+                "data_baixa",
+                "data em que o título foi efetivamente pago — NULL enquanto o título "
+                "estiver em aberto (saldo_aberto > 0)",
+            ),
         ),
         relacionamentos=(
             RelacionamentoView(
@@ -114,6 +122,14 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "valor numérico do saldo em aberto — NÃO é um flag/booleano. "
                 "0 = título já quitado; qualquer valor MAIOR QUE 0 = título em aberto "
                 "(use 'saldo_aberto > 0', nunca 'saldo_aberto = 1')",
+            ),
+            ColunaView("valor_desconto", "valor de desconto obtido no recebimento (0 se não houve)"),
+            ColunaView("valor_multa", "valor de multa recebida por atraso (0 se não houve)"),
+            ColunaView("valor_juros", "valor de juros recebido por atraso (0 se não houve)"),
+            ColunaView(
+                "data_baixa",
+                "data em que o título foi efetivamente recebido — NULL enquanto o título "
+                "estiver em aberto (saldo_aberto > 0)",
             ),
         ),
         relacionamentos=(
@@ -170,6 +186,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "'Mato Grosso', 'São Paulo'), converta você mesmo para a sigla "
                 "correspondente antes de montar o WHERE (ex: estado = 'MT').",
             ),
+            ColunaView("municipio_nome", "nome do município (cidade) do cliente"),
         ),
     ),
     ViewFinanceira(
@@ -303,6 +320,32 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "1 se o lançamento já foi conciliado com o extrato do banco, 0 se não — "
                 "não é um tipo booleano de verdade (Oracle SQL não tem), é numérico",
             ),
+        ),
+    ),
+    ViewFinanceira(
+        nome="vw_lancamentos_contabeis",
+        descricao="Lançamentos de contabilidade (partidas de débito/crédito), um registro por linha.",
+        colunas=(
+            ColunaView("filial", "código da filial"),
+            ColunaView("documento", "número do documento do lançamento"),
+            ColunaView("linha", "número da linha dentro do documento"),
+            ColunaView(
+                "conta",
+                "código da conta contábil (plano de contas) — '-1' significa que o "
+                "lançamento NÃO tem conta definida ainda",
+            ),
+            ColunaView("conta_descricao", "descrição da conta contábil, NULL quando conta = '-1'"),
+            ColunaView(
+                "centro_custo_debito",
+                "centro de custo do lado devedor do lançamento — '-1' quando não definido",
+            ),
+            ColunaView(
+                "centro_custo_credito",
+                "centro de custo do lado credor do lançamento — '-1' quando não definido",
+            ),
+            ColunaView("historico", "descrição livre do lançamento"),
+            ColunaView("valor", "valor do lançamento"),
+            ColunaView("data_movimentacao", "data do lançamento contábil"),
         ),
     ),
 )

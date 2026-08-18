@@ -1,0 +1,69 @@
+<app-modulo-header
+  breadcrumb="Financeiro / Score de Inadimplência"
+  titulo="Score de Inadimplência"
+  descricao="Indicador de risco por regra clara — comportamento de pagamento recente do cliente + anomalia climática na região dele. Não é um modelo de IA treinado; cada fator do score é mostrado de forma explícita."
+/>
+
+<div class="filtros-topo">
+  <app-select-busca
+    class="select-filial"
+    rotulo="Filial(is) *"
+    placeholder="Filial(is)..."
+    [multiplo]="true"
+    [opcoes]="filiais()"
+    [(valores)]="filiaisSelecionadas"
+  />
+
+  <app-botao
+    variant="primaria"
+    [disabled]="!filiaisSelecionadas().length"
+    [loading]="calculando()"
+    loadingText="Calculando..."
+    (clicked)="calcular()"
+  >
+    Calcular Score
+  </app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+@if (jaCalculou()) {
+  <section class="cartao-secao">
+    <h2>Clientes por Risco</h2>
+    @if (scores().length === 0) {
+      <app-estado-vazio titulo="Nenhum cliente com histórico recente" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" />
+          <path d="m15 13 2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <p>Nenhum cliente dessas filiais teve título liquidado nos últimos 180 dias.</p>
+      </app-estado-vazio>
+    } @else {
+      <div class="lista-scores">
+        @for (item of scores(); track item.cliente_codigo) {
+          <div class="cartao-score">
+            <div class="cartao-score-cabecalho">
+              <span class="badge-score" [class]="classeScore(item.score)">{{ item.score }}</span>
+              <span class="nome-cliente">{{ item.cliente_nome }}</span>
+              @if (item.clima) {
+                <span class="municipio-cliente">{{ item.clima.municipio_nome }}/{{ item.clima.uf }}</span>
+              }
+            </div>
+            <p class="comportamento-cliente">
+              {{ item.comportamento.percentual_atraso_recente }}% de atraso nos últimos 90 dias ·
+              tendência: {{ rotuloTendencia(item.comportamento.tendencia) }}
+            </p>
+            <ul class="fatores-score">
+              @for (fator of item.fatores; track fator) {
+                <li>{{ fator }}</li>
+              }
+            </ul>
+          </div>
+        }
+      </div>
+    }
+  </section>
+}

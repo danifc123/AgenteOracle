@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # a resposta pelo navegador).
     allowed_origins: str = "http://localhost:4200,http://127.0.0.1:4200"
 
+    # `OLLAMA_HOST` apontando pra fora da máquina (GPU alugada, IA em nuvem)
+    # só é seguro com `DB_BACKEND=postgres` (banco fictício) — com
+    # `DB_BACKEND=oracle` (dado real da Conceito), `validar_ollama_host_seguro`
+    # abaixo bloqueia a subida do servidor de propósito.
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:7b"
     ollama_embedding_model: str = "nomic-embed-text"
@@ -82,3 +86,33 @@ def validar_auth_secret_key(settings: Settings) -> None:
             "antes de subir o servidor — sem uma chave forte, qualquer pessoa consegue "
             "forjar um token de login válido."
         )
+
+
+_MARCADORES_OLLAMA_HOST_LOCAL = ("127.0.0.1", "localhost", "::1")
+
+
+def validar_ollama_host_seguro(settings: Settings) -> None:
+    """Falha rápido na inicialização se `DB_BACKEND=oracle` (dado real da
+    Conceito) e `OLLAMA_HOST` apontar pra fora da própria máquina — protege
+    contra dado real sair pra uma IA em nuvem/servidor remoto só porque
+    alguém trocou pra um modelo maior pra testar algo e esqueceu de voltar
+    pro host local antes de reconectar no Oracle de verdade. Com
+    `DB_BACKEND=postgres` (banco fictício, sem dado real da empresa) não
+    bloqueia nada — ali é seguro usar qualquer IA, local ou remota. Mesmo
+    espírito de `validar_auth_secret_key`: só roda em `server/app.py:main()`,
+    nunca ao importar este módulo, então não afeta teste nem script."""
+    if settings.db_backend != "oracle":
+        return
+
+    host = settings.ollama_host.lower()
+    if any(marcador in host for marcador in _MARCADORES_OLLAMA_HOST_LOCAL):
+        return
+
+    raise RuntimeError(
+        f"OLLAMA_HOST está configurado pra um endereço fora desta máquina "
+        f"('{settings.ollama_host}') enquanto DB_BACKEND=oracle (dado real da "
+        "Conceito) — isso mandaria dado real da empresa pra uma IA remota/em "
+        "nuvem. Ou volte OLLAMA_HOST pra um endereço local (ex: "
+        "http://127.0.0.1:11434), ou troque DB_BACKEND=postgres (banco "
+        "fictício local) antes de usar uma IA remota."
+    )

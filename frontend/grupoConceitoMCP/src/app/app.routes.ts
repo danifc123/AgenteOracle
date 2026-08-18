@@ -10,6 +10,8 @@ import { EstoqueCriarRelatorio } from './pages/modulos/estoque/criar-relatorio/c
 import { EstoqueEspecificoGrupoConceito } from './pages/modulos/estoque/especifico-grupo-conceito/especifico-grupo-conceito';
 import { EstoqueChat } from './pages/modulos/estoque/chat/estoque-chat';
 import { Chat } from './pages/modulos/financeiro/chat/chat';
+import { DespesasSuspeitas } from './pages/modulos/financeiro/despesas-suspeitas/despesas-suspeitas';
+import { SimulacaoMonteCarlo } from './pages/modulos/financeiro/simulacao-monte-carlo/simulacao-monte-carlo';
 import { AnaliseCandidato } from './pages/modulos/rh/analise-candidato/analise-candidato';
 import { Colaboradores } from './pages/modulos/rh/colaboradores/colaboradores';
 import { Repescagem } from './pages/modulos/rh/repescagem/repescagem';
@@ -35,6 +37,8 @@ export const routes: Routes = [
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },
       { path: 'financeiro/chat', component: Chat },
+      { path: 'financeiro/despesas-suspeitas', component: DespesasSuspeitas },
+      { path: 'financeiro/simulacao-monte-carlo', component: SimulacaoMonteCarlo },
       { path: 'financeiro/:moduloId', component: Financeiro },
       { path: 'estoque/criar-relatorio', component: EstoqueCriarRelatorio },
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },

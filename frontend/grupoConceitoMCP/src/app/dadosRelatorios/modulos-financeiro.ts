@@ -466,6 +466,24 @@ export const MODULOS_FINANCEIRO: ModuloFinanceiroConfig[] = [
           },
         ],
       },
+      {
+        nome: 'Desvio de Margem',
+        categoria: 'Controladoria',
+        descricao:
+          'Vendas cuja margem (valor faturado menos custo) ficou abaixo do normal para o produto no período.',
+        apiEndpoint: 'desvio-margem',
+        filtros: [
+          { chave: 'emissao', rotulo: 'Emissão', tipo: 'periodo-data', obrigatorio: true },
+          { chave: 'produto', rotulo: 'Produto', tipo: 'select', apiEndpoint: 'produtos' },
+        ],
+      },
+      {
+        nome: 'Orçamento Base Zero',
+        categoria: 'Planejamento Financeiro (FP&A)',
+        descricao:
+          'Sugestão de orçamento de despesa por categoria para os próximos 12 meses, calculada a partir da tendência dos últimos 12 meses — sem partir de um orçamento anterior.',
+        apiEndpoint: 'orcamento-base-zero',
+      },
     ],
   },
 ];

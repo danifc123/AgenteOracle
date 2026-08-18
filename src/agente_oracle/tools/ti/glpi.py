@@ -133,6 +133,13 @@ def _garantir_tabela(cursor) -> None:
             criado_em TIMESTAMPTZ NOT NULL
         )
     """)
+    # A tabela pode já existir de antes de `email`/`reportado_em` existir
+    # (versão anterior deste módulo) — `CREATE TABLE IF NOT EXISTS` não
+    # adiciona coluna em tabela que já existe, então garante na mão, sem
+    # migração separada. Mesmo padrão de `tools/rh/candidatos.py`.
+    cursor.execute("ALTER TABLE ti_chamados_mock ADD COLUMN IF NOT EXISTS email VARCHAR NOT NULL DEFAULT ''")
+    cursor.execute("ALTER TABLE ti_chamados_mock ADD COLUMN IF NOT EXISTS reportado_em TIMESTAMPTZ")
+
     cursor.execute("SELECT count(*) FROM ti_chamados_mock")
     (total,) = cursor.fetchone()
     if total == 0:
@@ -149,6 +156,16 @@ def _garantir_tabela(cursor) -> None:
                 solicitante=solicitante,
                 email=email,
                 agora=agora,
+            )
+    else:
+        # Chamado de exemplo criado antes de `email` existir fica com ''
+        # do ALTER acima — preenche com o e-mail conhecido do seed, pra
+        # não sobrar chamado de demonstração sem e-mail na tela.
+        for titulo, _descricao, _categoria, _solicitante, email in _CHAMADOS_EXEMPLO:
+            cursor.execute(
+                "UPDATE ti_chamados_mock SET email = :email WHERE titulo = :titulo AND email = ''",
+                titulo=titulo,
+                email=email,
             )
     _tabela_garantida = True
 

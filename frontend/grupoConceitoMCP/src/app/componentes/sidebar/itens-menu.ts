@@ -49,6 +49,16 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         rotulo: 'Assistente IA',
         iconeSvg: `<path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />`,
       },
+      {
+        rota: '/financeiro/despesas-suspeitas',
+        rotulo: 'Despesas Suspeitas',
+        iconeSvg: `<path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M12 8v5M12 16.5h.01" stroke-linecap="round" />`,
+      },
+      {
+        rota: '/financeiro/simulacao-monte-carlo',
+        rotulo: 'Simulação de Cenários',
+        iconeSvg: `<path d="M4 19h16" stroke-linecap="round" /><path d="M4 15c3-1 4 3 7 2s3-6 6-5" stroke-linecap="round" stroke-linejoin="round" /><path d="M4 11c3-2 4 2 7 1s3-5 6-4" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.45" />`,
+      },
     ],
   },
   {

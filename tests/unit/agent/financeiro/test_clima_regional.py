@@ -1,4 +1,7 @@
-from agente_oracle.agent.financeiro.clima_regional import buscar_indicador_clima
+from agente_oracle.agent.financeiro.clima_regional import (
+    buscar_indicador_clima,
+    buscar_indicador_clima_por_coordenadas,
+)
 
 
 class _RespostaFake:
@@ -83,3 +86,19 @@ class TestBuscarIndicadorClima:
         http_client = _HttpClienteFake(_geocodificacao(), respostas)
         indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
         assert indicador.classificacao == "normal"
+
+
+class TestBuscarIndicadorClimaPorCoordenadas:
+    async def test_nao_chama_geocodificacao(self):
+        respostas = [_precipitacao(11.0), *([_precipitacao(10.0)] * 5)]
+        http_client = _HttpClienteFake(ConnectionError("geocoding não deveria ser chamado"), respostas)
+        indicador = await buscar_indicador_clima_por_coordenadas(
+            http_client, -15.6, -56.1, "Fazenda Santa Luzia", "MT"
+        )
+        assert indicador.classificacao == "normal"
+        assert indicador.municipio_nome == "Fazenda Santa Luzia"
+
+    async def test_precipitacao_indisponivel_devolve_indisponivel(self):
+        http_client = _HttpClienteFake(None, [ConnectionError("fora do ar")])
+        indicador = await buscar_indicador_clima_por_coordenadas(http_client, -15.6, -56.1, "Fazenda X", "MT")
+        assert indicador.classificacao == "indisponivel"

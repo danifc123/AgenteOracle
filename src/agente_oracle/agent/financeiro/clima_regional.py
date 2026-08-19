@@ -46,11 +46,14 @@ def _classificar(anomalia_percentual: float | None) -> str:
     return "normal"
 
 
-async def _geocodificar(http_client: httpx.AsyncClient, municipio_nome: str) -> tuple[float, float] | None:
+async def _geocodificar(http_client: httpx.AsyncClient, texto_busca: str) -> tuple[float, float] | None:
+    """`texto_busca` pode ser nome de município ou qualquer texto livre de
+    localização (ex: cadastro manual do cliente) — a Open-Meteo geocodifica
+    ambos do mesmo jeito."""
     try:
         resposta = await http_client.get(
             _URL_GEOCODIFICACAO,
-            params={"name": municipio_nome, "count": 1, "language": "pt", "format": "json", "country": "BR"},
+            params={"name": texto_busca, "count": 1, "language": "pt", "format": "json", "country": "BR"},
         )
         resposta.raise_for_status()
         resultados = resposta.json().get("results")
@@ -88,6 +91,37 @@ async def _precipitacao_total(
     return sum(valor for valor in valores if valor is not None)
 
 
+async def _indicador_a_partir_de_coordenadas(
+    http_client: httpx.AsyncClient, latitude: float, longitude: float, rotulo: str, uf: str, hoje: date
+) -> IndicadorClima:
+    fim_recente = hoje - timedelta(days=1)  # ontem — hoje pode não ter dado fechado ainda
+    inicio_recente = fim_recente - timedelta(days=_DIAS_JANELA_CLIMA - 1)
+    precipitacao_recente = await _precipitacao_total(
+        http_client, latitude, longitude, inicio_recente, fim_recente
+    )
+    if precipitacao_recente is None:
+        return IndicadorClima(rotulo, uf, None, "indisponivel")
+
+    totais_historicos = []
+    for anos_atras in range(1, _ANOS_HISTORICO_CLIMA + 1):
+        deslocamento = timedelta(days=365 * anos_atras)
+        total = await _precipitacao_total(
+            http_client, latitude, longitude, inicio_recente - deslocamento, fim_recente - deslocamento
+        )
+        if total is not None:
+            totais_historicos.append(total)
+
+    if not totais_historicos:
+        return IndicadorClima(rotulo, uf, None, "indisponivel")
+
+    media_historica = sum(totais_historicos) / len(totais_historicos)
+    if media_historica == 0:
+        return IndicadorClima(rotulo, uf, None, "indisponivel")
+
+    anomalia_percentual = round((precipitacao_recente - media_historica) / media_historica * 100, 1)
+    return IndicadorClima(rotulo, uf, anomalia_percentual, _classificar(anomalia_percentual))
+
+
 async def buscar_indicador_clima(
     http_client: httpx.AsyncClient, municipio_nome: str, uf: str, hoje: date | None = None
 ) -> IndicadorClima:
@@ -103,30 +137,22 @@ async def buscar_indicador_clima(
     if coordenadas is None:
         return IndicadorClima(municipio_nome, uf, None, "indisponivel")
     latitude, longitude = coordenadas
-
-    fim_recente = hoje - timedelta(days=1)  # ontem — hoje pode não ter dado fechado ainda
-    inicio_recente = fim_recente - timedelta(days=_DIAS_JANELA_CLIMA - 1)
-    precipitacao_recente = await _precipitacao_total(
-        http_client, latitude, longitude, inicio_recente, fim_recente
+    return await _indicador_a_partir_de_coordenadas(
+        http_client, latitude, longitude, municipio_nome, uf, hoje
     )
-    if precipitacao_recente is None:
-        return IndicadorClima(municipio_nome, uf, None, "indisponivel")
 
-    totais_historicos = []
-    for anos_atras in range(1, _ANOS_HISTORICO_CLIMA + 1):
-        deslocamento = timedelta(days=365 * anos_atras)
-        total = await _precipitacao_total(
-            http_client, latitude, longitude, inicio_recente - deslocamento, fim_recente - deslocamento
-        )
-        if total is not None:
-            totais_historicos.append(total)
 
-    if not totais_historicos:
-        return IndicadorClima(municipio_nome, uf, None, "indisponivel")
-
-    media_historica = sum(totais_historicos) / len(totais_historicos)
-    if media_historica == 0:
-        return IndicadorClima(municipio_nome, uf, None, "indisponivel")
-
-    anomalia_percentual = round((precipitacao_recente - media_historica) / media_historica * 100, 1)
-    return IndicadorClima(municipio_nome, uf, anomalia_percentual, _classificar(anomalia_percentual))
+async def buscar_indicador_clima_por_coordenadas(
+    http_client: httpx.AsyncClient,
+    latitude: float,
+    longitude: float,
+    rotulo: str,
+    uf: str,
+    hoje: date | None = None,
+) -> IndicadorClima:
+    """Igual a `buscar_indicador_clima`, mas pula a geocodificação — pra
+    cliente com localização já cadastrada (`tools/financeiro/
+    localizacao_cliente.py`), fica mais rápido (uma chamada HTTP a menos)
+    e não depende da geocodificação funcionar nesse instante."""
+    hoje = hoje or date.today()
+    return await _indicador_a_partir_de_coordenadas(http_client, latitude, longitude, rotulo, uf, hoje)

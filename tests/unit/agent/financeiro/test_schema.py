@@ -125,6 +125,15 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor",
         "data_movimentacao",
     },
+    "vw_safra_cliente": {
+        "cliente_codigo",
+        "cultura",
+        "safra_codigo",
+        "safra_descricao",
+        "safra_inicio",
+        "safra_fim",
+        "data_compra",
+    },
 }
 
 

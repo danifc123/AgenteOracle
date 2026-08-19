@@ -348,6 +348,30 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("data_movimentacao", "data do lançamento contábil"),
         ),
     ),
+    ViewFinanceira(
+        nome="vw_safra_cliente",
+        descricao=(
+            "Cultura e safra de cada compra de um cliente — um registro por compra, não "
+            "deduplicado (cliente pode ter comprado semente de mais de uma cultura/safra)."
+        ),
+        colunas=(
+            ColunaView("cliente_codigo", "código do cliente que fez a compra"),
+            ColunaView("cultura", "cultura do produto comprado (ex: SOJA, MILHO, ALGODAO)"),
+            ColunaView("safra_codigo", "código da safra (ex: '2025/2026')"),
+            ColunaView("safra_descricao", "descrição da safra (ex: 'SAFRA 25/26')"),
+            ColunaView("safra_inicio", "data de início da janela da safra"),
+            ColunaView("safra_fim", "data de fim da janela da safra"),
+            ColunaView("data_compra", "data de emissão da nota fiscal dessa compra"),
+        ),
+        relacionamentos=(
+            RelacionamentoView(
+                view_destino="vw_clientes",
+                colunas_locais=("cliente_codigo",),
+                colunas_destino=("codigo",),
+                descricao="Dado de cadastro do cliente (nome, município etc.) só existe em vw_clientes.",
+            ),
+        ),
+    ),
 )
 
 NOMES_VIEWS_PERMITIDAS: frozenset[str] = frozenset(view.nome.upper() for view in VIEWS_DISPONIVEIS)

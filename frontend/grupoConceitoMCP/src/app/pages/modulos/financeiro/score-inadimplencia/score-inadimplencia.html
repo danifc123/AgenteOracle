@@ -33,13 +33,23 @@
   <section class="cartao-secao">
     <h2>Clientes por Risco</h2>
     @if (scores().length === 0) {
-      <app-estado-vazio titulo="Nenhum cliente com histórico recente" variante="simples">
-        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <app-estado-vazio titulo="Nenhum cliente com indício de risco" variante="simples">
+        <svg
+          viewBox="0 0 24 24"
+          width="40"
+          height="40"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
           <circle cx="9" cy="8" r="3.2" />
           <path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" />
           <path d="m15 13 2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        <p>Nenhum cliente dessas filiais teve título liquidado nos últimos 180 dias.</p>
+        <p>
+          Ou nenhum cliente dessas filiais teve título liquidado nos últimos 180 dias, ou todos
+          estão com o pagamento em dia — clientes 100% sem risco não aparecem nesta lista.
+        </p>
       </app-estado-vazio>
     } @else {
       <div class="lista-scores">
@@ -49,21 +59,142 @@
               <span class="badge-score" [class]="classeScore(item.score)">{{ item.score }}</span>
               <span class="nome-cliente">{{ item.cliente_nome }}</span>
               @if (item.clima) {
-                <span class="municipio-cliente">{{ item.clima.municipio_nome }}/{{ item.clima.uf }}</span>
+                <span class="municipio-cliente"
+                  >{{ item.clima.municipio_nome }}/{{ item.clima.uf }}</span
+                >
               }
             </div>
             <p class="comportamento-cliente">
               {{ item.comportamento.percentual_atraso_recente }}% de atraso nos últimos 90 dias ·
               tendência: {{ rotuloTendencia(item.comportamento.tendencia) }}
             </p>
+            @if (item.safra_ativa) {
+              <p class="safra-cliente">
+                Safra ativa: {{ item.safra_ativa.cultura }} — {{ item.safra_ativa.safra_descricao }}
+              </p>
+            } @else {
+              <p class="safra-cliente safra-cliente--inativa">Sem safra ativa no momento</p>
+            }
             <ul class="fatores-score">
               @for (fator of item.fatores; track fator) {
                 <li>{{ fator }}</li>
               }
             </ul>
+
+            <div class="localizacao-cliente">
+              <button
+                type="button"
+                class="localizacao-cliente-link"
+                (click)="abrirLocalizacao(item)"
+              >
+                @if (item.localizacao) {
+                  Editar localização — {{ rotuloLocalizacao(item.localizacao) }}
+                } @else {
+                  Cadastrar localização
+                }
+              </button>
+
+              @if (item.localizacao) {
+                @if (item.localizacao.resolvido) {
+                  <p class="localizacao-cliente-resultado">
+                    📍 Localização cadastrada usada no clima deste cliente.
+                  </p>
+                } @else {
+                  <p class="localizacao-cliente-resultado localizacao-cliente-resultado--aviso">
+                    Não conseguimos geocodificar essa cidade/bairro — tente colar as coordenadas
+                    (lat, long) em vez disso. O clima deste cliente segue pelo município enquanto
+                    isso.
+                  </p>
+                }
+              }
+            </div>
           </div>
         }
       </div>
     }
   </section>
 }
+
+<app-dialog
+  [aberto]="!!clienteEmEdicao()"
+  [titulo]="'Localização — ' + (clienteEmEdicao()?.cliente_nome ?? '')"
+  tamanho="compacto"
+  [temRodape]="true"
+  (fechar)="fecharLocalizacao()"
+>
+  <p class="localizacao-dialog-dica">
+    Informe cidade (e bairro, se souber) ou coordenadas exatas — coordenadas são mais precisas e não
+    dependem de geocodificação. Bairro pequeno sozinho geralmente não é encontrado.
+  </p>
+
+  <label class="campo">
+    <span>Cidade</span>
+    <input
+      type="text"
+      placeholder="Ex: Cabo Frio"
+      [ngModel]="formCidade()"
+      (ngModelChange)="formCidade.set($event)"
+      autocomplete="off"
+    />
+  </label>
+
+  <label class="campo">
+    <span>Bairro/Distrito (opcional)</span>
+    <input
+      type="text"
+      placeholder="Ex: Jardim Excelsior"
+      [ngModel]="formBairro()"
+      (ngModelChange)="formBairro.set($event)"
+      autocomplete="off"
+    />
+  </label>
+
+  <div class="campo-linha">
+    <label class="campo">
+      <span>Latitude</span>
+      <input
+        type="text"
+        inputmode="decimal"
+        placeholder="Ex: -22.88717"
+        [ngModel]="formLatitude()"
+        (ngModelChange)="formLatitude.set($event)"
+        autocomplete="off"
+      />
+    </label>
+
+    <label class="campo">
+      <span>Longitude</span>
+      <input
+        type="text"
+        inputmode="decimal"
+        placeholder="Ex: -42.02622"
+        [ngModel]="formLongitude()"
+        (ngModelChange)="formLongitude.set($event)"
+        autocomplete="off"
+      />
+    </label>
+  </div>
+
+  @if (erroLocalizacao()) {
+    <p class="erro">{{ erroLocalizacao() }}</p>
+  }
+
+  <div rodape class="rodape-form">
+    <app-botao
+      variant="contorno"
+      [disabled]="salvandoLocalizacao()"
+      (clicked)="fecharLocalizacao()"
+    >
+      Cancelar
+    </app-botao>
+    <app-botao
+      variant="primaria"
+      [disabled]="!podeSalvarLocalizacao()"
+      [loading]="salvandoLocalizacao()"
+      loadingText="Salvando..."
+      (clicked)="salvarLocalizacao()"
+    >
+      Salvar
+    </app-botao>
+  </div>
+</app-dialog>

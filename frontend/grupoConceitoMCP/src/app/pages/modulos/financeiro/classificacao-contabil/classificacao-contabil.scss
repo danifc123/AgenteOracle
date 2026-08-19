@@ -25,11 +25,25 @@
   padding: 18px 20px;
 
   h2 {
-    margin: 0 0 14px;
+    margin: 0;
     font-size: 15px;
     font-weight: 600;
     color: var(--color-text);
   }
+}
+
+.cabecalho-secao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.busca-sugestoes {
+  width: 280px;
+  max-width: 100%;
 }
 
 .lista-sugestoes {

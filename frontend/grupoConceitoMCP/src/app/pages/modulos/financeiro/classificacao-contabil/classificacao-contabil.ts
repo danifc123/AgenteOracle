@@ -1,7 +1,8 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
+import { Busca } from '../../../../componentes/busca/busca';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
@@ -33,7 +34,7 @@ interface SugestaoClassificacao {
  * sugere uma conta com precedente real, nunca inventa código. */
 @Component({
   selector: 'app-classificacao-contabil',
-  imports: [Botao, EstadoVazio, ModuloHeader, SelectBusca],
+  imports: [Botao, Busca, EstadoVazio, ModuloHeader, SelectBusca],
   templateUrl: './classificacao-contabil.html',
   styleUrl: './classificacao-contabil.scss',
 })
@@ -47,6 +48,20 @@ export class ClassificacaoContabil {
   protected readonly sugestoes = signal<SugestaoClassificacao[]>([]);
   protected readonly erro = signal<string | null>(null);
 
+  protected readonly termoBusca = signal('');
+  protected readonly sugestoesFiltradas = computed(() => {
+    const termo = this.termoBusca().trim().toLowerCase();
+    if (!termo) {
+      return this.sugestoes();
+    }
+    return this.sugestoes().filter(
+      (sugestao) =>
+        sugestao.historico.toLowerCase().includes(termo) ||
+        sugestao.conta_sugerida.toLowerCase().includes(termo) ||
+        (sugestao.conta_descricao_sugerida?.toLowerCase().includes(termo) ?? false),
+    );
+  });
+
   constructor() {
     this.carregarFiliais();
   }
@@ -58,6 +73,7 @@ export class ClassificacaoContabil {
 
     this.analisando.set(true);
     this.erro.set(null);
+    this.termoBusca.set('');
 
     this.http
       .get<SugestaoClassificacao[]>(`${MCP_API_BASE_URL}/api/financeiro/classificacao-contabil`, {

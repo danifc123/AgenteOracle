@@ -13,9 +13,12 @@ documento muda de lançamento pra lançamento).
 Confirmado direto no STAGE antes de escrever isto: de 2.399.918
 lançamentos ativos, 658.950 (27%) têm CONTA = '-1' — fila real de
 trabalho, não um cenário hipotético (ver comentário em
-`db/views/financeiro_science.sql::vw_lancamentos_contabeis`). Vale
-confirmar com o time de controladoria o significado exato de `-1` antes
-de confiar cegamente na sugestão em produção (ver plano)."""
+`db/views/financeiro_science.sql::vw_lancamentos_contabeis`). Significado
+de `-1` confirmado com o DBA: é o placeholder que a etapa "replace null"
+do Pentaho (ETL que carrega o STAGE) usa pra substituir valor nulo em
+certas colunas — ou seja, `-1` aqui é mesmo "sem conta definida" (nulo no
+Protheus), não um código de conta real. Mesmo padrão explica
+CENTROCUSTODEBITO/CENTROCUSTOCREDITO = '-1' pra "sem centro de custo"."""
 
 import re
 import unicodedata

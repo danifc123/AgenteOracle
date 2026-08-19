@@ -105,6 +105,12 @@ export const GRUPOS_MENU: GrupoMenu[] = [
     iconeSvg: `<circle cx="9" cy="8" r="3.2" /><path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" /><path d="M15 4.5v4M17 6.5h-4" stroke-linecap="round" />`,
     itens: [
       {
+        rota: '/rh',
+        rotulo: 'Visão Geral',
+        exato: true,
+        iconeSvg: `<rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18" stroke-linecap="round" /><circle cx="8" cy="14.5" r="1.2" />`,
+      },
+      {
         rota: '/rh/analise-candidato',
         rotulo: 'Análise de Candidato',
         iconeSvg: `<path d="M9 12h6M9 16h6M9 8h2" stroke-linecap="round" /><path d="M7 3h7l4 4v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke-linejoin="round" />`,
@@ -126,6 +132,12 @@ export const GRUPOS_MENU: GrupoMenu[] = [
     rotulo: 'TI',
     iconeSvg: `<rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" stroke-linecap="round" />`,
     itens: [
+      {
+        rota: '/ti',
+        rotulo: 'Visão Geral',
+        exato: true,
+        iconeSvg: `<rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18" stroke-linecap="round" /><circle cx="8" cy="14.5" r="1.2" />`,
+      },
       {
         rota: '/ti/seguranca',
         rotulo: 'Segurança de TI',

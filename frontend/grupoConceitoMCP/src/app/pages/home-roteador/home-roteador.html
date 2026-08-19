@@ -1,5 +1,14 @@
-@if (moduloAtivo() === 'estoque') {
-  <app-estoque-home />
-} @else {
-  <app-home />
+@switch (moduloAtivo()) {
+  @case ('estoque') {
+    <app-estoque-home />
+  }
+  @case ('rh') {
+    <app-rh-home />
+  }
+  @case ('ti') {
+    <app-ti-home />
+  }
+  @default {
+    <app-home />
+  }
 }

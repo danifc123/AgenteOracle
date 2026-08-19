@@ -1,22 +1,28 @@
 import { Component, computed, inject } from '@angular/core';
 import { EstoqueHome } from '../modulos/estoque/home/estoque-home';
+import { RhHome } from '../modulos/rh/home/rh-home';
+import { TiHome } from '../modulos/ti/home/ti-home';
 import { Home } from '../home/home';
 import { HomeSelecionada } from '../../servicos/home-selecionada';
 import { Sessao } from '../../servicos/sessao';
+
+/** Ordem de prioridade quando o usuário tem mais de um módulo liberado ao
+ * mesmo tempo (hoje só desenvolvedor) — Financeiro continua primeiro pra
+ * não mudar a experiência de quem já usava o sistema antes dessa página
+ * existir. Módulo sem home própria cai no primeiro da lista que ele tiver. */
+const PRIORIDADE_MODULOS = ['financeiro', 'estoque', 'rh', 'ti'];
 
 /** Decide qual "home" de módulo mostrar na rota `/`, sem navegação nem
  * reload — só troca o componente renderizado:
  * - Desenvolvedor: usa o módulo escolhido em `SeletorHomeDev` (select ao
  *   lado do sino de auditoria).
- * - Todo mundo com o módulo Financeiro liberado (inclusive quem também tem
- *   Estoque): continua vendo a Home do Financeiro — comportamento igual ao
- *   de antes dessa página existir, ninguém perde a experiência atual.
- * - Quem só tem Estoque liberado: vê a Home do Estoque — esse é o caso novo
- *   que essa página resolve (antes, um usuário só-estoque caía na Home do
- *   Financeiro, que nem faz sentido pra ele). */
+ * - Todo mundo: vê a home do módulo liberado de maior prioridade
+ *   (`PRIORIDADE_MODULOS`) — antes só Financeiro/Estoque eram
+ *   reconhecidos, então um usuário só-RH ou só-TI caía incorretamente na
+ *   Home do Financeiro. */
 @Component({
   selector: 'app-home-roteador',
-  imports: [EstoqueHome, Home],
+  imports: [EstoqueHome, Home, RhHome, TiHome],
   templateUrl: './home-roteador.html',
 })
 export class HomeRoteador {
@@ -27,6 +33,7 @@ export class HomeRoteador {
     if (this.sessao.ehDesenvolvedor()) {
       return this.homeSelecionada.modulo();
     }
-    return this.sessao.modulos().includes('financeiro') ? 'financeiro' : 'estoque';
+    const modulos = this.sessao.modulos();
+    return PRIORIDADE_MODULOS.find((modulo) => modulos.includes(modulo)) ?? 'financeiro';
   });
 }

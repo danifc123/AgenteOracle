@@ -74,7 +74,11 @@ const ALTURA_LINHA_TOOLTIP = 16;
 
 const LARGURA = 640;
 const ALTURA = 260;
-const MARGEM_ESQUERDA = 56;
+// 56 não é largura suficiente pra rótulo abreviado grande ("R$ 593,5 Mil",
+// pior ainda com sinal de negativo depois que o eixo passou a cobrir valor
+// negativo) — o texto (alinhado à direita, terminando em MARGEM_ESQUERDA-8)
+// começava antes de x=0 e ficava cortado pela viewBox do SVG.
+const MARGEM_ESQUERDA = 80;
 const MARGEM_DIREITA = 12;
 const MARGEM_SUPERIOR = 16;
 const MARGEM_INFERIOR = 30;
@@ -152,19 +156,42 @@ export class GraficoSerie {
     return mapa;
   });
 
+  private readonly valores = computed(() =>
+    this.series().flatMap((serie) => serie.pontos.map((ponto) => ponto.valor)),
+  );
+
   protected readonly valorMaximo = computed(() => {
-    const valores = this.series().flatMap((serie) => serie.pontos.map((ponto) => ponto.valor));
-    const maximo = Math.max(0, ...valores);
+    const maximo = Math.max(0, ...this.valores());
     return maximo > 0 ? maximo * 1.15 : 1;
+  });
+
+  /** Antes o eixo sempre começava em 0 (`Math.max(0, ...valores)` sem
+   * contraparte pro mínimo) — qualquer série com valor negativo (ex: a
+   * banda Pessimista/P10 da Simulação Monte Carlo, que legitimamente
+   * projeta caixa negativo) calculava uma posição Y abaixo da área do
+   * gráfico inteira em `y()`, escapando por baixo do eixo X em vez de
+   * aparecer dentro do plot. Quando não há valor negativo, `minimo` fica
+   * 0 e o comportamento é idêntico ao de antes. */
+  protected readonly valorMinimo = computed(() => {
+    const minimo = Math.min(0, ...this.valores());
+    return minimo < 0 ? minimo * 1.15 : 0;
   });
 
   protected readonly grades = computed<LinhaGrade[]>(() => {
     const maximo = this.valorMaximo();
+    const minimo = this.valorMinimo();
+    const amplitude = maximo - minimo;
     return [0, 0.25, 0.5, 0.75, 1].map((fracao) => ({
       y: MARGEM_SUPERIOR + ALTURA_PLOT * (1 - fracao),
-      rotulo: formatarMoedaAbreviada(maximo * fracao),
+      rotulo: formatarMoedaAbreviada(minimo + amplitude * fracao),
     }));
   });
+
+  /** Linha de referência no valor 0 — só desenhada quando o eixo cobre
+   * valor negativo (senão já coincide com a grade de baixo, redundante). */
+  protected readonly linhaZero = computed<number | null>(() =>
+    this.valorMinimo() < 0 ? this.y(0) : null,
+  );
 
   /** Fonte única de verdade da posição X de cada mês — usada por barras,
    * linha sobreposta, rótulos do eixo e tooltip. No modo barra, cada mês
@@ -201,7 +228,9 @@ export class GraficoSerie {
 
   private y(valor: number): number {
     const maximo = this.valorMaximo();
-    return MARGEM_SUPERIOR + ALTURA_PLOT * (1 - valor / maximo);
+    const minimo = this.valorMinimo();
+    const amplitude = maximo - minimo || 1;
+    return MARGEM_SUPERIOR + ALTURA_PLOT * (1 - (valor - minimo) / amplitude);
   }
 
   /** Em grupos com mais de uma barra (ex: "A Receber" e "A Pagar" lado a
@@ -272,6 +301,11 @@ export class GraficoSerie {
     });
   });
 
+  /** Assume série de barra sem valor negativo (a barra sempre "cai" até o
+   * fundo do plot, que só coincide com o valor 0 enquanto `valorMinimo()`
+   * for 0 — nenhum gráfico de barra do app hoje tem valor negativo, mas se
+   * um dia tiver, a altura/base da barra precisa ser recalculada a partir
+   * da linha de zero, não do fundo do plot). */
   protected readonly grupos = computed<GrupoBarras[]>(() => {
     if (this.tipo() !== 'barra') {
       return [];

@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
-import { Sessao } from '../../servicos/sessao';
+import { Sessao } from '../../../../servicos/sessao';
 
 interface Atalho {
   titulo: string;
@@ -56,13 +56,19 @@ const ATALHOS: Atalho[] = [
   },
 ];
 
+/** Home do time Financeiro — mostrada em `/` pra quem tem o módulo
+ * Financeiro liberado (prioridade sobre os outros módulos em
+ * `home-roteador.ts`), e pra desenvolvedor quando troca pro Financeiro no
+ * seletor do layout. Mesmo padrão de `pages/modulos/rh/home/rh-home.ts` e
+ * `pages/modulos/ti/home/ti-home.ts` (hero + atalhos) — esta é a original
+ * de onde o padrão veio, com foto ilustrativa própria do time. */
 @Component({
-  selector: 'app-home',
+  selector: 'app-financeiro-home',
   imports: [RouterLink],
-  templateUrl: './home.html',
-  styleUrl: './home.scss',
+  templateUrl: './financeiro-home.html',
+  styleUrl: './financeiro-home.scss',
 })
-export class Home {
+export class FinanceiroHome {
   protected readonly sessao = inject(Sessao);
   protected readonly atalhos = ATALHOS;
   private readonly sanitizer = inject(DomSanitizer);

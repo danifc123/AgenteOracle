@@ -1,8 +1,8 @@
 import { Component, computed, inject } from '@angular/core';
 import { EstoqueHome } from '../modulos/estoque/home/estoque-home';
+import { FinanceiroHome } from '../modulos/financeiro/home/financeiro-home';
 import { RhHome } from '../modulos/rh/home/rh-home';
 import { TiHome } from '../modulos/ti/home/ti-home';
-import { Home } from '../home/home';
 import { HomeSelecionada } from '../../servicos/home-selecionada';
 import { Sessao } from '../../servicos/sessao';
 
@@ -22,7 +22,7 @@ const PRIORIDADE_MODULOS = ['financeiro', 'estoque', 'rh', 'ti'];
  *   Home do Financeiro. */
 @Component({
   selector: 'app-home-roteador',
-  imports: [EstoqueHome, Home, RhHome, TiHome],
+  imports: [EstoqueHome, FinanceiroHome, RhHome, TiHome],
   templateUrl: './home-roteador.html',
 })
 export class HomeRoteador {

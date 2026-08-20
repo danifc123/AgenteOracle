@@ -46,9 +46,10 @@ const ATALHOS: Atalho[] = [
 
 /** Home do time de RH — mostrada em `/` pra quem só tem o módulo RH
  * liberado, e pra desenvolvedor quando troca pro RH no seletor do layout.
- * Mesmo padrão de `pages/home/home.ts` (hero + atalhos), sem foto
- * ilustrativa (nenhuma disponível pra RH ainda) — usa o próprio ícone do
- * grupo do menu (`itens-menu.ts`) ampliado no lugar da imagem. */
+ * Mesmo padrão de `pages/modulos/financeiro/home/financeiro-home.ts`
+ * (hero + atalhos), sem foto ilustrativa (nenhuma disponível pra RH
+ * ainda) — usa o próprio ícone do grupo do menu (`itens-menu.ts`)
+ * ampliado no lugar da imagem. */
 @Component({
   selector: 'app-rh-home',
   imports: [RouterLink],

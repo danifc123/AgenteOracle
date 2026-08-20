@@ -39,9 +39,10 @@ const ATALHOS: Atalho[] = [
 
 /** Home do time de TI — mostrada em `/` pra quem só tem o módulo TI
  * liberado, e pra desenvolvedor quando troca pro TI no seletor do layout.
- * Mesmo padrão de `pages/home/home.ts` (hero + atalhos), sem foto
- * ilustrativa (nenhuma disponível pra TI ainda) — usa o próprio ícone do
- * grupo do menu (`itens-menu.ts`) ampliado no lugar da imagem. */
+ * Mesmo padrão de `pages/modulos/financeiro/home/financeiro-home.ts`
+ * (hero + atalhos), sem foto ilustrativa (nenhuma disponível pra TI
+ * ainda) — usa o próprio ícone do grupo do menu (`itens-menu.ts`)
+ * ampliado no lugar da imagem. */
 @Component({
   selector: 'app-ti-home',
   imports: [RouterLink],

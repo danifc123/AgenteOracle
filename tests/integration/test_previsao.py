@@ -1,18 +1,27 @@
 """Testa `/api/financeiro/previsao/vendas` e `/api/financeiro/previsao/fluxo-caixa`
 de ponta a ponta contra o Postgres de teste. As duas rotas respondem em
 NDJSON (uma linha de etapa por vez, terminando em `{"tipo": "resultado",
-...}`) — `_parse_ndjson` reconstrói a lista de etapas e o corpo final. A IA
-(Ollama) pode não estar disponível no ambiente de CI, então a análise cai no
-fallback nesse caso, o que já é o comportamento esperado (ver
-`agent/financeiro/projecoes.gerar_analise`)."""
+...}`) — `_parse_ndjson` reconstrói a lista de etapas e o corpo final. 100%
+cálculo estatístico (sem IA/Ollama envolvido em nenhuma etapa)."""
 
 import json
 
 import pytest
 
+from tests.integration.conftest import views_curadas_disponiveis
+
 pytestmark = pytest.mark.integration
 
 _FILIAL = "0101"
+
+
+@pytest.fixture(autouse=True)
+def _requer_views_curadas():
+    if not views_curadas_disponiveis():
+        pytest.skip(
+            "Views curadas (vw_titulos_pagar etc.) não existem no banco de negócio/RAG "
+            "configurado — rode db/views/financeiro_science.sql (Oracle) ou confira o Postgres de teste."
+        )
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -37,10 +46,9 @@ def test_previsao_vendas_devolve_historico_e_projecao(mcp_app, token_teste):
     )
     assert resposta.status_code == 200
     etapas, corpo = _parse_ndjson(resposta.text)
-    assert etapas == ["historico", "projecao", "analise_ia"]
+    assert etapas == ["historico", "projecao"]
     assert isinstance(corpo["historico"], list)
     assert isinstance(corpo["projecao"], list)
-    assert isinstance(corpo["analise"], str) and corpo["analise"]
     if corpo["historico"]:
         assert set(corpo["historico"][0].keys()) == {"mes", "valor"}
 
@@ -61,7 +69,7 @@ def test_previsao_fluxo_caixa_devolve_meses_e_fatias(mcp_app, token_teste):
     )
     assert resposta.status_code == 200
     etapas, corpo = _parse_ndjson(resposta.text)
-    assert etapas == ["titulos_abertos", "prazo_medio", "projecao_futura", "analise_ia"]
+    assert etapas == ["titulos_abertos", "prazo_medio", "projecao_futura"]
 
     assert corpo["meses"][0]["mes"] == "vencido"
     assert len(corpo["meses"]) == 7  # vencido + 6 meses seguintes

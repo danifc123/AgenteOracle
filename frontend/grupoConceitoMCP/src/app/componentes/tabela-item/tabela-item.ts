@@ -5,7 +5,7 @@ import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras';
   selector: 'app-tabela-item',
   imports: [],
   templateUrl: './tabela-item.html',
-  styleUrl: './tabela-item.scss'
+  styleUrl: './tabela-item.scss',
 })
 export class TabelaItem {
   tabela = input.required<ViewFinanceira>();

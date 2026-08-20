@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
+import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
 import { ChatEntrada } from './entrada/chat-entrada';
 import { ChatMensagens, ConsultaUsada, MensagemChat } from './mensagens/chat-mensagens';
 
@@ -14,7 +15,7 @@ interface RespostaChat {
   selector: 'app-chat',
   imports: [ChatMensagens, ChatEntrada, ModuloHeader],
   templateUrl: './chat.html',
-  styleUrl: './chat.scss'
+  styleUrl: './chat.scss',
 })
 export class Chat {
   private readonly http = inject(HttpClient);
@@ -44,14 +45,16 @@ export class Chat {
         next: (resultado) => {
           this.mensagens.update((atual) => [
             ...atual,
-            { role: 'assistant', content: resultado.resposta, consultas: resultado.consultas }
+            { role: 'assistant', content: resultado.resposta, consultas: resultado.consultas },
           ]);
           this.enviando.set(false);
         },
         error: () => {
-          this.erro.set('Não foi possível falar com o agente. Verifique se o servidor e o Ollama estão em execução.');
+          this.erro.set(
+            'Não foi possível falar com o agente. Verifique se o servidor e o Ollama estão em execução.',
+          );
           this.enviando.set(false);
-        }
+        },
       });
   }
 
@@ -66,7 +69,11 @@ export class Chat {
     this.erro.set(null);
 
     this.http
-      .post(`${MCP_API_BASE_URL}/api/financeiro/relatorio/exportar`, { sql, titulo }, { observe: 'response', responseType: 'blob' })
+      .post(
+        `${MCP_API_BASE_URL}/api/financeiro/relatorio/exportar`,
+        { sql, titulo },
+        { observe: 'response', responseType: 'blob' },
+      )
       .subscribe({
         next: (resposta) => {
           const blob = resposta.body;
@@ -75,24 +82,17 @@ export class Chat {
             return;
           }
 
-          const nomeArquivo = this.extrairNomeArquivo(resposta.headers.get('content-disposition'));
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = nomeArquivo;
-          link.click();
-          URL.revokeObjectURL(url);
+          const nomeArquivo = extrairNomeArquivo(
+            resposta.headers.get('content-disposition'),
+            'relatorio.xlsx',
+          );
+          baixarBlob(blob, nomeArquivo);
           this.baixandoSql.set(null);
         },
         error: () => {
           this.erro.set('Não foi possível gerar o Excel do relatório.');
           this.baixandoSql.set(null);
-        }
+        },
       });
-  }
-
-  private extrairNomeArquivo(contentDisposition: string | null): string {
-    const match = contentDisposition?.match(/filename="?([^"]+)"?/);
-    return match?.[1] ?? 'relatorio.xlsx';
   }
 }

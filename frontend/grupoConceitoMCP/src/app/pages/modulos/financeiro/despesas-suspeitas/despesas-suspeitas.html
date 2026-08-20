@@ -1,0 +1,59 @@
+<app-modulo-header
+  breadcrumb="Financeiro / Despesas Suspeitas"
+  titulo="Despesas Suspeitas"
+  descricao="A IA revisa os títulos a pagar dos últimos 90 dias em busca de possível duplicidade de nota fiscal e valores muito fora do padrão da categoria de despesa."
+/>
+
+<div class="filtros-topo">
+  <app-select-busca
+    class="select-filial"
+    rotulo="Filial(is) *"
+    placeholder="Filial(is)..."
+    [multiplo]="true"
+    [opcoes]="filiais()"
+    [(valores)]="filiaisSelecionadas"
+  />
+
+  <app-botao
+    variant="primaria"
+    [disabled]="!filiaisSelecionadas().length"
+    [loading]="analisando()"
+    loadingText="Analisando..."
+    (clicked)="analisar()"
+  >
+    Analisar Despesas Suspeitas
+  </app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+@if (jaAnalisou()) {
+  <section class="cartao-secao">
+    <h2>Achados</h2>
+    @if (achados().length === 0) {
+      <app-estado-vazio titulo="Nenhuma despesa suspeita encontrada" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="m9 12 2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <p>Nenhuma duplicidade ou valor fora do padrão nos últimos 90 dias.</p>
+      </app-estado-vazio>
+    } @else {
+      <div class="lista-achados">
+        @for (achado of achados(); track achado.documentos + achado.tipo) {
+          <div class="cartao-achado" [class.cartao-achado--anomalia]="achado.tipo === 'anomalia_valor'">
+            <div class="cartao-achado-cabecalho">
+              <span class="badge-tipo">{{ rotuloTipo(achado.tipo) }}</span>
+              <span class="fornecedor-achado">{{ achado.fornecedor_nome }}</span>
+              <span class="valor-achado">{{ formatarValor(achado.valor) }}</span>
+            </div>
+            <p class="descricao-achado">{{ achado.descricao }}</p>
+            <p class="documentos-achado">{{ achado.documentos }}</p>
+          </div>
+        }
+      </div>
+    }
+  </section>
+}

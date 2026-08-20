@@ -1,6 +1,8 @@
 <app-dialog [aberto]="auditoria.aberto()" [titulo]="titulo()" (fechar)="fechar()">
   @if (auditoria.moduloAtual() && modulosDisponiveis().length > 1) {
-    <button type="button" class="trocar-modulo" (click)="trocarModulo()">← Trocar departamento</button>
+    <button type="button" class="trocar-modulo" (click)="trocarModulo()">
+      ← Trocar departamento
+    </button>
   }
 
   @if (mostrarSeletor()) {
@@ -16,8 +18,10 @@
     </div>
   } @else if (!auditoria.jaExecutou() && !auditoria.carregando()) {
     <div class="estado-inicial">
-      <p>A auditoria analisa os dados do sistema em busca de possíveis problemas — cada execução é
-        uma consulta real à IA, por isso só roda quando você pedir.</p>
+      <p>
+        A auditoria analisa os dados do sistema em busca de possíveis problemas — cada execução é
+        uma consulta real à IA, por isso só roda quando você pedir.
+      </p>
       <app-botao variant="primaria" (clicked)="rodar()">Rodar auditoria</app-botao>
     </div>
   } @else if (auditoria.carregando()) {
@@ -34,10 +38,16 @@
             <p class="achado-descricao">{{ achado.descricao }}</p>
             <p class="achado-detalhe">
               <span class="achado-tag">{{ achado.modulo }} · {{ achado.view }}</span>
-              <span class="achado-campo-valor"><strong>{{ achado.campo }}</strong>: <code>{{ achado.valor }}</code></span>
+              <span class="achado-campo-valor"
+                ><strong>{{ achado.campo }}</strong
+                >: <code>{{ achado.valor }}</code></span
+              >
             </p>
           </div>
-          <label class="dispensar-opcao" title="Some da lista agora — se o dado continuar errado, pode voltar a aparecer numa próxima auditoria">
+          <label
+            class="dispensar-opcao"
+            title="Some da lista agora — se o dado continuar errado, pode voltar a aparecer numa próxima auditoria"
+          >
             <input type="checkbox" (change)="dispensar(achado)" />
             <span>Dispensar</span>
           </label>

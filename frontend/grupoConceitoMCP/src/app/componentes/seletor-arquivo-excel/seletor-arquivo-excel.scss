@@ -18,7 +18,10 @@
   cursor: pointer;
   border: 2px dashed transparent;
   border-radius: var(--radius-md);
-  transition: border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
   box-shadow: var(--shadow-sm);
 
   &:hover {

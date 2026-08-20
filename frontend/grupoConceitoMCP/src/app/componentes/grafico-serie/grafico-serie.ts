@@ -82,7 +82,18 @@ const LARGURA_PLOT = LARGURA - MARGEM_ESQUERDA - MARGEM_DIREITA;
 const ALTURA_PLOT = ALTURA - MARGEM_SUPERIOR - MARGEM_INFERIOR;
 
 const MESES_ABREVIADOS = [
-  'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'
+  'jan',
+  'fev',
+  'mar',
+  'abr',
+  'mai',
+  'jun',
+  'jul',
+  'ago',
+  'set',
+  'out',
+  'nov',
+  'dez',
 ];
 
 function formatarRotuloMes(rotulo: string): string {
@@ -98,7 +109,7 @@ function formatarRotuloMes(rotulo: string): string {
   selector: 'app-grafico-serie',
   imports: [],
   templateUrl: './grafico-serie.html',
-  styleUrl: './grafico-serie.scss'
+  styleUrl: './grafico-serie.scss',
 })
 export class GraficoSerie {
   @ViewChild('svgEl') private readonly svgRef?: ElementRef<SVGSVGElement>;
@@ -151,7 +162,7 @@ export class GraficoSerie {
     const maximo = this.valorMaximo();
     return [0, 0.25, 0.5, 0.75, 1].map((fracao) => ({
       y: MARGEM_SUPERIOR + ALTURA_PLOT * (1 - fracao),
-      rotulo: formatarMoedaAbreviada(maximo * fracao)
+      rotulo: formatarMoedaAbreviada(maximo * fracao),
     }));
   });
 
@@ -169,7 +180,10 @@ export class GraficoSerie {
     }
     if (this.tipo() === 'barra') {
       const larguraGrupo = LARGURA_PLOT / total;
-      return Array.from({ length: total }, (_, indice) => MARGEM_ESQUERDA + larguraGrupo * (indice + 0.5));
+      return Array.from(
+        { length: total },
+        (_, indice) => MARGEM_ESQUERDA + larguraGrupo * (indice + 0.5),
+      );
     }
     if (total === 1) {
       return [MARGEM_ESQUERDA + LARGURA_PLOT / 2];
@@ -181,8 +195,8 @@ export class GraficoSerie {
   protected readonly rotulosEixoX = computed(() =>
     this.rotulos().map((rotulo, indice) => ({
       x: this.xPorIndice()[indice],
-      texto: formatarRotuloMes(rotulo)
-    }))
+      texto: formatarRotuloMes(rotulo),
+    })),
   );
 
   private y(valor: number): number {
@@ -211,7 +225,9 @@ export class GraficoSerie {
 
   protected readonly linhas = computed<LinhaDesenhada[]>(() => {
     const seriesParaLinha =
-      this.tipo() === 'barra' ? this.series().filter((serie) => serie.linhaSobreposta) : this.series();
+      this.tipo() === 'barra'
+        ? this.series().filter((serie) => serie.linhaSobreposta)
+        : this.series();
     if (!seriesParaLinha.length) {
       return [];
     }
@@ -240,16 +256,18 @@ export class GraficoSerie {
       const pontos: PontoXY[] = serie.pontos.map((ponto) => ({
         x: xsDaBarra?.get(ponto.rotulo) ?? xs[indices.get(ponto.rotulo) ?? 0],
         y: this.y(ponto.valor),
-        valor: ponto.valor
+        valor: ponto.valor,
       }));
-      const path = pontos.map((ponto, indice) => `${indice === 0 ? 'M' : 'L'} ${ponto.x},${ponto.y}`).join(' ');
+      const path = pontos
+        .map((ponto, indice) => `${indice === 0 ? 'M' : 'L'} ${ponto.x},${ponto.y}`)
+        .join(' ');
       return {
         nome: serie.nome,
         cor: serie.cor,
         tracejada: !!serie.tracejada,
         path,
         pontos,
-        apagada: destaque !== null && destaque !== serie.nome
+        apagada: destaque !== null && destaque !== serie.nome,
       };
     });
   });
@@ -266,7 +284,9 @@ export class GraficoSerie {
     const larguraBarra = (larguraGrupo * 0.6) / totalSeries;
     const espacamentoBarra = larguraBarra * 0.15;
 
-    const valorPorRotulo = series.map((serie) => new Map(serie.pontos.map((ponto) => [ponto.rotulo, ponto.valor])));
+    const valorPorRotulo = series.map(
+      (serie) => new Map(serie.pontos.map((ponto) => [ponto.rotulo, ponto.valor])),
+    );
     const destaque = this.serieEmDestaque();
     const xs = this.xPorIndice();
 
@@ -285,7 +305,7 @@ export class GraficoSerie {
           largura: larguraBarra,
           altura: MARGEM_SUPERIOR + ALTURA_PLOT - yTopo,
           valor,
-          apagada: destaque !== null && destaque !== serie.nome
+          apagada: destaque !== null && destaque !== serie.nome,
         };
       });
 
@@ -307,7 +327,11 @@ export class GraficoSerie {
     // Séries com timelines diferentes (ex: histórico vs projeção) podem não
     // ter ponto nesse mês — omite da tooltip em vez de fingir um valor 0.
     const itens = this.series()
-      .map((serie) => ({ nome: serie.nome, cor: serie.cor, ponto: serie.pontos.find((p) => p.rotulo === rotulo) }))
+      .map((serie) => ({
+        nome: serie.nome,
+        cor: serie.cor,
+        ponto: serie.pontos.find((p) => p.rotulo === rotulo),
+      }))
       .filter((item): item is { nome: string; cor: string; ponto: PontoSerie } => !!item.ponto)
       .map((item) => ({ nome: item.nome, cor: item.cor, valor: item.ponto.valor }));
     const caixaAltura = ALTURA_LINHA_TOOLTIP * (itens.length + 1) + 8;
@@ -327,7 +351,10 @@ export class GraficoSerie {
         : MARGEM_SUPERIOR + ALTURA_PLOT;
       const GAP_SETA = 8;
 
-      caixaX = Math.min(Math.max(x - caixaLargura / 2, MARGEM_ESQUERDA), LARGURA - MARGEM_DIREITA - caixaLargura);
+      caixaX = Math.min(
+        Math.max(x - caixaLargura / 2, MARGEM_ESQUERDA),
+        LARGURA - MARGEM_DIREITA - caixaLargura,
+      );
       caixaY = Math.max(MARGEM_SUPERIOR + 4, topoColunas - caixaAltura - GAP_SETA);
 
       const baseY = caixaY + caixaAltura;
@@ -347,13 +374,9 @@ export class GraficoSerie {
       caixaY,
       caixaLargura,
       caixaAltura,
-      seta
+      seta,
     };
   });
-
-  protected formatarValor(valor: number): string {
-    return formatarMoedaAbreviada(valor);
-  }
 
   protected aoMoverMouse(evento: MouseEvent): void {
     const svg = this.svgRef?.nativeElement;
@@ -382,15 +405,19 @@ export class GraficoSerie {
     this.indiceHover.set(indiceMaisProximo);
   }
 
-  protected aoSairMouse(): void {
-    this.indiceHover.set(null);
-  }
-
   protected aoPassarMouseNaSerie(nome: string): void {
     this.serieEmDestaque.set(nome);
   }
 
   protected aoSairDaSerie(): void {
     this.serieEmDestaque.set(null);
+  }
+
+  protected aoSairMouse(): void {
+    this.indiceHover.set(null);
+  }
+
+  protected formatarValor(valor: number): string {
+    return formatarMoedaAbreviada(valor);
   }
 }

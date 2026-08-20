@@ -6,20 +6,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.auth import papeis
+from agente_oracle.tools.auth import papeis, usuarios
 from agente_oracle.tools.auth.token import verificar_token
-
-
-def exigir_usuario(request: Request) -> dict | JSONResponse:
-    cabecalho = request.headers.get("authorization", "")
-    if not cabecalho.startswith("Bearer "):
-        return JSONResponse({"erro": "Não autenticado."}, status_code=401, headers=CORS_HEADERS)
-
-    payload = verificar_token(cabecalho.removeprefix("Bearer "))
-    if payload is None:
-        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
-
-    return payload
 
 
 def exigir_administrador(request: Request) -> dict | JSONResponse:
@@ -30,7 +18,9 @@ def exigir_administrador(request: Request) -> dict | JSONResponse:
         return resultado
 
     if not papeis.eh_administrador(resultado.get("papeis", [])):
-        return JSONResponse({"erro": "Acesso restrito a administradores."}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse(
+            {"erro": "Acesso restrito a administradores."}, status_code=403, headers=CORS_HEADERS
+        )
 
     return resultado
 
@@ -45,7 +35,9 @@ def exigir_desenvolvedor(request: Request) -> dict | JSONResponse:
         return resultado
 
     if not papeis.eh_desenvolvedor(resultado.get("papeis", [])):
-        return JSONResponse({"erro": "Acesso restrito a desenvolvedores."}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse(
+            {"erro": "Acesso restrito a desenvolvedores."}, status_code=403, headers=CORS_HEADERS
+        )
 
     return resultado
 
@@ -60,6 +52,53 @@ def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
         return resultado
 
     if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "financeiro"):
-        return JSONResponse({"erro": "Acesso restrito ao módulo Financeiro."}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse(
+            {"erro": "Acesso restrito ao módulo Financeiro."}, status_code=403, headers=CORS_HEADERS
+        )
 
     return resultado
+
+
+def exigir_modulo_rh(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
+    tenha acesso ao módulo RH — usada em toda rota `/api/rh/*`."""
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "rh"):
+        return JSONResponse({"erro": "Acesso restrito ao módulo RH."}, status_code=403, headers=CORS_HEADERS)
+
+    return resultado
+
+
+def exigir_modulo_ti(request: Request) -> dict | JSONResponse:
+    """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
+    tenha acesso ao módulo TI — usada em toda rota `/api/ti/*`."""
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "ti"):
+        return JSONResponse({"erro": "Acesso restrito ao módulo TI."}, status_code=403, headers=CORS_HEADERS)
+
+    return resultado
+
+
+def exigir_usuario(request: Request) -> dict | JSONResponse:
+    cabecalho = request.headers.get("authorization", "")
+    if not cabecalho.startswith("Bearer "):
+        return JSONResponse({"erro": "Não autenticado."}, status_code=401, headers=CORS_HEADERS)
+
+    payload = verificar_token(cabecalho.removeprefix("Bearer "))
+    if payload is None:
+        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
+
+    # Revogação de sessão: o JWT em si não tem como ser invalidado antes de
+    # expirar (é sem estado, por design), mas checar aqui o estado atual da
+    # conta a cada request faz efeito na prática — desativar ou bloquear
+    # alguém corta o acesso já no próximo request, não só em tokens novos.
+    if not usuarios.usuario_esta_ativo_e_desbloqueado(int(payload["sub"])):
+        return JSONResponse({"erro": "Sessão expirada ou inválida."}, status_code=401, headers=CORS_HEADERS)
+
+    return payload

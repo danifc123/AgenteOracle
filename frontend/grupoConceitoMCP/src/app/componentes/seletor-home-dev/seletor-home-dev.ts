@@ -11,7 +11,7 @@ import { Sessao, rotuloModulo } from '../../servicos/sessao';
   selector: 'app-seletor-home-dev',
   imports: [],
   templateUrl: './seletor-home-dev.html',
-  styleUrl: './seletor-home-dev.scss'
+  styleUrl: './seletor-home-dev.scss',
 })
 export class SeletorHomeDev {
   protected readonly sessao = inject(Sessao);

@@ -47,20 +47,45 @@ export class Auditoria {
     this.aberto.set(true);
   }
 
-  fechar(): void {
-    this.aberto.set(false);
-  }
-
-  selecionarModulo(modulo: string): void {
-    if (this.moduloAtual() === modulo) {
+  buscar(): void {
+    const modulo = this.moduloAtual();
+    if (!modulo) {
       return;
     }
-    // Troca de departamento não pode mostrar achado de auditoria antiga de
-    // outro módulo enquanto a nova busca não roda.
-    this.achados.set([]);
-    this.jaExecutou.set(false);
+
+    this.carregando.set(true);
     this.erro.set(null);
-    this.moduloAtual.set(modulo);
+
+    this.http
+      .get<AchadoAuditoria[]>(`${MCP_API_BASE_URL}/api/auditoria`, { params: { modulo } })
+      .subscribe({
+        next: (achados) => {
+          this.achados.set(achados);
+          this.carregando.set(false);
+          this.jaExecutou.set(true);
+          this.mudancas.update((atual) => atual + 1);
+        },
+        error: () => {
+          this.erro.set(
+            'Não foi possível rodar a auditoria. Verifique se o servidor e o Ollama estão em execução.',
+          );
+          this.carregando.set(false);
+          this.jaExecutou.set(true);
+        },
+      });
+  }
+
+  dispensar(achado: AchadoAuditoria): void {
+    this.http.post(`${MCP_API_BASE_URL}/api/auditoria/dispensar`, achado).subscribe({
+      next: () => {
+        this.achados.update((atual) => atual.filter((item) => item !== achado));
+        this.mudancas.update((atual) => atual + 1);
+      },
+    });
+  }
+
+  fechar(): void {
+    this.aberto.set(false);
   }
 
   /** Volta pro estado "nenhum módulo escolhido" — usado pelo seletor quando
@@ -73,36 +98,15 @@ export class Auditoria {
     this.erro.set(null);
   }
 
-  buscar(): void {
-    const modulo = this.moduloAtual();
-    if (!modulo) {
+  selecionarModulo(modulo: string): void {
+    if (this.moduloAtual() === modulo) {
       return;
     }
-
-    this.carregando.set(true);
+    // Troca de departamento não pode mostrar achado de auditoria antiga de
+    // outro módulo enquanto a nova busca não roda.
+    this.achados.set([]);
+    this.jaExecutou.set(false);
     this.erro.set(null);
-
-    this.http.get<AchadoAuditoria[]>(`${MCP_API_BASE_URL}/api/auditoria`, { params: { modulo } }).subscribe({
-      next: (achados) => {
-        this.achados.set(achados);
-        this.carregando.set(false);
-        this.jaExecutou.set(true);
-        this.mudancas.update((atual) => atual + 1);
-      },
-      error: () => {
-        this.erro.set('Não foi possível rodar a auditoria. Verifique se o servidor e o Ollama estão em execução.');
-        this.carregando.set(false);
-        this.jaExecutou.set(true);
-      }
-    });
-  }
-
-  dispensar(achado: AchadoAuditoria): void {
-    this.http.post(`${MCP_API_BASE_URL}/api/auditoria/dispensar`, achado).subscribe({
-      next: () => {
-        this.achados.update((atual) => atual.filter((item) => item !== achado));
-        this.mudancas.update((atual) => atual + 1);
-      }
-    });
+    this.moduloAtual.set(modulo);
   }
 }

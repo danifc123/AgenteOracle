@@ -21,16 +21,24 @@
       <thead>
         <tr>
           <th class="ordenavel" (click)="ordenarPor('usuario')">
-            <span class="cabecalho-coluna">Usuário <app-icone-ordenacao [direcao]="direcaoDaColuna('usuario')" /></span>
+            <span class="cabecalho-coluna"
+              >Usuário <app-icone-ordenacao [direcao]="direcaoDaColuna('usuario')"
+            /></span>
           </th>
           <th class="ordenavel" (click)="ordenarPor('nome')">
-            <span class="cabecalho-coluna">Nome <app-icone-ordenacao [direcao]="direcaoDaColuna('nome')" /></span>
+            <span class="cabecalho-coluna"
+              >Nome <app-icone-ordenacao [direcao]="direcaoDaColuna('nome')"
+            /></span>
           </th>
           <th class="ordenavel" (click)="ordenarPor('papeis')">
-            <span class="cabecalho-coluna">Papéis <app-icone-ordenacao [direcao]="direcaoDaColuna('papeis')" /></span>
+            <span class="cabecalho-coluna"
+              >Papéis <app-icone-ordenacao [direcao]="direcaoDaColuna('papeis')"
+            /></span>
           </th>
           <th class="ordenavel" (click)="ordenarPor('status')">
-            <span class="cabecalho-coluna">Status <app-icone-ordenacao [direcao]="direcaoDaColuna('status')" /></span>
+            <span class="cabecalho-coluna"
+              >Status <app-icone-ordenacao [direcao]="direcaoDaColuna('status')"
+            /></span>
           </th>
           <th><span class="sr-only">Ações</span></th>
         </tr>
@@ -42,13 +50,30 @@
             <td>{{ usuario.nome }}</td>
             <td>{{ rotuloPapeis(usuario.papeis) }}</td>
             <td>
-              @if (usuario.ativo) {
+              @if (usuario.bloqueado) {
+                <span class="badge-bloqueado">Bloqueado</span>
+              } @else if (usuario.ativo) {
                 <span class="badge-ativo">Ativo</span>
               } @else {
                 <span class="badge-inativo">Inativo</span>
               }
             </td>
             <td class="acoes">
+              @if (sessao.modulos().includes('financeiro') && usuarioTemFinanceiro(usuario)) {
+                <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
+                  Gerenciar filiais
+                </app-botao>
+              }
+              @if (usuario.bloqueado && sessao.ehDesenvolvedor()) {
+                <app-botao
+                  variant="contorno"
+                  [loading]="desbloqueandoId() === usuario.id"
+                  loadingText="Desbloqueando..."
+                  (clicked)="desbloquearUsuario(usuario)"
+                >
+                  Desbloquear
+                </app-botao>
+              }
               <app-botao
                 variant="perigo"
                 [loading]="apagandoId() === usuario.id"
@@ -65,7 +90,12 @@
   </div>
 }
 
-<app-dialog [aberto]="dialogAberto()" titulo="Novo usuário" [temRodape]="true" (fechar)="fecharDialog()">
+<app-dialog
+  [aberto]="dialogAberto()"
+  titulo="Novo usuário"
+  [temRodape]="true"
+  (fechar)="fecharDialog()"
+>
   <form class="form-usuario" (submit)="criarUsuario(); $event.preventDefault()">
     <app-select-busca
       rotulo="Papéis"
@@ -113,9 +143,69 @@
   </form>
 
   <div rodape class="rodape-form">
-    <app-botao variant="contorno" [disabled]="criando()" (clicked)="fecharDialog()">Cancelar</app-botao>
-    <app-botao variant="primaria" [loading]="criando()" loadingText="Criando..." (clicked)="criarUsuario()">
+    <app-botao variant="contorno" [disabled]="criando()" (clicked)="fecharDialog()"
+      >Cancelar</app-botao
+    >
+    <app-botao
+      variant="primaria"
+      [loading]="criando()"
+      loadingText="Criando..."
+      (clicked)="criarUsuario()"
+    >
       Criar usuário
     </app-botao>
   </div>
 </app-dialog>
+
+<app-dialog
+  [aberto]="dialogFiliaisAberto()"
+  [titulo]="'Filiais bloqueadas — ' + (usuarioFiliais()?.nome ?? '')"
+  [temRodape]="true"
+  (fechar)="fecharDialogFiliais()"
+>
+  <div class="form-usuario">
+    <p class="dialog-filiais-instrucao">
+      Marque as filiais que este usuário NÃO pode ver nos relatórios do Financeiro. Por padrão,
+      toda filial fica liberada.
+    </p>
+
+    @if (carregandoFiliaisBloqueadas()) {
+      <p class="carregando">Carregando...</p>
+    } @else {
+      <app-select-busca
+        rotulo="Filiais bloqueadas"
+        placeholder="Nenhuma filial bloqueada"
+        [multiplo]="true"
+        [opcoes]="opcoesFiliais()"
+        [(valores)]="formFiliaisBloqueadas"
+      />
+    }
+
+    @if (erroFiliais()) {
+      <p class="erro">{{ erroFiliais() }}</p>
+    }
+  </div>
+
+  <div rodape class="rodape-form">
+    <app-botao variant="contorno" [disabled]="salvandoFiliais()" (clicked)="fecharDialogFiliais()"
+      >Cancelar</app-botao
+    >
+    <app-botao
+      variant="primaria"
+      [loading]="salvandoFiliais()"
+      loadingText="Salvando..."
+      (clicked)="salvarFiliaisBloqueadas()"
+    >
+      Salvar
+    </app-botao>
+  </div>
+</app-dialog>
+
+<app-confirmacao-dialog
+  [aberto]="!!usuarioParaApagar()"
+  titulo="Apagar usuário"
+  [mensagem]="mensagemConfirmacaoApagar()"
+  [confirmando]="!!apagandoId()"
+  (confirmar)="confirmarApagarUsuario()"
+  (cancelar)="cancelarApagarUsuario()"
+/>

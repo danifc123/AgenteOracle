@@ -1,0 +1,56 @@
+<app-modulo-header
+  breadcrumb="RH"
+  titulo="Colaboradores"
+  descricao="Candidatos já contratados — pool separado dos que ainda estão em avaliação."
+/>
+
+<section class="cartao-secao">
+  <h2>Colaboradores</h2>
+  <div class="tabela-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Resumo do perfil</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (candidato of colaboradores(); track candidato.id) {
+          <tr>
+            <td>{{ candidato.nome }}</td>
+            <td class="coluna-resumo">{{ resumoTruncado(candidato) }}</td>
+            <td class="coluna-acao">
+              <app-botao variant="contorno" (clicked)="abrirDetalhe(candidato)">Ver perfil</app-botao>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="3" class="lista-vazia-tabela">Nenhum colaborador cadastrado ainda.</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<app-dialog
+  [aberto]="!!candidatoAberto()"
+  [titulo]="candidatoAberto()?.nome ?? ''"
+  [temRodape]="true"
+  (fechar)="fecharDetalhe()"
+>
+  @if (candidatoAberto(); as candidato) {
+    <app-detalhe-candidato
+      [resumo]="candidato.resumo_perfil"
+      [perfilEstruturado]="candidato.perfil_estruturado"
+      [dataCadastro]="dataFormatada(candidato.criado_em)"
+    />
+  }
+
+  @if (candidatoAberto(); as candidato) {
+    <ng-container rodape>
+      <app-botao variant="contorno" (clicked)="baixarCurriculo(candidato)">Baixar currículo</app-botao>
+    </ng-container>
+  }
+</app-dialog>

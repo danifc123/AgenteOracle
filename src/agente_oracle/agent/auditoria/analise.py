@@ -9,16 +9,12 @@ segurança em `agent/financeiro/financeiro.py`
 confiar que um valor citado pela IA é real sem conferir contra o dado que
 foi de fato mandado pra ela."""
 
-import json
 from dataclasses import dataclass, replace
 
 from ollama import AsyncClient
 
 from agente_oracle.agent.auditoria.perfil_campo import PerfilCampo
-
-# Mesma constante usada em financeiro.py/projecoes.py — evita reservar mais
-# RAM do que o prompt (perfis + achados) precisa.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
+from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 
 _ACHADOS_SCHEMA = {
     "type": "object",
@@ -50,9 +46,10 @@ _PROMPT_SISTEMA = (
     "Não aponte o valor mais comum de um campo, nem valores plausíveis só porque são pouco "
     "frequentes — frequência baixa sozinha não é motivo. Se nada em um perfil parecer fora do "
     "padrão, simplesmente não gere achado para ele; é normal a lista de achados vir vazia. "
-    "Cite em `valor` exatamente um dos valores que você recebeu, caractere por caractere — nunca "
-    "invente, corrija ou arredonde um valor. Escreva `descricao` em português, uma frase curta, "
-    "no formato 'Analise o campo <campo> na filial/cliente/fornecedor/registro <valor>, ele parece "
+    "Copie os campos `modulo`, `view` e `campo` exatamente como foram informados a você. Cite em "
+    "`valor` exatamente um dos valores que você recebeu, caractere por caractere — nunca invente, "
+    "corrija, arredonde ou parafraseie nenhum desses quatro campos. Escreva `descricao` em português, "
+    "uma frase curta, no formato 'Analise o campo <campo> na filial/cliente/fornecedor/registro <valor>, ele parece "
     "estar fora do padrão' — adapte a frase ao que o campo representa."
 )
 
@@ -66,24 +63,65 @@ class Achado:
     descricao: str
 
 
-def _perfis_para_texto(perfis: list[PerfilCampo]) -> str:
-    blocos = []
+async def analisar_perfis(ollama_client: AsyncClient, modelo: str, perfis: list[PerfilCampo]) -> list[Achado]:
+    """Pede à IA que analise os perfis recebidos e aponte o que parece fora
+    do padrão. Nunca deixa a chamada quebrar: qualquer falha do Ollama,
+    resposta vazia ou mal formada devolve lista vazia — o painel simplesmente
+    mostra "nenhum achado" nesse caso."""
+    # Perfis sem nenhum valor (view/campo sem registro) não têm o que
+    # comparar — `max()` na linha abaixo quebraria com sequência vazia.
+    perfis = [perfil for perfil in perfis if perfil.valores]
+    if not perfis:
+        return []
+
+    # Loop (não dict comprehension) de propósito: se dois perfis um dia
+    # compartilharem a mesma chave, o segundo precisa UNIR os valores
+    # válidos do primeiro, não sobrescrever — senão um achado real citando
+    # um valor do perfil sobrescrito seria descartado como "não fundamentado".
+    perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]] = {}
     for perfil in perfis:
-        valores_texto = ", ".join(f"'{valor}' ({ocorrencias}x)" for valor, ocorrencias in perfil.valores)
-        blocos.append(
-            f"Módulo: {perfil.modulo} | View: {perfil.view} | Campo: {perfil.campo}\nValores: {valores_texto}"
+        chave = (perfil.modulo, perfil.view, perfil.campo)
+        valores = {valor for valor, _ in perfil.valores}
+        valor_mais_comum = max(perfil.valores, key=lambda item: item[1])[0]
+        if chave in perfis_por_chave:
+            valores = perfis_por_chave[chave][0] | valores
+        perfis_por_chave[chave] = (valores, valor_mais_comum)
+
+    try:
+        resposta = await ollama_client.chat(
+            model=modelo,
+            messages=[
+                {"role": "system", "content": _PROMPT_SISTEMA},
+                {"role": "user", "content": _perfis_para_texto(perfis)},
+            ],
+            format=_ACHADOS_SCHEMA,
+            options=OPCOES_OLLAMA_PADRAO,
         )
-    return "\n\n".join(blocos)
+    except Exception:
+        # Best-effort: erro de rede/timeout do Ollama — a auditoria segue
+        # sem achados em vez de derrubar a análise inteira por causa da IA.
+        return []
+
+    achados_brutos = resposta_json_como_dict(resposta.message.content).get("achados")
+    if not isinstance(achados_brutos, list):
+        return []
+
+    return [
+        Achado(
+            modulo=achado["modulo"],
+            view=achado["view"],
+            campo=achado["campo"],
+            valor=achado["valor"],
+            descricao=achado["descricao"],
+        )
+        for achado in achados_brutos
+        if _achado_valido(achado) and _achado_fundamentado(achado, perfis_por_chave)
+    ]
 
 
-def _achado_valido(achado: object) -> bool:
-    return isinstance(achado, dict) and all(
-        isinstance(achado.get(campo), str) and achado.get(campo)
-        for campo in ("modulo", "view", "campo", "valor", "descricao")
-    )
-
-
-def _achado_fundamentado(achado: dict, perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]]) -> bool:
+def _achado_fundamentado(
+    achado: dict, perfis_por_chave: dict[tuple[str, str, str], tuple[set[str], str]]
+) -> bool:
     """Descarta achados que citam um `(modulo, view, campo)` que não estava
     entre os perfis realmente enviados, ou um `valor` que não está entre os
     valores daquele perfil específico — valida a tupla inteira, não só o
@@ -101,9 +139,24 @@ def _achado_fundamentado(achado: dict, perfis_por_chave: dict[tuple[str, str, st
     valor = achado["valor"]
     if valor not in valores_validos:
         return False
-    if len(valores_validos) > 1 and valor == valor_mais_comum:
-        return False
-    return True
+    return not (len(valores_validos) > 1 and valor == valor_mais_comum)
+
+
+def _achado_valido(achado: object) -> bool:
+    return isinstance(achado, dict) and all(
+        isinstance(achado.get(campo), str) and achado.get(campo)
+        for campo in ("modulo", "view", "campo", "valor", "descricao")
+    )
+
+
+def _perfis_para_texto(perfis: list[PerfilCampo]) -> str:
+    blocos = []
+    for perfil in perfis:
+        valores_texto = ", ".join(f"'{valor}' ({ocorrencias}x)" for valor, ocorrencias in perfil.valores)
+        blocos.append(
+            f"Módulo: {perfil.modulo} | View: {perfil.view} | Campo: {perfil.campo}\nValores: {valores_texto}"
+        )
+    return "\n\n".join(blocos)
 
 
 def filtrar_valores_conhecidos(
@@ -128,54 +181,3 @@ def filtrar_valores_conhecidos(
         if valores_restantes:
             perfis_filtrados.append(replace(perfil, valores=valores_restantes))
     return perfis_filtrados
-
-
-async def analisar_perfis(ollama_client: AsyncClient, modelo: str, perfis: list[PerfilCampo]) -> list[Achado]:
-    """Pede à IA que analise os perfis recebidos e aponte o que parece fora
-    do padrão. Nunca deixa a chamada quebrar: qualquer falha do Ollama,
-    resposta vazia ou mal formada devolve lista vazia — o painel simplesmente
-    mostra "nenhum achado" nesse caso, igual a `gerar_analise` em
-    `agent/financeiro/projecoes.py`."""
-    # Perfis sem nenhum valor (view/campo sem registro) não têm o que
-    # comparar — `max()` na linha abaixo quebraria com sequência vazia.
-    perfis = [perfil for perfil in perfis if perfil.valores]
-    if not perfis:
-        return []
-
-    perfis_por_chave = {
-        (perfil.modulo, perfil.view, perfil.campo): (
-            {valor for valor, _ in perfil.valores},
-            max(perfil.valores, key=lambda item: item[1])[0],
-        )
-        for perfil in perfis
-    }
-
-    try:
-        resposta = await ollama_client.chat(
-            model=modelo,
-            messages=[
-                {"role": "system", "content": _PROMPT_SISTEMA},
-                {"role": "user", "content": _perfis_para_texto(perfis)},
-            ],
-            format=_ACHADOS_SCHEMA,
-            options=_OPCOES_OLLAMA,
-        )
-        corpo = json.loads(resposta.message.content or "{}")
-    except Exception:
-        return []
-
-    achados_brutos = corpo.get("achados")
-    if not isinstance(achados_brutos, list):
-        return []
-
-    return [
-        Achado(
-            modulo=achado["modulo"],
-            view=achado["view"],
-            campo=achado["campo"],
-            valor=achado["valor"],
-            descricao=achado["descricao"],
-        )
-        for achado in achados_brutos
-        if _achado_valido(achado) and _achado_fundamentado(achado, perfis_por_chave)
-    ]

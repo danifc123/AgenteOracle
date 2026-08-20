@@ -13,7 +13,7 @@ automaticamente, sem precisar editar nada aqui.
 
 from dataclasses import dataclass
 
-MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
+MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque", "rh", "ti")
 
 # Sigla curta usada em nomes de arquivo exportado (ex:
 # `planilhas_combinadas_FIN.xlsx`), pra quem baixa saber de qual time veio.
@@ -23,6 +23,8 @@ MODULOS_CONHECIDOS: tuple[str, ...] = ("financeiro", "estoque")
 SIGLAS_MODULO: dict[str, str] = {
     "financeiro": "FIN",
     "estoque": "EST",
+    "rh": "RH",
+    "ti": "TI",
 }
 
 
@@ -35,12 +37,38 @@ class Papel:
     acesso_total: bool = False
 
 
+# NOTA DE SEGURANÇA (revisão de 2026): `desenvolvedor` concentra bastante
+# poder — `acesso_total` dá acesso automático a TODO módulo (presente e
+# futuro, sem precisar editar nada aqui) e `administrador` dá acesso a toda
+# rota administrativa (gerenciar usuário, desbloquear conta, ver a trilha de
+# auditoria em `eventos_seguranca`). Hoje isso é aceitável (time pequeno,
+# `desenvolvedor` = quem já tem acesso ao código-fonte e ao banco mesmo). Se
+# o time crescer, vale considerar separar "acesso de dados" (ver
+# Financeiro/Estoque) de "administração do sistema" (gerenciar usuário,
+# desbloquear conta) em papéis distintos, em vez de um papel só cobrindo os
+# dois. Não é um bug — é uma decisão de design que vale reavaliar mais pra
+# frente, não uma ação pendente.
 PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
-    Papel(slug="desenvolvedor", rotulo="Desenvolvedor", acesso_total=True, administrador=True),
-    Papel(slug="financeiro_admin", rotulo="Administrador do Financeiro", modulos=("financeiro",), administrador=True),
+    Papel(
+        slug="desenvolvedor",
+        rotulo="Desenvolvedor",
+        modulos=("ti",),
+        acesso_total=True,
+        administrador=True,
+    ),
+    Papel(
+        slug="financeiro_admin",
+        rotulo="Administrador do Financeiro",
+        modulos=("financeiro",),
+        administrador=True,
+    ),
     Papel(slug="financeiro", rotulo="Time do Financeiro", modulos=("financeiro",)),
     Papel(slug="estoque_admin", rotulo="Administrador do Estoque", modulos=("estoque",), administrador=True),
     Papel(slug="estoque", rotulo="Time do Estoque", modulos=("estoque",)),
+    Papel(slug="rh_admin", rotulo="Administrador do RH", modulos=("rh",), administrador=True),
+    Papel(slug="rh", rotulo="Time do RH", modulos=("rh",)),
+    Papel(slug="ti_admin", rotulo="Administrador de TI", modulos=("ti",), administrador=True),
+    Papel(slug="ti_infraestrutura", rotulo="Infraestrutura de TI", modulos=("ti",)),
 )
 
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}
@@ -48,10 +76,6 @@ _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISP
 
 def _papeis_validos(papeis: list[str]) -> list[Papel]:
     return [_PAPEIS_POR_SLUG[slug] for slug in papeis if slug in _PAPEIS_POR_SLUG]
-
-
-def tem_acesso_modulo(papeis: list[str], modulo: str) -> bool:
-    return any(papel.acesso_total or modulo in papel.modulos for papel in _papeis_validos(papeis))
 
 
 def eh_administrador(papeis: list[str]) -> bool:
@@ -74,6 +98,18 @@ def modulos_liberados(papeis: list[str]) -> list[str]:
     return sorted({modulo for papel in validos for modulo in papel.modulos})
 
 
+def pode_atribuir_papel(papeis_de_quem_cria: list[str], papel_alvo: str) -> bool:
+    """Só quem tem um papel com `acesso_total` pode atribuir outro papel com
+    `acesso_total` — evita que um administrador do financeiro promova alguém
+    a desenvolvedor. Papéis desconhecidos nunca podem ser atribuídos."""
+    alvo = _PAPEIS_POR_SLUG.get(papel_alvo)
+    if alvo is None:
+        return False
+    if not alvo.acesso_total:
+        return True
+    return any(papel.acesso_total for papel in _papeis_validos(papeis_de_quem_cria))
+
+
 def sigla_modulo(modulo: str) -> str:
     """Sigla curta de um módulo pra usar em nome de arquivo exportado.
     Sem entrada em `SIGLAS_MODULO`, cai num fallback com as 3 primeiras
@@ -94,13 +130,5 @@ def sigla_usuario(papeis_usuario: list[str]) -> str:
     return sigla_modulo(modulos[0]) if modulos else ""
 
 
-def pode_atribuir_papel(papeis_de_quem_cria: list[str], papel_alvo: str) -> bool:
-    """Só quem tem um papel com `acesso_total` pode atribuir outro papel com
-    `acesso_total` — evita que um administrador do financeiro promova alguém
-    a desenvolvedor. Papéis desconhecidos nunca podem ser atribuídos."""
-    alvo = _PAPEIS_POR_SLUG.get(papel_alvo)
-    if alvo is None:
-        return False
-    if not alvo.acesso_total:
-        return True
-    return any(papel.acesso_total for papel in _papeis_validos(papeis_de_quem_cria))
+def tem_acesso_modulo(papeis: list[str], modulo: str) -> bool:
+    return any(papel.acesso_total or modulo in papel.modulos for papel in _papeis_validos(papeis))

@@ -4,7 +4,7 @@ import { Component, input, model } from '@angular/core';
   selector: 'app-busca',
   imports: [],
   templateUrl: './busca.html',
-  styleUrl: './busca.scss'
+  styleUrl: './busca.scss',
 })
 export class Busca {
   placeholder = input('Buscar...');

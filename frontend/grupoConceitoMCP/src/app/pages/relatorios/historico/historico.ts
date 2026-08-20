@@ -6,8 +6,13 @@ import { Botao } from '../../../componentes/botao/botao';
 import { Dialog } from '../../../componentes/dialog/dialog';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
+import { baixarBlob } from '../../../servicos/download-arquivo';
 import { formatarSql } from '../../../servicos/formatar-sql';
-import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../../servicos/ordenacao-tabela';
+import {
+  compararValores,
+  DirecaoOrdenacao,
+  proximaDirecao,
+} from '../../../servicos/ordenacao-tabela';
 
 export interface RelatorioHistorico {
   id: string;
@@ -25,7 +30,7 @@ export interface RelatorioHistorico {
   selector: 'app-historico',
   imports: [DatePipe, Botao, Dialog, IconeOrdenacao, ModuloHeader],
   templateUrl: './historico.html',
-  styleUrl: './historico.scss'
+  styleUrl: './historico.scss',
 })
 export class Historico {
   private readonly http = inject(HttpClient);
@@ -57,7 +62,9 @@ export class Historico {
     }
 
     const sinal = direcao === 'asc' ? 1 : -1;
-    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+    return [...lista].sort(
+      (a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal,
+    );
   });
 
   private valorColuna(relatorio: RelatorioHistorico, coluna: string): unknown {
@@ -75,6 +82,10 @@ export class Historico {
     }
   }
 
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
+
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
       this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
@@ -84,63 +95,32 @@ export class Historico {
     }
   }
 
-  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
-    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
-  }
-
   constructor() {
     this.carregarHistorico();
   }
 
-  carregarHistorico(): void {
-    this.carregando.set(true);
-    this.erro.set(null);
-
-    this.http.get<RelatorioHistorico[]>(`${MCP_API_BASE_URL}/api/relatorios/historico`).subscribe({
-      next: (relatorios) => {
-        this.relatorios.set(relatorios);
-        this.carregando.set(false);
-      },
-      error: () => {
-        this.erro.set('Não foi possível carregar o histórico. Verifique se o servidor está em execução.');
-        this.carregando.set(false);
-      }
-    });
-  }
-
-  baixarRelatorio(relatorio: RelatorioHistorico): void {
-    if (this.baixandoId()) {
+  alternarFixado(relatorio: RelatorioHistorico): void {
+    if (this.fixandoId()) {
       return;
     }
 
-    this.baixandoId.set(relatorio.id);
+    const novoFixado = !relatorio.fixado;
+    this.fixandoId.set(relatorio.id);
     this.erro.set(null);
 
     this.http
-      .get(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}/exportar`, {
-        observe: 'response',
-        responseType: 'blob'
+      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, {
+        fixado: novoFixado,
       })
       .subscribe({
-        next: (resposta) => {
-          const blob = resposta.body;
-          if (!blob) {
-            this.baixandoId.set(null);
-            return;
-          }
-
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `${relatorio.titulo || 'relatorio'}.xlsx`;
-          link.click();
-          URL.revokeObjectURL(url);
-          this.baixandoId.set(null);
+        next: () => {
+          this.fixandoId.set(null);
+          this.carregarHistorico();
         },
         error: () => {
-          this.erro.set('Não foi possível baixar o relatório.');
-          this.baixandoId.set(null);
-        }
+          this.erro.set('Não foi possível fixar/desfixar o relatório.');
+          this.fixandoId.set(null);
+        },
       });
   }
 
@@ -160,17 +140,57 @@ export class Historico {
       error: () => {
         this.erro.set('Não foi possível apagar o relatório.');
         this.apagandoId.set(null);
-      }
+      },
     });
   }
 
-  verConsulta(relatorio: RelatorioHistorico): void {
-    this.copiado.set(false);
-    this.relatorioSelecionado.set(relatorio);
+  baixarRelatorio(relatorio: RelatorioHistorico): void {
+    if (this.baixandoId()) {
+      return;
+    }
+
+    this.baixandoId.set(relatorio.id);
+    this.erro.set(null);
+
+    this.http
+      .get(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}/exportar`, {
+        observe: 'response',
+        responseType: 'blob',
+      })
+      .subscribe({
+        next: (resposta) => {
+          const blob = resposta.body;
+          if (!blob) {
+            this.baixandoId.set(null);
+            return;
+          }
+
+          baixarBlob(blob, `${relatorio.titulo || 'relatorio'}.xlsx`);
+          this.baixandoId.set(null);
+        },
+        error: () => {
+          this.erro.set('Não foi possível baixar o relatório.');
+          this.baixandoId.set(null);
+        },
+      });
   }
 
-  fecharConsulta(): void {
-    this.relatorioSelecionado.set(null);
+  carregarHistorico(): void {
+    this.carregando.set(true);
+    this.erro.set(null);
+
+    this.http.get<RelatorioHistorico[]>(`${MCP_API_BASE_URL}/api/relatorios/historico`).subscribe({
+      next: (relatorios) => {
+        this.relatorios.set(relatorios);
+        this.carregando.set(false);
+      },
+      error: () => {
+        this.erro.set(
+          'Não foi possível carregar o histórico. Verifique se o servidor está em execução.',
+        );
+        this.carregando.set(false);
+      },
+    });
   }
 
   copiarConsulta(): void {
@@ -185,26 +205,12 @@ export class Historico {
     });
   }
 
-  alternarFixado(relatorio: RelatorioHistorico): void {
-    if (this.fixandoId()) {
-      return;
-    }
+  fecharConsulta(): void {
+    this.relatorioSelecionado.set(null);
+  }
 
-    const novoFixado = !relatorio.fixado;
-    this.fixandoId.set(relatorio.id);
-    this.erro.set(null);
-
-    this.http
-      .patch<{ ok: boolean }>(`${MCP_API_BASE_URL}/api/relatorios/historico/${relatorio.id}`, { fixado: novoFixado })
-      .subscribe({
-        next: () => {
-          this.fixandoId.set(null);
-          this.carregarHistorico();
-        },
-        error: () => {
-          this.erro.set('Não foi possível fixar/desfixar o relatório.');
-          this.fixandoId.set(null);
-        }
-      });
+  verConsulta(relatorio: RelatorioHistorico): void {
+    this.copiado.set(false);
+    this.relatorioSelecionado.set(relatorio);
   }
 }

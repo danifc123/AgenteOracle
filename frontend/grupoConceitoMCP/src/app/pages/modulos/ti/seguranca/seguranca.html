@@ -1,0 +1,97 @@
+<app-modulo-header
+  breadcrumb="TI"
+  titulo="Segurança"
+  descricao="A IA analisa padrão de login e volume de acesso a dado recente e aponta possível tentativa de invasão ou acesso suspeito."
+/>
+
+<div class="barra-acoes">
+  <app-botao
+    variant="primaria"
+    [loading]="analisando()"
+    loadingText="Analisando..."
+    (clicked)="analisarAgora()"
+  >
+    Analisar agora
+  </app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+@if (achados().length) {
+  <section class="cartao-secao">
+    <h2>Achados desta análise</h2>
+    <div class="lista-achados">
+      @for (achado of achados(); track chaveAchado(achado)) {
+        <div class="cartao-achado" [class.cartao-achado--invasao]="achado.tipo === 'tentativa_invasao'">
+          <div class="cartao-achado-cabecalho">
+            <span class="badge-tipo">{{ rotuloTipo(achado.tipo) }}</span>
+            <span class="badge-sistema" [class.badge-sistema--protheus]="achado.sistema === 'protheus'">
+              {{ rotuloSistema(achado.sistema) }}
+            </span>
+            <span class="usuario-achado">{{ achado.usuario }}</span>
+          </div>
+          <p class="descricao-achado">{{ achado.descricao }}</p>
+          <p class="evidencia-achado">{{ achado.evidencia }}</p>
+          <app-botao
+            variant="contorno"
+            [loading]="dispensandoChave() === chaveAchado(achado)"
+            loadingText="Dispensando..."
+            (clicked)="dispensar(achado)"
+          >
+            Dispensar
+          </app-botao>
+        </div>
+      }
+    </div>
+  </section>
+}
+
+<section class="cartao-secao">
+  <h2>Histórico</h2>
+  @if (carregandoHistorico()) {
+    <p class="carregando">Carregando...</p>
+  } @else if (historico().length === 0) {
+    <p class="lista-vazia">Nenhum achado de segurança registrado ainda.</p>
+  } @else {
+    <div class="table-wrapper">
+      <table class="tabela-historico">
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>Sistema</th>
+            <th>Tipo</th>
+            <th>Descrição</th>
+            <th>Evidência</th>
+            <th>Encontrado em</th>
+            @if (ehDesenvolvedor()) {
+              <th>Status</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (registro of historico(); track chaveAchado(registro) + registro.execucao_id) {
+            <tr>
+              <td>{{ registro.usuario }}</td>
+              <td>{{ rotuloSistema(registro.sistema) }}</td>
+              <td>{{ rotuloTipo(registro.tipo) }}</td>
+              <td>{{ registro.descricao }}</td>
+              <td>{{ registro.evidencia }}</td>
+              <td>{{ registro.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
+              @if (ehDesenvolvedor()) {
+                <td>
+                  @if (registro.ativo) {
+                    <span class="badge-ativo">Ativo</span>
+                  } @else {
+                    <span class="badge-desativado">Desativado</span>
+                  }
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

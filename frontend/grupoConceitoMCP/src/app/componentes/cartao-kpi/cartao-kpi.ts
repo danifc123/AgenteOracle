@@ -5,7 +5,7 @@ import { abreviarValor } from '../../utilitarios/formatacao-moeda';
   selector: 'app-cartao-kpi',
   imports: [],
   templateUrl: './cartao-kpi.html',
-  styleUrl: './cartao-kpi.scss'
+  styleUrl: './cartao-kpi.scss',
 })
 export class CartaoKpi {
   rotulo = input.required<string>();
@@ -23,12 +23,15 @@ export class CartaoKpi {
   prefixoPersonalizado = input<string | null>(null);
 
   protected readonly prefixo = computed(
-    () => this.prefixoPersonalizado() ?? (this.tipo() === 'moeda' ? 'R$' : '')
+    () => this.prefixoPersonalizado() ?? (this.tipo() === 'moeda' ? 'R$' : ''),
   );
 
   protected readonly abreviado = computed(() => {
     if (this.tipo() === 'percentual') {
-      const numero = this.valor().toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      const numero = this.valor().toLocaleString('pt-BR', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
       return { numero: `${numero}%`, unidade: null };
     }
     if (this.tipo() === 'numero') {

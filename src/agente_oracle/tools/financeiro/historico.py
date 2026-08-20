@@ -1,5 +1,5 @@
-"""Histórico de relatórios gerados pela IA — guardado numa tabela no mesmo
-banco relacional configurado em DB_BACKEND (Postgres localmente), em vez de
+"""Histórico de relatórios gerados pela IA — guardado numa tabela no Postgres
+(estado do sistema, sempre nesse banco — ver `db/connection.py`), em vez de
 um serviço externo (era MongoDB Atlas antes; trocado por não conectar de
 forma confiável no ambiente do time).
 
@@ -24,31 +24,23 @@ troca).
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from agente_oracle.config import settings
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import get_postgres_connection
 
 _SELECT_FROM_REGEX = re.compile(r"^SELECT\s+(.*?)\s+FROM\s", re.IGNORECASE | re.DOTALL)
 
 TEMPO_EXPIRACAO = timedelta(hours=15)
 
-_COLUNAS_COMPLETAS = "id, hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo"
+_COLUNAS_COMPLETAS = (
+    "id, hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo"
+)
 
 _tabela_garantida = False
 
 
-def _coluna_modulo_existe(cursor) -> bool:
-    if settings.db_backend == "postgres":
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
-        )
-    else:
-        cursor.execute(
-            "SELECT 1 FROM USER_TAB_COLUMNS WHERE TABLE_NAME = 'RELATORIOS_HISTORICO' AND COLUMN_NAME = 'MODULO'"
-        )
-    return cursor.fetchone() is not None
+def _carregar_json(valor):
+    return json.loads(valor) if isinstance(valor, str) else valor
 
 
 def _garantir_tabela(cursor) -> None:
@@ -76,8 +68,101 @@ def _garantir_tabela(cursor) -> None:
     # salvo até hoje só pode ter vindo do Financeiro (único módulo que já
     # gravou nessa tabela), daí o DEFAULT.
     if not _coluna_modulo_existe(cursor):
-        cursor.execute("ALTER TABLE relatorios_historico ADD COLUMN modulo VARCHAR NOT NULL DEFAULT 'financeiro'")
+        cursor.execute(
+            "ALTER TABLE relatorios_historico ADD COLUMN modulo VARCHAR NOT NULL DEFAULT 'financeiro'"
+        )
     _tabela_garantida = True
+
+
+def _coluna_modulo_existe(cursor) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'relatorios_historico' AND column_name = 'modulo'"
+    )
+    return cursor.fetchone() is not None
+
+
+def _linha_para_documento(linha: tuple) -> dict:
+    id_, hash_sql_valor, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo = (
+        linha
+    )
+    return {
+        "_id": id_,
+        "hash_sql": hash_sql_valor,
+        "sql": sql,
+        "titulo": titulo,
+        "colunas": _carregar_json(colunas),
+        "linhas": _carregar_json(linhas),
+        "total_linhas": total_linhas,
+        "criado_em": criado_em,
+        "fixado": fixado,
+        "expira_em": expira_em,
+        "modulo": modulo,
+    }
+
+
+def buscar_por_sql(sql_validado: str) -> dict | None:
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            f"""
+            SELECT {_COLUNAS_COMPLETAS} FROM relatorios_historico
+            WHERE hash_sql = :hash_sql AND (fixado = TRUE OR expira_em > now())
+            """,
+            hash_sql=hash_sql(sql_validado),
+        )
+        linha = cursor.fetchone()
+    return _linha_para_documento(linha) if linha else None
+
+
+def deletar(id_relatorio: str) -> bool:
+    try:
+        id_numerico = int(id_relatorio)
+    except ValueError:
+        return False
+
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute("DELETE FROM relatorios_historico WHERE id = :id", id=id_numerico)
+        return cursor.rowcount > 0
+
+
+def desfixar(id_relatorio: str) -> bool:
+    """Desfixa um relatório: ele volta a expirar, com um novo prazo de
+    TEMPO_EXPIRACAO a partir de agora."""
+    try:
+        id_numerico = int(id_relatorio)
+    except ValueError:
+        return False
+
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            "UPDATE relatorios_historico SET fixado = FALSE, expira_em = :expira_em WHERE id = :id",
+            id=id_numerico,
+            expira_em=datetime.now(UTC) + TEMPO_EXPIRACAO,
+        )
+        return cursor.rowcount > 0
+
+
+def fixar(id_relatorio: str) -> bool:
+    """Fixa um relatório: ele deixa de expirar (`expira_em` vira NULL)."""
+    try:
+        id_numerico = int(id_relatorio)
+    except ValueError:
+        return False
+
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            "UPDATE relatorios_historico SET fixado = TRUE, expira_em = NULL WHERE id = :id",
+            id=id_numerico,
+        )
+        return cursor.rowcount > 0
 
 
 def hash_sql(sql_validado: str) -> str:
@@ -100,92 +185,6 @@ def hash_sql(sql_validado: str) -> str:
     return hashlib.sha256(sql_normalizado.encode("utf-8")).hexdigest()
 
 
-def _carregar_json(valor):
-    return json.loads(valor) if isinstance(valor, str) else valor
-
-
-def _linha_para_documento(linha: tuple) -> dict:
-    id_, hash_sql_valor, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo = linha
-    return {
-        "_id": id_,
-        "hash_sql": hash_sql_valor,
-        "sql": sql,
-        "titulo": titulo,
-        "colunas": _carregar_json(colunas),
-        "linhas": _carregar_json(linhas),
-        "total_linhas": total_linhas,
-        "criado_em": criado_em,
-        "fixado": fixado,
-        "expira_em": expira_em,
-        "modulo": modulo,
-    }
-
-
-def buscar_por_sql(sql_validado: str) -> dict | None:
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            f"""
-            SELECT {_COLUNAS_COMPLETAS} FROM relatorios_historico
-            WHERE hash_sql = :hash_sql AND (fixado = TRUE OR expira_em > now())
-            """,
-            hash_sql=hash_sql(sql_validado),
-        )
-        linha = cursor.fetchone()
-    return _linha_para_documento(linha) if linha else None
-
-
-def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list], modulo: str) -> dict:
-    """Salva um relatório novo no histórico. Se outra chamada concorrente já
-    tiver salvo o mesmo SQL entre a busca e este insert, devolve o documento
-    já existente em vez de duplicar (a constraint única em hash_sql garante
-    isso). Por padrão, o relatório expira e é "esquecido" após
-    TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`). `modulo` é
-    quem gerou o relatório (ex: "financeiro") — usado por `listar` pra cada
-    papel só ver o histórico do(s) módulo(s) que tem acesso."""
-    agora = datetime.now(timezone.utc)
-    hash_valor = hash_sql(sql_validado)
-
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-
-        # Aproveita a escrita pra limpar fisicamente o que já expirou e não
-        # está fixado — não tem worker rodando em background pra isso aqui.
-        cursor.execute("DELETE FROM relatorios_historico WHERE fixado = FALSE AND expira_em <= now()")
-
-        cursor.execute(
-            f"""
-            INSERT INTO relatorios_historico
-                (hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo)
-            VALUES
-                (:hash_sql, :sql_texto, :titulo, :colunas::jsonb, :linhas::jsonb, :total_linhas, :criado_em, FALSE, :expira_em, :modulo)
-            ON CONFLICT (hash_sql) DO NOTHING
-            RETURNING {_COLUNAS_COMPLETAS}
-            """,
-            hash_sql=hash_valor,
-            sql_texto=sql_validado,
-            titulo=titulo,
-            colunas=json.dumps(colunas),
-            linhas=json.dumps(linhas),
-            total_linhas=len(linhas),
-            criado_em=agora,
-            expira_em=agora + TEMPO_EXPIRACAO,
-            modulo=modulo,
-        )
-        linha = cursor.fetchone()
-
-        if linha is None:
-            cursor.execute(
-                f"SELECT {_COLUNAS_COMPLETAS} FROM relatorios_historico WHERE hash_sql = :hash_sql",
-                hash_sql=hash_valor,
-            )
-            linha = cursor.fetchone()
-
-    return _linha_para_documento(linha)
-
-
 def listar(modulos_liberados: list[str]) -> list[dict]:
     """Lista os relatórios salvos, do mais recente para o mais antigo, sem os
     dados completos das linhas (usado pela tela de histórico), restritos aos
@@ -200,7 +199,7 @@ def listar(modulos_liberados: list[str]) -> list[dict]:
     marcadores = ", ".join(f":modulo_{indice}" for indice in range(len(modulos_liberados)))
     binds = {f"modulo_{indice}": modulo for indice, modulo in enumerate(modulos_liberados)}
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -237,7 +236,7 @@ def obter(id_relatorio: str) -> dict | None:
     except ValueError:
         return None
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
@@ -248,50 +247,51 @@ def obter(id_relatorio: str) -> dict | None:
     return _linha_para_documento(linha) if linha else None
 
 
-def deletar(id_relatorio: str) -> bool:
-    try:
-        id_numerico = int(id_relatorio)
-    except ValueError:
-        return False
+def salvar(sql_validado: str, titulo: str, colunas: list[str], linhas: list[list], modulo: str) -> dict:
+    """Salva um relatório novo no histórico. Se outra chamada concorrente já
+    tiver salvo o mesmo SQL entre a busca e este insert, devolve o documento
+    já existente em vez de duplicar (a constraint única em hash_sql garante
+    isso). Por padrão, o relatório expira e é "esquecido" após
+    TEMPO_EXPIRACAO — a menos que seja fixado (veja `fixar`). `modulo` é
+    quem gerou o relatório (ex: "financeiro") — usado por `listar` pra cada
+    papel só ver o histórico do(s) módulo(s) que tem acesso."""
+    agora = datetime.now(UTC)
+    hash_valor = hash_sql(sql_validado)
 
-    with get_connection() as connection:
+    with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute("DELETE FROM relatorios_historico WHERE id = :id", id=id_numerico)
-        return cursor.rowcount > 0
 
+        # Aproveita a escrita pra limpar fisicamente o que já expirou e não
+        # está fixado — não tem worker rodando em background pra isso aqui.
+        cursor.execute("DELETE FROM relatorios_historico WHERE fixado = FALSE AND expira_em <= now()")
 
-def fixar(id_relatorio: str) -> bool:
-    """Fixa um relatório: ele deixa de expirar (`expira_em` vira NULL)."""
-    try:
-        id_numerico = int(id_relatorio)
-    except ValueError:
-        return False
-
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
         cursor.execute(
-            "UPDATE relatorios_historico SET fixado = TRUE, expira_em = NULL WHERE id = :id",
-            id=id_numerico,
+            f"""
+            INSERT INTO relatorios_historico
+                (hash_sql, sql, titulo, colunas, linhas, total_linhas, criado_em, fixado, expira_em, modulo)
+            VALUES
+                (:hash_sql, :sql_texto, :titulo, :colunas::jsonb, :linhas::jsonb, :total_linhas, :criado_em, FALSE, :expira_em, :modulo)
+            ON CONFLICT (hash_sql) DO NOTHING
+            RETURNING {_COLUNAS_COMPLETAS}
+            """,
+            hash_sql=hash_valor,
+            sql_texto=sql_validado,
+            titulo=titulo,
+            colunas=json.dumps(colunas),
+            linhas=json.dumps(linhas),
+            total_linhas=len(linhas),
+            criado_em=agora,
+            expira_em=agora + TEMPO_EXPIRACAO,
+            modulo=modulo,
         )
-        return cursor.rowcount > 0
+        linha = cursor.fetchone()
 
+        if linha is None:
+            cursor.execute(
+                f"SELECT {_COLUNAS_COMPLETAS} FROM relatorios_historico WHERE hash_sql = :hash_sql",
+                hash_sql=hash_valor,
+            )
+            linha = cursor.fetchone()
 
-def desfixar(id_relatorio: str) -> bool:
-    """Desfixa um relatório: ele volta a expirar, com um novo prazo de
-    TEMPO_EXPIRACAO a partir de agora."""
-    try:
-        id_numerico = int(id_relatorio)
-    except ValueError:
-        return False
-
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            "UPDATE relatorios_historico SET fixado = FALSE, expira_em = :expira_em WHERE id = :id",
-            id=id_numerico,
-            expira_em=datetime.now(timezone.utc) + TEMPO_EXPIRACAO,
-        )
-        return cursor.rowcount > 0
+    return _linha_para_documento(linha)

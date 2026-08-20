@@ -21,7 +21,9 @@ def gerar_xlsx(cabecalho: Sequence[str], linhas: Sequence[Sequence], titulo: str
         planilha.append(list(linha))
 
     for coluna in planilha.columns:
-        maior_valor = max((len(str(celula.value)) for celula in coluna if celula.value is not None), default=0)
+        maior_valor = max(
+            (len(str(celula.value)) for celula in coluna if celula.value is not None), default=0
+        )
         planilha.column_dimensions[coluna[0].column_letter].width = min(maior_valor + 2, 50)
 
     buffer = io.BytesIO()

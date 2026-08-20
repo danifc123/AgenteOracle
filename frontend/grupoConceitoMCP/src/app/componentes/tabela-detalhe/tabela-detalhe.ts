@@ -20,7 +20,7 @@ const LIMITE_FILTROS_PARA_EXPANDIR = 7;
   selector: 'app-tabela-detalhe',
   imports: [SelectBusca, CampoFiltroDinamico, Botao, Dialog, NgTemplateOutlet],
   templateUrl: './tabela-detalhe.html',
-  styleUrl: './tabela-detalhe.scss'
+  styleUrl: './tabela-detalhe.scss',
 })
 export class TabelaDetalhe {
   views = input<ViewFinanceira[]>([]);
@@ -41,14 +41,14 @@ export class TabelaDetalhe {
   protected readonly expandido = signal(false);
 
   protected readonly totalColunas = computed(() =>
-    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0)
+    Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0),
   );
 
   /** Só oferece o botão de expandir com muitos filtros — mas se o painel já
    * estiver expandido e o usuário remover colunas até ficar abaixo do
    * limite, mantém o botão disponível pra ele conseguir voltar ao normal. */
   protected readonly podeExpandir = computed(
-    () => this.totalColunas() > LIMITE_FILTROS_PARA_EXPANDIR || this.expandido()
+    () => this.totalColunas() > LIMITE_FILTROS_PARA_EXPANDIR || this.expandido(),
   );
 
   constructor() {
@@ -72,40 +72,19 @@ export class TabelaDetalhe {
           return {
             chave: `${nomeView}.${nomeColuna}`,
             rotulo: coluna?.descricao ?? nomeColuna,
-            tipo: coluna?.tipo ?? 'texto'
+            tipo: coluna?.tipo ?? 'texto',
           };
         });
 
         return {
           view: view ?? { nome: nomeView, descricao: nomeView, colunas: [], relacionamentos: [] },
-          campos
+          campos,
         };
       });
   });
 
-  protected valorFiltro(chave: string): string {
-    return this.valoresFiltros()[chave] ?? '';
-  }
-
-  protected opcoesDaColuna(chave: string): OpcaoSelectBusca[] {
-    return this.opcoesColunas()[chave] ?? [];
-  }
-
-  protected valoresSelecionados(chave: string): string[] {
-    const valor = this.valorFiltro(chave);
-    return valor ? valor.split(',') : [];
-  }
-
-  protected definirValoresFiltro(chave: string, valores: string[]): void {
-    this.definirValorFiltro.emit({ chave, valor: valores.join(',') });
-  }
-
   protected abrirExpandido(): void {
     this.expandido.set(true);
-  }
-
-  protected fecharExpandido(): void {
-    this.expandido.set(false);
   }
 
   protected confirmar(): void {
@@ -113,8 +92,29 @@ export class TabelaDetalhe {
     this.confirmarFiltro.emit();
   }
 
+  protected definirValoresFiltro(chave: string, valores: string[]): void {
+    this.definirValorFiltro.emit({ chave, valor: valores.join(',') });
+  }
+
+  protected fecharExpandido(): void {
+    this.expandido.set(false);
+  }
+
+  protected opcoesDaColuna(chave: string): OpcaoSelectBusca[] {
+    return this.opcoesColunas()[chave] ?? [];
+  }
+
   protected salvar(): void {
     this.fecharExpandido();
     this.salvarLayout.emit();
+  }
+
+  protected valorFiltro(chave: string): string {
+    return this.valoresFiltros()[chave] ?? '';
+  }
+
+  protected valoresSelecionados(chave: string): string[] {
+    const valor = this.valorFiltro(chave);
+    return valor ? valor.split(',') : [];
   }
 }

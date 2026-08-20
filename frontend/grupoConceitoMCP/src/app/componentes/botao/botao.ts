@@ -1,4 +1,4 @@
- import { Component, input, output } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 
 export type BotaoVariant = 'primaria' | 'acao' | 'perigo' | 'icone' | 'contorno' | 'enviar';
 
@@ -6,7 +6,7 @@ export type BotaoVariant = 'primaria' | 'acao' | 'perigo' | 'icone' | 'contorno'
   selector: 'app-botao',
   imports: [],
   templateUrl: './botao.html',
-  styleUrl: './botao.scss'
+  styleUrl: './botao.scss',
 })
 export class Botao {
   variant = input<BotaoVariant>('primaria');

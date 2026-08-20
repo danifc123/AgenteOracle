@@ -5,7 +5,11 @@ import { MCP_API_BASE_URL } from '../../../app-config';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { Auditoria } from '../../../servicos/auditoria';
-import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../../servicos/ordenacao-tabela';
+import {
+  compararValores,
+  DirecaoOrdenacao,
+  proximaDirecao,
+} from '../../../servicos/ordenacao-tabela';
 import { Sessao } from '../../../servicos/sessao';
 
 export interface AchadoHistorico {
@@ -24,7 +28,7 @@ export interface AchadoHistorico {
   selector: 'app-auditoria-historico',
   imports: [DatePipe, IconeOrdenacao, ModuloHeader],
   templateUrl: './auditoria-historico.html',
-  styleUrl: './auditoria-historico.scss'
+  styleUrl: './auditoria-historico.scss',
 })
 export class AuditoriaHistorico {
   private readonly http = inject(HttpClient);
@@ -61,9 +65,11 @@ export class AuditoriaHistorico {
         this.carregando.set(false);
       },
       error: () => {
-        this.erro.set('Não foi possível carregar a lista de auditoria. Verifique se o servidor está em execução.');
+        this.erro.set(
+          'Não foi possível carregar a lista de auditoria. Verifique se o servidor está em execução.',
+        );
         this.carregando.set(false);
-      }
+      },
     });
   }
 
@@ -83,19 +89,21 @@ export class AuditoriaHistorico {
         view: achado.view,
         campo: achado.campo,
         valor: achado.valor,
-        ativo: novoAtivo
+        ativo: novoAtivo,
       })
       .subscribe({
         next: () => {
           this.achados.update((atual) =>
-            atual.map((item) => (this.chaveAchado(item) === chave ? { ...item, ativo: novoAtivo } : item))
+            atual.map((item) =>
+              this.chaveAchado(item) === chave ? { ...item, ativo: novoAtivo } : item,
+            ),
           );
           this.alterandoAtivo.set(null);
         },
         error: () => {
           this.erro.set('Não foi possível alterar o status do achado.');
           this.alterandoAtivo.set(null);
-        }
+        },
       });
   }
 
@@ -115,7 +123,9 @@ export class AuditoriaHistorico {
     }
 
     const sinal = direcao === 'asc' ? 1 : -1;
-    return [...lista].sort((a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal);
+    return [...lista].sort(
+      (a, b) => compararValores(this.valorColuna(a, coluna), this.valorColuna(b, coluna)) * sinal,
+    );
   });
 
   private valorColuna(achado: AchadoHistorico, coluna: string): unknown {
@@ -137,6 +147,10 @@ export class AuditoriaHistorico {
     }
   }
 
+  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
+    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
+  }
+
   protected ordenarPor(coluna: string): void {
     if (this.colunaOrdenada() === coluna) {
       this.direcaoOrdenacao.set(proximaDirecao(this.direcaoOrdenacao()));
@@ -144,9 +158,5 @@ export class AuditoriaHistorico {
       this.colunaOrdenada.set(coluna);
       this.direcaoOrdenacao.set('asc');
     }
-  }
-
-  protected direcaoDaColuna(coluna: string): DirecaoOrdenacao {
-    return this.colunaOrdenada() === coluna ? this.direcaoOrdenacao() : null;
   }
 }

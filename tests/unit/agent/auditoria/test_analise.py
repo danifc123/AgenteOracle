@@ -29,7 +29,13 @@ def _achados_json(*achados: dict) -> str:
 
 class TestAchadoValido:
     def test_dict_com_todos_os_campos_e_valido(self):
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "estado", "valor": "XX", "descricao": "..."}
+        achado = {
+            "modulo": "financeiro",
+            "view": "vw_clientes",
+            "campo": "estado",
+            "valor": "XX",
+            "descricao": "...",
+        }
         assert mod._achado_valido(achado) is True
 
     def test_campo_faltando_e_invalido(self):
@@ -37,7 +43,13 @@ class TestAchadoValido:
         assert mod._achado_valido(achado) is False
 
     def test_campo_vazio_e_invalido(self):
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "estado", "valor": "", "descricao": "..."}
+        achado = {
+            "modulo": "financeiro",
+            "view": "vw_clientes",
+            "campo": "estado",
+            "valor": "",
+            "descricao": "...",
+        }
         assert mod._achado_valido(achado) is False
 
     def test_nao_dict_e_invalido(self):
@@ -86,17 +98,23 @@ class TestFiltrarValoresConhecidos:
         ]
 
     def test_perfil_que_fica_sem_nenhum_valor_e_descartado_inteiro(self):
-        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),))
+        perfil = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),)
+        )
         conhecidos = {("financeiro", "vw_clientes", "filial", "1908745")}
         assert mod.filtrar_valores_conhecidos([perfil], conhecidos) == []
 
     def test_tupla_de_outro_modulo_view_ou_campo_nao_remove_por_engano(self):
-        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),))
+        perfil = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),)
+        )
         conhecidos = {("financeiro", "vw_fornecedores", "filial", "1908745")}
         assert mod.filtrar_valores_conhecidos([perfil], conhecidos) == [perfil]
 
     def test_sem_conhecidos_devolve_os_perfis_intactos(self):
-        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),))
+        perfil = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),)
+        )
         assert mod.filtrar_valores_conhecidos([perfil], set()) == [perfil]
 
 
@@ -159,3 +177,32 @@ class TestAnalisarPerfis:
         cliente = _OllamaClientFake(conteudo=json.dumps({}))
         resultado = await mod.analisar_perfis(cliente, "modelo-teste", [self._PERFIL])
         assert resultado == []
+
+    async def test_json_valido_mas_nao_objeto_devolve_lista_vazia(self):
+        cliente = _OllamaClientFake(conteudo=json.dumps(None))
+        resultado = await mod.analisar_perfis(cliente, "modelo-teste", [self._PERFIL])
+        assert resultado == []
+
+    async def test_perfis_com_mesma_chave_unem_valores_em_vez_de_sobrescrever(self):
+        # Dois perfis pra (financeiro, vw_clientes, filial) — hoje não
+        # acontece na prática (só o provider do Financeiro existe), mas é
+        # a infraestrutura compartilhada que outros providers vão usar.
+        perfil_a = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("AAAA", 5), ("0101", 40))
+        )
+        perfil_b = PerfilCampo(
+            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0102", 30), ("0101", 40))
+        )
+        conteudo = _achados_json(
+            {
+                "modulo": "financeiro",
+                "view": "vw_clientes",
+                "campo": "filial",
+                "valor": "AAAA",
+                "descricao": "Analise a filial AAAA, ela parece estar fora do padrão.",
+            }
+        )
+        cliente = _OllamaClientFake(conteudo=conteudo)
+        resultado = await mod.analisar_perfis(cliente, "modelo-teste", [perfil_a, perfil_b])
+        assert len(resultado) == 1
+        assert resultado[0].valor == "AAAA"

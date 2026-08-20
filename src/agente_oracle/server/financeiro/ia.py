@@ -13,8 +13,9 @@ from agente_oracle.agent.financeiro.financeiro import responder
 from agente_oracle.agent.financeiro.prompt import SYSTEM_PROMPT
 from agente_oracle.agent.financeiro.schema import PREFIXO_TOOL
 from agente_oracle.config import settings
+from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.connectivity import check_oracle_connection
 from agente_oracle.tools.financeiro.consulta_livre import (
     ConsultaFinanceiraInvalida,
@@ -45,16 +46,10 @@ def registrar(mcp) -> None:
     mcp.tool(name=f"{PREFIXO_TOOL}executar_consulta_financeira")(executar_consulta_financeira)
 
     @mcp.custom_route("/api/financeiro/relatorio/exportar", methods=["POST", "OPTIONS"])
-    async def exportar_relatorio_route(request: Request) -> Response:
+    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def exportar_relatorio_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pelo frontend para baixar em Excel um relatório
         gerado pelo Agente Oracle no chat (roda de novo a mesma consulta validada)."""
-        if request.method == "OPTIONS":
-            return resposta_preflight()
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         corpo = await request.json()
         sql = str(corpo.get("sql", "")).strip()
         titulo = str(corpo.get("titulo", "")).strip()
@@ -75,15 +70,9 @@ def registrar(mcp) -> None:
         )
 
     @mcp.custom_route("/api/financeiro/chat", methods=["POST", "OPTIONS"])
-    async def chat_route(request: Request) -> JSONResponse:
+    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_financeiro)
+    async def chat_route(request: Request, usuario: dict) -> JSONResponse:
         """Endpoint HTTP usado pelo frontend para conversar com o Agente Oracle."""
-        if request.method == "OPTIONS":
-            return resposta_preflight()
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         corpo = await request.json()
         mensagem_usuario = str(corpo.get("mensagem", "")).strip()
         historico = corpo.get("historico", [])
@@ -99,8 +88,15 @@ def registrar(mcp) -> None:
 
         ollama_client = AsyncClient(host=settings.ollama_host)
 
-        async with streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (read_stream, write_stream, _):
-            async with ClientSession(read_stream, write_stream) as session:
+        try:
+            async with (
+                streamablehttp_client(mcp_url(settings.mcp_host, settings.mcp_port)) as (
+                    read_stream,
+                    write_stream,
+                    _,
+                ),
+                ClientSession(read_stream, write_stream) as session,
+            ):
                 await session.initialize()
                 messages, eventos = await responder(
                     ollama_client,
@@ -110,6 +106,17 @@ def registrar(mcp) -> None:
                     f"{PREFIXO_TOOL}testar_conexao_oracle",
                     messages,
                 )
+        except ConnectionError:
+            # Ollama fora do ar/inacessível — diferente de `analisar_perfis`
+            # (Auditoria), aqui não tem como degradar silenciosamente pra uma
+            # resposta vazia: o chat inteiro depende da IA responder algo.
+            # Devolve 503 em vez de deixar a ConnectionError subir crua (vira
+            # 500 sem corpo tratado).
+            return JSONResponse(
+                {"erro": "Assistente de IA indisponível no momento. Tente novamente em instantes."},
+                status_code=503,
+                headers=CORS_HEADERS,
+            )
 
         return JSONResponse(
             {"resposta": messages[-1].get("content", ""), "consultas": eventos},

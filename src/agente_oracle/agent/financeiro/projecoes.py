@@ -1,26 +1,8 @@
 """Lógica pura das telas de Previsão (Vendas e Fluxo de Caixa) do Financeiro:
-regressão linear simples pra projetar vendas futuras e a chamada de IA que
-narra os números já calculados. Sem I/O de banco — as queries que alimentam
-essas funções ficam em `server/financeiro/previsao.py`."""
-
-import json
-
-from ollama import AsyncClient
-
-# Mesma constante de `financeiro.py` — evita reservar mais RAM do que essa
-# análise curta precisa.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
-
-# Mesmo estilo de `_RESPOSTA_TEXTO_SCHEMA` em `financeiro.py`: um schema
-# mínimo, só com o campo de texto, pra IA nunca vazar JSON aninhado, tabela
-# ou qualquer outro formato solto.
-_SCHEMA_ANALISE = {
-    "type": "object",
-    "properties": {"analise": {"type": "string"}},
-    "required": ["analise"],
-}
-
-_ANALISE_INDISPONIVEL = "Análise indisponível no momento."
+regressão linear simples pra projetar vendas futuras. Sem I/O de banco — as
+queries que alimentam essas funções ficam em `server/financeiro/previsao.py`.
+100% cálculo estatístico, sem IA — decisão deliberada pra número de previsão
+nunca depender de o Ollama estar no ar (ver `server/financeiro/previsao.py`)."""
 
 
 def projetar_tendencia_linear(serie: list[float], meses_futuros: int) -> list[float]:
@@ -56,31 +38,3 @@ def proximos_meses(mes_referencia: str, quantidade: int) -> list[str]:
             ano += 1
         rotulos.append(f"{ano:04d}-{mes:02d}")
     return rotulos
-
-
-async def gerar_analise(ollama_client: AsyncClient, modelo: str, contexto: str) -> str:
-    """Pede à IA uma análise textual curta em cima de números já calculados
-    pelo Python (a IA nunca calcula a projeção nem inventa valor, só narra o
-    que já veio pronto em `contexto`) — nunca deixa a tela quebrar: qualquer
-    falha do Ollama ou resposta vazia cai numa frase neutra."""
-    try:
-        resposta = await ollama_client.chat(
-            model=modelo,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Você é um analista financeiro. Escreva uma análise curta (2-3 frases), em "
-                        "português, só com base nos números fornecidos — nunca invente ou arredonde "
-                        "valores diferentes dos que aparecem no contexto."
-                    ),
-                },
-                {"role": "user", "content": contexto},
-            ],
-            format=_SCHEMA_ANALISE,
-            options=_OPCOES_OLLAMA,
-        )
-        analise = json.loads(resposta.message.content or "{}").get("analise")
-        return analise or _ANALISE_INDISPONIVEL
-    except Exception:
-        return _ANALISE_INDISPONIVEL

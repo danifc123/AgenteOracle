@@ -13,7 +13,7 @@ import { Auditoria } from '../../servicos/auditoria';
   selector: 'app-notificacao-auditoria',
   imports: [],
   templateUrl: './notificacao-auditoria.html',
-  styleUrl: './notificacao-auditoria.scss'
+  styleUrl: './notificacao-auditoria.scss',
 })
 export class NotificacaoAuditoria {
   protected readonly auditoria = inject(Auditoria);

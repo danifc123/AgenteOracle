@@ -1,9 +1,17 @@
 <app-modulo-header breadcrumb="Chat" titulo="Assistente IA do Estoque" />
 
 <section class="chat-pendente">
-  <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
-    <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
-  </svg>
-  <h3>Chat do Estoque ainda não disponível</h3>
-  <p>Assim que o módulo de Estoque tiver uma consulta própria, o assistente aparecerá aqui.</p>
+  <app-estado-vazio titulo="Chat do Estoque ainda não disponível">
+    <svg
+      viewBox="0 0 24 24"
+      width="40"
+      height="40"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+    >
+      <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <p>Assim que o módulo de Estoque tiver uma consulta própria, o assistente aparecerá aqui.</p>
+  </app-estado-vazio>
 </section>

@@ -1,0 +1,61 @@
+<app-modulo-header
+  breadcrumb="Financeiro / Simulação de Cenários"
+  titulo="Simulação de Cenários Monte Carlo"
+  descricao="Reamostra a variação histórica real do caixa líquido (recebido menos pago) para gerar milhares de cenários possíveis para os próximos meses — sem inteligência artificial, só estatística sobre dado real."
+/>
+
+<div class="filtros-topo">
+  <app-select-busca
+    class="select-filial"
+    rotulo="Filial(is) *"
+    placeholder="Filial(is)..."
+    [multiplo]="true"
+    [opcoes]="filiais()"
+    [(valores)]="filiaisSelecionadas"
+  />
+
+  <app-botao
+    variant="primaria"
+    [disabled]="!filiaisSelecionadas().length"
+    [loading]="simulando()"
+    loadingText="Simulando..."
+    (clicked)="simular()"
+  >
+    Simular cenários
+  </app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro">{{ erro() }}</p>
+}
+
+@if (!jaSimulou() && !erro()) {
+  <app-estado-vazio titulo="Selecione a(s) filial(is)">
+    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M3 17 9 11l4 4 8-8" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M15 7h6v6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+    <p>Escolha uma ou mais filiais e simule os cenários de caixa líquido com base no histórico real.</p>
+  </app-estado-vazio>
+} @else if (jaSimulou()) {
+  <div class="linha-kpis">
+    <app-cartao-kpi
+      rotulo="Probabilidade de caixa negativo"
+      [valor]="probabilidadeCaixaNegativoPercentual()"
+      tipo="percentual"
+      [destacarNegativo]="false"
+    />
+    <app-cartao-kpi rotulo="Pessimista (P10, último mês)" [valor]="ultimaBanda()?.p10 ?? 0" />
+    <app-cartao-kpi rotulo="Mediana (último mês)" [valor]="ultimaBanda()?.mediana ?? 0" />
+    <app-cartao-kpi rotulo="Otimista (P90, último mês)" [valor]="ultimaBanda()?.p90 ?? 0" />
+  </div>
+
+  <section class="cartao-secao">
+    <h2>Cenários projetados</h2>
+    <app-grafico-serie tipo="linha" [series]="seriesSimulacao()" />
+    <p class="nota-simulacao">
+      Cada mês projetado mostra a faixa entre o cenário pessimista (P10) e o otimista (P90) das
+      simulações — a mediana é o cenário mais provável, não uma média simples.
+    </p>
+  </section>
+}

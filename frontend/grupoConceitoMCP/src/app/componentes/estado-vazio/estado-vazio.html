@@ -1,0 +1,5 @@
+<div class="estado-vazio" [class.estado-vazio--simples]="variante() === 'simples'">
+  <ng-content select="svg" />
+  <h3>{{ titulo() }}</h3>
+  <ng-content />
+</div>

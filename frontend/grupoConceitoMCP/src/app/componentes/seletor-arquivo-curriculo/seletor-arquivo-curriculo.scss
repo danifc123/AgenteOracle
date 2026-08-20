@@ -1,0 +1,130 @@
+:host {
+  display: block;
+}
+
+.seletor-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.seletor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 160px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-primary-light);
+  }
+
+  &--arrastando {
+    border-style: solid;
+    border-color: var(--color-primary);
+    background: #d9f2d9;
+  }
+}
+
+.icone {
+  opacity: 0.75;
+}
+
+.titulo-seletor {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.instrucao {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.erro-seletor {
+  margin: 0;
+  font-size: 12px;
+  color: #9a2f2f;
+  text-align: center;
+}
+
+.lista-arquivos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item-arquivo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.icone-arquivo {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  opacity: 0.8;
+}
+
+.info-arquivo {
+  flex: 1;
+  min-width: 0;
+}
+
+.nome-arquivo {
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tamanho-arquivo {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.remover {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: rgba(154, 47, 47, 0.14);
+    color: #9a2f2f;
+  }
+}

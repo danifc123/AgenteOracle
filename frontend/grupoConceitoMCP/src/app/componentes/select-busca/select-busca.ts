@@ -1,4 +1,14 @@
-import { Component, ElementRef, HostListener, ViewChild, computed, inject, input, model, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  ViewChild,
+  computed,
+  inject,
+  input,
+  model,
+  signal,
+} from '@angular/core';
 
 export interface OpcaoSelectBusca {
   valor: string;
@@ -15,7 +25,7 @@ interface PosicaoPainel {
   selector: 'app-select-busca',
   imports: [],
   templateUrl: './select-busca.html',
-  styleUrl: './select-busca.scss'
+  styleUrl: './select-busca.scss',
 })
 export class SelectBusca {
   private readonly elementRef = inject(ElementRef);
@@ -49,6 +59,15 @@ export class SelectBusca {
     return opcoes.filter((opcao) => opcao.rotulo.toLowerCase().includes(termo));
   });
 
+  /** Só faz sentido em modo múltiplo — compara contra `opcoesFiltradas()`
+   * (não `opcoes()` inteiro), então "marcar/desmarcar todos" age sobre o
+   * que está visível na busca atual, mesmo padrão de outras listas com
+   * filtro + seleção em massa. */
+  protected readonly todosSelecionados = computed(() => {
+    const filtradas = this.opcoesFiltradas();
+    return filtradas.length > 0 && filtradas.every((opcao) => this.valores().includes(opcao.valor));
+  });
+
   protected readonly temSelecao = computed(() => {
     return this.multiplo() ? this.valores().length > 0 : !!this.valor();
   });
@@ -62,7 +81,9 @@ export class SelectBusca {
       }
 
       if (selecionadas.length === 1) {
-        return this.opcoes().find((item) => item.valor === selecionadas[0])?.rotulo ?? selecionadas[0];
+        return (
+          this.opcoes().find((item) => item.valor === selecionadas[0])?.rotulo ?? selecionadas[0]
+        );
       }
 
       return `${selecionadas.length} selecionadas`;
@@ -72,20 +93,32 @@ export class SelectBusca {
     return opcao?.rotulo ?? '';
   });
 
-  toggle(): void {
-    if (this.aberto()) {
-      this.aberto.set(false);
-      return;
-    }
-
-    this.termo.set('');
-    this.posicionarPainel();
-    this.aberto.set(true);
-    requestAnimationFrame(() => this.ajustarDirecao());
-  }
-
   protected estaSelecionada(opcao: OpcaoSelectBusca): boolean {
     return this.multiplo() ? this.valores().includes(opcao.valor) : opcao.valor === this.valor();
+  }
+
+  /** Marca/desmarca de uma vez todas as opções que estão visíveis na busca
+   * atual (`opcoesFiltradas()`) — opção escondida pelo filtro no momento
+   * não é mexida, só as que aparecem na lista agora. */
+  alternarTodos(): void {
+    const filtradas = this.opcoesFiltradas().map((opcao) => opcao.valor);
+    if (this.todosSelecionados()) {
+      this.valores.update((atual) => atual.filter((valor) => !filtradas.includes(valor)));
+    } else {
+      this.valores.update((atual) => [...new Set([...atual, ...filtradas])]);
+    }
+  }
+
+  limpar(evento: Event): void {
+    evento.stopPropagation();
+
+    if (this.multiplo()) {
+      this.valores.set([]);
+    } else {
+      this.valor.set(null);
+    }
+
+    this.aberto.set(false);
   }
 
   selecionar(opcao: OpcaoSelectBusca): void {
@@ -102,16 +135,16 @@ export class SelectBusca {
     this.aberto.set(false);
   }
 
-  limpar(evento: Event): void {
-    evento.stopPropagation();
-
-    if (this.multiplo()) {
-      this.valores.set([]);
-    } else {
-      this.valor.set(null);
+  toggle(): void {
+    if (this.aberto()) {
+      this.aberto.set(false);
+      return;
     }
 
-    this.aberto.set(false);
+    this.termo.set('');
+    this.posicionarPainel();
+    this.aberto.set(true);
+    requestAnimationFrame(() => this.ajustarDirecao());
   }
 
   @HostListener('document:click', ['$event'])
@@ -127,15 +160,6 @@ export class SelectBusca {
     if (this.aberto()) {
       this.aberto.set(false);
     }
-  }
-
-  private posicionarPainel(): void {
-    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
-    this.posicao.set({
-      top: retangulo.bottom + 4,
-      left: retangulo.left,
-      largura: retangulo.width
-    });
   }
 
   /** Depois que o painel é renderizado (e sua altura real é conhecida), inverte
@@ -155,8 +179,17 @@ export class SelectBusca {
       this.posicao.set({
         top: Math.max(4, retangulo.top - alturaPainel - 4),
         left: retangulo.left,
-        largura: retangulo.width
+        largura: retangulo.width,
       });
     }
+  }
+
+  private posicionarPainel(): void {
+    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
+    this.posicao.set({
+      top: retangulo.bottom + 4,
+      left: retangulo.left,
+      largura: retangulo.width,
+    });
   }
 }

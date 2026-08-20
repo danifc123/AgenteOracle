@@ -1,0 +1,124 @@
+.filtros-topo {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.select-filial {
+  flex: 1;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+.erro {
+  margin: -12px 0 16px;
+  color: #9a2f2f;
+  font-size: 14px;
+}
+
+.cartao-secao {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.cabecalho-secao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.busca-sugestoes {
+  width: 280px;
+  max-width: 100%;
+}
+
+.lista-sugestoes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cartao-sugestao {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary-light);
+  border-radius: var(--radius-sm);
+}
+
+.cartao-sugestao-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge-confianca {
+  display: inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-confianca--alta {
+  background: rgba(47, 158, 88, 0.15);
+  color: #2f9e58;
+}
+
+.badge-confianca--media {
+  background: rgba(232, 135, 30, 0.15);
+  color: #e8871e;
+}
+
+.valor-sugestao {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.historico-sugestao {
+  margin: 0;
+  font-size: 13px;
+  font-family: monospace;
+  color: var(--color-text-muted);
+}
+
+.conta-sugestao {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
+.rodape-sugestao {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 720px) {
+  .filtros-topo {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .select-filial {
+    max-width: none;
+  }
+}

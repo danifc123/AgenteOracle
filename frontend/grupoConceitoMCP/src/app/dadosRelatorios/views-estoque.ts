@@ -15,22 +15,26 @@ export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
       { nome: 'produto_codigo', descricao: 'código do produto movimentado', tipo: 'texto' },
       { nome: 'quantidade', descricao: 'quantidade movimentada', tipo: 'numero' },
       { nome: 'documento', descricao: 'número do documento (NF/requisição)', tipo: 'texto' },
-      { nome: 'fornecedor_codigo', descricao: 'código do fornecedor de origem (só em entradas)', tipo: 'texto' }
+      {
+        nome: 'fornecedor_codigo',
+        descricao: 'código do fornecedor de origem (só em entradas)',
+        tipo: 'texto',
+      },
     ],
     relacionamentos: [
       {
         viewDestino: 'vw_produtos',
         colunasLocais: ['produto_codigo'],
         colunasDestino: ['codigo'],
-        descricao: 'Descrição e níveis de estoque do produto movimentado.'
+        descricao: 'Descrição e níveis de estoque do produto movimentado.',
       },
       {
         viewDestino: 'vw_fornecedores',
         colunasLocais: ['fornecedor_codigo'],
         colunasDestino: ['codigo'],
-        descricao: 'Fornecedor de origem, quando a movimentação é uma entrada.'
-      }
-    ]
+        descricao: 'Fornecedor de origem, quando a movimentação é uma entrada.',
+      },
+    ],
   },
   {
     nome: 'vw_produtos',
@@ -39,9 +43,9 @@ export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
       { nome: 'codigo', descricao: 'código do produto', tipo: 'texto' },
       { nome: 'descricao', descricao: 'descrição do produto', tipo: 'texto' },
       { nome: 'estoque_atual', descricao: 'quantidade em estoque atualmente', tipo: 'numero' },
-      { nome: 'estoque_minimo', descricao: 'quantidade mínima recomendada', tipo: 'numero' }
+      { nome: 'estoque_minimo', descricao: 'quantidade mínima recomendada', tipo: 'numero' },
     ],
-    relacionamentos: []
+    relacionamentos: [],
   },
   {
     nome: 'vw_fornecedores',
@@ -49,8 +53,8 @@ export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
     colunas: [
       { nome: 'codigo', descricao: 'código do fornecedor', tipo: 'texto' },
       { nome: 'nome', descricao: 'razão social', tipo: 'texto' },
-      { nome: 'estado', descricao: 'sigla do estado (UF)', tipo: 'texto' }
+      { nome: 'estado', descricao: 'sigla do estado (UF)', tipo: 'texto' },
     ],
-    relacionamentos: []
-  }
+    relacionamentos: [],
+  },
 ];

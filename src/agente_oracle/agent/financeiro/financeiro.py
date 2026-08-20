@@ -10,16 +10,7 @@ from typing import Any
 from mcp import ClientSession
 from ollama import AsyncClient
 
-from agente_oracle.agent.core import conteudo_do_resultado
-
-# O Ollama reserva RAM proporcional ao tamanho de contexto configurado, e o
-# padrão dele (65536 tokens) é muito maior do que qualquer conversa aqui
-# precisa — nosso system prompt + histórico + resultado de consulta cabem
-# folgados bem abaixo disso. Numa máquina com pouca RAM livre, esse exagero
-# pode fazer o Ollama estourar memória e reiniciar sozinho no meio de uma
-# resposta. 16384 dá espaço de sobra (inclusive pra um relatório grande, até
-# o limite de 200 linhas) consumindo uma fração da memória.
-_OPCOES_OLLAMA = {"num_ctx": 16384}
+from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, conteudo_do_resultado, resposta_json_como_dict
 
 # Formato forçado da decisão do modelo (ver `responder`). Em vez do mecanismo
 # de tool-calling em texto livre do Ollama — onde o modelo podia "esquecer"
@@ -73,87 +64,6 @@ _RESPOSTA_CONSULTA_FALHOU = (
 )
 
 
-def _linhas_retornadas(conteudo: str) -> int | None:
-    """Extrai quantas linhas de dado vieram no resultado da ferramenta, quando
-    o formato permite (hoje só `executar_consulta_financeira` devolve uma
-    chave "dados" com a lista de linhas) — usado pelo front pra não oferecer
-    o download de um relatório vazio. Devolve None quando não dá pra saber."""
-    try:
-        corpo = json.loads(conteudo)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if isinstance(corpo, dict) and isinstance(corpo.get("dados"), list):
-        return len(corpo["dados"])
-    return None
-
-
-def _normalizar_valor_monetario(bruto: str) -> float | None:
-    """Interpreta um número monetário em texto livre aceitando tanto o formato
-    brasileiro (1.234,56) quanto o americano (1,234.56), que o modelo às vezes
-    mistura — o separador decimal é sempre o que aparece por último na string."""
-    ultimo_ponto = bruto.rfind(".")
-    ultima_virgula = bruto.rfind(",")
-    limpo = bruto.replace(".", "").replace(",", ".") if ultima_virgula > ultimo_ponto else bruto.replace(",", "")
-    try:
-        return round(float(limpo), 2)
-    except ValueError:
-        return None
-
-
-def _valores_monetarios_no_texto(texto: str) -> set[float]:
-    valores = set()
-    for bruto in _VALOR_MONETARIO_REGEX.findall(texto):
-        valor = _normalizar_valor_monetario(bruto)
-        if valor is not None:
-            valores.add(valor)
-    return valores
-
-
-def _valores_numericos_do_resultado(conteudo: str) -> set[float]:
-    """Extrai todo valor numérico que veio de fato de um resultado de
-    `executar_consulta_financeira` — cada valor de cada linha, mais a soma de
-    cada coluna numérica (pra cobrir respostas do tipo "o total foi X") — pra
-    servir de base de comparação contra o que o modelo cita na resposta final."""
-    try:
-        corpo = json.loads(conteudo)
-    except (json.JSONDecodeError, TypeError):
-        return set()
-    dados = corpo.get("dados") if isinstance(corpo, dict) else None
-    if not isinstance(dados, list):
-        return set()
-
-    valores: set[float] = set()
-    somas_por_coluna: dict[str, float] = {}
-    for linha in dados:
-        if not isinstance(linha, dict):
-            continue
-        for coluna, valor in linha.items():
-            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
-                continue
-            valor_float = round(float(valor), 2)
-            valores.add(valor_float)
-            somas_por_coluna[coluna] = somas_por_coluna.get(coluna, 0.0) + valor_float
-
-    valores.update(round(soma, 2) for soma in somas_por_coluna.values())
-    return valores
-
-
-def _resposta_segura_generica(eventos: list[dict[str, Any]]) -> str:
-    """Resposta neutra e curta usada quando a resposta do modelo pra uma
-    pergunta direta cita um valor em R$ que não bate com o dado real — mais
-    seguro devolver um texto simples do que arriscar mostrar algo errado num
-    contexto financeiro. A consulta usada já fica visível em "Ver consulta
-    usada" e o resultado no Excel, então não precisa repetir nada disso aqui."""
-    ultimo = next(
-        (evento for evento in reversed(eventos) if "titulo" in evento["argumentos"]),
-        None,
-    )
-    if ultimo:
-        titulo = ultimo["argumentos"]["titulo"]
-        return f'Relatório "{titulo}" pronto — baixe em Excel abaixo.'
-    return "Consulta executada com sucesso — confira os dados retornados no relatório gerado."
-
-
 async def responder(
     ollama_client: AsyncClient,
     modelo: str,
@@ -177,13 +87,9 @@ async def responder(
     eventos: list[dict[str, Any]] = []
 
     resposta = await ollama_client.chat(
-        model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=_OPCOES_OLLAMA
+        model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=OPCOES_OLLAMA_PADRAO
     )
-    try:
-        decisao = json.loads(resposta.message.content or "{}")
-    except json.JSONDecodeError:
-        decisao = {}
-
+    decisao = resposta_json_como_dict(resposta.message.content)
     acao = decisao.get("acao")
 
     if acao == "testar_conexao":
@@ -235,12 +141,9 @@ async def responder(
                 }
             )
             resposta_correcao = await ollama_client.chat(
-                model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=_OPCOES_OLLAMA
+                model=modelo, messages=messages, format=_DECISAO_SCHEMA, options=OPCOES_OLLAMA_PADRAO
             )
-            try:
-                nova_decisao = json.loads(resposta_correcao.message.content or "{}")
-            except json.JSONDecodeError:
-                nova_decisao = {}
+            nova_decisao = resposta_json_como_dict(resposta_correcao.message.content)
 
             if nova_decisao.get("acao") != "consultar_dados" or not nova_decisao.get("sql"):
                 # O modelo desistiu (não pediu pra tentar de novo) em vez de
@@ -268,7 +171,9 @@ async def responder(
         )
 
         if not linhas:
-            messages.append({"role": "assistant", "content": "Não encontrei nenhum registro com esses critérios."})
+            messages.append(
+                {"role": "assistant", "content": "Não encontrei nenhum registro com esses critérios."}
+            )
             return messages, eventos
 
         # Só trata como "pergunta direta" (uma frase respondendo) quando o
@@ -296,12 +201,9 @@ async def responder(
                 }
             )
             resposta2 = await ollama_client.chat(
-                model=modelo, messages=messages, format=_RESPOSTA_TEXTO_SCHEMA, options=_OPCOES_OLLAMA
+                model=modelo, messages=messages, format=_RESPOSTA_TEXTO_SCHEMA, options=OPCOES_OLLAMA_PADRAO
             )
-            try:
-                texto_final = json.loads(resposta2.message.content or "{}").get("resposta")
-            except json.JSONDecodeError:
-                texto_final = None
+            texto_final = resposta_json_como_dict(resposta2.message.content).get("resposta")
 
             valores_fundamentados = _valores_numericos_do_resultado(conteudo)
             if not texto_final or (_valores_monetarios_no_texto(texto_final) - valores_fundamentados):
@@ -322,3 +224,96 @@ async def responder(
     texto = decisao.get("resposta_direta") or "Não entendi seu pedido, pode reformular?"
     messages.append({"role": "assistant", "content": texto})
     return messages, eventos
+
+
+def _linhas_retornadas(conteudo: str) -> int | None:
+    """Extrai quantas linhas de dado vieram no resultado da ferramenta, quando
+    o formato permite (hoje só `executar_consulta_financeira` devolve uma
+    chave "dados" com a lista de linhas) — usado pelo front pra não oferecer
+    o download de um relatório vazio. Devolve None quando não dá pra saber."""
+    try:
+        corpo = json.loads(conteudo)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(corpo, dict) and isinstance(corpo.get("dados"), list):
+        return len(corpo["dados"])
+    return None
+
+
+def _resposta_segura_generica(eventos: list[dict[str, Any]]) -> str:
+    """Resposta neutra e curta usada quando a resposta do modelo pra uma
+    pergunta direta cita um valor em R$ que não bate com o dado real — mais
+    seguro devolver um texto simples do que arriscar mostrar algo errado num
+    contexto financeiro. A consulta usada já fica visível em "Ver consulta
+    usada" e o resultado no Excel, então não precisa repetir nada disso aqui."""
+    ultimo = next(
+        (evento for evento in reversed(eventos) if "titulo" in evento["argumentos"]),
+        None,
+    )
+    if ultimo:
+        titulo = ultimo["argumentos"]["titulo"]
+        return f'Relatório "{titulo}" pronto — baixe em Excel abaixo.'
+    return "Consulta executada com sucesso — confira os dados retornados no relatório gerado."
+
+
+def _valores_monetarios_no_texto(texto: str) -> set[float]:
+    valores = set()
+    for bruto in _VALOR_MONETARIO_REGEX.findall(texto):
+        valor = _normalizar_valor_monetario(bruto)
+        if valor is not None:
+            valores.add(valor)
+    return valores
+
+
+def _normalizar_valor_monetario(bruto: str) -> float | None:
+    """Interpreta um número monetário em texto livre aceitando tanto o formato
+    brasileiro (1.234,56) quanto o americano (1,234.56), que o modelo às vezes
+    mistura — o separador decimal é sempre o que aparece por último na string.
+
+    Exceção: um único "." sem vírgula em lugar nenhum e com exatamente 3
+    dígitos depois (ex: "1.234") é separador de milhar, não decimal — valor
+    monetário nunca tem 3 casas decimais de verdade (só 0, 1 ou 2, os
+    centavos), então isso nunca seria uma fração."""
+    ultimo_ponto = bruto.rfind(".")
+    ultima_virgula = bruto.rfind(",")
+
+    if ultima_virgula > ultimo_ponto:
+        limpo = bruto.replace(".", "").replace(",", ".")
+    else:
+        limpo = bruto.replace(",", "")
+        if ultima_virgula == -1 and ultimo_ponto != -1 and len(bruto) - ultimo_ponto - 1 == 3:
+            limpo = limpo.replace(".", "")
+
+    try:
+        return round(float(limpo), 2)
+    except ValueError:
+        return None
+
+
+def _valores_numericos_do_resultado(conteudo: str) -> set[float]:
+    """Extrai todo valor numérico que veio de fato de um resultado de
+    `executar_consulta_financeira` — cada valor de cada linha, mais a soma de
+    cada coluna numérica (pra cobrir respostas do tipo "o total foi X") — pra
+    servir de base de comparação contra o que o modelo cita na resposta final."""
+    try:
+        corpo = json.loads(conteudo)
+    except (json.JSONDecodeError, TypeError):
+        return set()
+    dados = corpo.get("dados") if isinstance(corpo, dict) else None
+    if not isinstance(dados, list):
+        return set()
+
+    valores: set[float] = set()
+    somas_por_coluna: dict[str, float] = {}
+    for linha in dados:
+        if not isinstance(linha, dict):
+            continue
+        for coluna, valor in linha.items():
+            if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+                continue
+            valor_float = round(float(valor), 2)
+            valores.add(valor_float)
+            somas_por_coluna[coluna] = somas_por_coluna.get(coluna, 0.0) + valor_float
+
+    valores.update(round(soma, 2) for soma in somas_por_coluna.values())
+    return valores

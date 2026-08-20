@@ -40,7 +40,7 @@ export class CoresCategoria {
     return this.categorias().map((categoria) => ({
       categoria,
       cor: personalizadas[categoria] ?? COR_CATEGORIA_PADRAO,
-      personalizada: categoria in personalizadas
+      personalizada: categoria in personalizadas,
     }));
   });
 
@@ -57,34 +57,38 @@ export class CoresCategoria {
     });
   }
 
-  obterCor(categoria: string): string {
-    return this.personalizadas()[categoria] ?? COR_CATEGORIA_PADRAO;
-  }
-
   private carregar(): void {
     this.http.get<CategoriaCor[]>(`${MCP_API_BASE_URL}/api/financeiro/categorias/cores`).subscribe({
       next: (cores) => {
-        this.personalizadas.set(Object.fromEntries(cores.map((item) => [item.categoria, item.cor])));
+        this.personalizadas.set(
+          Object.fromEntries(cores.map((item) => [item.categoria, item.cor])),
+        );
       },
       error: () => {
         this.personalizadas.set({});
-      }
+      },
     });
-  }
-
-  definirCor(categoria: string, cor: string) {
-    return this.http.put<CategoriaCor>(
-      `${MCP_API_BASE_URL}/api/financeiro/categorias/cores/${encodeURIComponent(categoria)}`,
-      { cor }
-    );
   }
 
   aplicarCorLocal(categoria: string, cor: string): void {
     this.personalizadas.update((atual) => ({ ...atual, [categoria]: cor }));
   }
 
+  definirCor(categoria: string, cor: string) {
+    return this.http.put<CategoriaCor>(
+      `${MCP_API_BASE_URL}/api/financeiro/categorias/cores/${encodeURIComponent(categoria)}`,
+      { cor },
+    );
+  }
+
+  obterCor(categoria: string): string {
+    return this.personalizadas()[categoria] ?? COR_CATEGORIA_PADRAO;
+  }
+
   redefinirCor(categoria: string) {
-    return this.http.delete(`${MCP_API_BASE_URL}/api/financeiro/categorias/cores/${encodeURIComponent(categoria)}`);
+    return this.http.delete(
+      `${MCP_API_BASE_URL}/api/financeiro/categorias/cores/${encodeURIComponent(categoria)}`,
+    );
   }
 
   removerCorLocal(categoria: string): void {

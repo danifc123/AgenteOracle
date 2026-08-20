@@ -1,7 +1,9 @@
 <div class="mensagens" #listaMensagens>
   @if (!mensagens().length) {
     <div class="boas-vindas">
-      <p>Pergunte sobre transações, contas, categorias ou peça um relatório financeiro. Por exemplo:</p>
+      <p>
+        Pergunte sobre transações, contas, categorias ou peça um relatório financeiro. Por exemplo:
+      </p>
       <ul>
         <li>"Quais foram as últimas transações pagas?"</li>
         <li>"Quanto foi gasto por categoria nos últimos meses?"</li>
@@ -11,7 +13,11 @@
   }
 
   @for (mensagem of mensagens(); track $index) {
-    <div class="mensagem" [class.usuario]="mensagem.role === 'user'" [class.assistente]="mensagem.role === 'assistant'">
+    <div
+      class="mensagem"
+      [class.usuario]="mensagem.role === 'user'"
+      [class.assistente]="mensagem.role === 'assistant'"
+    >
       <div class="balao">
         {{ mensagem.content }}
 
@@ -25,13 +31,20 @@
                 </details>
 
                 @if (consulta.linhas_retornadas === 0) {
-                  <p class="aviso-relatorio-vazio">Nenhum dado encontrado para esse relatório — não há Excel para baixar.</p>
+                  <p class="aviso-relatorio-vazio">
+                    Nenhum dado encontrado para esse relatório — não há Excel para baixar.
+                  </p>
                 } @else {
                   <app-botao
                     variant="contorno"
                     [loading]="baixandoSql() === consulta.argumentos['sql']"
                     loadingText="Gerando Excel..."
-                    (clicked)="baixarRelatorio.emit({ sql: $any(consulta.argumentos['sql']), titulo: $any(consulta.argumentos['titulo']) })"
+                    (clicked)="
+                      baixarRelatorio.emit({
+                        sql: $any(consulta.argumentos['sql']),
+                        titulo: $any(consulta.argumentos['titulo']),
+                      })
+                    "
                   >
                     Baixar em Excel
                   </app-botao>

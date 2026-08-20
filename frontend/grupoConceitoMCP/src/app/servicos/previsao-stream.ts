@@ -1,4 +1,9 @@
-import { HttpClient, HttpDownloadProgressEvent, HttpEventType, HttpResponse } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpDownloadProgressEvent,
+  HttpEventType,
+  HttpResponse,
+} from '@angular/common/http';
 
 interface LinhaEtapa {
   tipo: 'etapa';
@@ -10,7 +15,8 @@ interface LinhaResultado<T> {
   dados: T;
 }
 
-const MENSAGEM_ERRO_PADRAO = 'Não foi possível gerar a previsão. Verifique se o servidor está em execução.';
+const MENSAGEM_ERRO_PADRAO =
+  'Não foi possível gerar a previsão. Verifique se o servidor está em execução.';
 
 /** `gerarPrevisaoStream` usa `responseType: 'text'`, então o corpo de um
  * erro HTTP chega como string crua (não vem parseado em objeto como nas
@@ -42,7 +48,7 @@ export function gerarPrevisaoStream<T>(
   http: HttpClient,
   url: string,
   params: Record<string, string>,
-  aoEtapaConcluida: (id: string) => void
+  aoEtapaConcluida: (id: string) => void,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let comprimentoVisto = 0;
@@ -71,15 +77,22 @@ export function gerarPrevisaoStream<T>(
       }
     };
 
-    http.request('GET', url, { params, observe: 'events', responseType: 'text', reportProgress: true }).subscribe({
-      next: (evento) => {
-        if (evento.type === HttpEventType.DownloadProgress) {
-          processarTexto((evento as HttpDownloadProgressEvent).partialText ?? '');
-        } else if (evento.type === HttpEventType.Response) {
-          processarTexto((evento as HttpResponse<string>).body ?? '');
-        }
-      },
-      error: (erro) => reject(erro)
-    });
+    http
+      .request('GET', url, {
+        params,
+        observe: 'events',
+        responseType: 'text',
+        reportProgress: true,
+      })
+      .subscribe({
+        next: (evento) => {
+          if (evento.type === HttpEventType.DownloadProgress) {
+            processarTexto((evento as HttpDownloadProgressEvent).partialText ?? '');
+          } else if (evento.type === HttpEventType.Response) {
+            processarTexto((evento as HttpResponse<string>).body ?? '');
+          }
+        },
+        error: (erro) => reject(erro),
+      });
   });
 }

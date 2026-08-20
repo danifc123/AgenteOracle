@@ -7,14 +7,23 @@ import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
 import { Busca } from '../../../componentes/busca/busca';
 import { Dialog } from '../../../componentes/dialog/dialog';
-import { FiltroCategorias, OpcaoCategoria } from '../../../componentes/filtro-categorias/filtro-categorias';
+import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
+import {
+  FiltroCategorias,
+  OpcaoCategoria,
+} from '../../../componentes/filtro-categorias/filtro-categorias';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { RotinaDetalhe } from '../../../componentes/rotina-detalhe/rotina-detalhe';
 import { RotinaItem } from '../../../componentes/rotina-item/rotina-item';
 import { OpcaoSelectBusca } from '../../../componentes/select-busca/select-busca';
 import { VisualizadorExcel } from '../../../componentes/visualizador-excel/visualizador-excel';
-import { CampoFiltro, MODULOS_FINANCEIRO, RotinaFinanceira } from '../../../dadosRelatorios/modulos-financeiro';
+import {
+  CampoFiltro,
+  MODULOS_FINANCEIRO,
+  RotinaFinanceira,
+} from '../../../dadosRelatorios/modulos-financeiro';
 import { CoresCategoria } from '../../../servicos/cores-categoria';
+import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';
@@ -33,9 +42,19 @@ interface GrupoRotinas {
 
 @Component({
   selector: 'app-financeiro',
-  imports: [Busca, Dialog, Botao, VisualizadorExcel, ModuloHeader, RotinaItem, RotinaDetalhe, FiltroCategorias],
+  imports: [
+    Busca,
+    Dialog,
+    Botao,
+    VisualizadorExcel,
+    ModuloHeader,
+    RotinaItem,
+    RotinaDetalhe,
+    FiltroCategorias,
+    EstadoVazio,
+  ],
   templateUrl: './financeiro.html',
-  styleUrl: './financeiro.scss'
+  styleUrl: './financeiro.scss',
 })
 export class Financeiro {
   private readonly route = inject(ActivatedRoute);
@@ -44,11 +63,11 @@ export class Financeiro {
 
   private readonly moduloId = toSignal(
     this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
-    { initialValue: this.route.snapshot.paramMap.get('moduloId') ?? '' }
+    { initialValue: this.route.snapshot.paramMap.get('moduloId') ?? '' },
   );
 
   protected readonly modulo = computed(() =>
-    MODULOS_FINANCEIRO.find((item) => item.id === this.moduloId())
+    MODULOS_FINANCEIRO.find((item) => item.id === this.moduloId()),
   );
 
   protected readonly termoBusca = signal('');
@@ -79,7 +98,10 @@ export class Financeiro {
     for (const rotina of rotinas) {
       if (!vistas.has(rotina.categoria)) {
         vistas.add(rotina.categoria);
-        categorias.push({ nome: rotina.categoria, cor: this.coresCategoria.obterCor(rotina.categoria) });
+        categorias.push({
+          nome: rotina.categoria,
+          cor: this.coresCategoria.obterCor(rotina.categoria),
+        });
       }
     }
 
@@ -94,7 +116,8 @@ export class Financeiro {
 
     return rotinas.filter((rotina) => {
       const combinaTermo = !termo || rotina.nome.toLowerCase().includes(termo);
-      const combinaCategoria = !categoria || categoria === CATEGORIA_FIXADOS || rotina.categoria === categoria;
+      const combinaCategoria =
+        !categoria || categoria === CATEGORIA_FIXADOS || rotina.categoria === categoria;
       const combinaFixado = categoria !== CATEGORIA_FIXADOS || fixados.includes(rotina.nome);
       return combinaTermo && combinaCategoria && combinaFixado;
     });
@@ -105,7 +128,9 @@ export class Financeiro {
     const filtradas = this.rotinasFiltradas();
 
     if (this.categoriaSelecionada() === CATEGORIA_FIXADOS) {
-      return filtradas.length ? [{ categoria: CATEGORIA_FIXADOS, cor: COR_FIXADOS, rotinas: filtradas }] : [];
+      return filtradas.length
+        ? [{ categoria: CATEGORIA_FIXADOS, cor: COR_FIXADOS, rotinas: filtradas }]
+        : [];
     }
 
     const grupos: GrupoRotinas[] = [];
@@ -115,7 +140,9 @@ export class Financeiro {
       grupos.push({
         categoria: CATEGORIA_FIXADOS,
         cor: COR_FIXADOS,
-        rotinas: [...fixadasNaLista].sort((a, b) => fixados.indexOf(a.nome) - fixados.indexOf(b.nome))
+        rotinas: [...fixadasNaLista].sort(
+          (a, b) => fixados.indexOf(a.nome) - fixados.indexOf(b.nome),
+        ),
       });
     }
 
@@ -149,12 +176,50 @@ export class Financeiro {
     });
   }
 
-  protected estaFixado(rotina: RotinaFinanceira | null): boolean {
-    return !!rotina && this.fixados().includes(rotina.nome);
+  private carregarFixados(): void {
+    const salvos = localStorage.getItem(this.chaveFixados());
+    this.fixados.set(salvos ? (JSON.parse(salvos) as string[]) : []);
   }
 
-  protected limiteFixadosAtingido(): boolean {
-    return this.fixados().length >= LIMITE_FIXADOS;
+  private chaveFixados(): string {
+    return `financeiro:${this.moduloId()}:fixados`;
+  }
+
+  private filtrosObrigatoriosPreenchidos(rotina: RotinaFinanceira): boolean {
+    const valores = this.valoresFiltros();
+    return (rotina.filtros ?? []).every((campo) => {
+      if (!campo.obrigatorio) {
+        return true;
+      }
+      if (campo.tipo === 'periodo-data') {
+        return !!valores[`${campo.chave}_ini`]?.trim() && !!valores[`${campo.chave}_fim`]?.trim();
+      }
+      return !!valores[campo.chave]?.trim();
+    });
+  }
+
+  private parametrosRelatorio(rotina: RotinaFinanceira): HttpParams {
+    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(','));
+
+    for (const campo of rotina.filtros ?? []) {
+      params = this.aplicarCampoNosParametros(params, campo);
+    }
+
+    return params;
+  }
+
+  private aplicarCampoNosParametros(params: HttpParams, campo: CampoFiltro): HttpParams {
+    if (campo.tipo === 'periodo-data') {
+      return params
+        .set(`${campo.chave}_ini`, this.valorFiltro(`${campo.chave}_ini`))
+        .set(`${campo.chave}_fim`, this.valorFiltro(`${campo.chave}_fim`));
+    }
+
+    return params.set(campo.chave, this.valorFiltro(campo.chave));
+  }
+
+  private valorFiltro(chave: string): string {
+    return this.valoresFiltros()[chave] ?? '';
   }
 
   protected alternarFixadoSelecionada(): void {
@@ -179,6 +244,130 @@ export class Financeiro {
     this.salvarFixados([rotina.nome, ...atual]);
   }
 
+  private salvarFixados(nomes: string[]): void {
+    this.fixados.set(nomes);
+    localStorage.setItem(this.chaveFixados(), JSON.stringify(nomes));
+  }
+
+  protected baixarRotinaEmVisualizacao(): void {
+    const rotina = this.rotinaEmVisualizacao();
+    if (rotina) {
+      this.baixar(rotina);
+    }
+  }
+
+  private baixar(rotina: RotinaFinanceira): void {
+    if (!rotina.apiEndpoint || this.baixandoRelatorio()) {
+      return;
+    }
+
+    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
+      this.selecionarRotina(rotina);
+      return;
+    }
+
+    this.baixandoRelatorio.set(true);
+
+    this.http
+      .get(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}/exportar`, {
+        params: this.parametrosRelatorio(rotina),
+        observe: 'response',
+        responseType: 'blob',
+      })
+      .subscribe({
+        next: (resposta) => {
+          const blob = resposta.body;
+          if (!blob) {
+            this.baixandoRelatorio.set(false);
+            return;
+          }
+
+          const nomeArquivo = extrairNomeArquivo(
+            resposta.headers.get('content-disposition'),
+            `${rotina.apiEndpoint}.xlsx`,
+          );
+          baixarBlob(blob, nomeArquivo);
+          this.baixandoRelatorio.set(false);
+        },
+        error: () => {
+          this.baixandoRelatorio.set(false);
+        },
+      });
+  }
+
+  protected confirmarFiltroSelecionada(): void {
+    const rotina = this.rotinaSelecionada();
+    if (rotina) {
+      this.confirmarFiltro(rotina);
+    }
+  }
+
+  private confirmarFiltro(rotina: RotinaFinanceira): void {
+    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
+      this.sinalizarFiltroInvalido();
+      return;
+    }
+
+    this.buscarRelatorio(rotina);
+  }
+
+  private buscarRelatorio(rotina: RotinaFinanceira): void {
+    this.rotinaEmVisualizacao.set(rotina);
+    this.relatorioDados.set(null);
+    this.relatorioErro.set(null);
+
+    if (!rotina.apiEndpoint) {
+      return;
+    }
+
+    this.relatorioCarregando.set(true);
+    this.http
+      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
+        params: this.parametrosRelatorio(rotina),
+      })
+      .subscribe({
+        next: (dados) => {
+          this.relatorioDados.set(dados);
+          this.relatorioCarregando.set(false);
+        },
+        error: () => {
+          this.relatorioErro.set(
+            'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
+          );
+          this.relatorioCarregando.set(false);
+        },
+      });
+  }
+
+  private sinalizarFiltroInvalido(): void {
+    this.filtroInvalido.set(true);
+    setTimeout(() => this.filtroInvalido.set(false), 400);
+  }
+
+  protected definirValorFiltro(chave: string, valor: string): void {
+    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
+  }
+
+  protected estaFixado(rotina: RotinaFinanceira | null): boolean {
+    return !!rotina && this.fixados().includes(rotina.nome);
+  }
+
+  protected fecharVisualizacao(): void {
+    this.rotinaEmVisualizacao.set(null);
+    this.relatorioDados.set(null);
+    this.relatorioErro.set(null);
+    this.relatorioCarregando.set(false);
+  }
+
+  protected limiteFixadosAtingido(): boolean {
+    return this.fixados().length >= LIMITE_FIXADOS;
+  }
+
+  protected limparFiltrosSelecionados(): void {
+    this.filiaisSelecionadas.set([]);
+    this.valoresFiltros.set({});
+  }
+
   protected selecionarRotina(rotina: RotinaFinanceira): void {
     if (this.rotinaSelecionada()?.nome !== rotina.nome) {
       this.valoresFiltros.set({});
@@ -200,9 +389,15 @@ export class Financeiro {
     }
   }
 
-  protected limparFiltrosSelecionados(): void {
-    this.filiaisSelecionadas.set([]);
-    this.valoresFiltros.set({});
+  private carregarFiliais(): void {
+    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
+      next: (filiais) => {
+        this.filiais.set(filiais.map((filial) => ({ valor: filial.codigo, rotulo: filial.nome })));
+      },
+      error: () => {
+        this.filiais.set([]);
+      },
+    });
   }
 
   private carregarOpcoesCampo(campo: CampoFiltro): void {
@@ -214,185 +409,12 @@ export class Financeiro {
       next: (opcoes) => {
         this.opcoesCampos.update((atual) => ({
           ...atual,
-          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome }))
+          [campo.chave]: opcoes.map((opcao) => ({ valor: opcao.codigo, rotulo: opcao.nome })),
         }));
       },
       error: () => {
         this.opcoesCampos.update((atual) => ({ ...atual, [campo.chave]: [] }));
-      }
-    });
-  }
-
-  private valorFiltro(chave: string): string {
-    return this.valoresFiltros()[chave] ?? '';
-  }
-
-  protected definirValorFiltro(chave: string, valor: string): void {
-    this.valoresFiltros.update((atual) => ({ ...atual, [chave]: valor }));
-  }
-
-  protected confirmarFiltroSelecionada(): void {
-    const rotina = this.rotinaSelecionada();
-    if (rotina) {
-      this.confirmarFiltro(rotina);
-    }
-  }
-
-  private confirmarFiltro(rotina: RotinaFinanceira): void {
-    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
-      this.sinalizarFiltroInvalido();
-      return;
-    }
-
-    this.buscarRelatorio(rotina);
-  }
-
-  private filtrosObrigatoriosPreenchidos(rotina: RotinaFinanceira): boolean {
-    const valores = this.valoresFiltros();
-    return (rotina.filtros ?? []).every((campo) => {
-      if (!campo.obrigatorio) {
-        return true;
-      }
-      if (campo.tipo === 'periodo-data') {
-        return !!valores[`${campo.chave}_ini`]?.trim() && !!valores[`${campo.chave}_fim`]?.trim();
-      }
-      return !!valores[campo.chave]?.trim();
-    });
-  }
-
-  private sinalizarFiltroInvalido(): void {
-    this.filtroInvalido.set(true);
-    setTimeout(() => this.filtroInvalido.set(false), 400);
-  }
-
-  private buscarRelatorio(rotina: RotinaFinanceira): void {
-    this.rotinaEmVisualizacao.set(rotina);
-    this.relatorioDados.set(null);
-    this.relatorioErro.set(null);
-
-    if (!rotina.apiEndpoint) {
-      return;
-    }
-
-    this.relatorioCarregando.set(true);
-    this.http
-      .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}`, {
-        params: this.parametrosRelatorio(rotina)
-      })
-      .subscribe({
-        next: (dados) => {
-          this.relatorioDados.set(dados);
-          this.relatorioCarregando.set(false);
-        },
-        error: () => {
-          this.relatorioErro.set('Não foi possível carregar o relatório. Verifique se o servidor está em execução.');
-          this.relatorioCarregando.set(false);
-        }
-      });
-  }
-
-  protected fecharVisualizacao(): void {
-    this.rotinaEmVisualizacao.set(null);
-    this.relatorioDados.set(null);
-    this.relatorioErro.set(null);
-    this.relatorioCarregando.set(false);
-  }
-
-  private baixar(rotina: RotinaFinanceira): void {
-    if (!rotina.apiEndpoint || this.baixandoRelatorio()) {
-      return;
-    }
-
-    if (!this.filiaisSelecionadas().length || !this.filtrosObrigatoriosPreenchidos(rotina)) {
-      this.selecionarRotina(rotina);
-      return;
-    }
-
-    this.baixandoRelatorio.set(true);
-
-    this.http
-      .get(`${MCP_API_BASE_URL}/api/financeiro/${rotina.apiEndpoint}/exportar`, {
-        params: this.parametrosRelatorio(rotina),
-        observe: 'response',
-        responseType: 'blob'
-      })
-      .subscribe({
-        next: (resposta) => {
-          const blob = resposta.body;
-          if (!blob) {
-            this.baixandoRelatorio.set(false);
-            return;
-          }
-
-          const nomeArquivo = this.extrairNomeArquivo(resposta.headers.get('content-disposition')) ?? `${rotina.apiEndpoint}.xlsx`;
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = nomeArquivo;
-          link.click();
-          URL.revokeObjectURL(url);
-          this.baixandoRelatorio.set(false);
-        },
-        error: () => {
-          this.baixandoRelatorio.set(false);
-        }
-      });
-  }
-
-  protected baixarRotinaEmVisualizacao(): void {
-    const rotina = this.rotinaEmVisualizacao();
-    if (rotina) {
-      this.baixar(rotina);
-    }
-  }
-
-  private parametrosRelatorio(rotina: RotinaFinanceira): HttpParams {
-    let params = new HttpParams().set('filial', this.filiaisSelecionadas().join(','));
-
-    for (const campo of rotina.filtros ?? []) {
-      params = this.aplicarCampoNosParametros(params, campo);
-    }
-
-    return params;
-  }
-
-  private aplicarCampoNosParametros(params: HttpParams, campo: CampoFiltro): HttpParams {
-    if (campo.tipo === 'periodo-data') {
-      return params
-        .set(`${campo.chave}_ini`, this.valorFiltro(`${campo.chave}_ini`))
-        .set(`${campo.chave}_fim`, this.valorFiltro(`${campo.chave}_fim`));
-    }
-
-    return params.set(campo.chave, this.valorFiltro(campo.chave));
-  }
-
-  private carregarFiliais(): void {
-    this.http.get<Filial[]>(`${MCP_API_BASE_URL}/api/financeiro/filiais`).subscribe({
-      next: (filiais) => {
-        this.filiais.set(filiais.map((filial) => ({ valor: filial.codigo, rotulo: filial.nome })));
       },
-      error: () => {
-        this.filiais.set([]);
-      }
     });
-  }
-
-  private extrairNomeArquivo(contentDisposition: string | null): string | undefined {
-    const match = contentDisposition?.match(/filename="?([^"]+)"?/);
-    return match?.[1];
-  }
-
-  private carregarFixados(): void {
-    const salvos = localStorage.getItem(this.chaveFixados());
-    this.fixados.set(salvos ? (JSON.parse(salvos) as string[]) : []);
-  }
-
-  private salvarFixados(nomes: string[]): void {
-    this.fixados.set(nomes);
-    localStorage.setItem(this.chaveFixados(), JSON.stringify(nomes));
-  }
-
-  private chaveFixados(): string {
-    return `financeiro:${this.moduloId()}:fixados`;
   }
 }

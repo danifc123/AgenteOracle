@@ -4,7 +4,7 @@ import { Component, HostListener, input, output } from '@angular/core';
   selector: 'app-dialog',
   imports: [],
   templateUrl: './dialog.html',
-  styleUrl: './dialog.scss'
+  styleUrl: './dialog.scss',
 })
 export class Dialog {
   aberto = input(false);

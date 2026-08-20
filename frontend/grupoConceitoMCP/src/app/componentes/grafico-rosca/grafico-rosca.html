@@ -1,37 +1,41 @@
 <div class="rosca-container">
   @if (titulo()) {
-  <p class="rosca-titulo">{{ titulo() }} <span class="rosca-total">{{ formatarTotal(valorTotal()) }}</span></p>
+    <p class="rosca-titulo">
+      {{ titulo() }} <span class="rosca-total">{{ formatarTotal(valorTotal()) }}</span>
+    </p>
   }
 
   <svg class="rosca-svg" [attr.viewBox]="'0 0 ' + TAMANHO + ' ' + TAMANHO">
     <g [attr.transform]="'rotate(-90 ' + CENTRO + ' ' + CENTRO + ')'">
       @for (segmento of segmentos(); track segmento.nome) {
-      <circle class="rosca-segmento"
-              [attr.cx]="CENTRO"
-              [attr.cy]="CENTRO"
-              [attr.r]="RAIO"
-              [attr.stroke-width]="ESPESSURA"
-              [style.stroke]="segmento.cor"
-              [attr.stroke-dasharray]="segmento.dasharray"
-              [attr.stroke-dashoffset]="segmento.dashoffset" />
+        <circle
+          class="rosca-segmento"
+          [attr.cx]="CENTRO"
+          [attr.cy]="CENTRO"
+          [attr.r]="RAIO"
+          [attr.stroke-width]="ESPESSURA"
+          [style.stroke]="segmento.cor"
+          [attr.stroke-dasharray]="segmento.dasharray"
+          [attr.stroke-dashoffset]="segmento.dashoffset"
+        />
       }
     </g>
 
     @for (segmento of segmentos(); track segmento.nome) {
-    @if (segmento.percentual >= 4) {
-    <text class="rosca-rotulo"
-          [attr.x]="segmento.rotuloX"
-          [attr.y]="segmento.rotuloY">{{ formatarPercentual(segmento.percentual) }}</text>
-    }
+      @if (segmento.percentual >= 4) {
+        <text class="rosca-rotulo" [attr.x]="segmento.rotuloX" [attr.y]="segmento.rotuloY">
+          {{ formatarPercentual(segmento.percentual) }}
+        </text>
+      }
     }
   </svg>
 
   <div class="rosca-legenda">
     @for (segmento of segmentos(); track segmento.nome) {
-    <span class="legenda-item">
-      <span class="legenda-swatch" [style.background]="segmento.cor"></span>
-      {{ segmento.nome }}
-    </span>
+      <span class="legenda-item">
+        <span class="legenda-swatch" [style.background]="segmento.cor"></span>
+        {{ segmento.nome }}
+      </span>
     }
   </div>
 </div>

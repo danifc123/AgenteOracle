@@ -10,6 +10,17 @@ import { EstoqueCriarRelatorio } from './pages/modulos/estoque/criar-relatorio/c
 import { EstoqueEspecificoGrupoConceito } from './pages/modulos/estoque/especifico-grupo-conceito/especifico-grupo-conceito';
 import { EstoqueChat } from './pages/modulos/estoque/chat/estoque-chat';
 import { Chat } from './pages/modulos/financeiro/chat/chat';
+import { DespesasSuspeitas } from './pages/modulos/financeiro/despesas-suspeitas/despesas-suspeitas';
+import { SimulacaoMonteCarlo } from './pages/modulos/financeiro/simulacao-monte-carlo/simulacao-monte-carlo';
+import { ClassificacaoContabil } from './pages/modulos/financeiro/classificacao-contabil/classificacao-contabil';
+import { ScoreInadimplenciaComponent } from './pages/modulos/financeiro/score-inadimplencia/score-inadimplencia';
+import { AnaliseCandidato } from './pages/modulos/rh/analise-candidato/analise-candidato';
+import { Colaboradores } from './pages/modulos/rh/colaboradores/colaboradores';
+import { Repescagem } from './pages/modulos/rh/repescagem/repescagem';
+import { RhHome } from './pages/modulos/rh/home/rh-home';
+import { ChamadosTi } from './pages/modulos/ti/chamados/chamados';
+import { SegurancaTi } from './pages/modulos/ti/seguranca/seguranca';
+import { TiHome } from './pages/modulos/ti/home/ti-home';
 import { Login } from './pages/login/login';
 import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
 import { JuntarExcel } from './pages/juntar-excel/juntar-excel';
@@ -30,16 +41,28 @@ export const routes: Routes = [
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },
       { path: 'financeiro/chat', component: Chat },
+      { path: 'financeiro/despesas-suspeitas', component: DespesasSuspeitas },
+      { path: 'financeiro/simulacao-monte-carlo', component: SimulacaoMonteCarlo },
+      { path: 'financeiro/classificacao-contabil', component: ClassificacaoContabil },
+      { path: 'financeiro/score-inadimplencia', component: ScoreInadimplenciaComponent },
       { path: 'financeiro/:moduloId', component: Financeiro },
       { path: 'estoque/criar-relatorio', component: EstoqueCriarRelatorio },
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },
       { path: 'estoque/chat', component: EstoqueChat },
       { path: 'estoque', component: Estoque },
+      { path: 'rh', component: RhHome },
+      { path: 'rh/analise-candidato', component: AnaliseCandidato },
+      { path: 'rh/selecionar-candidato', redirectTo: 'rh/analise-candidato' },
+      { path: 'rh/repescagem', component: Repescagem },
+      { path: 'rh/colaboradores', component: Colaboradores },
+      { path: 'ti', component: TiHome },
+      { path: 'ti/seguranca', component: SegurancaTi },
+      { path: 'ti/chamados', component: ChamadosTi },
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },
-      { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] }
-    ]
+      { path: 'usuarios', component: Usuarios, canActivate: [adminGuard] },
+    ],
   },
-  { path: '**', redirectTo: '' }
+  { path: '**', redirectTo: '' },
 ];

@@ -1,0 +1,91 @@
+<div class="detalhe-candidato">
+  <p class="resumo-completo">{{ resumo() }}</p>
+
+  <div class="linha-meta-badges">
+    <span class="badge-meta">{{ rotuloSenioridade(perfilEstruturado().nivel_senioridade) }}</span>
+    @if (perfilEstruturado().area_atuacao_principal) {
+      <span class="badge-meta">{{ perfilEstruturado().area_atuacao_principal }}</span>
+    }
+    @if (perfilEstruturado().anos_experiencia_total) {
+      <span class="badge-meta">{{ perfilEstruturado().anos_experiencia_total }} anos de experiência</span>
+    }
+  </div>
+
+  @if (perfilEstruturado().habilidades_tecnicas; as habilidades) {
+    @if (
+      habilidades.linguagens.length ||
+      habilidades.frameworks_bibliotecas.length ||
+      habilidades.bancos_de_dados.length ||
+      habilidades.ferramentas_plataformas.length
+    ) {
+      <div class="secao-detalhe">
+        <h3>Habilidades técnicas</h3>
+        <div class="lista-tags">
+          @for (item of habilidades.linguagens; track item) {
+            <span class="tag">{{ item }}</span>
+          }
+          @for (item of habilidades.frameworks_bibliotecas; track item) {
+            <span class="tag">{{ item }}</span>
+          }
+          @for (item of habilidades.bancos_de_dados; track item) {
+            <span class="tag">{{ item }}</span>
+          }
+          @for (item of habilidades.ferramentas_plataformas; track item) {
+            <span class="tag">{{ item }}</span>
+          }
+        </div>
+      </div>
+    }
+  }
+
+  @if (perfilEstruturado().experiencias_profissionais?.length) {
+    <div class="secao-detalhe">
+      <h3>Experiência profissional</h3>
+      @for (experiencia of perfilEstruturado().experiencias_profissionais; track $index) {
+        <div class="experiencia-item">
+          <p class="experiencia-cargo">{{ experiencia.cargo }} — {{ experiencia.empresa }}</p>
+          <p class="experiencia-periodo">
+            {{ experiencia.data_inicio || '?' }} a {{ experiencia.data_fim || 'atual' }}
+          </p>
+          @if (experiencia.principais_responsabilidades.length) {
+            <ul>
+              @for (responsabilidade of experiencia.principais_responsabilidades; track responsabilidade) {
+                <li>{{ responsabilidade }}</li>
+              }
+            </ul>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (perfilEstruturado().formacao_academica?.length) {
+    <div class="secao-detalhe">
+      <h3>Formação acadêmica</h3>
+      @for (formacao of perfilEstruturado().formacao_academica; track $index) {
+        <p class="formacao-item">
+          {{ formacao.curso }} — {{ formacao.instituicao }} ({{ rotuloStatusFormacao(formacao.status) }})
+        </p>
+      }
+    </div>
+  }
+
+  @if (perfilEstruturado().certificacoes?.length || perfilEstruturado().idiomas?.length) {
+    <div class="secao-detalhe">
+      @if (perfilEstruturado().certificacoes; as certificacoes) {
+        @if (certificacoes.length) {
+          <p><strong>Certificações:</strong> {{ certificacoes.join(', ') }}</p>
+        }
+      }
+      @if (perfilEstruturado().idiomas; as idiomas) {
+        @if (idiomas.length) {
+          <p><strong>Idiomas:</strong> {{ idiomas.join(', ') }}</p>
+        }
+      }
+    </div>
+  }
+
+  @if (dataCadastro()) {
+    <p class="meta-candidato">Cadastrado em {{ dataCadastro() }}</p>
+  }
+</div>

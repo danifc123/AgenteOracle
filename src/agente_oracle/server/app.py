@@ -1,18 +1,24 @@
 from mcp.server.fastmcp import FastMCP
 
-from agente_oracle.config import settings
-from agente_oracle.server import auditoria, auth, ferramentas, financeiro
+from agente_oracle.config import settings, validar_auth_secret_key, validar_ollama_host_seguro
+from agente_oracle.server import auditoria, auth, ferramentas, financeiro, rh, ti
+from agente_oracle.server.security_headers import HeadersDeSegurancaMiddleware
 
 mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
 
 auth.registrar(mcp)
 financeiro.registrar(mcp)
+rh.registrar(mcp)
 auditoria.registrar(mcp)
 ferramentas.registrar(mcp)
+ti.registrar(mcp)
 
 
-def main() -> None:
-    import uvicorn
+def criar_app():
+    """Monta o app Starlette com o CORS restrito já encaixado — função à
+    parte (em vez de só inline em `main()`) pra poder ser testada com um
+    `TestClient` real sem precisar subir o uvicorn (ver
+    `tests/unit/server/test_cors.py`)."""
     from starlette.middleware.cors import CORSMiddleware
 
     # `mcp.run(transport="streamable-http")` monta o app Starlette internamente
@@ -31,7 +37,17 @@ def main() -> None:
         # nome padrão do frontend em vez do nome real vindo do backend.
         expose_headers=["Content-Disposition"],
     )
+    app.add_middleware(HeadersDeSegurancaMiddleware)
+    return app
 
+
+def main() -> None:
+    validar_auth_secret_key(settings)
+    validar_ollama_host_seguro(settings)
+
+    import uvicorn
+
+    app = criar_app()
     uvicorn.run(app, host=settings.mcp_host, port=settings.mcp_port, log_level="info")
 
 

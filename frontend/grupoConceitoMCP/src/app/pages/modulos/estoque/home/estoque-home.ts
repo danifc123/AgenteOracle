@@ -10,8 +10,8 @@ const COR_MEDIA = '#e8871e';
 /** Valor de fechamento mensal mockado (últimos 12 meses, mais recente por
  * último) — troca pra dado real assim que existir a consulta de estoque. */
 const VALORES_FECHAMENTO_MENSAL = [
-  10800000, 19300000, 15900000, 14600000, 13200000, 20600000, 18700000, 20900000, 15600000, 11400000, 10900000,
-  9800000
+  10800000, 19300000, 15900000, 14600000, 13200000, 20600000, 18700000, 20900000, 15600000,
+  11400000, 10900000, 9800000,
 ];
 
 function gerarRotulosMensais(quantidade: number): string[] {
@@ -24,20 +24,25 @@ function gerarRotulosMensais(quantidade: number): string[] {
 
 function construirSeriesEvolucaoEstoque(): SerieGrafico[] {
   const rotulos = gerarRotulosMensais(VALORES_FECHAMENTO_MENSAL.length);
-  const media = VALORES_FECHAMENTO_MENSAL.reduce((soma, valor) => soma + valor, 0) / VALORES_FECHAMENTO_MENSAL.length;
+  const media =
+    VALORES_FECHAMENTO_MENSAL.reduce((soma, valor) => soma + valor, 0) /
+    VALORES_FECHAMENTO_MENSAL.length;
 
   return [
     {
       nome: 'Valor',
       cor: COR_VALOR,
-      pontos: rotulos.map((rotulo, indice) => ({ rotulo, valor: VALORES_FECHAMENTO_MENSAL[indice] }))
+      pontos: rotulos.map((rotulo, indice) => ({
+        rotulo,
+        valor: VALORES_FECHAMENTO_MENSAL[indice],
+      })),
     },
     {
       nome: 'Média',
       cor: COR_MEDIA,
       linhaSobreposta: true,
-      pontos: rotulos.map((rotulo) => ({ rotulo, valor: media }))
-    }
+      pontos: rotulos.map((rotulo) => ({ rotulo, valor: media })),
+    },
   ];
 }
 
@@ -52,7 +57,7 @@ function construirSeriesEvolucaoEstoque(): SerieGrafico[] {
   selector: 'app-estoque-home',
   imports: [CartaoKpi, GraficoRosca, GraficoSerie, ModuloHeader],
   templateUrl: './estoque-home.html',
-  styleUrl: './estoque-home.scss'
+  styleUrl: './estoque-home.scss',
 })
 export class EstoqueHome {
   protected readonly quantidadeProdutos = 215302;
@@ -68,6 +73,6 @@ export class EstoqueHome {
     { nome: '30 dias', valor: 8, cor: '#9a2f2f' },
     { nome: '60 dias', valor: 15, cor: '#e8871e' },
     { nome: '90 dias', valor: 22, cor: '#2f9e58' },
-    { nome: '120 dias', valor: 30, cor: '#b8c7bd' }
+    { nome: '120 dias', valor: 30, cor: '#b8c7bd' },
   ];
 }

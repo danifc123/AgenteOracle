@@ -32,10 +32,6 @@ _LARANJA_CLARO = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type
 _LARGURA_MAXIMA_COLUNA = 50
 
 
-class ArquivoExcelInvalido(Exception):
-    """Levantada quando um dos arquivos enviados não é um .xlsx válido."""
-
-
 def _ler_planilha(conteudo: bytes) -> tuple[list[str], list[list]]:
     """Lê a planilha ATIVA de um .xlsx: 1ª linha vira cabeçalho, o resto vira
     linhas de dado. `data_only=True` lê o valor calculado de fórmula (não a
@@ -57,101 +53,8 @@ def _ler_planilha(conteudo: bytes) -> tuple[list[str], list[list]]:
     return cabecalho, linhas_de_dados
 
 
-def _escrever_bloco(
-    planilha,
-    cabecalho: list[str],
-    linhas: list[list],
-    preenchimento: PatternFill | list[PatternFill | None] | None,
-    coluna_inicial: int = 1,
-) -> None:
-    """Escreve um bloco (cabeçalho em negrito + linhas) a partir da linha 1,
-    começando em `coluna_inicial` — permite colocar dois blocos lado a lado
-    na mesma planilha em vez de um embaixo do outro. `preenchimento` pode ser
-    uma cor só (aplicada em todas as colunas do bloco) ou uma lista de cores,
-    uma por coluna (usado no resultado do JOIN, onde cada coluna pode ter uma
-    origem diferente)."""
-    cores = preenchimento if isinstance(preenchimento, list) else [preenchimento] * len(cabecalho)
-
-    for indice_coluna, (valor, cor) in enumerate(zip(cabecalho, cores)):
-        celula = planilha.cell(row=1, column=coluna_inicial + indice_coluna, value=valor)
-        celula.font = Font(bold=True)
-        if cor is not None:
-            celula.fill = cor
-
-    for indice_linha, linha in enumerate(linhas, start=2):
-        for indice_coluna, (valor, cor) in enumerate(zip(linha, cores)):
-            celula = planilha.cell(row=indice_linha, column=coluna_inicial + indice_coluna, value=valor)
-            if cor is not None:
-                celula.fill = cor
-
-
-def _juntar_por_chave_comum(
-    cabecalho1: list[str],
-    linhas1: list[list],
-    cabecalho2: list[str],
-    linhas2: list[list],
-    colunas_comuns: list[str],
-) -> tuple[list[str], list[list], list[PatternFill | None]]:
-    """JOIN completo (outer) pelas colunas em comum: linhas com o mesmo valor
-    nelas viram uma linha só (toda combinação, se um dos lados tiver mais de
-    uma linha com o mesmo valor); linhas sem correspondência do outro lado
-    entram do mesmo jeito, com as colunas que faltam em branco. Linha
-    "fantasma" (só a chave preenchida, resto em branco) é descartada antes —
-    não tem dado nenhum pra contribuir e só infla o resultado."""
-    indices_comuns_1 = [cabecalho1.index(coluna) for coluna in colunas_comuns]
-    indices_comuns_2 = [cabecalho2.index(coluna) for coluna in colunas_comuns]
-    indices_unicos_1 = [i for i in range(len(cabecalho1)) if cabecalho1[i] not in colunas_comuns]
-    indices_unicos_2 = [i for i in range(len(cabecalho2)) if cabecalho2[i] not in colunas_comuns]
-
-    cabecalho_final = (
-        list(colunas_comuns) + [cabecalho1[i] for i in indices_unicos_1] + [cabecalho2[i] for i in indices_unicos_2]
-    )
-    # Junção bem-sucedida sai inteira verde clarinho — mesmo tom do bloco
-    # único do caso de colunas idênticas — sem diferenciar origem por coluna.
-    cores_final: list[PatternFill | None] = [_VERDE_CLARO] * len(cabecalho_final)
-
-    def _chave(linha: list, indices: list[int]) -> tuple:
-        return tuple(linha[i] for i in indices)
-
-    def _tem_dado_proprio(linha: list, indices_unicos: list[int]) -> bool:
-        return any(linha[i] is not None for i in indices_unicos)
-
-    linhas1 = [linha for linha in linhas1 if _tem_dado_proprio(linha, indices_unicos_1)]
-    linhas2 = [linha for linha in linhas2 if _tem_dado_proprio(linha, indices_unicos_2)]
-
-    grupos2: dict[tuple, list[list]] = {}
-    for linha in linhas2:
-        grupos2.setdefault(_chave(linha, indices_comuns_2), []).append(linha)
-
-    chaves_planilha1 = {_chave(linha, indices_comuns_1) for linha in linhas1}
-
-    linhas_final: list[list] = []
-    for linha1 in linhas1:
-        chave1 = _chave(linha1, indices_comuns_1)
-        valores_comuns = list(chave1)
-        valores_unicos_1 = [linha1[i] for i in indices_unicos_1]
-        correspondentes = grupos2.get(chave1)
-
-        if correspondentes:
-            for linha2 in correspondentes:
-                valores_unicos_2 = [linha2[i] for i in indices_unicos_2]
-                linhas_final.append(valores_comuns + valores_unicos_1 + valores_unicos_2)
-        else:
-            linhas_final.append(valores_comuns + valores_unicos_1 + [None] * len(indices_unicos_2))
-
-    for chave2, linhas_grupo in grupos2.items():
-        if chave2 not in chaves_planilha1:
-            for linha2 in linhas_grupo:
-                valores_unicos_2 = [linha2[i] for i in indices_unicos_2]
-                linhas_final.append(list(chave2) + [None] * len(indices_unicos_1) + valores_unicos_2)
-
-    return cabecalho_final, linhas_final, cores_final
-
-
-def _aplicar_largura_automatica(planilha) -> None:
-    for coluna in planilha.columns:
-        maior_valor = max((len(str(celula.value)) for celula in coluna if celula.value is not None), default=0)
-        planilha.column_dimensions[coluna[0].column_letter].width = min(maior_valor + 2, _LARGURA_MAXIMA_COLUNA)
+class ArquivoExcelInvalido(Exception):
+    """Levantada quando um dos arquivos enviados não é um .xlsx válido."""
 
 
 def analisar_colunas(conteudo1: bytes, conteudo2: bytes) -> dict:
@@ -207,3 +110,106 @@ def juntar_planilhas(conteudo1: bytes, conteudo2: bytes) -> bytes:
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def _aplicar_largura_automatica(planilha) -> None:
+    for coluna in planilha.columns:
+        maior_valor = max(
+            (len(str(celula.value)) for celula in coluna if celula.value is not None), default=0
+        )
+        planilha.column_dimensions[coluna[0].column_letter].width = min(
+            maior_valor + 2, _LARGURA_MAXIMA_COLUNA
+        )
+
+
+def _escrever_bloco(
+    planilha,
+    cabecalho: list[str],
+    linhas: list[list],
+    preenchimento: PatternFill | list[PatternFill | None] | None,
+    coluna_inicial: int = 1,
+) -> None:
+    """Escreve um bloco (cabeçalho em negrito + linhas) a partir da linha 1,
+    começando em `coluna_inicial` — permite colocar dois blocos lado a lado
+    na mesma planilha em vez de um embaixo do outro. `preenchimento` pode ser
+    uma cor só (aplicada em todas as colunas do bloco) ou uma lista de cores,
+    uma por coluna (usado no resultado do JOIN, onde cada coluna pode ter uma
+    origem diferente)."""
+    cores = preenchimento if isinstance(preenchimento, list) else [preenchimento] * len(cabecalho)
+
+    for indice_coluna, (valor, cor) in enumerate(zip(cabecalho, cores, strict=True)):
+        celula = planilha.cell(row=1, column=coluna_inicial + indice_coluna, value=valor)
+        celula.font = Font(bold=True)
+        if cor is not None:
+            celula.fill = cor
+
+    for indice_linha, linha in enumerate(linhas, start=2):
+        for indice_coluna, (valor, cor) in enumerate(zip(linha, cores, strict=True)):
+            celula = planilha.cell(row=indice_linha, column=coluna_inicial + indice_coluna, value=valor)
+            if cor is not None:
+                celula.fill = cor
+
+
+def _juntar_por_chave_comum(
+    cabecalho1: list[str],
+    linhas1: list[list],
+    cabecalho2: list[str],
+    linhas2: list[list],
+    colunas_comuns: list[str],
+) -> tuple[list[str], list[list], list[PatternFill | None]]:
+    """JOIN completo (outer) pelas colunas em comum: linhas com o mesmo valor
+    nelas viram uma linha só (toda combinação, se um dos lados tiver mais de
+    uma linha com o mesmo valor); linhas sem correspondência do outro lado
+    entram do mesmo jeito, com as colunas que faltam em branco. Linha
+    "fantasma" (só a chave preenchida, resto em branco) é descartada antes —
+    não tem dado nenhum pra contribuir e só infla o resultado."""
+    indices_comuns_1 = [cabecalho1.index(coluna) for coluna in colunas_comuns]
+    indices_comuns_2 = [cabecalho2.index(coluna) for coluna in colunas_comuns]
+    indices_unicos_1 = [i for i in range(len(cabecalho1)) if cabecalho1[i] not in colunas_comuns]
+    indices_unicos_2 = [i for i in range(len(cabecalho2)) if cabecalho2[i] not in colunas_comuns]
+
+    cabecalho_final = (
+        list(colunas_comuns)
+        + [cabecalho1[i] for i in indices_unicos_1]
+        + [cabecalho2[i] for i in indices_unicos_2]
+    )
+    # Junção bem-sucedida sai inteira verde clarinho — mesmo tom do bloco
+    # único do caso de colunas idênticas — sem diferenciar origem por coluna.
+    cores_final: list[PatternFill | None] = [_VERDE_CLARO] * len(cabecalho_final)
+
+    def _chave(linha: list, indices: list[int]) -> tuple:
+        return tuple(linha[i] for i in indices)
+
+    def _tem_dado_proprio(linha: list, indices_unicos: list[int]) -> bool:
+        return any(linha[i] is not None for i in indices_unicos)
+
+    linhas1 = [linha for linha in linhas1 if _tem_dado_proprio(linha, indices_unicos_1)]
+    linhas2 = [linha for linha in linhas2 if _tem_dado_proprio(linha, indices_unicos_2)]
+
+    grupos2: dict[tuple, list[list]] = {}
+    for linha in linhas2:
+        grupos2.setdefault(_chave(linha, indices_comuns_2), []).append(linha)
+
+    chaves_planilha1 = {_chave(linha, indices_comuns_1) for linha in linhas1}
+
+    linhas_final: list[list] = []
+    for linha1 in linhas1:
+        chave1 = _chave(linha1, indices_comuns_1)
+        valores_comuns = list(chave1)
+        valores_unicos_1 = [linha1[i] for i in indices_unicos_1]
+        correspondentes = grupos2.get(chave1)
+
+        if correspondentes:
+            for linha2 in correspondentes:
+                valores_unicos_2 = [linha2[i] for i in indices_unicos_2]
+                linhas_final.append(valores_comuns + valores_unicos_1 + valores_unicos_2)
+        else:
+            linhas_final.append(valores_comuns + valores_unicos_1 + [None] * len(indices_unicos_2))
+
+    for chave2, linhas_grupo in grupos2.items():
+        if chave2 not in chaves_planilha1:
+            for linha2 in linhas_grupo:
+                valores_unicos_2 = [linha2[i] for i in indices_unicos_2]
+                linhas_final.append(list(chave2) + [None] * len(indices_unicos_1) + valores_unicos_2)
+
+    return cabecalho_final, linhas_final, cores_final

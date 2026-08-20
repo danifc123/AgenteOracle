@@ -17,9 +17,14 @@ from agente_oracle.server.financeiro.relatorios import _comum
 
 _MODULO = "financeiro"
 
-# `filial` existe (e deveria seguir o mesmo padrão de numeração) em todas
-# essas views; `estado`/`tipo_pessoa`/`cnpj_cpf` só existem no cadastro.
-_VIEWS_COM_FILIAL = ("vw_titulos_pagar", "vw_titulos_receber", "vw_faturamento", "vw_clientes", "vw_fornecedores")
+# `filial` existe (e deveria seguir o mesmo padrão de numeração) nessas
+# views de título/faturamento; cadastro (vw_clientes/vw_fornecedores) não
+# tem coluna `filial` no STAGE — só `estado`/`tipo_pessoa`/`cnpj_cpf`.
+_VIEWS_COM_FILIAL = (
+    "vw_titulos_pagar",
+    "vw_titulos_receber",
+    "vw_faturamento",
+)
 _VIEWS_CADASTRO = ("vw_clientes", "vw_fornecedores")
 
 # Protege o num_ctx do Ollama (16384, mesma constante usada no resto do
@@ -29,31 +34,13 @@ LIMITE_VALORES_POR_PERFIL = 50
 LIMITE_EXEMPLOS_CNPJ_POR_GRUPO = 3
 
 
-def _mascarar_documento(bruto: str) -> str:
-    """Mantém só os 4 últimos caracteres visíveis, preservando o comprimento
-    original (que é justamente o que se quer que a IA compare) — CPF/CNPJ é
-    dado pessoal, não deve ir inteiro pro Ollama mesmo rodando local."""
-    if len(bruto) <= 4:
-        return bruto
-    return "*" * (len(bruto) - 4) + bruto[-4:]
-
-
-def _perfil_distinto(view: str, campo: str) -> PerfilCampo:
-    sql = f"""
-        SELECT {campo}, COUNT(*) AS ocorrencias
-        FROM {view}
-        WHERE {campo} IS NOT NULL
-        GROUP BY {campo}
-        ORDER BY ocorrencias DESC
-        FETCH FIRST {LIMITE_VALORES_POR_PERFIL} ROWS ONLY
-    """
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        cursor.execute(sql)
-        linhas = cursor.fetchall()
-
-    valores = tuple((str(valor), int(_comum.serializar(ocorrencias))) for valor, ocorrencias in linhas)
-    return PerfilCampo(modulo=_MODULO, view=view, campo=campo, valores=valores)
+def construir_perfis_financeiro() -> list[PerfilCampo]:
+    perfis = [_perfil_distinto(view, "filial") for view in _VIEWS_COM_FILIAL]
+    for view in _VIEWS_CADASTRO:
+        perfis.append(_perfil_distinto(view, "estado"))
+        perfis.append(_perfil_distinto(view, "tipo_pessoa"))
+        perfis.append(_perfil_cnpj_cpf(view))
+    return perfis
 
 
 def _perfil_cnpj_cpf(view: str) -> PerfilCampo:
@@ -90,10 +77,28 @@ def _perfil_cnpj_cpf(view: str) -> PerfilCampo:
     return PerfilCampo(modulo=_MODULO, view=view, campo="cnpj_cpf", valores=tuple(valores))
 
 
-def construir_perfis_financeiro() -> list[PerfilCampo]:
-    perfis = [_perfil_distinto(view, "filial") for view in _VIEWS_COM_FILIAL]
-    for view in _VIEWS_CADASTRO:
-        perfis.append(_perfil_distinto(view, "estado"))
-        perfis.append(_perfil_distinto(view, "tipo_pessoa"))
-        perfis.append(_perfil_cnpj_cpf(view))
-    return perfis
+def _mascarar_documento(bruto: str) -> str:
+    """Mantém só os 4 últimos caracteres visíveis, preservando o comprimento
+    original (que é justamente o que se quer que a IA compare) — CPF/CNPJ é
+    dado pessoal, não deve ir inteiro pro Ollama mesmo rodando local."""
+    if len(bruto) <= 4:
+        return bruto
+    return "*" * (len(bruto) - 4) + bruto[-4:]
+
+
+def _perfil_distinto(view: str, campo: str) -> PerfilCampo:
+    sql = f"""
+        SELECT {campo}, COUNT(*) AS ocorrencias
+        FROM {view}
+        WHERE {campo} IS NOT NULL
+        GROUP BY {campo}
+        ORDER BY ocorrencias DESC
+        FETCH FIRST {LIMITE_VALORES_POR_PERFIL} ROWS ONLY
+    """
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        linhas = cursor.fetchall()
+
+    valores = tuple((str(valor), int(_comum.serializar(ocorrencias))) for valor, ocorrencias in linhas)
+    return PerfilCampo(modulo=_MODULO, view=view, campo=campo, valores=valores)

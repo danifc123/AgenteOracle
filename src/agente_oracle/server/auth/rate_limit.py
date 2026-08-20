@@ -23,14 +23,9 @@ def _tentativas_na_janela(chave: str, agora: float) -> list[float]:
     return tentativas
 
 
-def segundos_ate_liberar(chave: str) -> int | None:
-    """`None` se `chave` pode tentar login; senão, quantos segundos faltam até poder de novo."""
+def limpar(chave: str) -> None:
     with _lock:
-        agora = time.monotonic()
-        tentativas = _tentativas_na_janela(chave, agora)
-        if len(tentativas) < LIMITE_TENTATIVAS:
-            return None
-        return max(1, int(JANELA_SEGUNDOS - (agora - min(tentativas))))
+        _tentativas.pop(chave, None)
 
 
 def registrar_falha(chave: str) -> None:
@@ -40,6 +35,11 @@ def registrar_falha(chave: str) -> None:
         tentativas.append(agora)
 
 
-def limpar(chave: str) -> None:
+def segundos_ate_liberar(chave: str) -> int | None:
+    """`None` se `chave` pode tentar login; senão, quantos segundos faltam até poder de novo."""
     with _lock:
-        _tentativas.pop(chave, None)
+        agora = time.monotonic()
+        tentativas = _tentativas_na_janela(chave, agora)
+        if len(tentativas) < LIMITE_TENTATIVAS:
+            return None
+        return max(1, int(JANELA_SEGUNDOS - (agora - min(tentativas))))

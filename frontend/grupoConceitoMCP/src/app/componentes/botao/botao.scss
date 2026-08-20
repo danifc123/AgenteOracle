@@ -60,7 +60,9 @@
   color: var(--color-text-muted);
   padding: 4px;
   border-radius: var(--radius-sm);
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 
   &:hover:not(:disabled) {
     background: var(--color-bg);
@@ -80,7 +82,9 @@
   font-size: 12.5px;
   font-weight: 600;
   padding: 6px 12px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 
   &:hover:not(:disabled) {
     background: var(--color-primary);

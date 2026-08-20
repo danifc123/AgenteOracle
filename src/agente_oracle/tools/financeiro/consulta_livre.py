@@ -56,64 +56,22 @@ LIMITE_MAXIMO_LINHAS = 200
 TIMEOUT_MS = 10_000
 
 
-class ConsultaFinanceiraInvalida(Exception):
-    """Levantada quando o SQL gerado pela IA não passa nas validações de segurança."""
+def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
+    """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
+    (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
+    novo no banco. Caso contrário, executa e salva no histórico para a
+    próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
+    sql_validado = _validar_consulta(sql)
 
+    existente = historico.buscar_por_sql(sql_validado)
+    if existente is not None:
+        return existente["colunas"], existente["linhas"], existente["titulo"], True, existente["criado_em"]
 
-def _validar_consulta(sql: str) -> str:
-    sql_limpo = sql.strip().rstrip(";").strip()
+    colunas, linhas_brutas = _executar(sql_validado)
+    linhas = [[_serializar(valor) for valor in linha] for linha in linhas_brutas]
 
-    if not sql_limpo:
-        raise ConsultaFinanceiraInvalida("A consulta está vazia.")
-
-    if ";" in sql_limpo:
-        raise ConsultaFinanceiraInvalida("Apenas uma única instrução é permitida (sem ';' no meio da consulta).")
-
-    # "WITH" cobre consultas com CTE (ex: "WITH ranking AS (...) SELECT ..."),
-    # usadas para perguntas compostas (top N + mais recente de cada grupo) —
-    # continuam somente-leitura, a checagem de palavras bloqueadas abaixo
-    # cobre o resto da instrução independente de como ela começa.
-    if not re.match(r"^\s*(SELECT|WITH)\b", sql_limpo, re.IGNORECASE):
-        raise ConsultaFinanceiraInvalida("Somente instruções SELECT (ou WITH ... SELECT) são permitidas.")
-
-    sql_upper = sql_limpo.upper()
-    for palavra in PALAVRAS_BLOQUEADAS:
-        if palavra in sql_upper:
-            raise ConsultaFinanceiraInvalida(f"A consulta contém um termo não permitido: '{palavra.strip()}'.")
-
-    for clausula in _FROM_CLAUSULA_REGEX.findall(sql_limpo):
-        if "," in clausula:
-            raise ConsultaFinanceiraInvalida(
-                "Junção no estilo 'FROM a, b' não é permitida — relacione tabelas com JOIN."
-            )
-
-    nomes_cte = {nome.upper() for nome in _CTE_REGEX.findall(sql_limpo)}
-    tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)} - nomes_cte
-    if not tabelas_usadas:
-        raise ConsultaFinanceiraInvalida("Não foi possível identificar as tabelas usadas na consulta.")
-
-    tabelas_nao_permitidas = tabelas_usadas - TABELAS_PERMITIDAS
-    if tabelas_nao_permitidas:
-        raise ConsultaFinanceiraInvalida(
-            "Não é possível gerar esse relatório: a consulta usa dado(s) fora do escopo "
-            "financeiro autorizado para este agente."
-        )
-
-    # "LIMIT" cobre o SQL que o modelo gera quando sabe que o backend é Postgres
-    # (NOME_BANCO no prompt) — sem isso, uma consulta que já veio com LIMIT
-    # ganhava um FETCH FIRST em cima, e as duas cláusulas juntas são SQL inválido.
-    if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper and "LIMIT" not in sql_upper:
-        sql_limpo = f"{sql_limpo}\nFETCH FIRST {LIMITE_MAXIMO_LINHAS} ROWS ONLY"
-
-    return sql_limpo
-
-
-def _serializar(valor):
-    if isinstance(valor, (datetime, date)):
-        return valor.isoformat()
-    if isinstance(valor, Decimal):
-        return float(valor)
-    return valor
+    documento = historico.salvar(sql_validado, titulo, colunas, linhas, modulo="financeiro")
+    return documento["colunas"], documento["linhas"], documento["titulo"], False, documento["criado_em"]
 
 
 def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
@@ -142,22 +100,68 @@ def _executar(sql_validado: str) -> tuple[list[str], list[tuple]]:
     return colunas, linhas
 
 
-def _executar_com_cache(sql: str, titulo: str) -> tuple[list[str], list[list], str, bool, datetime]:
-    """Valida o SQL e, se um relatório idêntico já estiver salvo no histórico
-    (mesmo SQL, normalizado), reaproveita o resultado salvo em vez de rodar de
-    novo no banco. Caso contrário, executa e salva no histórico para a
-    próxima vez. Devolve (colunas, linhas, titulo, reutilizado, criado_em)."""
-    sql_validado = _validar_consulta(sql)
+def _serializar(valor):
+    if isinstance(valor, (datetime, date)):
+        return valor.isoformat()
+    if isinstance(valor, Decimal):
+        return float(valor)
+    return valor
 
-    existente = historico.buscar_por_sql(sql_validado)
-    if existente is not None:
-        return existente["colunas"], existente["linhas"], existente["titulo"], True, existente["criado_em"]
 
-    colunas, linhas_brutas = _executar(sql_validado)
-    linhas = [[_serializar(valor) for valor in linha] for linha in linhas_brutas]
+def _validar_consulta(sql: str) -> str:
+    sql_limpo = sql.strip().rstrip(";").strip()
 
-    documento = historico.salvar(sql_validado, titulo, colunas, linhas, modulo="financeiro")
-    return documento["colunas"], documento["linhas"], documento["titulo"], False, documento["criado_em"]
+    if not sql_limpo:
+        raise ConsultaFinanceiraInvalida("A consulta está vazia.")
+
+    if ";" in sql_limpo:
+        raise ConsultaFinanceiraInvalida(
+            "Apenas uma única instrução é permitida (sem ';' no meio da consulta)."
+        )
+
+    # "WITH" cobre consultas com CTE (ex: "WITH ranking AS (...) SELECT ..."),
+    # usadas para perguntas compostas (top N + mais recente de cada grupo) —
+    # continuam somente-leitura, a checagem de palavras bloqueadas abaixo
+    # cobre o resto da instrução independente de como ela começa.
+    if not re.match(r"^\s*(SELECT|WITH)\b", sql_limpo, re.IGNORECASE):
+        raise ConsultaFinanceiraInvalida("Somente instruções SELECT (ou WITH ... SELECT) são permitidas.")
+
+    sql_upper = sql_limpo.upper()
+    for palavra in PALAVRAS_BLOQUEADAS:
+        if palavra in sql_upper:
+            raise ConsultaFinanceiraInvalida(
+                f"A consulta contém um termo não permitido: '{palavra.strip()}'."
+            )
+
+    for clausula in _FROM_CLAUSULA_REGEX.findall(sql_limpo):
+        if "," in clausula:
+            raise ConsultaFinanceiraInvalida(
+                "Junção no estilo 'FROM a, b' não é permitida — relacione tabelas com JOIN."
+            )
+
+    nomes_cte = {nome.upper() for nome in _CTE_REGEX.findall(sql_limpo)}
+    tabelas_usadas = {t.upper() for t in _TABELA_REGEX.findall(sql_limpo)} - nomes_cte
+    if not tabelas_usadas:
+        raise ConsultaFinanceiraInvalida("Não foi possível identificar as tabelas usadas na consulta.")
+
+    tabelas_nao_permitidas = tabelas_usadas - TABELAS_PERMITIDAS
+    if tabelas_nao_permitidas:
+        raise ConsultaFinanceiraInvalida(
+            "Não é possível gerar esse relatório: a consulta usa dado(s) fora do escopo "
+            "financeiro autorizado para este agente."
+        )
+
+    # "LIMIT" cobre o SQL que o modelo gera quando sabe que o backend é Postgres
+    # (NOME_BANCO no prompt) — sem isso, uma consulta que já veio com LIMIT
+    # ganhava um FETCH FIRST em cima, e as duas cláusulas juntas são SQL inválido.
+    if "FETCH FIRST" not in sql_upper and "ROWNUM" not in sql_upper and "LIMIT" not in sql_upper:
+        sql_limpo = f"{sql_limpo}\nFETCH FIRST {LIMITE_MAXIMO_LINHAS} ROWS ONLY"
+
+    return sql_limpo
+
+
+class ConsultaFinanceiraInvalida(Exception):
+    """Levantada quando o SQL gerado pela IA não passa nas validações de segurança."""
 
 
 def executar_consulta_financeira(sql: str, titulo: str) -> dict:
@@ -183,7 +187,7 @@ def executar_consulta_financeira(sql: str, titulo: str) -> dict:
         "reutilizado": reutilizado,
         "titulo": titulo_final,
         "gerado_em": criado_em.isoformat(),
-        "dados": [dict(zip(colunas, linha)) for linha in linhas],
+        "dados": [dict(zip(colunas, linha, strict=True)) for linha in linhas],
     }
 
 

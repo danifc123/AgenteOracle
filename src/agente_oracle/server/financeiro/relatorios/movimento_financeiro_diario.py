@@ -1,56 +1,54 @@
 """RELATÓRIO: Resumo Bancário / Movimento Financeiro Diário (FINR530)
 
 Tradução do ADVPL (`FINR530.PRW`) — para uma data de referência única
-(`MV_PAR01`), lista, por conta bancária (`SA6010`), o saldo inicial, as
-entradas, as saídas, as aplicações financeiras do dia e o saldo disponível
-resultante. É o "resumo do dia" — prima do FINR470/Extrato Bancário
+(`MV_PAR01`), lista, por conta bancária, o saldo inicial, as entradas, as
+saídas, as aplicações financeiras do dia e o saldo disponível resultante. É
+o "resumo do dia" — prima do FINR470/Extrato Bancário
 (`extrato_bancario.py`), que lista o extrato linha a linha; aqui é só o
 totalizador por conta, para uma data só.
 
-Igual ao FINR470, o saldo inicial no ADVPL original vem de um snapshot
-(`SE8`, "Saldos Bancários", lido com `E8_SALATUA`/`DbSkip(-1)` pra pegar o
-saldo do dia anterior) — essa tabela não existe nesse banco fictício, então
-reconstruímos a partir do próprio histórico de `SE5010` (soma de tudo antes
-da data de referência), mesma substituição documentada lá.
+Migrado do Oracle transacional do Protheus (SA6010/SE5010) para o STAGE
+(SCIENCE_PROD, ETL/BI) — ver `db/views/financeiro_science.sql`/README
+("Views curadas do Financeiro") pro modelo geral.
+
+Duas descobertas específicas deste relatório:
+- **`STAGE.SALDOBANCARIO` tem histórico diário real** (uma linha por conta
+  por dia, anos de profundidade) — é exatamente o snapshot `SE8` ("Saldos
+  Bancários") que a versão anterior (contra Postgres de teste) não tinha e
+  por isso reconstruía o saldo inicial somando toda a movimentação anterior
+  à mão. Aqui usamos o snapshot direto (linha mais recente antes da data de
+  referência), mais fiel ao ADVPL original.
+- **Conta bancária não é escopada pela filial de 4 dígitos** —
+  `SALDOBANCARIO.CODIGOEMPRESA` guarda o "grupo de filiais" de 2 dígitos
+  (`STAGE.EMPRESA.GRUPOLOJA`, ex: '01' agrupa 0101-0106), não a filial
+  específica. Ou seja, contas bancárias são compartilhadas entre filiais do
+  mesmo grupo — por isso o filtro de filial aqui primeiro resolve os grupos
+  correspondentes (CTE `grupos`) antes de achar as contas.
 
 O que ficou de fora (documentado, não é atalho silencioso):
-- Multi-moeda (`MV_PAR02`/`MV_PAR04`, `xMoeda`/`RecMoeda`) — banco de teste é
-  mono-moeda (BRL), mesma simplificação do FINR470.
-- Gestão Corporativa multi-empresa (toda a lógica de `FWModeAccess`/
-  `cMAEmp*`/`cMAUni*`/`cMAFil*`/`lSE5Compar`/`lSE8Compar`/`lSA6Compar`, que
-  decide como cruzar SA6/SE5/SE8 quando essas tabelas são compartilhadas
-  entre empresas/unidades de negócio) — Grupo Conceito é filial única;
-  usamos o mesmo seletor de filial multi-select dos outros relatórios.
-- Caixa de loja (`MV_CXLJFIN`/`IsCaixaLoja()`) e o tratamento fino de
-  transferência (TR/TE) por numerário/moeda (`SX5` tabela "14", cheques com
-  "*" de prefixo) — módulos de varejo/tesouraria não usados pelo Grupo
-  Conceito (distribuidor agro, sem PDV).
-- `E5_MOTBX`/`MovBcoBx()` — função externa que decide se um motivo de baixa
-  específico exclui o lançamento; não temos a fórmula real nem uma tabela de
-  motivos nesse banco de teste, então não filtramos por ela (mesmo tipo de
-  gap documentado do `Fa080Juros()` no FINR150 — inventar o critério
-  pareceria fiel mas estaria errado).
+- Multi-moeda (`MV_PAR02`/`MV_PAR04`) — não encontramos taxa de conversão
+  associada a `MOVIMENTACAOFINANCEIRA`/`SALDOBANCARIO` no STAGE.
+- **"Considera Limite de Crédito" (`MV_PAR03`/`A6_LIMCRED`)** — não achamos
+  campo de limite de crédito em `STAGE.SALDOBANCARIO` nem em nenhuma tabela
+  de conta bancária do STAGE. O parâmetro continua aceito na rota (pra não
+  quebrar a tela), mas não tem mais efeito nenhum — sempre soma zero.
+- Caixa de loja e cheques com tratamento especial — mesma simplificação já
+  documentada no FINR470.
 
 O que TEM fidelidade real:
-- Filtro de data de referência (obrigatório) — o campo é uma faixa na tela
-  (`periodo-data`, como os outros relatórios), mas só a data inicial é usada
-  como referência, igual ao MV_PAR01 original (que é uma data única, não uma
-  faixa).
-- "Considera Limite de Crédito" (`MV_PAR03`/`A6_LIMCRED`) — soma o limite de
-  crédito da conta ao saldo inicial quando ligado.
+- Filtro de data de referência (obrigatório) — só a data inicial é usada
+  como referência, igual ao MV_PAR01 original (que é uma data única).
 - Exclui os mesmos tipos de documento que não são movimentação bancária real
-  (`E5_TIPODOC NOT IN (...)`, valor zero, situação cancelada) — mesma lista
-  do FINR470 (`Fr530Skip`/`_TIPODOC_EXCLUIDOS_IN`).
-- **Aplicações financeiras** tratadas à parte: título com `E5_TIPODOC='AP'`
-  soma ao total de aplicações quando é uma saída de caixa (`E5_RECPAG='P'`,
-  dinheiro indo para a aplicação) e subtrai quando é uma entrada
-  (`E5_RECPAG='R'`, resgate) — mesma lógica do bloco `IF/ELSE` do ADVPL
-  original. Aplicações não entram nos totais de entradas/saídas comuns.
-- **Saldo disponível** = saldo inicial (+ limite de crédito, se marcado) +
-  entradas - saídas - aplicações — mesma fórmula do `nDisponiv` original.
-
-Atenção: só roda com DB_BACKEND=postgres (cast ::date). Datas em SE5010
-nesse banco de teste são VARCHAR (formato "YYYYMMDD").
+  (`TIPODOCUMENTO NOT IN (...)`, valor zero) — mesma lista do FINR470.
+- **Aplicações financeiras** tratadas à parte: lançamento com
+  `TIPODOCUMENTO='AP'` soma ao total de aplicações quando é uma saída de
+  caixa (`TIPOMOVIMENTACAO='PAGAR'`, dinheiro indo pra aplicação) e subtrai
+  quando é uma entrada (`TIPOMOVIMENTACAO='RECEBER'`, resgate) — mesma
+  lógica do bloco `IF/ELSE` do ADVPL original. Aplicações não entram nos
+  totais de entradas/saídas comuns.
+- **Saldo disponível** = saldo inicial + entradas - saídas - aplicações —
+  mesma fórmula do `nDisponiv` original (sem o termo de limite de crédito,
+  ver acima).
 """
 
 from starlette.requests import Request
@@ -58,95 +56,97 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.db.connection import get_connection
 from agente_oracle.relatorios import gerar_xlsx
-from agente_oracle.server.auth.dependencia import exigir_modulo_financeiro
-from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
+from agente_oracle.server.auth.decorador_rota import rota_protegida
+from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
-# Mesma lista do FINR470 (Fr530Skip/_TIPODOC_EXCLUIDOS_IN): tipos de
-# documento que são baixas de título, não movimentação bancária real.
+# Mesma lista do FINR470: tipos de documento que são baixas de título, não
+# movimentação bancária real.
 _TIPODOC_EXCLUIDOS_IN = "('DC','JR','MT','CM','D2','J2','M2','V2','C2','CP','TL','BA','I2','EI','VA')"
 
 _QUERY = """
 -- =====================================================================
 -- RELATORIO: Resumo Bancario / Movimento Financeiro Diario (FINR530)
--- versao simplificada (sem multi-moeda/Gestao Corporativa/caixa de loja)
+-- versao STAGE (sem multi-moeda/limite de credito/caixa de loja)
 -- =====================================================================
-WITH contas AS (
-    SELECT sa6.a6_filial, sa6.a6_cod, sa6.a6_agencia, sa6.a6_numcon, sa6.a6_nreduz,
-           COALESCE(sa6.a6_limcred, 0) AS a6_limcred
-    FROM sa6010 sa6
-    WHERE COALESCE(sa6.d_e_l_e_t_, ' ') = ' '
-      AND TRIM(sa6.a6_filial) IN __FILIAL_IN__
+WITH grupos AS (
+    SELECT DISTINCT grupoloja
+    FROM STAGE.empresa
+    WHERE excluido = 0 AND TRIM(codigo) IN __FILIAL_IN__
+),
+contas AS (
+    SELECT DISTINCT sb.codigobanco, sb.codigoagencia, sb.codigoconta
+    FROM STAGE.saldobancario sb
+    JOIN grupos g ON TRIM(sb.codigoempresa) = g.grupoloja
+    WHERE sb.excluido = 0
 ),
 saldo_inicial AS (
-    SELECT c.a6_cod, c.a6_agencia, c.a6_numcon,
-        COALESCE(SUM(CASE WHEN se5.e5_recpag = 'R' THEN se5.e5_valor ELSE -se5.e5_valor END), 0) AS valor
+    SELECT c.codigobanco, c.codigoagencia, c.codigoconta,
+        (
+            SELECT TO_NUMBER(sb2.valorsaldoatual)
+            FROM STAGE.saldobancario sb2
+            WHERE sb2.codigobanco = c.codigobanco AND sb2.codigoagencia = c.codigoagencia
+              AND sb2.codigoconta = c.codigoconta AND sb2.excluido = 0
+              AND sb2.datasaldoatual = (
+                  SELECT MAX(sb3.datasaldoatual) FROM STAGE.saldobancario sb3
+                  WHERE sb3.codigobanco = c.codigobanco AND sb3.codigoagencia = c.codigoagencia
+                    AND sb3.codigoconta = c.codigoconta AND sb3.excluido = 0
+                    AND sb3.datasaldoatual < TO_DATE(:data_ini, 'YYYYMMDD')
+              )
+              AND ROWNUM = 1
+        ) AS valor
     FROM contas c
-    LEFT JOIN se5010 se5
-        ON se5.e5_banco = c.a6_cod AND se5.e5_agencia = c.a6_agencia AND se5.e5_conta = c.a6_numcon
-       AND COALESCE(se5.d_e_l_e_t_, ' ') = ' '
-       AND TRIM(se5.e5_filial) IN __FILIAL_IN__
-       AND se5.e5_dtdispo::date < :data_ini::date
-       AND se5.e5_valor <> 0
-       AND COALESCE(se5.e5_situaca, ' ') <> 'C'
-       AND se5.e5_tipodoc NOT IN __TIPODOC_EXCLUIDOS__
-    GROUP BY c.a6_cod, c.a6_agencia, c.a6_numcon
 ),
 movimento_dia AS (
-    SELECT c.a6_cod, c.a6_agencia, c.a6_numcon,
-        COALESCE(SUM(CASE WHEN se5.e5_recpag = 'R' AND se5.e5_tipodoc <> 'AP' THEN se5.e5_valor ELSE 0 END), 0) AS entradas,
-        COALESCE(SUM(CASE WHEN se5.e5_recpag = 'P' AND se5.e5_tipodoc <> 'AP' THEN se5.e5_valor ELSE 0 END), 0) AS saidas,
+    SELECT c.codigobanco, c.codigoagencia, c.codigoconta,
+        COALESCE(SUM(CASE WHEN mf.tipomovimentacao = 'RECEBER' AND mf.tipodocumento <> 'AP' THEN mf.valor ELSE 0 END), 0) AS entradas,
+        COALESCE(SUM(CASE WHEN mf.tipomovimentacao = 'PAGAR' AND mf.tipodocumento <> 'AP' THEN mf.valor ELSE 0 END), 0) AS saidas,
         COALESCE(SUM(
-            CASE WHEN se5.e5_tipodoc = 'AP'
-                THEN CASE WHEN se5.e5_recpag = 'P' THEN se5.e5_valor ELSE -se5.e5_valor END
+            CASE WHEN mf.tipodocumento = 'AP'
+                THEN CASE WHEN mf.tipomovimentacao = 'PAGAR' THEN mf.valor ELSE -mf.valor END
                 ELSE 0
             END
         ), 0) AS aplicacoes
     FROM contas c
-    LEFT JOIN se5010 se5
-        ON se5.e5_banco = c.a6_cod AND se5.e5_agencia = c.a6_agencia AND se5.e5_conta = c.a6_numcon
-       AND COALESCE(se5.d_e_l_e_t_, ' ') = ' '
-       AND TRIM(se5.e5_filial) IN __FILIAL_IN__
-       AND se5.e5_dtdispo::date = :data_ini::date
-       AND se5.e5_valor <> 0
-       AND COALESCE(se5.e5_situaca, ' ') <> 'C'
-       AND se5.e5_tipodoc NOT IN __TIPODOC_EXCLUIDOS__
-    GROUP BY c.a6_cod, c.a6_agencia, c.a6_numcon
+    LEFT JOIN STAGE.movimentacaofinanceira mf
+        ON mf.banco = c.codigobanco AND mf.agencia = c.codigoagencia AND mf.conta = c.codigoconta
+       AND mf.excluido = 0
+       AND mf.datadisponibilizacao = TO_DATE(:data_ini, 'YYYYMMDD')
+       AND mf.valor <> 0
+       AND mf.tipodocumento NOT IN __TIPODOC_EXCLUIDOS__
+    GROUP BY c.codigobanco, c.codigoagencia, c.codigoconta
 )
 SELECT
-    c.a6_cod,
-    c.a6_agencia,
-    c.a6_numcon,
-    c.a6_nreduz,
-    (
-        COALESCE(si.valor, 0)
-        + CASE WHEN :considera_limite = '1' THEN c.a6_limcred ELSE 0 END
-    ) AS saldo_inicial,
+    c.codigobanco,
+    c.codigoagencia,
+    c.codigoconta,
+    bb.descricao AS nome_conta,
+    COALESCE(si.valor, 0) AS saldo_inicial,
     COALESCE(md.entradas, 0) AS entradas,
     COALESCE(md.saidas, 0) AS saidas,
     COALESCE(md.aplicacoes, 0) AS aplicacoes,
     (
-        COALESCE(si.valor, 0)
-        + CASE WHEN :considera_limite = '1' THEN c.a6_limcred ELSE 0 END
-        + COALESCE(md.entradas, 0) - COALESCE(md.saidas, 0) - COALESCE(md.aplicacoes, 0)
+        COALESCE(si.valor, 0) + COALESCE(md.entradas, 0) - COALESCE(md.saidas, 0) - COALESCE(md.aplicacoes, 0)
     ) AS saldo_disponivel
 FROM contas c
-LEFT JOIN saldo_inicial si ON si.a6_cod = c.a6_cod AND si.a6_agencia = c.a6_agencia AND si.a6_numcon = c.a6_numcon
-LEFT JOIN movimento_dia md ON md.a6_cod = c.a6_cod AND md.a6_agencia = c.a6_agencia AND md.a6_numcon = c.a6_numcon
-ORDER BY c.a6_cod, c.a6_agencia, c.a6_numcon
+LEFT JOIN saldo_inicial si ON si.codigobanco = c.codigobanco AND si.codigoagencia = c.codigoagencia AND si.codigoconta = c.codigoconta
+LEFT JOIN movimento_dia md ON md.codigobanco = c.codigobanco AND md.codigoagencia = c.codigoagencia AND md.codigoconta = c.codigoconta
+LEFT JOIN STAGE.bancobacen bb ON TO_CHAR(bb.codigo) = LPAD(TRIM(c.codigobanco), 3, '0')
+ORDER BY c.codigobanco, c.codigoagencia, c.codigoconta
 """
 
-_CAMPOS_OPCIONAIS = ("data_ini", "data_fim", "considera_limite")
+_CAMPOS_OPCIONAIS = ("data_ini", "data_fim")
 
 
 def _buscar_movimento(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
 
     opcionais.pop("data_fim", None)
-    opcionais.setdefault("considera_limite", "2")
 
-    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace("__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN)
+    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace(
+        "__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN
+    )
 
     with get_connection() as connection:
         cursor = connection.cursor()
@@ -169,39 +169,18 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/financeiro/movimento-financeiro-diario", methods=["GET", "OPTIONS"])
-    async def listar_movimento_financeiro_diario_route(request: Request) -> JSONResponse:
-        """RELATÓRIO: Resumo Bancário / Movimento Financeiro Diário (FINR530) — endpoint JSON usado pela tela."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
-        parametros = _parametros_da_query(request)
-        if parametros is None:
-            return JSONResponse({"erro": "Informe filial e a data de referência."}, status_code=400, headers=CORS_HEADERS)
-
-        colunas, linhas = _buscar_movimento(*parametros)
-        dados = [dict(zip(colunas, (_comum.serializar(valor) for valor in linha))) for linha in linhas]
-        return JSONResponse(dados, headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/financeiro/movimento-financeiro-diario/exportar", methods=["GET", "OPTIONS"])
-    async def exportar_movimento_financeiro_diario_route(request: Request) -> Response:
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
+    async def exportar_movimento_financeiro_diario_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Resumo Bancário / Movimento Financeiro Diário (FINR530) — exportação em Excel."""
-        if request.method == "OPTIONS":
-            return resposta_preflight("GET, OPTIONS")
-
-        usuario_ou_erro = exigir_modulo_financeiro(request)
-        if isinstance(usuario_ou_erro, JSONResponse):
-            return usuario_ou_erro
-
         parametros = _parametros_da_query(request)
         if parametros is None:
-            return JSONResponse({"erro": "Informe filial e a data de referência."}, status_code=400, headers=CORS_HEADERS)
+            return JSONResponse(
+                {"erro": "Informe filial e a data de referência."}, status_code=400, headers=CORS_HEADERS
+            )
 
         colunas, linhas = _buscar_movimento(*parametros)
+        _comum.registrar_acesso(usuario, "movimento_financeiro_diario:exportar", len(linhas))
         conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Resumo Bancário / Movimento Financeiro Diário")
         return Response(
             content=conteudo_xlsx,
@@ -211,3 +190,20 @@ def registrar(mcp) -> None:
                 **CORS_HEADERS,
             },
         )
+
+    @mcp.custom_route("/api/financeiro/movimento-financeiro-diario", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
+    async def listar_movimento_financeiro_diario_route(request: Request, usuario: dict) -> JSONResponse:
+        """RELATÓRIO: Resumo Bancário / Movimento Financeiro Diário (FINR530) — endpoint JSON usado pela tela."""
+        parametros = _parametros_da_query(request)
+        if parametros is None:
+            return JSONResponse(
+                {"erro": "Informe filial e a data de referência."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        colunas, linhas = _buscar_movimento(*parametros)
+        _comum.registrar_acesso(usuario, "movimento_financeiro_diario:listar", len(linhas))
+        dados = [
+            dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
+        ]
+        return JSONResponse(dados, headers=CORS_HEADERS)

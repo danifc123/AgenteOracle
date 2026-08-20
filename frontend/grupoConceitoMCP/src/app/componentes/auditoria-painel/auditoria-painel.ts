@@ -14,7 +14,7 @@ import { Dialog } from '../dialog/dialog';
   selector: 'app-auditoria-painel',
   imports: [Botao, Dialog],
   templateUrl: './auditoria-painel.html',
-  styleUrl: './auditoria-painel.scss'
+  styleUrl: './auditoria-painel.scss',
 })
 export class AuditoriaPainel {
   protected readonly auditoria = inject(Auditoria);
@@ -24,7 +24,7 @@ export class AuditoriaPainel {
   protected readonly modulosDisponiveis = this.sessao.modulos;
 
   protected readonly mostrarSeletor = computed(
-    () => this.auditoria.moduloAtual() === null && this.modulosDisponiveis().length > 1
+    () => this.auditoria.moduloAtual() === null && this.modulosDisponiveis().length > 1,
   );
 
   protected readonly titulo = computed(() => {
@@ -46,8 +46,20 @@ export class AuditoriaPainel {
     });
   }
 
+  protected chaveAchado(achado: AchadoAuditoria): string {
+    return `${achado.modulo}|${achado.view}|${achado.campo}|${achado.valor}`;
+  }
+
+  protected dispensar(achado: AchadoAuditoria): void {
+    this.auditoria.dispensar(achado);
+  }
+
   protected fechar(): void {
     this.auditoria.fechar();
+  }
+
+  protected rodar(): void {
+    this.auditoria.buscar();
   }
 
   protected selecionarModulo(modulo: string): void {
@@ -56,17 +68,5 @@ export class AuditoriaPainel {
 
   protected trocarModulo(): void {
     this.auditoria.limparSelecao();
-  }
-
-  protected rodar(): void {
-    this.auditoria.buscar();
-  }
-
-  protected dispensar(achado: AchadoAuditoria): void {
-    this.auditoria.dispensar(achado);
-  }
-
-  protected chaveAchado(achado: AchadoAuditoria): string {
-    return `${achado.modulo}|${achado.view}|${achado.campo}|${achado.valor}`;
   }
 }

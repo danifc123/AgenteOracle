@@ -1,12 +1,13 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, input, output } from '@angular/core';
 import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro';
 import { OpcaoSelectBusca, SelectBusca } from '../select-busca/select-busca';
 
 @Component({
   selector: 'app-campo-filtro-dinamico',
-  imports: [SelectBusca],
+  imports: [NgTemplateOutlet, SelectBusca],
   templateUrl: './campo-filtro-dinamico.html',
-  styleUrl: './campo-filtro-dinamico.scss'
+  styleUrl: './campo-filtro-dinamico.scss',
 })
 export class CampoFiltroDinamico {
   campo = input.required<CampoFiltro>();

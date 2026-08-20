@@ -1,0 +1,171 @@
+<app-modulo-header
+  breadcrumb="RH"
+  titulo="Repescagem"
+  descricao="Candidatos já dispensados — reconsidere pra uma vaga nova navegando na lista ou descrevendo a necessidade pra IA buscar entre eles."
+/>
+
+<section class="cartao-secao">
+  <div class="abas" role="tablist" aria-label="Modo de repescagem">
+    <button
+      type="button"
+      role="tab"
+      class="aba"
+      [attr.aria-selected]="modo() === 'lista'"
+      [class.aba--ativa]="modo() === 'lista'"
+      (click)="modo.set('lista')"
+    >
+      Todos os descartados
+      <span class="aba-contagem">{{ candidatosDescartados().length }}</span>
+    </button>
+    <button
+      type="button"
+      role="tab"
+      class="aba"
+      [attr.aria-selected]="modo() === 'busca'"
+      [class.aba--ativa]="modo() === 'busca'"
+      (click)="modo.set('busca')"
+    >
+      Buscar por vaga
+    </button>
+  </div>
+
+  @if (modo() === 'lista') {
+    @if (candidatosDescartados().length) {
+      <div class="tabela-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Resumo do perfil</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (candidato of candidatosDescartados(); track candidato.id) {
+              <tr>
+                <td>{{ candidato.nome }}</td>
+                <td class="coluna-resumo">{{ resumoTruncado(candidato) }}</td>
+                <td class="coluna-acao">
+                  <app-botao variant="contorno" (clicked)="abrirDetalhe(candidato)">Ver perfil</app-botao>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <app-estado-vazio titulo="Nenhum candidato descartado" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 4v6h6" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M20 20v-6h-6" stroke-linecap="round" stroke-linejoin="round" />
+          <path
+            d="M5.5 15a7 7 0 0 0 12.3 2.5M18.5 9a7 7 0 0 0-12.3-2.5"
+            stroke-linecap="round"
+          />
+        </svg>
+        <p>Candidato dispensado aparece aqui — dá pra reconsiderar quando surgir uma vaga nova.</p>
+      </app-estado-vazio>
+    }
+  } @else {
+    <div class="formulario-busca">
+      <label class="campo-descricao">
+        <span>Descrição da necessidade da vaga</span>
+        <textarea
+          [value]="descricao()"
+          (input)="descricao.set($any($event.target).value)"
+          rows="5"
+          placeholder="Descreva a vaga — a IA busca só entre os candidatos descartados quem encaixaria melhor agora."
+        ></textarea>
+      </label>
+
+      <app-botao
+        variant="primaria"
+        [loading]="busca.carregando()"
+        loadingText="Buscando..."
+        [disabled]="!descricao().trim()"
+        (clicked)="buscar()"
+      >
+        Buscar na Repescagem
+      </app-botao>
+    </div>
+
+    @if (busca.erro()) {
+      <p class="erro-busca">{{ busca.erro() }}</p>
+    } @else if (!busca.carregando() && busca.resultados().length) {
+      <div class="lista-resultados">
+        @for (resultado of busca.resultados(); track resultado.candidato_id) {
+          <div class="cartao-resultado">
+            <div class="cartao-resultado-cabecalho">
+              <span class="posicao">#{{ resultado.posicao }}</span>
+              <h3>{{ resultado.nome }}</h3>
+              <span class="similaridade">{{ percentual(resultado.similaridade) }} de similaridade</span>
+            </div>
+            <div class="linha-meta-badges">
+              <span class="badge-meta">{{ rotuloSenioridade(resultado) }}</span>
+              @if (resultado.area_atuacao_principal) {
+                <span class="badge-meta">{{ resultado.area_atuacao_principal }}</span>
+              }
+            </div>
+            <p class="justificativa">{{ resultado.justificativa }}</p>
+            <p class="resumo-perfil">{{ resultado.resumo_perfil }}</p>
+            <div class="linha-acoes-resultado">
+              <app-botao variant="contorno" (clicked)="abrirPerfil(resultado)">Ver perfil</app-botao>
+              <app-botao variant="contorno" (clicked)="baixarCurriculoResultado(resultado)">
+                Baixar currículo
+              </app-botao>
+            </div>
+          </div>
+        }
+      </div>
+    } @else if (!busca.carregando() && buscaFeita()) {
+      <app-estado-vazio titulo="Nenhum candidato encontrado" variante="simples">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m20 20-3.8-3.8" stroke-linecap="round" />
+        </svg>
+        <p>Nenhum descartado bateu bem com essa descrição — tente detalhar mais a necessidade da vaga.</p>
+      </app-estado-vazio>
+    }
+  }
+</section>
+
+<app-dialog
+  [aberto]="!!candidatoAberto()"
+  [titulo]="candidatoAberto()?.nome ?? ''"
+  [temRodape]="true"
+  (fechar)="fecharDetalhe()"
+>
+  @if (candidatoAberto(); as candidato) {
+    <app-detalhe-candidato
+      [resumo]="candidato.resumo_perfil"
+      [perfilEstruturado]="candidato.perfil_estruturado"
+      [dataCadastro]="dataFormatada(candidato.criado_em)"
+    />
+  }
+
+  @if (candidatoAberto(); as candidato) {
+    <ng-container rodape>
+      <app-botao variant="contorno" (clicked)="baixarCurriculo(candidato)">Baixar currículo</app-botao>
+      <app-botao variant="contorno" (clicked)="contratar(candidato)">Marcar como contratado</app-botao>
+      <app-botao variant="primaria" (clicked)="reativar(candidato)">Reativar candidato</app-botao>
+    </ng-container>
+  }
+</app-dialog>
+
+<app-dialog
+  [aberto]="!!resultadoAberto()"
+  [titulo]="resultadoAberto()?.nome ?? ''"
+  [temRodape]="true"
+  (fechar)="fecharPerfil()"
+>
+  @if (resultadoAberto(); as resultado) {
+    <app-detalhe-candidato [resumo]="resultado.resumo_perfil" [perfilEstruturado]="resultado.perfil_estruturado" />
+  }
+
+  @if (resultadoAberto(); as resultado) {
+    <ng-container rodape>
+      <app-botao variant="contorno" (clicked)="baixarCurriculoResultado(resultado)">Baixar currículo</app-botao>
+      <app-botao variant="primaria" (clicked)="contratarResultado(resultado)">Marcar como contratado</app-botao>
+    </ng-container>
+  }
+</app-dialog>

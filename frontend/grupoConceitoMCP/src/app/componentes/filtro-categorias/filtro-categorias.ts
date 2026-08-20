@@ -9,7 +9,7 @@ export interface OpcaoCategoria {
   selector: 'app-filtro-categorias',
   imports: [],
   templateUrl: './filtro-categorias.html',
-  styleUrl: './filtro-categorias.scss'
+  styleUrl: './filtro-categorias.scss',
 })
 export class FiltroCategorias {
   categorias = input.required<OpcaoCategoria[]>();

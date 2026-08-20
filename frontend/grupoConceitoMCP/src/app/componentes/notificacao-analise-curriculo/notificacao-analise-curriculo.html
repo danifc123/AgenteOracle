@@ -1,0 +1,83 @@
+<div class="pilha-flutuante">
+  @if (analise.emAndamento().length > 0) {
+    <div class="chip-andamento">
+      <span class="spinner" aria-hidden="true"></span>
+      {{ rotuloAndamento() }}
+    </div>
+  }
+
+  @for (id of idsToastsVisiveis(); track id) {
+    @if (notificacaoPorId(id); as notificacao) {
+      <div class="toast">
+        <span class="toast-icone" [class.toast-icone--aviso]="notificacao.situacao !== 'novo'" aria-hidden="true">
+          @if (notificacao.situacao === 'novo') {
+            ✓
+          } @else {
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 3.5 2.3 20h19.4L12 3.5Z" stroke-linejoin="round" />
+              <path d="M12 9.5v4" stroke-linecap="round" />
+              <path d="M12 16.8h.01" stroke-linecap="round" />
+            </svg>
+          }
+        </span>
+        <div class="toast-texto">
+          <p class="toast-titulo">Análise concluída</p>
+          <p class="toast-descricao">{{ descricaoToast(notificacao) }}</p>
+        </div>
+        <div class="toast-acoes">
+          <button type="button" class="toast-botao" (click)="verResultado(id)">Ver candidato</button>
+          <button
+            type="button"
+            class="toast-fechar"
+            (click)="descartar(id)"
+            aria-label="Dispensar notificação"
+            title="Dispensar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    } @else if (erroPorId(id); as erro) {
+      <div class="toast toast--erro">
+        <span class="toast-icone" aria-hidden="true">!</span>
+        <div class="toast-texto">
+          <p class="toast-titulo">Não foi possível analisar</p>
+          <p class="toast-descricao">{{ erro.mensagem }}</p>
+        </div>
+        <div class="toast-acoes">
+          <button
+            type="button"
+            class="toast-fechar"
+            (click)="descartarErro(id)"
+            aria-label="Dispensar aviso"
+            title="Dispensar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    }
+  }
+</div>

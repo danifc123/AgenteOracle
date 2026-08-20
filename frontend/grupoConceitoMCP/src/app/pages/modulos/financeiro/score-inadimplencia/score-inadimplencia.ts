@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MCP_API_BASE_URL } from '../../../../app-config';
@@ -8,6 +8,8 @@ import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { TOAST_DESATIVADO } from '../../../../servicos/toast.interceptor';
+import { Toasts } from '../../../../servicos/toasts';
 
 interface Filial {
   codigo: string;
@@ -82,6 +84,7 @@ const ROTULOS_TENDENCIA: Record<ComportamentoPagamento['tendencia'], string> = {
 })
 export class ScoreInadimplenciaComponent {
   private readonly http = inject(HttpClient);
+  private readonly toasts = inject(Toasts);
 
   protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
   protected readonly filiaisSelecionadas = signal<string[]>([]);
@@ -210,15 +213,26 @@ export class ScoreInadimplenciaComponent {
           latitude,
           longitude,
         },
+        // Mensagem de sucesso depende do corpo da resposta (`resolvido`),
+        // então o toast automático (genérico) fica desligado aqui — quem
+        // decide o texto certo é este componente, não o interceptor.
+        { context: new HttpContext().set(TOAST_DESATIVADO, true) },
       )
       .subscribe({
         next: (localizacao) => {
           item.localizacao = localizacao;
           this.salvandoLocalizacao.set(false);
           this.clienteEmEdicao.set(null);
+          this.toasts.sucesso(
+            localizacao.resolvido
+              ? 'Localização salva e usada no clima deste cliente.'
+              : 'Localização salva, mas não conseguimos localizar — o clima segue pelo município.',
+          );
         },
         error: (erro: HttpErrorResponse) => {
-          this.erroLocalizacao.set(mensagemErro(erro, 'Não foi possível salvar a localização.'));
+          const mensagem = mensagemErro(erro, 'Não foi possível salvar a localização.');
+          this.erroLocalizacao.set(mensagem);
+          this.toasts.erro(mensagem);
           this.salvandoLocalizacao.set(false);
         },
       });

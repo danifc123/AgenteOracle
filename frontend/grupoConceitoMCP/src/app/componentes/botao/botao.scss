@@ -3,6 +3,10 @@
 }
 
 .botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   cursor: pointer;
 
   &:focus-visible {
@@ -17,6 +21,21 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+}
+
+/* A "bolinha" de carregamento — mostrada no lugar do conteúdo do botão
+   sempre que `[loading]="true"`, em qualquer variante. Usa a cor do texto
+   atual (`currentColor`) pra já nascer com a cor certa em cada variante. */
+.botao-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.9;
+  animation: gc-spin var(--duration-slow) linear infinite;
 }
 
 .botao--completa {

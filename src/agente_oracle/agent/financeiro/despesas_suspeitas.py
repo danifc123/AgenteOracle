@@ -106,11 +106,26 @@ class CandidatoAnomaliaValor:
 
 @dataclass(frozen=True)
 class AchadoDespesa:
+    """`natureza_descricao`/`media_grupo` só existem pra `anomalia_valor` (o
+    candidato de duplicidade não tem grupo/média — é uma comparação
+    direta entre dois títulos). `data_emissao_min`/`data_emissao_max` são
+    iguais em `anomalia_valor` (uma data só) e viram uma faixa de verdade
+    só em `duplicidade`. Campos que já existiam calculados em
+    `CandidatoDuplicidade`/`CandidatoAnomaliaValor` e eram jogados fora
+    antes de chegar no front — a tela pedia clicar num achado pra ver o
+    detalhamento (por que foi marcado, contra o que foi comparado), e essa
+    conta já estava pronta, só faltava não descartar."""
+
     tipo: str
+    fornecedor_codigo: str
     fornecedor_nome: str
     valor: float
     documentos: str
     descricao: str
+    data_emissao_min: date
+    data_emissao_max: date
+    natureza_descricao: str | None = None
+    media_grupo: float | None = None
 
 
 def buscar_titulos_pagar(filiais: list[str], dias: int) -> list[TituloPagar]:
@@ -200,9 +215,38 @@ async def analisar_despesas(
     return achados
 
 
-# _achado_fundamentado, _achados_sem_descricao_ia, _candidatos_anomalia_valor,
-# _candidatos_duplicidade e _candidatos_para_texto só são usadas por
-# analisar_despesas, logo depois dela, em ordem alfabética entre si.
+# _achado_a_partir_de_candidato, _achado_fundamentado, _achados_sem_descricao_ia,
+# _candidatos_anomalia_valor, _candidatos_duplicidade e _candidatos_para_texto
+# só são usadas por analisar_despesas, logo depois dela, em ordem alfabética
+# entre si.
+def _achado_a_partir_de_candidato(
+    tipo: str, candidato: CandidatoDuplicidade | CandidatoAnomaliaValor, descricao: str
+) -> AchadoDespesa:
+    if isinstance(candidato, CandidatoDuplicidade):
+        return AchadoDespesa(
+            tipo=tipo,
+            fornecedor_codigo=candidato.fornecedor_codigo,
+            fornecedor_nome=candidato.fornecedor_nome,
+            valor=candidato.valor_original,
+            documentos=", ".join(candidato.documentos),
+            descricao=descricao,
+            data_emissao_min=candidato.data_emissao_min,
+            data_emissao_max=candidato.data_emissao_max,
+        )
+    return AchadoDespesa(
+        tipo=tipo,
+        fornecedor_codigo=candidato.fornecedor_codigo,
+        fornecedor_nome=candidato.fornecedor_nome,
+        valor=candidato.valor_original,
+        documentos=candidato.documento,
+        descricao=descricao,
+        data_emissao_min=candidato.data_emissao,
+        data_emissao_max=candidato.data_emissao,
+        natureza_descricao=candidato.natureza_descricao,
+        media_grupo=candidato.media_grupo,
+    )
+
+
 def _achado_fundamentado(
     bruto: object,
     candidatos_por_chave: dict[tuple[str, float, str], CandidatoDuplicidade | CandidatoAnomaliaValor],
@@ -225,46 +269,27 @@ def _achado_fundamentado(
     if candidato is None:
         return None
 
-    documentos = (
-        ", ".join(candidato.documentos)
-        if isinstance(candidato, CandidatoDuplicidade)
-        else candidato.documento
-    )
-    return AchadoDespesa(
-        tipo=tipo,
-        fornecedor_nome=candidato.fornecedor_nome,
-        valor=candidato.valor_original,
-        documentos=documentos,
-        descricao=descricao.strip(),
-    )
+    return _achado_a_partir_de_candidato(tipo, candidato, descricao.strip())
 
 
 def _achados_sem_descricao_ia(
     candidatos_duplicidade: list[CandidatoDuplicidade], candidatos_anomalia: list[CandidatoAnomaliaValor]
 ) -> list[AchadoDespesa]:
     achados = [
-        AchadoDespesa(
-            tipo="duplicidade",
-            fornecedor_nome=c.fornecedor_nome,
-            valor=c.valor_original,
-            documentos=", ".join(c.documentos),
-            descricao=(
-                f"{len(c.documentos)} títulos do mesmo fornecedor com o mesmo valor, emitidos entre "
-                f"{c.data_emissao_min.isoformat()} e {c.data_emissao_max.isoformat()}."
-            ),
+        _achado_a_partir_de_candidato(
+            "duplicidade",
+            c,
+            f"{len(c.documentos)} títulos do mesmo fornecedor com o mesmo valor, emitidos entre "
+            f"{c.data_emissao_min.isoformat()} e {c.data_emissao_max.isoformat()}.",
         )
         for c in candidatos_duplicidade
     ]
     achados.extend(
-        AchadoDespesa(
-            tipo="anomalia_valor",
-            fornecedor_nome=c.fornecedor_nome,
-            valor=c.valor_original,
-            documentos=c.documento,
-            descricao=(
-                f"Valor muito acima da média da natureza '{c.natureza_descricao}' "
-                f"(média do grupo: {c.media_grupo})."
-            ),
+        _achado_a_partir_de_candidato(
+            "anomalia_valor",
+            c,
+            f"Valor muito acima da média da natureza '{c.natureza_descricao}' "
+            f"(média do grupo: {c.media_grupo}).",
         )
         for c in candidatos_anomalia
     )

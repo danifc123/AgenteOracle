@@ -11,6 +11,7 @@
   justify-content: center;
   padding: 24px;
   z-index: 50;
+  animation: dialog-backdrop-entrada var(--duration-base) var(--ease-out);
 }
 
 .painel {
@@ -23,9 +24,23 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  animation: dialog-painel-entrada var(--duration-slow) var(--ease-out);
 
   &--compacto {
     max-width: 660px;
+  }
+}
+
+@keyframes dialog-backdrop-entrada {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-painel-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
   }
 }
 

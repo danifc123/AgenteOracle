@@ -23,10 +23,15 @@ _DIAS_JANELA = 90
 def _achado_para_json(achado: AchadoDespesa) -> dict:
     return {
         "tipo": achado.tipo,
+        "fornecedor_codigo": achado.fornecedor_codigo,
         "fornecedor_nome": achado.fornecedor_nome,
         "valor": achado.valor,
         "documentos": achado.documentos,
         "descricao": achado.descricao,
+        "data_emissao_min": achado.data_emissao_min.isoformat(),
+        "data_emissao_max": achado.data_emissao_max.isoformat(),
+        "natureza_descricao": achado.natureza_descricao,
+        "media_grupo": achado.media_grupo,
     }
 
 

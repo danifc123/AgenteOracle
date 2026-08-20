@@ -43,7 +43,12 @@
     } @else {
       <div class="lista-achados">
         @for (achado of achados(); track achado.documentos + achado.tipo) {
-          <div class="cartao-achado" [class.cartao-achado--anomalia]="achado.tipo === 'anomalia_valor'">
+          <button
+            type="button"
+            class="cartao-achado"
+            [class.cartao-achado--anomalia]="achado.tipo === 'anomalia_valor'"
+            (click)="abrirDetalhamento(achado)"
+          >
             <div class="cartao-achado-cabecalho">
               <span class="badge-tipo">{{ rotuloTipo(achado.tipo) }}</span>
               <span class="fornecedor-achado">{{ achado.fornecedor_nome }}</span>
@@ -51,9 +56,140 @@
             </div>
             <p class="descricao-achado">{{ achado.descricao }}</p>
             <p class="documentos-achado">{{ achado.documentos }}</p>
-          </div>
+          </button>
         }
       </div>
     }
   </section>
 }
+
+<app-dialog
+  [aberto]="!!achadoDetalhado()"
+  titulo="Detalhamento do achado"
+  tamanho="compacto"
+  (fechar)="fecharDetalhamento()"
+>
+  @if (achadoDetalhado(); as achado) {
+    <div class="detalhamento" [class.detalhamento--anomalia]="achado.tipo === 'anomalia_valor'">
+      <header class="detalhamento-topo">
+        <div class="detalhamento-icone">
+          @if (achado.tipo === 'duplicidade') {
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <rect x="8" y="8" width="12" height="12" rx="2.5" stroke-linejoin="round" />
+              <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          } @else {
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M3 17h3l3-9 4 13 3-9 2 5h3" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          }
+        </div>
+        <div class="detalhamento-topo-texto">
+          <span class="badge-tipo" [class.badge-tipo--anomalia]="achado.tipo === 'anomalia_valor'">
+            {{ rotuloTipo(achado.tipo) }}
+          </span>
+          <h3>{{ achado.fornecedor_nome }}</h3>
+          <span class="detalhamento-codigo">Fornecedor {{ achado.fornecedor_codigo }}</span>
+        </div>
+        <div class="detalhamento-valor-grande">{{ formatarValor(achado.valor) }}</div>
+      </header>
+
+      @if (achado.media_grupo !== null) {
+        <div class="comparativo">
+          <span class="detalhamento-secao-titulo">Contra a média da categoria</span>
+
+          <div class="comparativo-linha">
+            <span class="comparativo-rotulo">Média do grupo</span>
+            <div class="comparativo-trilha">
+              <div class="comparativo-barra comparativo-barra--media" [style.width.%]="larguraBarraMedia()"></div>
+            </div>
+            <span class="comparativo-numero">{{ formatarValor(achado.media_grupo) }}</span>
+          </div>
+
+          <div class="comparativo-linha">
+            <span class="comparativo-rotulo">Este título</span>
+            <div class="comparativo-trilha">
+              <div class="comparativo-barra comparativo-barra--valor"></div>
+            </div>
+            <span class="comparativo-numero comparativo-numero--destaque">{{ formatarValor(achado.valor) }}</span>
+          </div>
+
+          @if (percentualAcimaDaMedia(); as percentual) {
+            <p class="comparativo-selo">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4">
+                <path d="M12 19V5M6 11l6-6 6 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              {{ percentual | number: '1.0-0' }}% acima da média
+            </p>
+          }
+        </div>
+      }
+
+      <div class="grade-info">
+        <div class="info-chip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="4" y="5" width="16" height="15" rx="2" />
+            <path d="M4 9.5h16M8 3v3.5M16 3v3.5" stroke-linecap="round" />
+          </svg>
+          <div class="info-chip-texto">
+            <span class="info-chip-rotulo">Emissão</span>
+            <span class="info-chip-valor">{{ formatarFaixaEmissao(achado) }}</span>
+          </div>
+        </div>
+        @if (achado.natureza_descricao) {
+          <div class="info-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path
+                d="M11.5 4h-4A2.5 2.5 0 0 0 5 6.5v13L11.5 16 18 19.5v-13A2.5 2.5 0 0 0 15.5 4h-1"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <div class="info-chip-texto">
+              <span class="info-chip-rotulo">Categoria</span>
+              <span class="info-chip-valor">{{ achado.natureza_descricao }}</span>
+            </div>
+          </div>
+        } @else {
+          <div class="info-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7 3.5Z" stroke-linejoin="round" />
+              <path d="M14 3.5V8h4" stroke-linejoin="round" />
+            </svg>
+            <div class="info-chip-texto">
+              <span class="info-chip-rotulo">Documento</span>
+              <span class="info-chip-valor">{{ achado.documentos }}</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      @if (achado.tipo === 'duplicidade') {
+        <div class="timeline">
+          <span class="detalhamento-secao-titulo">
+            {{ listaDocumentos(achado).length }} documentos com o mesmo valor
+          </span>
+          <div class="timeline-lista">
+            @for (documento of listaDocumentos(achado); track documento) {
+              <div class="timeline-item">
+                <span class="timeline-ponto"></span>
+                <span class="timeline-texto">{{ documento }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="detalhamento-ia">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path
+            d="M12 3.5 13.6 8l4.4 1.6-4.4 1.6L12 15.7l-1.6-4.5L6 9.6l4.4-1.6L12 3.5Z"
+            stroke-linejoin="round"
+          />
+          <path d="M19 15.5l.8 2.2L22 18.5l-2.2.8-.8 2.2-.8-2.2L16 18.5l2.2-.8.8-2.2Z" stroke-linejoin="round" />
+        </svg>
+        <p>{{ achado.descricao }}</p>
+      </div>
+    </div>
+  }
+</app-dialog>

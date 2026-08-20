@@ -66,6 +66,31 @@ depois do `UNION ALL` — motivo não totalmente claro (suspeita: interação
 com o alias entre aspas `"set"`, palavra reservada, no meio da lista de
 colunas do primeiro `SELECT`). `ORDER BY 1, 2, 3` (posicional) resolve e é
 equivalente.
+
+ATENÇÃO portabilidade Postgres (achado populando o banco fictício, este
+relatório nunca tinha rodado contra Oracle OU Postgres antes de verdade):
+`FROM DUAL` (pseudo-tabela pra linha "solta" na CTE `meses`) e
+`TO_NUMBER(coluna)`/`CAST(... AS NUMBER)` são sintaxe **exclusiva do
+Oracle** — Postgres não tem `dual` nem o tipo `NUMBER`. Trocados por
+`_comum.origem_linha_unica()` e `_comum.numero_coluna()`.
+
+Outro achado: `EXTRACT(YEAR FROM mf.datamovimentacao) = :ano` comparava um
+número (resultado de `EXTRACT`) direto contra o bind `:ano` (sempre texto,
+vem da tela) — Oracle converte implicitamente texto<->número numa
+comparação assim, Postgres não (`operator does not exist: text = numeric`).
+Trocado por `_comum.numero_bind()` — só que num bind SEPARADO
+(`:ano_numero`, mesmo valor de `:ano`, passado duas vezes em
+`cursor.execute()`), não reaproveitando `:ano`: o Postgres unifica o tipo
+de um bind pelo NOME em toda a query (não por ocorrência individual) — se
+o mesmo `:ano` aparecesse castado pra número num lugar e comparado a texto
+(`TO_CHAR(...) = :ano`) noutro, o Postgres tentava aplicar o tipo
+numérico também nessa segunda comparação e quebrava do mesmo jeito
+(confirmado rodando: o erro geral um `$N` só de tipo ambíguo entre
+ocorrências, mesma raiz da "pegadinha irmã" de `filtro_vazio()`, mas na
+direção oposta — aqui não falta tipo, tem tipo DEMAIS/conflitante).
+
+Ver "Oracle vs Postgres" em `MAPA_BANCOS_LOCAL.md` pra lista completa
+dessas pegadinhas.
 """
 
 from starlette.requests import Request
@@ -104,7 +129,7 @@ WITH mensal AS (
     FROM STAGE.movimentacaofinanceira mf
     WHERE mf.excluido = 0
       AND TRIM(mf.filialorigem) IN __FILIAL_IN__
-      AND EXTRACT(YEAR FROM mf.datamovimentacao) = :ano
+      AND EXTRACT(YEAR FROM mf.datamovimentacao) = __NUMERO_ANO__
     GROUP BY mf.codigonatureza
 ),
 
@@ -152,19 +177,19 @@ contas AS (
 -- Replica fiel da regra original: "ant" busca mes=12 do MESMO ano informado
 -- (nao do ano anterior). Mantido assim de proposito para bater com o legado.
 meses AS (
-    SELECT '12' mes_num, 'ant' mes_label FROM DUAL UNION ALL
-    SELECT '01', 'jan' FROM DUAL UNION ALL
-    SELECT '02', 'fev' FROM DUAL UNION ALL
-    SELECT '03', 'mar' FROM DUAL UNION ALL
-    SELECT '04', 'abr' FROM DUAL UNION ALL
-    SELECT '05', 'mai' FROM DUAL UNION ALL
-    SELECT '06', 'jun' FROM DUAL UNION ALL
-    SELECT '07', 'jul' FROM DUAL UNION ALL
-    SELECT '08', 'ago' FROM DUAL UNION ALL
-    SELECT '09', 'set' FROM DUAL UNION ALL
-    SELECT '10', 'out' FROM DUAL UNION ALL
-    SELECT '11', 'nov' FROM DUAL UNION ALL
-    SELECT '12', 'dez' FROM DUAL
+    SELECT '12' mes_num, 'ant' mes_label__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '01', 'jan'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '02', 'fev'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '03', 'mar'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '04', 'abr'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '05', 'mai'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '06', 'jun'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '07', 'jul'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '08', 'ago'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '09', 'set'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '10', 'out'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '11', 'nov'__ORIGEM_LINHA_UNICA__ UNION ALL
+    SELECT '12', 'dez'__ORIGEM_LINHA_UNICA__
 ),
 
 datas_ref AS (
@@ -185,7 +210,7 @@ saldos AS (
     SELECT
         dr.mes_label,
         COALESCE((
-            SELECT TO_NUMBER(sb3.valorsaldoatual) FROM STAGE.saldobancario sb3
+            SELECT __NUMERO_SALDO__ FROM STAGE.saldobancario sb3
             WHERE sb3.excluido = 0
               AND sb3.codigobanco = dr.codigobanco AND sb3.codigoagencia = dr.codigoagencia AND sb3.codigoconta = dr.codigoconta
               AND sb3.datasaldoatual = dr.data_final
@@ -217,7 +242,7 @@ saldo_banco AS (
 -- =====================================================================
 SELECT
     1 AS ordem_bloco,
-    CAST(d.ed_cond AS NUMBER) AS ordem_grupo,
+    __NUMERO_ED_COND__ AS ordem_grupo,
     d.codigo_naturezas AS ordem_item,
     d.filial,
     d.codigo_naturezas,
@@ -297,11 +322,17 @@ ORDER BY 1, 2, 3
 
 def _buscar_fluxo_caixa_realizado(filiais: list[str], ano: str) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
-    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial)
+    sql = (
+        _QUERY.replace("__FILIAL_IN__", clausula_filial)
+        .replace("__ORIGEM_LINHA_UNICA__", _comum.origem_linha_unica())
+        .replace("__NUMERO_SALDO__", _comum.numero_coluna("sb3.valorsaldoatual"))
+        .replace("__NUMERO_ED_COND__", _comum.numero_coluna("d.ed_cond"))
+        .replace("__NUMERO_ANO__", _comum.numero_bind("ano_numero"))
+    )
 
     with get_connection() as connection:
         cursor = connection.cursor()
-        cursor.execute(sql, ano=ano, filiais_label=", ".join(filiais), **binds_filial)
+        cursor.execute(sql, ano=ano, ano_numero=ano, filiais_label=", ".join(filiais), **binds_filial)
         colunas = [descricao[0] for descricao in cursor.description]
         linhas = cursor.fetchall()
     return colunas, linhas

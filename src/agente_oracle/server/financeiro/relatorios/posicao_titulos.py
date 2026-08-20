@@ -48,7 +48,9 @@ Datas em `CONTARECEBER`/`MOVIMENTACAOFINANCEIRA` já são `TIMESTAMP` de
 verdade no STAGE (não precisa de `TO_DATE`/YYYYMMDD).
 
 Filtros opcionais usam `:bind IS NULL OR :bind = ''` (não `:bind = ''`
-puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`.
+puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`. Contra Postgres
+esse padrão sozinho não basta (`AmbiguousParameter`) — a query passa por
+`_comum.aplicar_cast_binds_opcionais()` antes de rodar.
 """
 
 from datetime import date
@@ -183,6 +185,7 @@ def _buscar_titulos(filiais: list[str], opcionais: dict[str, str]) -> tuple[list
     opcionais.setdefault("data_base", date.today().strftime("%Y%m%d"))
 
     sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace("__ORDEM__", ordem_sql)
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

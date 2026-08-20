@@ -85,12 +85,12 @@ WITH itens AS (
     LEFT JOIN STAGE.produto prod ON prod.codigo = pv.codigoproduto
     WHERE pv.excluido = 0
       AND TRIM(pv.codigoempresa) IN __FILIAL_IN__
-      AND (:cliente_lista IS NULL OR :cliente_lista = '' OR pv.codigocliente IN __CLIENTE_IN__)
+      AND (__FILTRO_CLIENTE_LISTA__ IS NULL OR :cliente_lista = '' OR pv.codigocliente IN __CLIENTE_IN__)
       AND (
-            :emissao_ini IS NULL OR :emissao_ini = '' OR :emissao_fim IS NULL OR :emissao_fim = ''
+            __FILTRO_EMISSAO_INI__ IS NULL OR :emissao_ini = '' OR __FILTRO_EMISSAO_FIM__ IS NULL OR :emissao_fim = ''
          OR pv.dataemissao BETWEEN TO_DATE(NULLIF(:emissao_ini, ''), 'YYYYMMDD') AND TO_DATE(NULLIF(:emissao_fim, ''), 'YYYYMMDD')
       )
-      AND (:naturezas IS NULL OR :naturezas = '' OR __NATUREZAS_PERTENCE_LISTA__)
+      AND (__FILTRO_NATUREZAS__ IS NULL OR :naturezas = '' OR __NATUREZAS_PERTENCE_LISTA__)
       AND pv.statuspedido NOT IN ('CANCELADO', 'DEVOLUCAO - ENCERRADO', 'ELIMINADO RESIDUO', 'FATURADO TOTAL')
       AND pv.quantidadesaldo <> 0
 )
@@ -119,9 +119,21 @@ def _buscar_pedidos(
 
     opcionais["cliente_lista"] = ",".join(clientes)
 
+    # `_comum.texto_coluna(":bind")` no primeiro uso de cada bind opcional
+    # (não `:bind` puro): contra Postgres, `:bind IS NULL OR :bind = ''`
+    # sozinho não dá pro Postgres inferir o tipo do parâmetro em modo
+    # prepared statement (`AmbiguousParameter`/`could not determine data
+    # type`) — mesmo binds reaparecendo mais adiante na mesma cláusula
+    # (ex: dentro de `TO_DATE(...)`/`string_to_array(...)`) não resolve
+    # sozinho (mesmo achado de `desvio_margem.py::_buscar_desvios`, ver
+    # a "pegadinha irmã" no docstring de `_comum.filtro_vazio()`).
     sql = (
         _QUERY.replace("__FILIAL_IN__", clausula_filial)
         .replace("__CLIENTE_IN__", clausula_cliente)
+        .replace("__FILTRO_CLIENTE_LISTA__", _comum.texto_coluna(":cliente_lista"))
+        .replace("__FILTRO_EMISSAO_INI__", _comum.texto_coluna(":emissao_ini"))
+        .replace("__FILTRO_EMISSAO_FIM__", _comum.texto_coluna(":emissao_fim"))
+        .replace("__FILTRO_NATUREZAS__", _comum.texto_coluna(":naturezas"))
         .replace(
             "__NATUREZAS_PERTENCE_LISTA__", _comum.pertence_lista("TRIM(pv.codigonatureza)", "naturezas", ";")
         )

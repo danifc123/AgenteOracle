@@ -58,7 +58,16 @@ ATENÇÃO charset: comparações envolvendo colunas `NVARCHAR2` (`MOTIVOBAIXA`,
 problema documentado em `financeiro_science.sql` (`vw_movimento_bancario`).
 
 Filtros opcionais usam `:bind IS NULL OR :bind = ''` (não `:bind = ''`
-puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`.
+puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`. Contra Postgres
+esse padrão sozinho não basta (`AmbiguousParameter`) — a query passa por
+`_comum.aplicar_cast_binds_opcionais()` antes de rodar.
+
+`TO_NUMBER(coluna)` de 1 argumento (`valorjuros`/`valormulta`/
+`valorcorrigido`/`valordesconto`) e `TO_CHAR(coluna_numerica)` de 1
+argumento (`bb.codigo` no JOIN com `bancobacen`) são sintaxe exclusiva do
+Oracle — trocados por `_comum.numero_coluna()`/`_comum.texto_numero()`
+(achado populando o banco fictício, ver "Oracle vs Postgres" em
+`MAPA_BANCOS_LOCAL.md`).
 """
 
 from starlette.requests import Request
@@ -103,9 +112,9 @@ WITH baixas AS (
         MIN(CAST(mf.datamovimentacao AS DATE)) AS data_baixa,
         MIN(mf.lote) AS lote,
         SUM(mf.valor) AS valor_total,
-        SUM(COALESCE(TO_NUMBER(mf.valorjuros), 0) + COALESCE(TO_NUMBER(mf.valormulta), 0)) AS juros_multa,
-        SUM(COALESCE(TO_NUMBER(mf.valorcorrigido), 0)) AS correcao,
-        SUM(COALESCE(TO_NUMBER(mf.valordesconto), 0)) AS desconto
+        SUM(COALESCE(__NUMERO_VALORJUROS__, 0) + COALESCE(__NUMERO_VALORMULTA__, 0)) AS juros_multa,
+        SUM(COALESCE(__NUMERO_VALORCORRIGIDO__, 0)) AS correcao,
+        SUM(COALESCE(__NUMERO_VALORDESCONTO__, 0)) AS desconto
     FROM STAGE.movimentacaofinanceira mf
     WHERE mf.excluido = 0
       AND mf.tipomovimentacao = :tipo_movimento
@@ -162,7 +171,7 @@ LEFT JOIN STAGE.contapagar cp ON b.tipomovimentacao = 'PAGAR' AND cp.codigopesso
 LEFT JOIN STAGE.pessoa p ON p.codigo = b.codigopessoa
     AND p.sourcetable = (CASE WHEN b.tipomovimentacao = 'RECEBER' THEN 'SA1010' ELSE 'SA2010' END)
 LEFT JOIN STAGE.natureza n ON n.codigo = b.codigonatureza
-LEFT JOIN STAGE.bancobacen bb ON TO_CHAR(bb.codigo) = LPAD(b.banco, 3, '0')
+LEFT JOIN STAGE.bancobacen bb ON __TEXTO_CODIGO_BANCO__ = LPAD(b.banco, 3, '0')
 WHERE (
         :vencimento_ini IS NULL OR :vencimento_ini = '' OR :vencimento_fim IS NULL OR :vencimento_fim = ''
      OR (CASE WHEN b.tipomovimentacao = 'RECEBER' THEN cr.datavencimento ELSE cp.datavencimento END)
@@ -202,7 +211,16 @@ def _buscar_baixas(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[
         tipo_movimento_curto = "R"
     opcionais["tipo_movimento"] = _TIPO_MOVIMENTO_SQL[tipo_movimento_curto]
 
-    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace("__ORDEM__", ordem_sql)
+    sql = (
+        _QUERY.replace("__FILIAL_IN__", clausula_filial)
+        .replace("__ORDEM__", ordem_sql)
+        .replace("__NUMERO_VALORJUROS__", _comum.numero_coluna("mf.valorjuros"))
+        .replace("__NUMERO_VALORMULTA__", _comum.numero_coluna("mf.valormulta"))
+        .replace("__NUMERO_VALORCORRIGIDO__", _comum.numero_coluna("mf.valorcorrigido"))
+        .replace("__NUMERO_VALORDESCONTO__", _comum.numero_coluna("mf.valordesconto"))
+        .replace("__TEXTO_CODIGO_BANCO__", _comum.texto_numero("bb.codigo"))
+    )
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

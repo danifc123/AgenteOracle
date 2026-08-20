@@ -5,7 +5,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 41, 26, 0.45);
+  background: var(--overlay-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -21,7 +21,7 @@
   flex-direction: column;
   background: var(--color-surface);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 
   &--compacto {
@@ -56,12 +56,16 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    color 0.15s ease;
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
 
   &:hover {
     background: var(--color-bg);
     color: var(--color-text);
+  }
+
+  &:focus-visible {
+    box-shadow: var(--focus-ring);
   }
 }
 

@@ -11,8 +11,13 @@
   border-radius: var(--radius-md);
 
   svg {
-    color: var(--color-primary-light);
+    display: block;
+    color: var(--color-primary);
+    padding: 12px;
     margin-bottom: 6px;
+    background: var(--color-primary-soft);
+    border-radius: var(--radius-md);
+    box-sizing: content-box;
   }
 
   h3 {

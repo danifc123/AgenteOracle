@@ -1,5 +1,12 @@
 /* You can add global styles to this file, and also import other style files */
 
+/* Poppins (títulos/display) + Manrope (texto de UI) + JetBrains Mono
+   (código/IDs) — vieram do Design System de referência do Grupo Conceito
+   (claude.ai/design, projeto 8b785baf-474b-4287-b35d-733eddccdc16),
+   substituindo o stack genérico 'Segoe UI'/Roboto/Arial (mantido como
+   fallback, então nada quebra se o Google Fonts não carregar). */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root {
   --color-primary: #1b4332;
   --color-primary-dark: #123024;
@@ -10,10 +17,126 @@
   --color-text: #1f2a24;
   --color-text-muted: #5b6b62;
   --color-accent: #e8871e;
+
+  /* Tons derivados — usados nos estados novos (foco, ícone em EstadoVazio, etc). */
+  --color-primary-soft: #e3efe7;
+  --color-primary-softer: #f2f8f4;
+  --color-accent-dark: #c96f12;
+
+  /* Tipografia */
+  --font-display: 'Poppins', 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-sans: 'Manrope', 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+
+  --leading-tight: 1.18;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.08em;
+
+  /* Papéis semânticos de tipografia — usar em CSS novo/tocado, sem
+     obrigação de migrar todo `font-size:` já existente. */
+  --type-h1: var(--weight-semibold) var(--text-3xl) / var(--leading-tight) var(--font-display);
+  --type-h2: var(--weight-semibold) var(--text-2xl) / var(--leading-snug) var(--font-display);
+  --type-h3: var(--weight-semibold) var(--text-lg) / var(--leading-snug) var(--font-sans);
+  --type-body: var(--weight-regular) var(--text-base) / var(--leading-normal) var(--font-sans);
+  --type-body-sm: var(--weight-regular) var(--text-md) / var(--leading-normal) var(--font-sans);
+  --type-label: var(--weight-semibold) var(--text-sm) / var(--leading-snug) var(--font-sans);
+  --type-caption: var(--weight-medium) var(--text-xs) / var(--leading-snug) var(--font-sans);
+  --type-overline: var(--weight-bold) var(--text-2xs) / 1 var(--font-sans);
+  --type-mono: var(--weight-regular) var(--text-sm) / var(--leading-normal) var(--font-mono);
+
+  /* Espaçamento, raio e alturas de controle */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --control-height-sm: 32px;
+  --control-height-md: 40px;
+  --control-height-lg: 48px;
+
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 72px;
+  --content-max: 1200px;
+  --gutter: 24px;
+
+  /* Elevação */
   --shadow-sm: 0 1px 3px rgba(15, 41, 26, 0.08);
   --shadow-md: 0 4px 16px rgba(15, 41, 26, 0.12);
+  --shadow-lg: 0 12px 32px rgba(15, 41, 26, 0.16);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --overlay-scrim: rgba(18, 48, 36, 0.42);
+
+  /* Movimento */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --transition-control:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+
+  /* Aliases semânticos — coexistem com os tokens --color-* acima, nenhum
+     uso existente deles quebra. */
+  --surface-page: var(--color-bg);
+  --surface-card: var(--color-surface);
+  --surface-raised: var(--color-surface);
+  --text-body: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --text-on-brand: #f4faf6;
+  --text-link: var(--color-primary-light);
+  --border-default: var(--color-border);
+  --border-focus: var(--color-primary-light);
+  --focus-ring: 0 0 0 3px rgba(47, 158, 88, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
 }
 
 * {
@@ -24,10 +147,19 @@ html,
 body {
   height: 100%;
   margin: 0;
-  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-tight);
 }
 
 a {
@@ -37,4 +169,43 @@ a {
 
 button {
   font-family: inherit;
+}
+
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@keyframes gc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gc-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

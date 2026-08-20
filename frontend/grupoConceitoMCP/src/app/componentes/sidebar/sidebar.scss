@@ -3,7 +3,7 @@
 }
 
 .sidebar {
-  width: 260px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   background: var(--color-primary);
   color: #fff;
@@ -318,7 +318,7 @@
 }
 
 .sidebar.colapsado {
-  width: 72px;
+  width: var(--sidebar-width-collapsed);
   padding: 20px 10px;
 
   // Recolhido, o balão de rótulo (`.nav-label` no hover, mais abaixo) sai
@@ -486,7 +486,7 @@
   }
 
   .sidebar.colapsado {
-    width: 260px;
+    width: var(--sidebar-width);
     padding: 20px 14px;
 
     .brand {

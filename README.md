@@ -47,9 +47,9 @@ cresce a cada relatório novo):
 ### Backend
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/arvore-backend-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/arvore-backend-light.svg">
-  <img src="docs/arvore-backend-dark.svg" alt="Árvore de diretórios do backend (src/agente_oracle/): config.py e relatorios.py na raiz; agent/ com o loop de tool-calling e a orquestração de IA por módulo; db/ com as duas conexões de banco; server/ com as rotas HTTP; tools/ com a lógica de negócio e acesso a dado." width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/arvore-backend-resumo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/arvore-backend-resumo-light.svg">
+  <img src="docs/arvore-backend-resumo-dark.svg" alt="Árvore de diretórios do backend (src/agente_oracle/), nível superior: config.py e relatorios.py na raiz; agent/ com o loop de tool-calling e a orquestração de IA por módulo; db/ com as duas conexões de banco; server/ com as rotas HTTP; tools/ com a lógica de negócio e acesso a dado." width="100%">
 </picture>
 
 ### Frontend
@@ -60,7 +60,8 @@ cresce a cada relatório novo):
   <img src="docs/arvore-frontend-dark.svg" alt="Árvore de diretórios do frontend (frontend/grupoConceitoMCP/src/app/): pages/, componentes/, servicos/ e dadosRelatorios/." width="100%">
 </picture>
 
-*(página dedicada, sem o resto do README ao redor: [`arvore-diretorios.md`](arvore-diretorios.md))*
+*(essa é só a visão de topo do backend — a árvore completa dos dois lados,
+arquivo por arquivo, está na página dedicada: [`arvore-diretorios.md`](arvore-diretorios.md))*
 
 ### Módulo Estoque
 

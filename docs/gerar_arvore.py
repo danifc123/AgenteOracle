@@ -108,6 +108,15 @@ BACKEND = ("src/agente_oracle/", None, True, "root", [
     ]),
 ])
 
+BACKEND_RESUMO = ("src/agente_oracle/", None, True, "root", [
+    ("config.py", "configurações (lidas de .env) + validação da chave de auth no startup", False, "root", []),
+    ("relatorios.py", "gerador de Excel (.xlsx) compartilhado por todo relatório", False, "root", []),
+    ("agent/", "orquestração do agente de IA (prompt, schema de views liberadas, loop de chamada ao Ollama)", True, "agent", []),
+    ("db/", "as duas conexões de banco (Postgres sempre + Oracle/negócio conforme DB_BACKEND)", True, "db", []),
+    ("server/", "rotas HTTP — parsing de request, autenticação/autorização e formato da resposta", True, "server", []),
+    ("tools/", "lógica de negócio e acesso a dado, chamada por rotas HTTP e/ou pelo agente de IA", True, "tools", []),
+])
+
 FRONTEND = ("frontend/grupoConceitoMCP/src/app/", None, True, "root", [
     ("pages/", "uma pasta por tela, incluindo pages/modulos/{financeiro,estoque}/", True, "pages", []),
     ("componentes/", "UI reutilizável entre telas (tabela, dialog, seletor de arquivo...)", True, "componentes", []),
@@ -207,6 +216,7 @@ if __name__ == "__main__":
     pasta = os.path.dirname(os.path.abspath(__file__))
     arvores = [
         (BACKEND, "ESTRUTURA DO PROJETO — BACKEND", "arvore-backend"),
+        (BACKEND_RESUMO, "ESTRUTURA DO PROJETO — BACKEND", "arvore-backend-resumo"),
         (FRONTEND, "ESTRUTURA DO PROJETO — FRONTEND", "arvore-frontend"),
     ]
     for raiz, titulo, prefixo_arquivo in arvores:

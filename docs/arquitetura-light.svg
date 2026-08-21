@@ -230,12 +230,12 @@
   <rect x="0" y="0" width="1180" height="1350" fill="#f7f9fc" />
   <rect x="0" y="0" width="1180" height="1350" fill="url(#grade-fundo)" />
 
-  <!-- ================= CABEÇALHO ================= -->
+  <!-- ================= CABEÇALHO (comentado por pedido do usuário —
+       descomentar quando quiser mostrar título/legenda de novo) =========
   <text class="eyebrow" x="590" y="46" text-anchor="middle" style="letter-spacing:0.28em">DIAGRAMA DE PRODUÇÃO</text>
   <text class="titulo-svg" x="590" y="88" text-anchor="middle" fill="url(#grad-titulo)">Arquitetura do AgenteOracle</text>
   <text class="subtitulo-svg" x="590" y="116" text-anchor="middle">Angular · Backend Python (REST + MCP) · Ollama local · Oracle / STAGE</text>
 
-  <!-- legenda -->
   <g transform="translate(0,148)">
     <rect x="205" y="0" width="770" height="34" rx="17" fill="rgba(255,255,255,0.85)" stroke="#dbe3ee" stroke-width="1" />
     <circle cx="230" cy="17" r="4" fill="#7c3aed" />
@@ -249,6 +249,7 @@
     <line x1="800" y1="17" x2="818" y2="17" stroke="#8492a8" stroke-width="1.5" stroke-dasharray="3 3" />
     <text class="legenda-texto" x="826" y="21">Conexão opcional</text>
   </g>
+  ================= FIM CABEÇALHO ================= -->
 
   <!-- ================= DIAGRAMA (mesmas coordenadas internas de antes,
        só deslocado pra abrir espaço pro cabeçalho acima) ================= -->
@@ -381,7 +382,8 @@
     </g>
   </g>
 
-  <!-- ================= RODAPÉ ================= -->
+  <!-- ================= RODAPÉ (comentado por pedido do usuário —
+       descomentar quando quiser mostrar de novo) =========
   <g transform="translate(0,1280)">
     <text class="rodape" x="590" y="0" text-anchor="middle">
       Em produção o backend fala <tspan class="rodape-forte">sempre</tspan> com Oracle/STAGE para dado de negócio —
@@ -393,4 +395,5 @@
       histórico de relatório gerado pela IA) e sempre existiu nesse papel, independente de ambiente.
     </text>
   </g>
+  ================= FIM RODAPÉ ================= -->
 </svg>

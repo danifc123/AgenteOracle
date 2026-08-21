@@ -1,4 +1,13 @@
-# Agente para o banco do Grupo Conceito - Engenheiro de Software Daniel Faria
+# Agente para o banco do Grupo Conceito
+
+**Engenheiro de Software:** Daniel Faria
+
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Angular](https://img.shields.io/badge/Angular-21-DD0031?logo=angular&logoColor=white)
+![Oracle](https://img.shields.io/badge/Oracle-STAGE-F80000?logo=oracle&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-estado%20do%20sistema-4169E1?logo=postgresql&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-LLM%20local-000000?logo=ollama&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-6E56CF)
 
 Sistema para o departamento financeiro consultar o banco Oracle da empresa através
 de um agente de IA (via MCP) e de um painel web (Angular).
@@ -6,6 +15,23 @@ de um agente de IA (via MCP) e de um painel web (Angular).
 **Objetivo:** permitir que qualquer pessoa do time financeiro converse em português
 com o agente — peça relatórios prontos ou dados que ainda não têm tela pronta — e
 também navegue pelos relatórios fixos do módulo Financeiro no navegador.
+
+## Sumário
+
+- [Arquitetura](#arquitetura)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Setup do backend](#setup-do-backend)
+- [Frontend (Angular)](#frontend-angular)
+- [Rotas REST expostas pelo backend](#rotas-rest-expostas-pelo-backend)
+- [Autenticação, papéis e segurança](#autenticação-papéis-e-segurança)
+- [Agente local (Ollama)](#agente-local-ollama)
+- [Segurança do SQL livre](#segurança-do-sql-livre)
+- [Views curadas do Financeiro (Oracle)](#views-curadas-do-financeiro-oracle)
+- [Testes](#testes)
+- [Lint e formatação](#lint-e-formatação)
+- [Convenções de clean code do projeto](#convenções-de-clean-code-do-projeto)
+
+---
 
 ## Arquitetura
 
@@ -15,19 +41,28 @@ também navegue pelos relatórios fixos do módulo Financeiro no navegador.
   <img src="docs/arquitetura-dark.svg" alt="Diagrama de arquitetura do AgenteOracle: Angular fala REST + JWT com o Backend Python, que expõe REST e um servidor MCP; o Backend orquestra o Ollama local via tool-calling, consulta o Oracle/STAGE para dado de negócio e o PostgreSQL para o estado interno do sistema (login, auditoria, histórico)." width="100%">
 </picture>
 
-- **Transporte do agente:** [MCP](https://modelcontextprotocol.io/) via Streamable HTTP — servidor central expõe *tools* que qualquer cliente MCP (o chat deste projeto, ou outro agente) pode descobrir e chamar.
-- **Transporte do frontend:** rotas REST comuns (`/api/...`) no mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usadas para telas que não precisam de IA.
-- **Banco — dois bancos, dois propósitos fixos** (veja `db/connection.py`):
-  - **Postgres**: sempre este banco (configs `POSTGRES_*`), independente de `DB_BACKEND` — guarda o estado do próprio sistema: usuários (`usuarios`), trilha de auditoria de login/administração (`eventos_seguranca`), histórico de relatórios gerados (`relatorios_historico`), layouts salvos (`relatorio_layouts`), cores de categoria (`categoria_cores`) e histórico de achados de auditoria (`auditoria_historico`).
-  - **Oracle (ou Postgres local de teste)**: dado de negócio/RAG financeiro — as *views* do Protheus consultadas por `executar_consulta_financeira` e pelas rotas fixas de relatório. Controlado por `DB_BACKEND`: `oracle` em produção; `postgres` localmente (contra *views* de teste), já que o Oracle real de produção não é acessível fora do ambiente de produção.
+| Cliente | Transporte | Uso |
+|---|---|---|
+| Agente de IA | [MCP](https://modelcontextprotocol.io/) via Streamable HTTP | Servidor central expõe *tools* que qualquer cliente MCP (o chat deste projeto, ou outro agente) pode descobrir e chamar |
+| Frontend (Angular) | REST comum (`/api/...`) | Mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usado para telas que não precisam de IA |
+
+**Banco — dois bancos, dois propósitos fixos** (veja `db/connection.py`):
+
+| Banco | Sempre ativo? | Propósito | Controlado por |
+|---|---|---|---|
+| **PostgreSQL** | Sim (`POSTGRES_*`), independente de `DB_BACKEND` | Estado do próprio sistema: usuários (`usuarios`), trilha de auditoria de login/administração (`eventos_seguranca`), histórico de relatórios gerados (`relatorios_historico`), layouts salvos (`relatorio_layouts`), cores de categoria (`categoria_cores`), histórico de achados de auditoria (`auditoria_historico`) | fixo |
+| **Oracle** (ou Postgres local de teste) | Conforme `DB_BACKEND` | Dado de negócio/RAG financeiro — *views* do Protheus consultadas por `executar_consulta_financeira` e pelas rotas fixas de relatório | `DB_BACKEND=oracle` em produção; `postgres` localmente (contra *views* de teste), já que o Oracle real de produção não é acessível fora do ambiente de produção |
+
 - **Histórico de relatórios:** guardado numa tabela (`relatorios_historico`) sempre no Postgres — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, usado para não repetir a mesma consulta. Relatório não fixado expira em 15h — veja `tools/financeiro/historico.py`.
 - **LLM:** [Ollama](https://ollama.com/) rodando local (sem custo de API paga).
 - **Auth Oracle:** usuário de serviço único (autenticação no banco, diferente do login de usuário do sistema — ver [Autenticação, papéis e segurança](#autenticação-papéis-e-segurança)), banco de teste/desenvolvimento.
 
 ### Consultas fixas x consultas livres
 
-- **Tools/rotas fixas**: SQL pré-definido no código para cada relatório do módulo Financeiro, sem participação da IA — ver `server/financeiro/relatorios/`. A lista completa de rotinas do módulo está em `frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts`; nem toda rotina listada ali tem rota fixa implementada ainda (aparece como "Em breve" na tela até ganhar uma).
-- **`executar_consulta_financeira`**: a IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta, usando só as *views* financeiras curadas listadas em `agent/financeiro/schema.py` (não as tabelas reais do TOTVS) — veja [Segurança do SQL livre](#segurança-do-sql-livre). O resultado é salvo/reaproveitado via o histórico.
+| Tipo | O que é | Onde vive | Observação |
+|---|---|---|---|
+| **Tools/rotas fixas** | SQL pré-definido no código para cada relatório do módulo Financeiro, sem participação da IA | `server/financeiro/relatorios/` | Lista completa de rotinas em `frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts`; nem toda rotina listada ali tem rota fixa implementada ainda (aparece como "Em breve" na tela até ganhar uma) |
+| **`executar_consulta_financeira`** | A IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta | `agent/financeiro/schema.py` (views liberadas) + `tools/financeiro/consulta_livre.py` (validação) | Usa só as *views* financeiras curadas (não as tabelas reais do TOTVS) — ver [Segurança do SQL livre](#segurança-do-sql-livre). O resultado é salvo/reaproveitado via o histórico |
 
 ## Estrutura do projeto
 
@@ -35,14 +70,11 @@ Três camadas no backend, cada uma com uma responsabilidade só — vale mais
 entender esse princípio do que decorar a árvore de arquivos abaixo (que
 cresce a cada relatório novo):
 
-- **`server/`** — rotas HTTP (Starlette, registradas via `@mcp.custom_route`
-  dentro de uma função `registrar(mcp)` por módulo). Só cuida de parsing de
-  request, autenticação/autorização e formato da resposta.
-- **`tools/`** — lógica de negócio e acesso a dado. Funções chamadas tanto
-  pelas rotas HTTP (`server/`) quanto, quando expostas como MCP tool, pelo
-  próprio agente de IA (ex: `executar_consulta_financeira`).
-- **`agent/`** — orquestração do agente de IA em si (prompt, schema de views
-  liberadas pra IA, loop de chamada ao Ollama).
+| Camada | Responsabilidade |
+|---|---|
+| **`server/`** | Rotas HTTP (Starlette, registradas via `@mcp.custom_route` dentro de uma função `registrar(mcp)` por módulo). Só cuida de parsing de request, autenticação/autorização e formato da resposta |
+| **`tools/`** | Lógica de negócio e acesso a dado. Funções chamadas tanto pelas rotas HTTP (`server/`) quanto, quando expostas como MCP tool, pelo próprio agente de IA (ex: `executar_consulta_financeira`) |
+| **`agent/`** | Orquestração do agente de IA em si (prompt, schema de views liberadas pra IA, loop de chamada ao Ollama) |
 
 ### Backend
 
@@ -113,12 +145,17 @@ npm install
 npm start
 ```
 
-Sobe em `http://localhost:4200`. Precisa do backend rodando para funcionar. Telas
-principais: **Início**, **Financeiro** (Assistente IA, Fluxo de Caixa, Vendas,
-Criar Relatório, Específico Grupo Conceito), **Histórico de relatórios**,
-**Auditoria**, **Usuários** (administração, só pra quem tem papel
-administrador), **Juntar Excel**. **Estoque** existe no menu mas ainda é
-placeholder (ver [Módulo Estoque](#módulo-estoque) acima).
+Sobe em `http://localhost:4200`. Precisa do backend rodando para funcionar.
+
+| Tela | Observação |
+|---|---|
+| **Início** | Home por papel/módulo |
+| **Financeiro** | Assistente IA, Fluxo de Caixa, Vendas, Criar Relatório, Específico Grupo Conceito |
+| **Histórico de relatórios** | Relatórios gerados pela IA (fixar, apagar, baixar em Excel) |
+| **Auditoria** | Achados de qualidade de dado |
+| **Usuários** | Administração — só pra quem tem papel `desenvolvedor`/administrador |
+| **Juntar Excel** | Ferramenta de junção de planilhas |
+| **Estoque** | Existe no menu, mas ainda é placeholder — ver [Módulo Estoque](#módulo-estoque) acima |
 
 ## Rotas REST expostas pelo backend
 
@@ -126,26 +163,32 @@ Cada módulo em `server/` registra as próprias rotas dentro de uma função
 `registrar(mcp)` — a lista completa e sempre atual está no próprio código
 (`grep -r "custom_route" src/agente_oracle/server` lista todas de uma vez);
 manter uma tabela separada aqui historicamente ficou desatualizada assim que
-um relatório novo era adicionado, então não vale reproduzir. Os grupos
-principais:
+um relatório novo era adicionado, então a tabela abaixo cobre só os grupos
+principais, não cada rota individual.
 
-- `/api/auth/*` — login, CRUD de usuário, perfil, senha, papéis, (des)bloqueio de conta, trilha de segurança (ver [Autenticação e papéis](#autenticação-papéis-e-segurança))
-- `/api/financeiro/*` — chat com a IA, previsão (Vendas/Fluxo de Caixa), relatório customizado, os relatórios fixos (`financeiro/relatorios/*.py`), layouts salvos, cores de categoria
-- `/api/relatorios/historico*` — histórico de relatórios gerados pela IA (fixar, apagar, baixar em Excel)
-- `/api/auditoria*` — auditoria de qualidade de dado (rodar ao vivo, histórico, dispensar achado)
-- `/api/ferramentas/juntar-excel*` — upload e junção de duas planilhas
+| Prefixo | O que expõe |
+|---|---|
+| `/api/auth/*` | Login, CRUD de usuário, perfil, senha, papéis, (des)bloqueio de conta, trilha de segurança — ver [Autenticação e papéis](#autenticação-papéis-e-segurança) |
+| `/api/financeiro/*` | Chat com a IA, previsão (Vendas/Fluxo de Caixa), relatório customizado, os relatórios fixos (`financeiro/relatorios/*.py`), layouts salvos, cores de categoria |
+| `/api/relatorios/historico*` | Histórico de relatórios gerados pela IA (fixar, apagar, baixar em Excel) |
+| `/api/auditoria*` | Auditoria de qualidade de dado (rodar ao vivo, histórico, dispensar achado) |
+| `/api/ferramentas/juntar-excel*` | Upload e junção de duas planilhas |
 
 ## Autenticação, papéis e segurança
 
 Login próprio do sistema (JWT, sem depender de IdP externo) — ver
 `tools/auth/`, `server/auth/`.
 
-- **Papéis**: `tools/auth/papeis.py` é a fonte única de verdade de quem
-  acessa o quê (`desenvolvedor`, `financeiro_admin`, `financeiro`,
-  `estoque_admin`, `estoque`, `rh_admin`, `rh`) — nunca `if papel == "x"`
-  espalhado pelo código. `desenvolvedor` tem `acesso_total` (todo módulo,
-  presente ou futuro) e também funciona como "time de TI": só quem tem esse
-  papel pode desbloquear uma conta ou ver a trilha de eventos de segurança.
+`tools/auth/papeis.py` é a fonte única de verdade de quem acessa o quê —
+nunca `if papel == "x"` espalhado pelo código:
+
+| Papel | Módulo | Observação |
+|---|---|---|
+| `desenvolvedor` | Todos (presente e futuro) — `acesso_total` | Também funciona como "time de TI": só quem tem esse papel pode desbloquear uma conta ou ver a trilha de eventos de segurança |
+| `financeiro_admin`, `financeiro` | Financeiro | |
+| `estoque_admin`, `estoque` | Estoque | |
+| `rh_admin`, `rh` | RH | |
+
 - **Bloqueio de conta**: 3 tentativas de login erradas seguidas bloqueiam a
   conta até um `desenvolvedor` desbloquear pela tela Usuários — separado do
   rate limit (5 tentativas/3min, em memória, se autolimpa sozinho) que
@@ -206,12 +249,17 @@ O LLM roda localmente, sem custo de API.
 A tool `executar_consulta_financeira` deixa a IA gerar SQL dinamicamente, então todo
 SQL passa por validação antes de rodar (`tools/financeiro/consulta_livre.py`):
 
-- Só aceita instruções `SELECT` (bloqueia `INSERT/UPDATE/DELETE/DROP/ALTER/CREATE`, blocos PL/SQL, `DBMS_*`/`UTL_*`, etc.).
-- Só permite as *views* financeiras curadas listadas em `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) — nunca as tabelas reais do TOTVS. Essa lista é a fonte única tanto do texto de schema que vai no prompt da IA quanto da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`), pra nunca ficar um SQL que o prompt promete mas a validação rejeita (ou o contrário). Enquanto uma view não estiver na lista, nenhuma consulta que a use é aceita.
-- Bloqueia múltiplas instruções encadeadas (`;`).
-- Aplica limite automático de linhas (`FETCH FIRST 200 ROWS ONLY` no Oracle, ou o `LIMIT` que a própria IA já tiver colocado quando o banco é Postgres) e timeout de 10s na conexão.
+| Proteção | Como |
+|---|---|
+| Só leitura | Aceita apenas instruções `SELECT` — bloqueia `INSERT/UPDATE/DELETE/DROP/ALTER/CREATE`, blocos PL/SQL, `DBMS_*`/`UTL_*`, etc. |
+| Só views curadas | Só permite as *views* financeiras listadas em `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) — nunca as tabelas reais do TOTVS. Essa lista é a fonte única tanto do texto de schema que vai no prompt da IA quanto da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`), pra nunca ficar um SQL que o prompt promete mas a validação rejeita (ou o contrário). Enquanto uma view não estiver na lista, nenhuma consulta que a use é aceita |
+| Sem encadeamento | Bloqueia múltiplas instruções encadeadas (`;`) |
+| Limite e timeout | `FETCH FIRST 200 ROWS ONLY` no Oracle (ou o `LIMIT` que a própria IA já tiver colocado quando o banco é Postgres) e timeout de 10s na conexão |
 
-## Views curadas do Financeiro (Oracle) — modelo de "papel" em STAGE.PESSOA
+## Views curadas do Financeiro (Oracle)
+
+> Modelo de "papel" em `STAGE.PESSOA` — por que `SA1010`/`SA2010`/`SA3010`
+> aparecem espalhados nos `JOIN`s das views.
 
 As views que alimentam `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) são definidas
 em `db/views/*.sql` — hoje `financeiro_science.sql`, em cima do banco de negócio/RAG
@@ -221,10 +269,12 @@ Ninguém roda `CREATE VIEW` automaticamente — o SQL é escrito aqui e aplicado
 por quem tiver permissão (hoje, via DBA/SQL Developer), porque a política do projeto é
 nunca alterar/criar nada nesses bancos por conta própria (só leitura).
 
-**Por que `SA1010`/`SA2010`/`SA3010` aparecem espalhados nos `JOIN`s**: no `STAGE`,
-`PESSOA` é um cadastro único (nome, CNPJ/CPF, endereço) compartilhado por cliente,
-fornecedor e vendedor — só que o `CODIGO` dessa tabela **não é único sozinho**. A mesma
-pessoa pode aparecer mais de uma vez em `PESSOA` com o mesmo código, uma vez por
+<details>
+<summary><strong>Por que SA1010/SA2010/SA3010 aparecem espalhados nos <code>JOIN</code>s</strong></summary>
+
+No `STAGE`, `PESSOA` é um cadastro único (nome, CNPJ/CPF, endereço) compartilhado por
+cliente, fornecedor e vendedor — só que o `CODIGO` dessa tabela **não é único sozinho**.
+A mesma pessoa pode aparecer mais de uma vez em `PESSOA` com o mesmo código, uma vez por
 "papel" — ex: um produtor que é cliente (compra insumo) E fornecedor (vende grão) da
 mesma empresa gera duas linhas com o mesmo `CODIGO`, uma vinda de `SA1010` (clientes no
 Protheus) e outra de `SA2010` (fornecedores). `PESSOA.SOURCETABLE` guarda de qual tabela
@@ -236,14 +286,28 @@ LEFT JOIN STAGE.pessoa p
 ```
 
 Sem esse filtro, o `JOIN` casa com as duas linhas e duplica o resultado (testado: sem o
-filtro, 9.873 clientes viravam 12.242 linhas — 24% de duplicação). Os três valores
-usados nas views atuais: `SA1010` = papel cliente, `SA2010` = papel fornecedor, `SA3010`
-= papel vendedor (só usado em `vw_faturamento.vendedor_nome`). Uma view nova que junte
-com `PESSOA` **sempre** precisa desse filtro de papel — esquecer é o tipo de bug que não
-aparece em teste com poucos dados, só quando alguém do mundo real acumula mais de um
-papel.
+filtro, 9.873 clientes viravam 12.242 linhas — 24% de duplicação).
+
+| Valor | Papel | Onde é usado |
+|---|---|---|
+| `SA1010` | Cliente | Views de faturamento/vendas |
+| `SA2010` | Fornecedor | Views de contas a pagar |
+| `SA3010` | Vendedor | `vw_faturamento.vendedor_nome` |
+
+Uma view nova que junte com `PESSOA` **sempre** precisa desse filtro de papel — esquecer
+é o tipo de bug que não aparece em teste com poucos dados, só quando alguém do mundo real
+acumula mais de um papel.
+
+</details>
 
 ## Testes
+
+| Comando | O que roda | Pré-requisito |
+|---|---|---|
+| `python -m pytest tests/unit -q` | Backend — não precisa de banco (mock/sem I/O real) | — |
+| `python -m pytest tests/integration -q -m integration` | Backend — sobe rotas de verdade contra um Postgres | Postgres local rodando (`DB_BACKEND=postgres` no `.env`) |
+| `npm test` (vitest) | Frontend — hoje cobre só um punhado de componentes/serviços | — |
+| `npm run e2e` (cypress) | Frontend end-to-end | — |
 
 ```powershell
 # Backend — não precisa de banco (mock/sem I/O real)
@@ -254,7 +318,7 @@ python -m pytest tests/integration -q -m integration
 
 # Frontend
 cd frontend/grupoConceitoMCP
-npm test       # vitest — hoje cobre só um punhado de componentes/serviços
+npm test       # vitest
 npm run e2e    # cypress
 ```
 

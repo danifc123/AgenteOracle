@@ -55,13 +55,14 @@ cresce a cada relatório novo):
 ### Frontend
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/arvore-frontend-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/arvore-frontend-light.svg">
-  <img src="docs/arvore-frontend-dark.svg" alt="Árvore de diretórios do frontend (frontend/grupoConceitoMCP/src/app/): pages/, componentes/, servicos/ e dadosRelatorios/." width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/arvore-frontend-resumo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/arvore-frontend-resumo-light.svg">
+  <img src="docs/arvore-frontend-resumo-dark.svg" alt="Árvore de diretórios do frontend (frontend/grupoConceitoMCP/src/app/), nível superior: pages/, componentes/, servicos/ e dadosRelatorios/." width="100%">
 </picture>
 
-*(essa é só a visão de topo do backend — a árvore completa dos dois lados,
-arquivo por arquivo, está na página dedicada: [`arvore-diretorios.md`](arvore-diretorios.md))*
+*(essa é só a visão de topo — a árvore completa dos dois lados, arquivo por
+arquivo (incluindo cada componente, serviço e tela), está na página
+dedicada: [`arvore-diretorios.md`](arvore-diretorios.md))*
 
 ### Módulo Estoque
 

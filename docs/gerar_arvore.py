@@ -28,6 +28,7 @@ DARK = {
     "linha": "#1e2a45", "guia": "#2a3a5c",
     "root": "#4f8dff", "agent": "#b48bff", "db": "#4f8dff", "server": "#35ffa6", "tools": "#ffa63d",
     "pages": "#b48bff", "componentes": "#35e7ff", "servicos": "#35ffa6", "dadosRelatorios": "#ffa63d",
+    "layout": "#35e7ff", "utilitarios": "#ffa63d",
 }
 LIGHT = {
     "bg": "#f7f9fc", "bg_grid": "rgba(37,99,235,0.06)",
@@ -35,6 +36,7 @@ LIGHT = {
     "linha": "#dbe3ee", "guia": "#c3cedd",
     "root": "#2563eb", "agent": "#7c3aed", "db": "#2563eb", "server": "#059669", "tools": "#c2670a",
     "pages": "#7c3aed", "componentes": "#0891b2", "servicos": "#059669", "dadosRelatorios": "#c2670a",
+    "layout": "#0891b2", "utilitarios": "#c2670a",
 }
 
 BACKEND = ("src/agente_oracle/", None, True, "root", [
@@ -117,12 +119,120 @@ BACKEND_RESUMO = ("src/agente_oracle/", None, True, "root", [
     ("tools/", "lógica de negócio e acesso a dado, chamada por rotas HTTP e/ou pelo agente de IA", True, "tools", []),
 ])
 
-FRONTEND = ("frontend/grupoConceitoMCP/src/app/", None, True, "root", [
-    ("pages/", "uma pasta por tela, incluindo pages/modulos/{financeiro,estoque}/", True, "pages", []),
+FRONTEND_RESUMO = ("frontend/grupoConceitoMCP/src/app/", None, True, "root", [
+    ("pages/", "uma pasta por tela, incluindo pages/modulos/{financeiro,estoque,rh,ti}/", True, "pages", []),
     ("componentes/", "UI reutilizável entre telas (tabela, dialog, seletor de arquivo...)", True, "componentes", []),
     ("servicos/", "estado compartilhado (sessão, guards) + funções puras reaproveitadas entre páginas "
                   "(mensagens-erro.ts, download-arquivo.ts, ordenacao-tabela.ts)", True, "servicos", []),
     ("dadosRelatorios/", "configuração/metadado estático dos relatórios (dado, não lógica)", True, "dadosRelatorios", []),
+])
+
+FRONTEND = ("frontend/grupoConceitoMCP/src/app/", None, True, "root", [
+    ("pages/", "uma pasta por tela", True, "pages", [
+        ("auditoria/", "telas de auditoria de qualidade de dado (IA)", True, "pages", [
+            ("historico/", "histórico de achados de auditoria", True, "pages", []),
+        ]),
+        ("home-roteador/", "decide qual Home mostrar conforme o papel do usuário logado", True, "pages", []),
+        ("juntar-excel/", "tela da ferramenta de juntar duas planilhas", True, "pages", []),
+        ("login/", "tela de login", True, "pages", []),
+        ("modulos/", "uma pasta por módulo de negócio", True, "pages", [
+            ("financeiro/", "Home + telas do módulo Financeiro", True, "pages", [
+                ("chat/", None, True, "pages", []),
+                ("classificacao-contabil/", None, True, "pages", []),
+                ("criar-relatorio/", None, True, "pages", []),
+                ("despesas-suspeitas/", None, True, "pages", []),
+                ("fluxo-caixa/", None, True, "pages", []),
+                ("home/", None, True, "pages", []),
+                ("score-inadimplencia/", None, True, "pages", []),
+                ("simulacao-monte-carlo/", None, True, "pages", []),
+                ("vendas/", None, True, "pages", []),
+            ]),
+            ("estoque/", "Home + telas do módulo Estoque (ainda sem backend correspondente)", True, "pages", [
+                ("chat/", None, True, "pages", []),
+                ("criar-relatorio/", None, True, "pages", []),
+                ("especifico-grupo-conceito/", None, True, "pages", []),
+                ("home/", None, True, "pages", []),
+            ]),
+            ("rh/", "Home + telas do módulo RH", True, "pages", [
+                ("analise-candidato/", None, True, "pages", []),
+                ("colaboradores/", None, True, "pages", []),
+                ("home/", None, True, "pages", []),
+                ("repescagem/", None, True, "pages", []),
+            ]),
+            ("ti/", "Home + telas do módulo TI", True, "pages", [
+                ("chamados/", None, True, "pages", []),
+                ("home/", None, True, "pages", []),
+                ("seguranca/", None, True, "pages", []),
+            ]),
+        ]),
+        ("relatorios/", "histórico geral de relatórios gerados", True, "pages", [
+            ("historico/", None, True, "pages", []),
+        ]),
+        ("usuarios/", "CRUD de usuário (tela de administração)", True, "pages", []),
+    ]),
+    ("componentes/", "UI reutilizável entre telas", True, "componentes", [
+        ("auditoria-painel/", "painel de exibição dos achados de auditoria de IA", True, "componentes", []),
+        ("botao/", "botão padrão do sistema, com estado de loading", True, "componentes", []),
+        ("busca/", "campo de busca genérico", True, "componentes", []),
+        ("campo-filtro-dinamico/", "filtro dinâmico da tela de relatório customizado", True, "componentes", []),
+        ("cartao-kpi/", "cartão de indicador (KPI) usado nas Homes", True, "componentes", []),
+        ("configuracoes-usuario/", "configurações da conta do usuário", True, "componentes", []),
+        ("confirmacao-dialog/", "dialog genérico de confirmação (sim/não)", True, "componentes", []),
+        ("detalhe-candidato/", "detalhe do candidato (módulo RH)", True, "componentes", []),
+        ("dialog/", "dialog base reutilizável (modal)", True, "componentes", []),
+        ("estado-vazio/", '"empty state" padrão quando não há dado pra mostrar', True, "componentes", []),
+        ("filtro-categorias/", "filtro por categoria (usado nos gráficos)", True, "componentes", []),
+        ("grafico-rosca/", "gráfico de rosca (donut)", True, "componentes", []),
+        ("grafico-serie/", "gráfico de série temporal, com suporte a valor negativo", True, "componentes", []),
+        ("icone-ordenacao/", "seta de ordenação de coluna de tabela", True, "componentes", []),
+        ("menu-opcoes/", "menu de contexto (⋮) reutilizável", True, "componentes", []),
+        ("modulo-header/", "cabeçalho padrão de cada tela de módulo", True, "componentes", []),
+        ("notificacao-analise-curriculo/", "notificação de análise de currículo por IA (RH)", True, "componentes", []),
+        ("notificacao-auditoria/", "notificação de novo achado de auditoria", True, "componentes", []),
+        ("rotina-detalhe/", "detalhe expandido de uma rotina/relatório", True, "componentes", []),
+        ("rotina-item/", "item de lista de rotina/relatório", True, "componentes", []),
+        ("select-busca/", "select com busca embutida", True, "componentes", []),
+        ("seletor-arquivo-curriculo/", "upload de currículo (RH)", True, "componentes", []),
+        ("seletor-arquivo-excel/", "upload de planilha Excel", True, "componentes", []),
+        ("seletor-home-dev/", "seletor de Home usado em ambiente de desenvolvimento", True, "componentes", []),
+        ("sidebar/", "menu lateral do sistema", True, "componentes", []),
+        ("tabela-detalhe/", "tabela de detalhamento (linha expandida)", True, "componentes", []),
+        ("tabela-item/", "tabela genérica de listagem", True, "componentes", []),
+        ("toast/", "notificação toast (sucesso/erro/aviso)", True, "componentes", []),
+        ("visualizador-excel/", "pré-visualização de planilha Excel", True, "componentes", []),
+    ]),
+    ("servicos/", "estado compartilhado (sessão, guards) + funções puras reaproveitadas entre páginas", True, "servicos", [
+        ("admin.guard.ts", "guarda de rota: bloqueia acesso de quem não é administrador", False, "servicos", []),
+        ("analise-curriculo.ts", "chamada à IA de análise de currículo (RH)", False, "servicos", []),
+        ("auditoria.ts", "chamada à API de auditoria de qualidade de dado", False, "servicos", []),
+        ("auth.guard.ts", "guarda de rota: exige sessão válida", False, "servicos", []),
+        ("auth.interceptor.ts", "injeta o token JWT em toda requisição HTTP", False, "servicos", []),
+        ("busca-candidatos.ts", "busca/filtro de candidatos (RH)", False, "servicos", []),
+        ("cores-categoria.ts", "cor persistida por categoria (usado nos gráficos)", False, "servicos", []),
+        ("download-arquivo.ts", "download de arquivo (Excel exportado, etc.)", False, "servicos", []),
+        ("formatar-sql.ts", "formatação/indentação de SQL pra exibição", False, "servicos", []),
+        ("formatar-tamanho-arquivo.ts", "formata bytes em KB/MB/GB", False, "servicos", []),
+        ("home-selecionada.ts", "módulo/Home ativo na sessão do usuário", False, "servicos", []),
+        ("iniciais.ts", "extrai iniciais do nome pra avatar", False, "servicos", []),
+        ("mensagens-erro.ts", "tradução de erro de API em mensagem amigável", False, "servicos", []),
+        ("ordenacao-tabela.ts", "ordenação genérica de coluna de tabela", False, "servicos", []),
+        ("previsao-stream.ts", "streaming da resposta de IA nas telas de Previsão", False, "servicos", []),
+        ("relacionamento-views.ts", "relacionamento entre views (usado na busca da Classificação Contábil)", False, "servicos", []),
+        ("rotulos-candidato.ts", "rótulos/tags de status do candidato (RH)", False, "servicos", []),
+        ("sessao.ts", "estado da sessão do usuário (guards e header usam)", False, "servicos", []),
+        ("toast.interceptor.ts", "dispara toast automático a partir de erro HTTP", False, "servicos", []),
+        ("toasts.ts", "estado global das notificações toast", False, "servicos", []),
+    ]),
+    ("dadosRelatorios/", "configuração/metadado estático dos relatórios (dado, não lógica)", True, "dadosRelatorios", [
+        ("categoria-cor.ts", "cor padrão por categoria (fallback)", False, "dadosRelatorios", []),
+        ("modulos-estoque.ts", "lista de rotinas/relatórios do módulo Estoque", False, "dadosRelatorios", []),
+        ("modulos-financeiro.ts", "lista de rotinas/relatórios do módulo Financeiro", False, "dadosRelatorios", []),
+        ("relatorio-layouts.ts", "presets de layout salvos (colunas/filtros)", False, "dadosRelatorios", []),
+        ("views-estoque.ts", "views liberadas pra IA do módulo Estoque", False, "dadosRelatorios", []),
+        ("views-financeiras.ts", "views liberadas pra IA do módulo Financeiro", False, "dadosRelatorios", []),
+    ]),
+    ("layout/", "layout raiz do app (sidebar + área de conteúdo)", True, "layout", []),
+    ("utilitarios/", "helpers puros sem estado (ex: formatação de moeda)", True, "utilitarios", []),
 ])
 
 
@@ -218,6 +328,7 @@ if __name__ == "__main__":
         (BACKEND, "ESTRUTURA DO PROJETO — BACKEND", "arvore-backend"),
         (BACKEND_RESUMO, "ESTRUTURA DO PROJETO — BACKEND", "arvore-backend-resumo"),
         (FRONTEND, "ESTRUTURA DO PROJETO — FRONTEND", "arvore-frontend"),
+        (FRONTEND_RESUMO, "ESTRUTURA DO PROJETO — FRONTEND", "arvore-frontend-resumo"),
     ]
     for raiz, titulo, prefixo_arquivo in arvores:
         for sufixo, paleta in (("dark", DARK), ("light", LIGHT)):

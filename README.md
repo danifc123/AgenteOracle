@@ -44,73 +44,23 @@ cresce a cada relatório novo):
 - **`agent/`** — orquestração do agente de IA em si (prompt, schema de views
   liberadas pra IA, loop de chamada ao Ollama).
 
-> Versão visual (árvore de diretórios completa, backend e frontend, com um
-> comentário por arquivo): [`arvore-diretorios.md`](arvore-diretorios.md).
+### Backend
 
-```
-src/agente_oracle/
-├── config.py                 # configurações (lidas de .env) + validação da chave de auth no startup
-├── relatorios.py              # gerador de Excel (.xlsx) compartilhado por todo relatório
-├── agent/
-│   ├── core.py                 # loop de tool-calling genérico (sem prompt nem schema — reaproveitável por qualquer módulo)
-│   ├── cli.py                   # chat interativo de terminal (agente-oracle-chat)
-│   ├── auditoria/               # análise de qualidade de dado via IA (genérica, não sabe de nenhum módulo específico)
-│   └── financeiro/
-│       ├── prompt.py              # system prompt específico do Financeiro (monta o texto a partir de schema.py)
-│       ├── schema.py              # views financeiras liberadas pra IA — fonte única usada pelo prompt e pela whitelist de segurança
-│       ├── financeiro.py          # orquestração do chat do módulo Financeiro
-│       └── projecoes.py           # regressão linear + análise textual da IA, usado pelas telas de Previsão
-├── db/
-│   ├── connection.py           # duas conexões fixas: Postgres sempre (estado do sistema) + negócio/RAG (Oracle ou Postgres, conforme DB_BACKEND)
-│   └── views/                   # definição das views curadas expostas ao agente
-├── server/
-│   ├── app.py                   # monta o app Starlette (CORS + headers de segurança), entrypoint (agente-oracle)
-│   ├── cors.py                   # CORSMiddleware é a única fonte de verdade de origem permitida (ver comentário no arquivo)
-│   ├── security_headers.py       # middleware de headers de segurança padrão (X-Frame-Options, CSP, HSTS...)
-│   ├── auth/
-│   │   ├── rotas.py                # login, CRUD de usuário, troca de senha, (des)bloqueio de conta, trilha de segurança
-│   │   ├── dependencia.py          # exigir_usuario/administrador/desenvolvedor/modulo_financeiro — checagem de sessão
-│   │   ├── decorador_rota.py       # @rota_protegida — decorator usado por toda rota autenticada (ver seção própria abaixo)
-│   │   └── rate_limit.py           # limite de tentativas em memória (login, troca de senha, criação de usuário)
-│   ├── auditoria/
-│   │   └── rotas.py                # roda a auditoria ao vivo por módulo + histórico de achados
-│   ├── ferramentas/
-│   │   └── juntar_excel.py         # upload de 2 planilhas .xlsx e junção (empilha, faz JOIN ou lado-a-lado)
-│   └── financeiro/                 # rotas HTTP do módulo Financeiro
-│       ├── relatorios/               # 1 arquivo por relatório fixo (SQL + rotas), mais os compartilhados:
-│       │   ├── relatorio_customizado.py      # rotas do construtor de relatório sob demanda ("Criar Relatório")
-│       │   ├── relatorio_customizado_sql.py  # lógica pura de resolução de JOIN/montagem de SQL do item acima
-│       │   ├── filiais.py, cadastros.py      # listas pros selects de filtro (filial, cliente, vendedor, produto...)
-│       │   └── filtros_sql.py                # utilitário: monta cláusula IN (...) a partir de uma lista de valores
-│       ├── previsao.py             # rotas de Previsão (Vendas e Fluxo de Caixa) — projeção por regressão linear
-│       ├── historico.py            # rotas REST do histórico de relatórios gerados pela IA
-│       ├── layouts.py              # presets de coluna/filtro salvos por usuário na tela "Criar Relatório"
-│       ├── categoria_cores.py      # cor personalizada por categoria (usado nos gráficos)
-│       └── ia.py                   # registra as tools de IA + /api/financeiro/chat + /api/financeiro/relatorio/exportar
-└── tools/
-    ├── connectivity.py         # teste de conexão com o Oracle (genérico, qualquer módulo pode usar)
-    ├── auth/
-    │   ├── usuarios.py            # CRUD de usuário, autenticação, bloqueio por tentativas erradas
-    │   ├── papeis.py               # fonte única de verdade de quem acessa o quê (ver seção própria abaixo)
-    │   ├── token.py                 # geração/verificação do JWT de sessão
-    │   ├── eventos_seguranca.py     # trilha de auditoria (login, criação/exclusão de usuário, bloqueio...)
-    │   └── cli.py                    # agente-oracle-criar-usuario — bootstrap do primeiro admin
-    ├── auditoria/
-    │   ├── historico.py            # CRUD dos achados de auditoria
-    │   └── dispensados.py           # achados que um usuário marcou como "não é problema"
-    ├── ferramentas/
-    │   └── juntar_excel.py         # lógica pura de junção de planilha (sem HTTP)
-    └── financeiro/
-        ├── consulta_livre.py       # SQL livre gerado pela IA, com validação de segurança
-        └── historico.py             # dedup e CRUD do histórico de relatórios do Financeiro
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/arvore-backend-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/arvore-backend-light.svg">
+  <img src="docs/arvore-backend-dark.svg" alt="Árvore de diretórios do backend (src/agente_oracle/): config.py e relatorios.py na raiz; agent/ com o loop de tool-calling e a orquestração de IA por módulo; db/ com as duas conexões de banco; server/ com as rotas HTTP; tools/ com a lógica de negócio e acesso a dado." width="100%">
+</picture>
 
-frontend/grupoConceitoMCP/src/app/
-├── pages/                     # uma pasta por tela, incluindo pages/modulos/{financeiro,estoque}/
-├── componentes/                # UI reutilizável entre telas (tabela, dialog, seletor de arquivo...)
-├── servicos/                    # estado compartilhado (sessão, guards) + funções puras reaproveitadas
-│                                  # entre páginas (mensagens-erro.ts, download-arquivo.ts, ordenacao-tabela.ts)
-└── dadosRelatorios/              # configuração/metadado estático dos relatórios (dado, não lógica)
-```
+### Frontend
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/arvore-frontend-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/arvore-frontend-light.svg">
+  <img src="docs/arvore-frontend-dark.svg" alt="Árvore de diretórios do frontend (frontend/grupoConceitoMCP/src/app/): pages/, componentes/, servicos/ e dadosRelatorios/." width="100%">
+</picture>
+
+*(página dedicada, sem o resto do README ao redor: [`arvore-diretorios.md`](arvore-diretorios.md))*
 
 ### Módulo Estoque
 

@@ -320,11 +320,11 @@
       <text class="no-legenda" x="470" y="791" text-anchor="middle">SCIENCE_PROD</text>
       <text class="no-legenda" x="470" y="806" text-anchor="middle" fill="#ffa63d">dado de negócio real</text>
 
-      <!-- Protheus PRD (em homologação hoje é HML; passa a ser PRD quando for pra produção) -->
+      <!-- ERP PRD (em homologação hoje é HML; passa a ser PRD quando for pra produção) -->
       <rect class="no-caixa" x="650" y="670" width="190" height="110" rx="12" stroke="#ffa63d" stroke-opacity="0.55" stroke-dasharray="5 4" fill="rgba(255,166,61,0.04)" />
       <rect class="no-icone-fundo" x="725" y="684" width="40" height="40" rx="10" />
       <use href="#ic-db" x="732" y="690" width="26" height="26" fill="none" stroke="#ffa63d" stroke-opacity="0.75" stroke-width="1.4" />
-      <text class="no-nome" x="745" y="744" text-anchor="middle" font-size="13.5" fill="#8291b3">Protheus PRD</text>
+      <text class="no-nome" x="745" y="744" text-anchor="middle" font-size="13.5" fill="#8291b3">ERP PRD</text>
       <text class="no-legenda" x="745" y="760" text-anchor="middle">segurança de TI · opcional</text>
 
       <rect class="subpainel" x="650" y="830" width="340" height="180" rx="14" />

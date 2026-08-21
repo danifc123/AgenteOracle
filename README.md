@@ -51,7 +51,7 @@ também navegue pelos relatórios fixos do módulo Financeiro no navegador.
 | Banco | Sempre ativo? | Propósito | Controlado por |
 |---|---|---|---|
 | **PostgreSQL** | Sim (`POSTGRES_*`), independente de `DB_BACKEND` | Estado do próprio sistema: usuários (`usuarios`), trilha de auditoria de login/administração (`eventos_seguranca`), histórico de relatórios gerados (`relatorios_historico`), layouts salvos (`relatorio_layouts`), cores de categoria (`categoria_cores`), histórico de achados de auditoria (`auditoria_historico`) | fixo |
-| **Oracle** (ou Postgres local de teste) | Conforme `DB_BACKEND` | Dado de negócio/RAG financeiro — *views* do Protheus consultadas por `executar_consulta_financeira` e pelas rotas fixas de relatório | `DB_BACKEND=oracle` em produção; `postgres` localmente (contra *views* de teste), já que o Oracle real de produção não é acessível fora do ambiente de produção |
+| **Oracle** (ou Postgres local de teste) | Conforme `DB_BACKEND` | Dado de negócio/RAG financeiro — *views* do sistema ERP consultadas por `executar_consulta_financeira` e pelas rotas fixas de relatório | `DB_BACKEND=oracle` em produção; `postgres` localmente (contra *views* de teste), já que o Oracle real de produção não é acessível fora do ambiente de produção |
 
 - **Histórico de relatórios:** guardado numa tabela (`relatorios_historico`) sempre no Postgres — guarda todo relatório que a IA gera pela tool `executar_consulta_financeira`, usado para não repetir a mesma consulta. Relatório não fixado expira em 15h — veja `tools/financeiro/historico.py`.
 - **LLM:** [Ollama](https://ollama.com/) rodando local (sem custo de API paga).
@@ -62,7 +62,7 @@ também navegue pelos relatórios fixos do módulo Financeiro no navegador.
 | Tipo | O que é | Onde vive | Observação |
 |---|---|---|---|
 | **Tools/rotas fixas** | SQL pré-definido no código para cada relatório do módulo Financeiro, sem participação da IA | `server/financeiro/relatorios/` | Lista completa de rotinas em `frontend/grupoConceitoMCP/src/app/dadosRelatorios/modulos-financeiro.ts`; nem toda rotina listada ali tem rota fixa implementada ainda (aparece como "Em breve" na tela até ganhar uma) |
-| **`executar_consulta_financeira`** | A IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta | `agent/financeiro/schema.py` (views liberadas) + `tools/financeiro/consulta_livre.py` (validação) | Usa só as *views* financeiras curadas (não as tabelas reais do TOTVS) — ver [Segurança do SQL livre](#segurança-do-sql-livre). O resultado é salvo/reaproveitado via o histórico |
+| **`executar_consulta_financeira`** | A IA gera o SQL (`SELECT`) na hora, para perguntas sem tela/tool pronta | `agent/financeiro/schema.py` (views liberadas) + `tools/financeiro/consulta_livre.py` (validação) | Usa só as *views* financeiras curadas (não as tabelas reais do sistema ERP) — ver [Segurança do SQL livre](#segurança-do-sql-livre). O resultado é salvo/reaproveitado via o histórico |
 
 ## Estrutura do projeto
 
@@ -252,7 +252,7 @@ SQL passa por validação antes de rodar (`tools/financeiro/consulta_livre.py`):
 | Proteção | Como |
 |---|---|
 | Só leitura | Aceita apenas instruções `SELECT` — bloqueia `INSERT/UPDATE/DELETE/DROP/ALTER/CREATE`, blocos PL/SQL, `DBMS_*`/`UTL_*`, etc. |
-| Só views curadas | Só permite as *views* financeiras listadas em `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) — nunca as tabelas reais do TOTVS. Essa lista é a fonte única tanto do texto de schema que vai no prompt da IA quanto da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`), pra nunca ficar um SQL que o prompt promete mas a validação rejeita (ou o contrário). Enquanto uma view não estiver na lista, nenhuma consulta que a use é aceita |
+| Só views curadas | Só permite as *views* financeiras listadas em `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) — nunca as tabelas reais do sistema ERP. Essa lista é a fonte única tanto do texto de schema que vai no prompt da IA quanto da whitelist (`TABELAS_PERMITIDAS`, em `tools/financeiro/consulta_livre.py`), pra nunca ficar um SQL que o prompt promete mas a validação rejeita (ou o contrário). Enquanto uma view não estiver na lista, nenhuma consulta que a use é aceita |
 | Sem encadeamento | Bloqueia múltiplas instruções encadeadas (`;`) |
 | Limite e timeout | `FETCH FIRST 200 ROWS ONLY` no Oracle (ou o `LIMIT` que a própria IA já tiver colocado quando o banco é Postgres) e timeout de 10s na conexão |
 
@@ -264,7 +264,7 @@ SQL passa por validação antes de rodar (`tools/financeiro/consulta_livre.py`):
 As views que alimentam `VIEWS_DISPONIVEIS` (`agent/financeiro/schema.py`) são definidas
 em `db/views/*.sql` — hoje `financeiro_science.sql`, em cima do banco de negócio/RAG
 real (`SCIENCE_PROD`, schema `STAGE`, o ETL/BI da empresa; `financeiro.sql` é a versão
-anterior, em cima do Oracle transacional do Protheus, mantida só de referência).
+anterior, em cima do Oracle transacional do sistema ERP, mantida só de referência).
 Ninguém roda `CREATE VIEW` automaticamente — o SQL é escrito aqui e aplicado manualmente
 por quem tiver permissão (hoje, via DBA/SQL Developer), porque a política do projeto é
 nunca alterar/criar nada nesses bancos por conta própria (só leitura).
@@ -277,8 +277,9 @@ cliente, fornecedor e vendedor — só que o `CODIGO` dessa tabela **não é ún
 A mesma pessoa pode aparecer mais de uma vez em `PESSOA` com o mesmo código, uma vez por
 "papel" — ex: um produtor que é cliente (compra insumo) E fornecedor (vende grão) da
 mesma empresa gera duas linhas com o mesmo `CODIGO`, uma vinda de `SA1010` (clientes no
-Protheus) e outra de `SA2010` (fornecedores). `PESSOA.SOURCETABLE` guarda de qual tabela
-Protheus aquela linha veio — por isso todo `JOIN` com `PESSOA` também filtra esse campo:
+sistema ERP) e outra de `SA2010` (fornecedores). `PESSOA.SOURCETABLE` guarda de qual
+tabela do sistema ERP aquela linha veio — por isso todo `JOIN` com `PESSOA` também filtra
+esse campo:
 
 ```sql
 LEFT JOIN STAGE.pessoa p

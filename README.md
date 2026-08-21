@@ -45,7 +45,7 @@ cresce a cada relatório novo):
   liberadas pra IA, loop de chamada ao Ollama).
 
 > Versão visual (árvore de diretórios completa, backend e frontend, com um
-> comentário por arquivo): [`docs/arvore-diretorios.md`](docs/arvore-diretorios.md).
+> comentário por arquivo): [`arvore-diretorios.md`](arvore-diretorios.md).
 
 ```
 src/agente_oracle/

@@ -1,0 +1,48 @@
+<svg viewBox="0 0 1500 270" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    <![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+    text { font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; }
+    .eyebrow { font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: 0.24em; fill: #4f8dff; opacity: 0.85; }
+    .raiz { font-family: 'Chakra Petch', 'Segoe UI', sans-serif; font-weight: 700; font-size: 22px; fill: #eaf1ff; }
+    .pasta { font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace; font-weight: 600; font-size: 13px; }
+    .arquivo { font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; fill: #eaf1ff; }
+    .comentario { font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; font-size: 12.5px; fill: #8291b3; }
+    .guia { stroke: #2a3a5c; stroke-width: 1.2; }
+    ]]>
+  </style>
+  <defs>
+    <g id="ic-pasta"><path d="M2 5.5a1.5 1.5 0 0 1 1.5-1.5h3.4l1.3 1.6h6.3A1.5 1.5 0 0 1 16 7.1v6.4A1.5 1.5 0 0 1 14.5 15h-11A1.5 1.5 0 0 1 2 13.5Z"/></g>
+    <g id="ic-arquivo"><path d="M4 2.5h6l3.5 3.5v9A1.5 1.5 0 0 1 12 16.5H4A1.5 1.5 0 0 1 2.5 15V4A1.5 1.5 0 0 1 4 2.5Z"/><path d="M10 2.5V6h3.5"/></g>
+    <pattern id="grade-fundo-arvore" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M34 0H0V34" fill="none" stroke="rgba(79,141,255,0.05)" stroke-width="1" />
+    </pattern>
+  </defs>
+
+  <rect x="0" y="0" width="1500" height="270" fill="#070b14" />
+  <rect x="0" y="0" width="1500" height="270" fill="url(#grade-fundo-arvore)" />
+  <text class="eyebrow" x="40" y="34">ESTRUTURA DO PROJETO — FRONTEND</text>
+  <use href="#ic-pasta" x="40" y="52" width="22" height="22" fill="none" stroke="#4f8dff" stroke-width="1.4" />
+  <text class="raiz" x="70" y="68">frontend/grupoConceitoMCP/src/app/</text>
+  <line x1="40" y1="88" x2="1460" y2="88" stroke="#1e2a45" stroke-width="1" />
+    <line class="guia" x1="48" y1="100" x2="48" y2="126" />
+    <line class="guia" x1="48" y1="113.0" x2="62" y2="113.0" />
+    <use href="#ic-pasta" x="66" y="105.0" width="16" height="16" fill="none" stroke="#b48bff" stroke-width="1.5" />
+    <text class="pasta" x="86" y="117.0" fill="#b48bff">pages/</text>
+    <text class="comentario" x="430" y="117.0"># uma pasta por tela, incluindo pages/modulos/{financeiro,estoque}/</text>
+    <line class="guia" x1="48" y1="126" x2="48" y2="152" />
+    <line class="guia" x1="48" y1="139.0" x2="62" y2="139.0" />
+    <use href="#ic-pasta" x="66" y="131.0" width="16" height="16" fill="none" stroke="#35e7ff" stroke-width="1.5" />
+    <text class="pasta" x="86" y="143.0" fill="#35e7ff">componentes/</text>
+    <text class="comentario" x="430" y="143.0"># UI reutilizável entre telas (tabela, dialog, seletor de arquivo...)</text>
+    <line class="guia" x1="48" y1="152" x2="48" y2="178" />
+    <line class="guia" x1="48" y1="165.0" x2="62" y2="165.0" />
+    <use href="#ic-pasta" x="66" y="157.0" width="16" height="16" fill="none" stroke="#35ffa6" stroke-width="1.5" />
+    <text class="pasta" x="86" y="169.0" fill="#35ffa6">servicos/</text>
+    <text class="comentario" x="430" y="169.0"># estado compartilhado (sessão, guards) + funções puras reaproveitadas entre páginas (mensagens-erro.ts, download-arquivo.ts, ordenacao-tabela.ts)</text>
+    <line class="guia" x1="48" y1="178" x2="48" y2="191.0" />
+    <line class="guia" x1="48" y1="191.0" x2="62" y2="191.0" />
+    <use href="#ic-pasta" x="66" y="183.0" width="16" height="16" fill="none" stroke="#ffa63d" stroke-width="1.5" />
+    <text class="pasta" x="86" y="195.0" fill="#ffa63d">dadosRelatorios/</text>
+    <text class="comentario" x="430" y="195.0"># configuração/metadado estático dos relatórios (dado, não lógica)</text>
+</svg>

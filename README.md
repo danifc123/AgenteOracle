@@ -44,6 +44,9 @@ cresce a cada relatório novo):
 - **`agent/`** — orquestração do agente de IA em si (prompt, schema de views
   liberadas pra IA, loop de chamada ao Ollama).
 
+> Versão visual (árvore de diretórios completa, backend e frontend, com um
+> comentário por arquivo): [`docs/arvore-diretorios.md`](docs/arvore-diretorios.md).
+
 ```
 src/agente_oracle/
 ├── config.py                 # configurações (lidas de .env) + validação da chave de auth no startup

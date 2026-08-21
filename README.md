@@ -9,7 +9,11 @@ também navegue pelos relatórios fixos do módulo Financeiro no navegador.
 
 ## Arquitetura
 
-<img src="docs/arquitetura.svg" alt="Diagrama de arquitetura do AgenteOracle: Angular fala REST + JWT com o Backend Python, que expõe REST e um servidor MCP; o Backend orquestra o Ollama local via tool-calling, consulta o Oracle/STAGE para dado de negócio e o PostgreSQL para o estado interno do sistema (login, auditoria, histórico)." width="100%">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/arquitetura-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/arquitetura-light.svg">
+  <img src="docs/arquitetura-dark.svg" alt="Diagrama de arquitetura do AgenteOracle: Angular fala REST + JWT com o Backend Python, que expõe REST e um servidor MCP; o Backend orquestra o Ollama local via tool-calling, consulta o Oracle/STAGE para dado de negócio e o PostgreSQL para o estado interno do sistema (login, auditoria, histórico)." width="100%">
+</picture>
 
 - **Transporte do agente:** [MCP](https://modelcontextprotocol.io/) via Streamable HTTP — servidor central expõe *tools* que qualquer cliente MCP (o chat deste projeto, ou outro agente) pode descobrir e chamar.
 - **Transporte do frontend:** rotas REST comuns (`/api/...`) no mesmo servidor, sem passar pelo protocolo MCP nem pelo LLM — usadas para telas que não precisam de IA.

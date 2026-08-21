@@ -1,6 +1,6 @@
 <svg viewBox="0 0 1180 1350" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="titulo-svg desc-svg">
-  <title id="titulo-svg">Arquitetura do AgenteOracle</title>
-  <desc id="desc-svg">Angular fala REST + JWT com o Backend Python, que expõe REST e um servidor MCP; o Backend orquestra o Ollama local via tool-calling, consulta o Oracle/STAGE para dado de negócio e o PostgreSQL para o estado interno do sistema (login, auditoria, histórico).</desc>
+  <!--dd <title id="titulo-svg">Arquitetura do AgenteOracle</title>
+  <desc id="desc-svg">Angular fala REST + JWT com o Backend Python, que expõe REST e um servidor MCP; o Backend orquestra o Ollama local via tool-calling, consulta o Oracle/STAGE para dado de negócio e o PostgreSQL para o estado interno do sistema (login, auditoria, histórico).</desc> -->
 
   <style>
     <![CDATA[
@@ -20,7 +20,7 @@
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 12px;
       letter-spacing: 0.28em;
-      fill: #4f8dff;
+      fill: #2563eb;
       opacity: 0.85;
     }
 
@@ -34,19 +34,19 @@
     .subtitulo-svg {
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 14.5px;
-      fill: #8291b3;
+      fill: #5b6b82;
     }
 
     .legenda-texto {
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 12px;
-      fill: #8291b3;
+      fill: #5b6b82;
     }
 
     /* ---- painéis de camada ---- */
     .painel {
-      fill: #0d1526;
-      stroke: #1e2a45;
+      fill: #ffffff;
+      stroke: #dbe3ee;
       stroke-width: 1.25;
     }
 
@@ -60,7 +60,7 @@
     .painel-legenda {
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 11px;
-      fill: #4c5773;
+      fill: #8492a8;
     }
 
     .canto {
@@ -71,33 +71,33 @@
 
     /* ---- nós ---- */
     .no-caixa {
-      fill: #101c33;
+      fill: #f4f7fb;
       stroke-width: 1.4;
     }
 
     .no-icone-fundo {
-      fill: rgba(255, 255, 255, 0.03);
+      fill: rgba(15, 23, 42, 0.045);
     }
 
     .no-nome {
       font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
       font-weight: 600;
       font-size: 15px;
-      fill: #eaf1ff;
+      fill: #16202e;
     }
 
     .no-legenda {
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 10.5px;
-      fill: #8291b3;
+      fill: #5b6b82;
     }
 
     .no-hero .no-nome { font-size: 17px; }
 
     /* ---- subpainel "estado interno" ---- */
     .subpainel {
-      fill: rgba(125, 143, 179, 0.1);
-      stroke: #7d8fb3;
+      fill: rgba(100, 116, 139, 0.07);
+      stroke: #64748b;
       stroke-width: 1;
       stroke-dasharray: 3 4;
     }
@@ -105,7 +105,7 @@
     .subpainel-legenda {
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 10px;
-      fill: #4c5773;
+      fill: #8492a8;
       font-style: italic;
     }
 
@@ -113,12 +113,12 @@
     .fio {
       fill: none;
       stroke-width: 1.6;
-      opacity: 0.55;
+      opacity: 0.75;
     }
 
     .fio-tracejado {
       stroke-dasharray: 5 5;
-      opacity: 0.45;
+      opacity: 0.6;
     }
 
     .fio-rotulo {
@@ -128,7 +128,7 @@
     }
 
     .fio-rotulo-fundo {
-      fill: #070b14;
+      fill: #f7f9fc;
       opacity: 0.86;
     }
 
@@ -140,10 +140,10 @@
     .rodape {
       font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
       font-size: 12px;
-      fill: #4c5773;
+      fill: #8492a8;
     }
 
-    .rodape-forte { fill: #8291b3; font-weight: 500; }
+    .rodape-forte { fill: #5b6b82; font-weight: 500; }
 
     /* Sem animação de entrada (fade/translateY) aqui de propósito: esse
        arquivo é o .svg autônomo pro README, carregado via <img src="...">
@@ -161,29 +161,29 @@
 
   <defs>
     <linearGradient id="grad-titulo" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#ffffff" />
-      <stop offset="55%" stop-color="#35e7ff" />
-      <stop offset="100%" stop-color="#4f8dff" />
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="55%" stop-color="#0891b2" />
+      <stop offset="100%" stop-color="#2563eb" />
     </linearGradient>
 
     <pattern id="grade-fundo" width="34" height="34" patternUnits="userSpaceOnUse">
-      <path d="M34 0H0V34" fill="none" stroke="rgba(79,141,255,0.055)" stroke-width="1" />
+      <path d="M34 0H0V34" fill="none" stroke="rgba(37,99,235,0.07)" stroke-width="1" />
     </pattern>
 
     <marker id="seta-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#35e7ff" />
+      <path d="M0,0 L10,5 L0,10 Z" fill="#0891b2" />
     </marker>
     <marker id="seta-violet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#b48bff" />
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7c3aed" />
     </marker>
     <marker id="seta-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#35ffa6" />
+      <path d="M0,0 L10,5 L0,10 Z" fill="#059669" />
     </marker>
     <marker id="seta-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#ffa63d" />
+      <path d="M0,0 L10,5 L0,10 Z" fill="#c2670a" />
     </marker>
     <marker id="seta-slate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 Z" fill="#7d8fb3" />
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b" />
     </marker>
 
     <filter id="brilho-cyan" x="-60%" y="-60%" width="220%" height="220%">
@@ -227,7 +227,7 @@
   </defs>
 
   <!-- fundo -->
-  <rect x="0" y="0" width="1180" height="1350" fill="#070b14" />
+  <rect x="0" y="0" width="1180" height="1350" fill="#f7f9fc" />
   <rect x="0" y="0" width="1180" height="1350" fill="url(#grade-fundo)" />
 
   <!-- ================= CABEÇALHO ================= -->
@@ -237,16 +237,16 @@
 
   <!-- legenda -->
   <g transform="translate(0,148)">
-    <rect x="205" y="0" width="770" height="34" rx="17" fill="rgba(13,21,38,0.75)" stroke="#1e2a45" stroke-width="1" />
-    <circle cx="230" cy="17" r="4" fill="#b48bff" />
+    <rect x="205" y="0" width="770" height="34" rx="17" fill="rgba(255,255,255,0.85)" stroke="#dbe3ee" stroke-width="1" />
+    <circle cx="230" cy="17" r="4" fill="#7c3aed" />
     <text class="legenda-texto" x="241" y="21">Apresentação</text>
-    <circle cx="360" cy="17" r="4" fill="#35ffa6" />
+    <circle cx="360" cy="17" r="4" fill="#059669" />
     <text class="legenda-texto" x="371" y="21">Aplicação</text>
-    <circle cx="475" cy="17" r="4" fill="#ffa63d" />
+    <circle cx="475" cy="17" r="4" fill="#c2670a" />
     <text class="legenda-texto" x="486" y="21">Dados (Oracle / STAGE)</text>
-    <circle cx="670" cy="17" r="4" fill="#7d8fb3" />
+    <circle cx="670" cy="17" r="4" fill="#64748b" />
     <text class="legenda-texto" x="681" y="21">Estado interno</text>
-    <line x1="800" y1="17" x2="818" y2="17" stroke="#4c5773" stroke-width="1.5" stroke-dasharray="3 3" />
+    <line x1="800" y1="17" x2="818" y2="17" stroke="#8492a8" stroke-width="1.5" stroke-dasharray="3 3" />
     <text class="legenda-texto" x="826" y="21">Conexão opcional</text>
   </g>
 
@@ -256,128 +256,128 @@
 
     <!-- ATOR EXTERNO -->
     <g>
-      <rect x="30" y="30" width="210" height="170" rx="14" fill="rgba(180,139,255,0.05)" stroke="#b48bff" stroke-opacity="0.5" stroke-width="1.2" stroke-dasharray="4 5" />
-      <use href="#ic-users" x="112" y="55" width="46" height="46" fill="none" stroke="#b48bff" stroke-width="1.5" filter="url(#brilho-violet)" />
+      <rect x="30" y="30" width="210" height="170" rx="14" fill="rgba(124,58,237,0.05)" stroke="#7c3aed" stroke-opacity="0.55" stroke-width="1.2" stroke-dasharray="4 5" />
+      <use href="#ic-users" x="112" y="55" width="46" height="46" fill="none" stroke="#7c3aed" stroke-width="1.5" />
       <text class="no-nome" x="135" y="130" text-anchor="middle">Usuários</text>
       <text class="no-legenda" x="135" y="148" text-anchor="middle">todos os módulos</text>
     </g>
 
     <!-- CAMADA 1 — APRESENTAÇÃO -->
     <g>
-      <rect class="painel" x="300" y="30" width="850" height="170" rx="16" stroke="#b48bff" stroke-opacity="0.35" />
-      <path class="canto" stroke="#b48bff" d="M300,54 V38 a8,8 0 0 1 8,-8 H324" />
-      <path class="canto" stroke="#b48bff" d="M1150,54 V38 a8,8 0 0 0 -8,-8 H1126" />
-      <text class="painel-titulo" x="322" y="52" fill="#b48bff">CAMADA DE APRESENTAÇÃO</text>
+      <rect class="painel" x="300" y="30" width="850" height="170" rx="16" stroke="#7c3aed" stroke-opacity="0.55" />
+      <path class="canto" stroke="#7c3aed" d="M300,54 V38 a8,8 0 0 1 8,-8 H324" />
+      <path class="canto" stroke="#7c3aed" d="M1150,54 V38 a8,8 0 0 0 -8,-8 H1126" />
+      <text class="painel-titulo" x="322" y="52" fill="#7c3aed">CAMADA DE APRESENTAÇÃO</text>
       <text class="painel-legenda" x="322" y="68">frontend &amp; autenticação</text>
 
-      <rect class="no-caixa" x="360" y="80" width="200" height="110" rx="12" stroke="#35e7ff" />
+      <rect class="no-caixa" x="360" y="80" width="200" height="110" rx="12" stroke="#0891b2" />
       <rect class="no-icone-fundo" x="440" y="94" width="40" height="40" rx="10" />
-      <use href="#ic-angular" x="446" y="100" width="28" height="28" fill="none" stroke="#35e7ff" stroke-width="1.4" filter="url(#brilho-cyan)" />
+      <use href="#ic-angular" x="446" y="100" width="28" height="28" fill="none" stroke="#0891b2" stroke-width="1.4" />
       <text class="no-nome" x="460" y="155" text-anchor="middle">Angular Web App</text>
       <text class="no-legenda" x="460" y="172" text-anchor="middle">frontend</text>
 
-      <rect class="no-caixa" x="760" y="80" width="200" height="110" rx="12" stroke="#b48bff" />
+      <rect class="no-caixa" x="760" y="80" width="200" height="110" rx="12" stroke="#7c3aed" />
       <rect class="no-icone-fundo" x="840" y="94" width="40" height="40" rx="10" />
-      <use href="#ic-lock" x="847" y="101" width="26" height="26" fill="none" stroke="#b48bff" stroke-width="1.5" filter="url(#brilho-violet)" />
+      <use href="#ic-lock" x="847" y="101" width="26" height="26" fill="none" stroke="#7c3aed" stroke-width="1.5" />
       <text class="no-nome" x="860" y="155" text-anchor="middle">Login JWT</text>
       <text class="no-legenda" x="860" y="172" text-anchor="middle">autenticação própria</text>
     </g>
 
     <!-- CAMADA 2 — APLICAÇÃO -->
     <g>
-      <rect class="painel" x="300" y="310" width="850" height="190" rx="16" stroke="#35ffa6" stroke-opacity="0.35" />
-      <path class="canto" stroke="#35ffa6" d="M300,334 V318 a8,8 0 0 1 8,-8 H324" />
-      <path class="canto" stroke="#35ffa6" d="M1150,334 V318 a8,8 0 0 0 -8,-8 H1126" />
-      <text class="painel-titulo" x="322" y="332" fill="#35ffa6">CAMADA DE APLICAÇÃO</text>
+      <rect class="painel" x="300" y="310" width="850" height="190" rx="16" stroke="#059669" stroke-opacity="0.55" />
+      <path class="canto" stroke="#059669" d="M300,334 V318 a8,8 0 0 1 8,-8 H324" />
+      <path class="canto" stroke="#059669" d="M1150,334 V318 a8,8 0 0 0 -8,-8 H1126" />
+      <text class="painel-titulo" x="322" y="332" fill="#059669">CAMADA DE APLICAÇÃO</text>
       <text class="painel-legenda" x="322" y="348">orquestração &amp; regra de negócio</text>
 
-      <rect class="no-caixa" x="440" y="360" width="220" height="120" rx="12" stroke="#35ffa6" />
+      <rect class="no-caixa" x="440" y="360" width="220" height="120" rx="12" stroke="#059669" />
       <rect class="no-icone-fundo" x="530" y="374" width="40" height="40" rx="10" />
-      <use href="#ic-chip" x="536" y="380" width="28" height="28" fill="none" stroke="#35ffa6" stroke-width="1.4" filter="url(#brilho-green)" />
+      <use href="#ic-chip" x="536" y="380" width="28" height="28" fill="none" stroke="#059669" stroke-width="1.4" />
       <text class="no-nome" x="550" y="436" text-anchor="middle">Backend Python</text>
       <text class="no-legenda" x="550" y="453" text-anchor="middle">REST + MCP Server</text>
 
-      <rect class="no-caixa" x="820" y="360" width="200" height="120" rx="12" stroke="#35ffa6" />
+      <rect class="no-caixa" x="820" y="360" width="200" height="120" rx="12" stroke="#059669" />
       <rect class="no-icone-fundo" x="900" y="374" width="40" height="40" rx="10" />
-      <use href="#ic-brain" x="906" y="380" width="28" height="28" fill="none" stroke="#35ffa6" stroke-width="1.4" filter="url(#brilho-green)" />
+      <use href="#ic-brain" x="906" y="380" width="28" height="28" fill="none" stroke="#059669" stroke-width="1.4" />
       <text class="no-nome" x="920" y="436" text-anchor="middle">Ollama</text>
       <text class="no-legenda" x="920" y="453" text-anchor="middle">LLM local</text>
     </g>
 
     <!-- CAMADA 3 — DADOS -->
     <g>
-      <rect class="painel" x="300" y="610" width="850" height="440" rx="18" stroke="#ffa63d" stroke-opacity="0.45" stroke-width="1.6" />
-      <path class="canto" stroke="#ffa63d" d="M300,636 V616 a10,10 0 0 1 10,-10 H330" />
-      <path class="canto" stroke="#ffa63d" d="M1150,636 V616 a10,10 0 0 0 -10,-10 H1120" />
-      <text class="painel-titulo" x="326" y="632" fill="#ffa63d" font-size="15">CAMADA DE DADOS</text>
+      <rect class="painel" x="300" y="610" width="850" height="440" rx="18" stroke="#c2670a" stroke-opacity="0.7" stroke-width="1.6" />
+      <path class="canto" stroke="#c2670a" d="M300,636 V616 a10,10 0 0 1 10,-10 H330" />
+      <path class="canto" stroke="#c2670a" d="M1150,636 V616 a10,10 0 0 0 -10,-10 H1120" />
+      <text class="painel-titulo" x="326" y="632" fill="#c2670a" font-size="15">CAMADA DE DADOS</text>
       <text class="painel-legenda" x="326" y="649">único banco de dado de negócio real — produção</text>
 
-      <rect class="no-caixa no-hero" x="340" y="670" width="260" height="170" rx="14" stroke="#ffa63d" stroke-width="1.8" fill="rgba(255, 166, 61, 0.16)" />
+      <rect class="no-caixa no-hero" x="340" y="670" width="260" height="170" rx="14" stroke="#c2670a" stroke-width="1.8" fill="rgba(194, 103, 10, 0.09)" />
       <rect class="no-icone-fundo" x="440" y="688" width="56" height="56" rx="12" />
-      <use href="#ic-db" x="449" y="697" width="38" height="38" fill="none" stroke="#ffa63d" stroke-width="1.5" filter="url(#brilho-amber)" />
+      <use href="#ic-db" x="449" y="697" width="38" height="38" fill="none" stroke="#c2670a" stroke-width="1.5" />
       <text class="no-nome" x="470" y="773" text-anchor="middle">Oracle DB / STAGE</text>
       <text class="no-legenda" x="470" y="791" text-anchor="middle">SCIENCE_PROD</text>
-      <text class="no-legenda" x="470" y="806" text-anchor="middle" fill="#ffa63d">dado de negócio real</text>
+      <text class="no-legenda" x="470" y="806" text-anchor="middle" fill="#c2670a">dado de negócio real</text>
 
       <!-- Protheus PRD (em homologação hoje é HML; passa a ser PRD quando for pra produção) -->
-      <rect class="no-caixa" x="650" y="670" width="190" height="110" rx="12" stroke="#ffa63d" stroke-opacity="0.55" stroke-dasharray="5 4" fill="rgba(255,166,61,0.04)" />
+      <rect class="no-caixa" x="650" y="670" width="190" height="110" rx="12" stroke="#c2670a" stroke-opacity="0.65" stroke-dasharray="5 4" fill="rgba(194,103,10,0.04)" />
       <rect class="no-icone-fundo" x="725" y="684" width="40" height="40" rx="10" />
-      <use href="#ic-db" x="732" y="690" width="26" height="26" fill="none" stroke="#ffa63d" stroke-opacity="0.75" stroke-width="1.4" />
-      <text class="no-nome" x="745" y="744" text-anchor="middle" font-size="13.5" fill="#8291b3">Protheus PRD</text>
+      <use href="#ic-db" x="732" y="690" width="26" height="26" fill="none" stroke="#c2670a" stroke-opacity="0.85" stroke-width="1.4" />
+      <text class="no-nome" x="745" y="744" text-anchor="middle" font-size="13.5" fill="#5b6b82">Protheus PRD</text>
       <text class="no-legenda" x="745" y="760" text-anchor="middle">segurança de TI · opcional</text>
 
       <rect class="subpainel" x="650" y="830" width="340" height="180" rx="14" />
       <text class="subpainel-legenda" x="672" y="852">estado interno — não é dado de negócio</text>
 
-      <rect class="no-caixa" x="700" y="870" width="220" height="110" rx="12" stroke="#7d8fb3" fill="rgba(125, 143, 179, 0.1)" />
+      <rect class="no-caixa" x="700" y="870" width="220" height="110" rx="12" stroke="#64748b" fill="rgba(100, 116, 139, 0.07)" />
       <rect class="no-icone-fundo" x="790" y="883" width="40" height="40" rx="10" />
-      <use href="#ic-db" x="797" y="889" width="26" height="26" fill="none" stroke="#7d8fb3" stroke-width="1.4" />
-      <text class="no-nome" x="810" y="945" text-anchor="middle" fill="#8291b3">PostgreSQL</text>
+      <use href="#ic-db" x="797" y="889" width="26" height="26" fill="none" stroke="#64748b" stroke-width="1.4" />
+      <text class="no-nome" x="810" y="945" text-anchor="middle" fill="#5b6b82">PostgreSQL</text>
       <text class="no-legenda" x="810" y="961" text-anchor="middle">login · auditoria · histórico</text>
     </g>
 
     <!-- CONEXÕES (por cima de tudo, senão o preenchimento opaco dos
          painéis desenhados depois esconde metade do rótulo) -->
     <g>
-      <path id="p-http" class="fio" stroke="#b48bff" d="M240,115 H300" marker-end="url(#seta-violet)" />
+      <path id="p-http" class="fio" stroke="#7c3aed" d="M240,115 H300" marker-end="url(#seta-violet)" />
       <rect class="fio-rotulo-fundo" x="238" y="92" width="64" height="20" rx="5" />
-      <text class="fio-rotulo" x="270" y="106" text-anchor="middle" fill="#b48bff">HTTPS</text>
+      <text class="fio-rotulo" x="270" y="106" text-anchor="middle" fill="#7c3aed">HTTPS</text>
 
-      <path id="p-rest" class="fio" stroke="#35e7ff" d="M460,200 C460,255 500,315 545,356" marker-end="url(#seta-cyan)" />
+      <path id="p-rest" class="fio" stroke="#0891b2" d="M460,200 C460,255 500,315 545,356" marker-end="url(#seta-cyan)" />
       <rect class="fio-rotulo-fundo" x="412" y="263" width="110" height="20" rx="5" />
-      <text class="fio-rotulo" x="467" y="277" text-anchor="middle" fill="#35e7ff">REST + JWT</text>
+      <text class="fio-rotulo" x="467" y="277" text-anchor="middle" fill="#0891b2">REST + JWT</text>
 
-      <path id="p-valida" class="fio" stroke="#b48bff" d="M840,200 C840,270 660,325 585,356" marker-end="url(#seta-violet)" />
+      <path id="p-valida" class="fio" stroke="#7c3aed" d="M840,200 C840,270 660,325 585,356" marker-end="url(#seta-violet)" />
       <rect class="fio-rotulo-fundo" x="687" y="275" width="126" height="20" rx="5" />
-      <text class="fio-rotulo" x="750" y="289" text-anchor="middle" fill="#b48bff">valida token</text>
+      <text class="fio-rotulo" x="750" y="289" text-anchor="middle" fill="#7c3aed">valida token</text>
 
-      <path id="p-mcp" class="fio" stroke="#35ffa6" d="M660,420 H820" marker-end="url(#seta-green)" marker-start="url(#seta-green)" />
+      <path id="p-mcp" class="fio" stroke="#059669" d="M660,420 H820" marker-end="url(#seta-green)" marker-start="url(#seta-green)" />
       <rect class="fio-rotulo-fundo" x="642" y="397" width="158" height="20" rx="5" />
-      <text class="fio-rotulo" x="721" y="411" text-anchor="middle" fill="#35ffa6">MCP tool-calling</text>
+      <text class="fio-rotulo" x="721" y="411" text-anchor="middle" fill="#059669">MCP tool-calling</text>
 
-      <path id="p-sql" class="fio" stroke="#ffa63d" d="M540,485 C520,550 500,590 475,668" marker-end="url(#seta-amber)" />
+      <path id="p-sql" class="fio" stroke="#c2670a" d="M540,485 C520,550 500,590 475,668" marker-end="url(#seta-amber)" />
       <rect class="fio-rotulo-fundo" x="436" y="566" width="250" height="20" rx="5" />
-      <text class="fio-rotulo" x="561" y="580" text-anchor="middle" fill="#ffa63d">SQL — consulta e relatório</text>
+      <text class="fio-rotulo" x="561" y="580" text-anchor="middle" fill="#c2670a">SQL — consulta e relatório</text>
 
-      <path id="p-protheus" class="fio fio-tracejado" stroke="#ffa63d" d="M640,460 C700,520 730,580 742,668" marker-end="url(#seta-amber)" />
+      <path id="p-protheus" class="fio fio-tracejado" stroke="#c2670a" d="M640,460 C700,520 730,580 742,668" marker-end="url(#seta-amber)" />
       <rect class="fio-rotulo-fundo" x="707" y="592" width="90" height="20" rx="5" />
-      <text class="fio-rotulo" x="752" y="606" text-anchor="middle" fill="#ffa63d">opcional</text>
+      <text class="fio-rotulo" x="752" y="606" text-anchor="middle" fill="#c2670a">opcional</text>
 
-      <path id="p-estado" class="fio" stroke="#7d8fb3" d="M628,478 C616,560 618,680 630,760 C642,820 690,845 745,865" marker-end="url(#seta-slate)" />
+      <path id="p-estado" class="fio" stroke="#64748b" d="M628,478 C616,560 618,680 630,760 C642,820 690,845 745,865" marker-end="url(#seta-slate)" />
       <rect class="fio-rotulo-fundo" x="609" y="791" width="168" height="20" rx="5" />
-      <text class="fio-rotulo" x="693" y="805" text-anchor="middle" fill="#7d8fb3">estado do sistema</text>
+      <text class="fio-rotulo" x="693" y="805" text-anchor="middle" fill="#64748b">estado do sistema</text>
     </g>
 
     <!-- pontos animados fluindo nas conexões -->
     <g>
-      <circle r="3.2" fill="#b48bff" class="flow-dot"><animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#p-http" /></animateMotion></circle>
-      <circle r="3.2" fill="#35e7ff" class="flow-dot"><animateMotion dur="2.8s" repeatCount="indefinite"><mpath href="#p-rest" /></animateMotion></circle>
-      <circle r="3.2" fill="#b48bff" class="flow-dot"><animateMotion dur="3.1s" repeatCount="indefinite"><mpath href="#p-valida" /></animateMotion></circle>
-      <circle r="3.2" fill="#35ffa6" class="flow-dot"><animateMotion dur="2.2s" repeatCount="indefinite"><mpath href="#p-mcp" /></animateMotion></circle>
-      <circle r="3.2" fill="#35ffa6" class="flow-dot"><animateMotion dur="2.2s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1"><mpath href="#p-mcp" /></animateMotion></circle>
-      <circle r="3" fill="#ffa63d" class="flow-dot"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#p-sql" /></animateMotion></circle>
-      <circle r="2.6" fill="#ffa63d" class="flow-dot" opacity="0.8"><animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#p-protheus" /></animateMotion></circle>
-      <circle r="2.8" fill="#7d8fb3" class="flow-dot"><animateMotion dur="3.6s" repeatCount="indefinite"><mpath href="#p-estado" /></animateMotion></circle>
+      <circle r="3.2" fill="#7c3aed" class="flow-dot"><animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#p-http" /></animateMotion></circle>
+      <circle r="3.2" fill="#0891b2" class="flow-dot"><animateMotion dur="2.8s" repeatCount="indefinite"><mpath href="#p-rest" /></animateMotion></circle>
+      <circle r="3.2" fill="#7c3aed" class="flow-dot"><animateMotion dur="3.1s" repeatCount="indefinite"><mpath href="#p-valida" /></animateMotion></circle>
+      <circle r="3.2" fill="#059669" class="flow-dot"><animateMotion dur="2.2s" repeatCount="indefinite"><mpath href="#p-mcp" /></animateMotion></circle>
+      <circle r="3.2" fill="#059669" class="flow-dot"><animateMotion dur="2.2s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1"><mpath href="#p-mcp" /></animateMotion></circle>
+      <circle r="3" fill="#c2670a" class="flow-dot"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#p-sql" /></animateMotion></circle>
+      <circle r="2.6" fill="#c2670a" class="flow-dot" opacity="0.8"><animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#p-protheus" /></animateMotion></circle>
+      <circle r="2.8" fill="#64748b" class="flow-dot"><animateMotion dur="3.6s" repeatCount="indefinite"><mpath href="#p-estado" /></animateMotion></circle>
     </g>
   </g>
 

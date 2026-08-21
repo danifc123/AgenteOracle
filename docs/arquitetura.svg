@@ -1,0 +1,396 @@
+<svg viewBox="0 0 1180 1350" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="titulo-svg desc-svg">
+  <title id="titulo-svg">Arquitetura do AgenteOracle</title>
+  <desc id="desc-svg">Angular fala REST + JWT com o Backend Python, que expõe REST e um servidor MCP; o Backend orquestra o Ollama local via tool-calling, consulta o Oracle/STAGE para dado de negócio e o PostgreSQL para o estado interno do sistema (login, auditoria, histórico).</desc>
+
+  <style>
+    <![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+    /* Cores em valor literal (não var(--token)) de propósito: suporte a
+       custom property CSS em :root dentro de SVG carregado via
+       <img src="..."> (o jeito que o GitHub renderiza esse arquivo) é
+       inconsistente entre navegador/versão — mais seguro não depender
+       disso aqui. O bug real e confirmado nesta sessão foi outro (ver
+       nota sobre animação de entrada mais abaixo), mas o motivo de manter
+       tudo literal continua valendo como precaução. */
+
+    text { font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; }
+
+    .eyebrow {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12px;
+      letter-spacing: 0.28em;
+      fill: #4f8dff;
+      opacity: 0.85;
+    }
+
+    .titulo-svg {
+      font-family: 'Chakra Petch', 'Segoe UI', sans-serif;
+      font-weight: 700;
+      font-size: 34px;
+      letter-spacing: 0.01em;
+    }
+
+    .subtitulo-svg {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 14.5px;
+      fill: #8291b3;
+    }
+
+    .legenda-texto {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12px;
+      fill: #8291b3;
+    }
+
+    /* ---- painéis de camada ---- */
+    .painel {
+      fill: #0d1526;
+      stroke: #1e2a45;
+      stroke-width: 1.25;
+    }
+
+    .painel-titulo {
+      font-family: 'Chakra Petch', 'Segoe UI', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.14em;
+    }
+
+    .painel-legenda {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 11px;
+      fill: #4c5773;
+    }
+
+    .canto {
+      stroke-width: 2;
+      fill: none;
+      opacity: 0.9;
+    }
+
+    /* ---- nós ---- */
+    .no-caixa {
+      fill: #101c33;
+      stroke-width: 1.4;
+    }
+
+    .no-icone-fundo {
+      fill: rgba(255, 255, 255, 0.03);
+    }
+
+    .no-nome {
+      font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+      font-weight: 600;
+      font-size: 15px;
+      fill: #eaf1ff;
+    }
+
+    .no-legenda {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 10.5px;
+      fill: #8291b3;
+    }
+
+    .no-hero .no-nome { font-size: 17px; }
+
+    /* ---- subpainel "estado interno" ---- */
+    .subpainel {
+      fill: rgba(125, 143, 179, 0.1);
+      stroke: #7d8fb3;
+      stroke-width: 1;
+      stroke-dasharray: 3 4;
+    }
+
+    .subpainel-legenda {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 10px;
+      fill: #4c5773;
+      font-style: italic;
+    }
+
+    /* ---- conexões ---- */
+    .fio {
+      fill: none;
+      stroke-width: 1.6;
+      opacity: 0.55;
+    }
+
+    .fio-tracejado {
+      stroke-dasharray: 5 5;
+      opacity: 0.45;
+    }
+
+    .fio-rotulo {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .fio-rotulo-fundo {
+      fill: #070b14;
+      opacity: 0.86;
+    }
+
+    .flow-dot {
+      filter: drop-shadow(0 0 4px currentColor);
+    }
+
+    /* ---- rodapé ---- */
+    .rodape {
+      font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 12px;
+      fill: #4c5773;
+    }
+
+    .rodape-forte { fill: #8291b3; font-weight: 500; }
+
+    /* Sem animação de entrada (fade/translateY) aqui de propósito: esse
+       arquivo é o .svg autônomo pro README, carregado via <img src="...">
+       no GitHub — nesse contexto o navegador NÃO avança o relógio de
+       animação CSS (@keyframes fica travado no frame "from" pra sempre,
+       testado e confirmado). Resultado: qualquer elemento que começasse
+       invisível (opacity:0) ficaria invisível pra sempre. O SMIL
+       (<animateMotion> dos pontinhos abaixo) não tem esse problema — anima
+       normalmente mesmo via <img>. */
+    @media (prefers-reduced-motion: reduce) {
+      .flow-dot { display: none; }
+    }
+    ]]>
+  </style>
+
+  <defs>
+    <linearGradient id="grad-titulo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="55%" stop-color="#35e7ff" />
+      <stop offset="100%" stop-color="#4f8dff" />
+    </linearGradient>
+
+    <pattern id="grade-fundo" width="34" height="34" patternUnits="userSpaceOnUse">
+      <path d="M34 0H0V34" fill="none" stroke="rgba(79,141,255,0.055)" stroke-width="1" />
+    </pattern>
+
+    <marker id="seta-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#35e7ff" />
+    </marker>
+    <marker id="seta-violet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#b48bff" />
+    </marker>
+    <marker id="seta-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#35ffa6" />
+    </marker>
+    <marker id="seta-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#ffa63d" />
+    </marker>
+    <marker id="seta-slate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7d8fb3" />
+    </marker>
+
+    <filter id="brilho-cyan" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="brilho-green" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="brilho-amber" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="brilho-violet" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+
+    <!-- ícones reutilizáveis, 24x24, stroke-based -->
+    <g id="ic-users">
+      <circle cx="8" cy="8" r="3.1" /><path d="M2.6 20c0-4 2.4-6.4 5.4-6.4s5.4 2.4 5.4 6.4" />
+      <circle cx="16.6" cy="9" r="2.5" /><path d="M14.6 13.3c1-.5 1.9-.7 2.6-.7 2.5 0 4.6 2.1 4.6 5.7" />
+    </g>
+    <g id="ic-lock">
+      <rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7.6a4 4 0 0 1 8 0V11" /><circle cx="12" cy="16" r="1.5" />
+    </g>
+    <g id="ic-angular">
+      <path d="M12 2.3 20.6 5.8 19 18.4 12 21.7 5 18.4 3.4 5.8Z" />
+      <path d="M12 6.6 16.6 16.6H14.3L13.4 14.4H10.4L9.6 16.6H7.3Z" />
+      <path d="M12 9.4 10.9 12.5H13.1Z" />
+    </g>
+    <g id="ic-chip">
+      <rect x="7" y="7" width="10" height="10" rx="1.4" /><rect x="10" y="10" width="4" height="4" rx="0.6" />
+      <path d="M9 3.4V7M12 3.4V7M15 3.4V7M9 17V20.6M12 17V20.6M15 17V20.6M3.4 9H7M3.4 12H7M3.4 15H7M17 9H20.6M17 12H20.6M17 15H20.6" />
+    </g>
+    <g id="ic-brain">
+      <path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1.4 5.5A3 3 0 0 0 7 18h1" />
+      <path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 1.4 5.5A3 3 0 0 1 17 18h-1" />
+      <path d="M9 4v14M15 4v14M9.3 9h2M12.7 9h2M9.3 13h2M12.7 13h2" />
+    </g>
+    <g id="ic-db">
+      <ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" /><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+    </g>
+  </defs>
+
+  <!-- fundo -->
+  <rect x="0" y="0" width="1180" height="1350" fill="#070b14" />
+  <rect x="0" y="0" width="1180" height="1350" fill="url(#grade-fundo)" />
+
+  <!-- ================= CABEÇALHO ================= -->
+  <text class="eyebrow" x="590" y="46" text-anchor="middle" style="letter-spacing:0.28em">DIAGRAMA DE PRODUÇÃO</text>
+  <text class="titulo-svg" x="590" y="88" text-anchor="middle" fill="url(#grad-titulo)">Arquitetura do AgenteOracle</text>
+  <text class="subtitulo-svg" x="590" y="116" text-anchor="middle">Angular · Backend Python (REST + MCP) · Ollama local · Oracle / STAGE</text>
+
+  <!-- legenda -->
+  <g transform="translate(0,148)">
+    <rect x="205" y="0" width="770" height="34" rx="17" fill="rgba(13,21,38,0.75)" stroke="#1e2a45" stroke-width="1" />
+    <circle cx="230" cy="17" r="4" fill="#b48bff" />
+    <text class="legenda-texto" x="241" y="21">Apresentação</text>
+    <circle cx="360" cy="17" r="4" fill="#35ffa6" />
+    <text class="legenda-texto" x="371" y="21">Aplicação</text>
+    <circle cx="475" cy="17" r="4" fill="#ffa63d" />
+    <text class="legenda-texto" x="486" y="21">Dados (Oracle / STAGE)</text>
+    <circle cx="670" cy="17" r="4" fill="#7d8fb3" />
+    <text class="legenda-texto" x="681" y="21">Estado interno</text>
+    <line x1="800" y1="17" x2="818" y2="17" stroke="#4c5773" stroke-width="1.5" stroke-dasharray="3 3" />
+    <text class="legenda-texto" x="826" y="21">Conexão opcional</text>
+  </g>
+
+  <!-- ================= DIAGRAMA (mesmas coordenadas internas de antes,
+       só deslocado pra abrir espaço pro cabeçalho acima) ================= -->
+  <g transform="translate(0,210)">
+
+    <!-- ATOR EXTERNO -->
+    <g>
+      <rect x="30" y="30" width="210" height="170" rx="14" fill="rgba(180,139,255,0.05)" stroke="#b48bff" stroke-opacity="0.5" stroke-width="1.2" stroke-dasharray="4 5" />
+      <use href="#ic-users" x="112" y="55" width="46" height="46" fill="none" stroke="#b48bff" stroke-width="1.5" filter="url(#brilho-violet)" />
+      <text class="no-nome" x="135" y="130" text-anchor="middle">Usuários</text>
+      <text class="no-legenda" x="135" y="148" text-anchor="middle">todos os módulos</text>
+    </g>
+
+    <!-- CAMADA 1 — APRESENTAÇÃO -->
+    <g>
+      <rect class="painel" x="300" y="30" width="850" height="170" rx="16" stroke="#b48bff" stroke-opacity="0.35" />
+      <path class="canto" stroke="#b48bff" d="M300,54 V38 a8,8 0 0 1 8,-8 H324" />
+      <path class="canto" stroke="#b48bff" d="M1150,54 V38 a8,8 0 0 0 -8,-8 H1126" />
+      <text class="painel-titulo" x="322" y="52" fill="#b48bff">CAMADA DE APRESENTAÇÃO</text>
+      <text class="painel-legenda" x="322" y="68">frontend &amp; autenticação</text>
+
+      <rect class="no-caixa" x="360" y="80" width="200" height="110" rx="12" stroke="#35e7ff" />
+      <rect class="no-icone-fundo" x="440" y="94" width="40" height="40" rx="10" />
+      <use href="#ic-angular" x="446" y="100" width="28" height="28" fill="none" stroke="#35e7ff" stroke-width="1.4" filter="url(#brilho-cyan)" />
+      <text class="no-nome" x="460" y="155" text-anchor="middle">Angular Web App</text>
+      <text class="no-legenda" x="460" y="172" text-anchor="middle">frontend</text>
+
+      <rect class="no-caixa" x="760" y="80" width="200" height="110" rx="12" stroke="#b48bff" />
+      <rect class="no-icone-fundo" x="840" y="94" width="40" height="40" rx="10" />
+      <use href="#ic-lock" x="847" y="101" width="26" height="26" fill="none" stroke="#b48bff" stroke-width="1.5" filter="url(#brilho-violet)" />
+      <text class="no-nome" x="860" y="155" text-anchor="middle">Login JWT</text>
+      <text class="no-legenda" x="860" y="172" text-anchor="middle">autenticação própria</text>
+    </g>
+
+    <!-- CAMADA 2 — APLICAÇÃO -->
+    <g>
+      <rect class="painel" x="300" y="310" width="850" height="190" rx="16" stroke="#35ffa6" stroke-opacity="0.35" />
+      <path class="canto" stroke="#35ffa6" d="M300,334 V318 a8,8 0 0 1 8,-8 H324" />
+      <path class="canto" stroke="#35ffa6" d="M1150,334 V318 a8,8 0 0 0 -8,-8 H1126" />
+      <text class="painel-titulo" x="322" y="332" fill="#35ffa6">CAMADA DE APLICAÇÃO</text>
+      <text class="painel-legenda" x="322" y="348">orquestração &amp; regra de negócio</text>
+
+      <rect class="no-caixa" x="440" y="360" width="220" height="120" rx="12" stroke="#35ffa6" />
+      <rect class="no-icone-fundo" x="530" y="374" width="40" height="40" rx="10" />
+      <use href="#ic-chip" x="536" y="380" width="28" height="28" fill="none" stroke="#35ffa6" stroke-width="1.4" filter="url(#brilho-green)" />
+      <text class="no-nome" x="550" y="436" text-anchor="middle">Backend Python</text>
+      <text class="no-legenda" x="550" y="453" text-anchor="middle">REST + MCP Server</text>
+
+      <rect class="no-caixa" x="820" y="360" width="200" height="120" rx="12" stroke="#35ffa6" />
+      <rect class="no-icone-fundo" x="900" y="374" width="40" height="40" rx="10" />
+      <use href="#ic-brain" x="906" y="380" width="28" height="28" fill="none" stroke="#35ffa6" stroke-width="1.4" filter="url(#brilho-green)" />
+      <text class="no-nome" x="920" y="436" text-anchor="middle">Ollama</text>
+      <text class="no-legenda" x="920" y="453" text-anchor="middle">LLM local</text>
+    </g>
+
+    <!-- CAMADA 3 — DADOS -->
+    <g>
+      <rect class="painel" x="300" y="610" width="850" height="440" rx="18" stroke="#ffa63d" stroke-opacity="0.45" stroke-width="1.6" />
+      <path class="canto" stroke="#ffa63d" d="M300,636 V616 a10,10 0 0 1 10,-10 H330" />
+      <path class="canto" stroke="#ffa63d" d="M1150,636 V616 a10,10 0 0 0 -10,-10 H1120" />
+      <text class="painel-titulo" x="326" y="632" fill="#ffa63d" font-size="15">CAMADA DE DADOS</text>
+      <text class="painel-legenda" x="326" y="649">único banco de dado de negócio real — produção</text>
+
+      <rect class="no-caixa no-hero" x="340" y="670" width="260" height="170" rx="14" stroke="#ffa63d" stroke-width="1.8" fill="rgba(255, 166, 61, 0.16)" />
+      <rect class="no-icone-fundo" x="440" y="688" width="56" height="56" rx="12" />
+      <use href="#ic-db" x="449" y="697" width="38" height="38" fill="none" stroke="#ffa63d" stroke-width="1.5" filter="url(#brilho-amber)" />
+      <text class="no-nome" x="470" y="773" text-anchor="middle">Oracle DB / STAGE</text>
+      <text class="no-legenda" x="470" y="791" text-anchor="middle">SCIENCE_PROD</text>
+      <text class="no-legenda" x="470" y="806" text-anchor="middle" fill="#ffa63d">dado de negócio real</text>
+
+      <!-- Protheus PRD (em homologação hoje é HML; passa a ser PRD quando for pra produção) -->
+      <rect class="no-caixa" x="650" y="670" width="190" height="110" rx="12" stroke="#ffa63d" stroke-opacity="0.55" stroke-dasharray="5 4" fill="rgba(255,166,61,0.04)" />
+      <rect class="no-icone-fundo" x="725" y="684" width="40" height="40" rx="10" />
+      <use href="#ic-db" x="732" y="690" width="26" height="26" fill="none" stroke="#ffa63d" stroke-opacity="0.75" stroke-width="1.4" />
+      <text class="no-nome" x="745" y="744" text-anchor="middle" font-size="13.5" fill="#8291b3">Protheus PRD</text>
+      <text class="no-legenda" x="745" y="760" text-anchor="middle">segurança de TI · opcional</text>
+
+      <rect class="subpainel" x="650" y="830" width="340" height="180" rx="14" />
+      <text class="subpainel-legenda" x="672" y="852">estado interno — não é dado de negócio</text>
+
+      <rect class="no-caixa" x="700" y="870" width="220" height="110" rx="12" stroke="#7d8fb3" fill="rgba(125, 143, 179, 0.1)" />
+      <rect class="no-icone-fundo" x="790" y="883" width="40" height="40" rx="10" />
+      <use href="#ic-db" x="797" y="889" width="26" height="26" fill="none" stroke="#7d8fb3" stroke-width="1.4" />
+      <text class="no-nome" x="810" y="945" text-anchor="middle" fill="#8291b3">PostgreSQL</text>
+      <text class="no-legenda" x="810" y="961" text-anchor="middle">login · auditoria · histórico</text>
+    </g>
+
+    <!-- CONEXÕES (por cima de tudo, senão o preenchimento opaco dos
+         painéis desenhados depois esconde metade do rótulo) -->
+    <g>
+      <path id="p-http" class="fio" stroke="#b48bff" d="M240,115 H300" marker-end="url(#seta-violet)" />
+      <rect class="fio-rotulo-fundo" x="238" y="92" width="64" height="20" rx="5" />
+      <text class="fio-rotulo" x="270" y="106" text-anchor="middle" fill="#b48bff">HTTPS</text>
+
+      <path id="p-rest" class="fio" stroke="#35e7ff" d="M460,200 C460,255 500,315 545,356" marker-end="url(#seta-cyan)" />
+      <rect class="fio-rotulo-fundo" x="412" y="263" width="110" height="20" rx="5" />
+      <text class="fio-rotulo" x="467" y="277" text-anchor="middle" fill="#35e7ff">REST + JWT</text>
+
+      <path id="p-valida" class="fio" stroke="#b48bff" d="M840,200 C840,270 660,325 585,356" marker-end="url(#seta-violet)" />
+      <rect class="fio-rotulo-fundo" x="687" y="275" width="126" height="20" rx="5" />
+      <text class="fio-rotulo" x="750" y="289" text-anchor="middle" fill="#b48bff">valida token</text>
+
+      <path id="p-mcp" class="fio" stroke="#35ffa6" d="M660,420 H820" marker-end="url(#seta-green)" marker-start="url(#seta-green)" />
+      <rect class="fio-rotulo-fundo" x="642" y="397" width="158" height="20" rx="5" />
+      <text class="fio-rotulo" x="721" y="411" text-anchor="middle" fill="#35ffa6">MCP tool-calling</text>
+
+      <path id="p-sql" class="fio" stroke="#ffa63d" d="M540,485 C520,550 500,590 475,668" marker-end="url(#seta-amber)" />
+      <rect class="fio-rotulo-fundo" x="436" y="566" width="250" height="20" rx="5" />
+      <text class="fio-rotulo" x="561" y="580" text-anchor="middle" fill="#ffa63d">SQL — consulta e relatório</text>
+
+      <path id="p-protheus" class="fio fio-tracejado" stroke="#ffa63d" d="M640,460 C700,520 730,580 742,668" marker-end="url(#seta-amber)" />
+      <rect class="fio-rotulo-fundo" x="707" y="592" width="90" height="20" rx="5" />
+      <text class="fio-rotulo" x="752" y="606" text-anchor="middle" fill="#ffa63d">opcional</text>
+
+      <path id="p-estado" class="fio" stroke="#7d8fb3" d="M628,478 C616,560 618,680 630,760 C642,820 690,845 745,865" marker-end="url(#seta-slate)" />
+      <rect class="fio-rotulo-fundo" x="609" y="791" width="168" height="20" rx="5" />
+      <text class="fio-rotulo" x="693" y="805" text-anchor="middle" fill="#7d8fb3">estado do sistema</text>
+    </g>
+
+    <!-- pontos animados fluindo nas conexões -->
+    <g>
+      <circle r="3.2" fill="#b48bff" class="flow-dot"><animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#p-http" /></animateMotion></circle>
+      <circle r="3.2" fill="#35e7ff" class="flow-dot"><animateMotion dur="2.8s" repeatCount="indefinite"><mpath href="#p-rest" /></animateMotion></circle>
+      <circle r="3.2" fill="#b48bff" class="flow-dot"><animateMotion dur="3.1s" repeatCount="indefinite"><mpath href="#p-valida" /></animateMotion></circle>
+      <circle r="3.2" fill="#35ffa6" class="flow-dot"><animateMotion dur="2.2s" repeatCount="indefinite"><mpath href="#p-mcp" /></animateMotion></circle>
+      <circle r="3.2" fill="#35ffa6" class="flow-dot"><animateMotion dur="2.2s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1"><mpath href="#p-mcp" /></animateMotion></circle>
+      <circle r="3" fill="#ffa63d" class="flow-dot"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#p-sql" /></animateMotion></circle>
+      <circle r="2.6" fill="#ffa63d" class="flow-dot" opacity="0.8"><animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#p-protheus" /></animateMotion></circle>
+      <circle r="2.8" fill="#7d8fb3" class="flow-dot"><animateMotion dur="3.6s" repeatCount="indefinite"><mpath href="#p-estado" /></animateMotion></circle>
+    </g>
+  </g>
+
+  <!-- ================= RODAPÉ ================= -->
+  <g transform="translate(0,1280)">
+    <text class="rodape" x="590" y="0" text-anchor="middle">
+      Em produção o backend fala <tspan class="rodape-forte">sempre</tspan> com Oracle/STAGE para dado de negócio —
+    </text>
+    <text class="rodape" x="590" y="20" text-anchor="middle">
+      o Postgres existe apenas para o estado do próprio sistema (login, trilha de auditoria,
+    </text>
+    <text class="rodape" x="590" y="40" text-anchor="middle">
+      histórico de relatório gerado pela IA) e sempre existiu nesse papel, independente de ambiente.
+    </text>
+  </g>
+</svg>

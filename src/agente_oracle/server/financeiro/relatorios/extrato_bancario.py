@@ -125,6 +125,7 @@ def _buscar_extrato(filiais: list[str], opcionais: dict[str, str]) -> tuple[list
     sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace(
         "__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN
     )
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

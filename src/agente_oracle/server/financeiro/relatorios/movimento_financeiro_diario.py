@@ -49,6 +49,15 @@ O que TEM fidelidade real:
 - **Saldo disponível** = saldo inicial + entradas - saídas - aplicações —
   mesma fórmula do `nDisponiv` original (sem o termo de limite de crédito,
   ver acima).
+
+ATENÇÃO portabilidade Postgres (achado populando o banco fictício, nunca
+tinha rodado contra Postgres antes): `ROWNUM = 1`, `TO_NUMBER(coluna)` e
+`TO_CHAR(coluna_numerica)` de 1 argumento são sintaxe **exclusiva do
+Oracle**, quebram no Postgres — trocados por `FETCH FIRST 1 ROW ONLY`
+(portável, já usado em `consulta_livre.py`/`agent/financeiro/auditoria.py`),
+`_comum.numero_coluna()` e `_comum.texto_numero()`. Ver o "Oracle vs
+Postgres" no topo de `MAPA_BANCOS_LOCAL.md` pra lista completa dessas
+pegadinhas.
 """
 
 from starlette.requests import Request
@@ -84,7 +93,7 @@ contas AS (
 saldo_inicial AS (
     SELECT c.codigobanco, c.codigoagencia, c.codigoconta,
         (
-            SELECT TO_NUMBER(sb2.valorsaldoatual)
+            SELECT __NUMERO_SALDO__
             FROM STAGE.saldobancario sb2
             WHERE sb2.codigobanco = c.codigobanco AND sb2.codigoagencia = c.codigoagencia
               AND sb2.codigoconta = c.codigoconta AND sb2.excluido = 0
@@ -94,7 +103,7 @@ saldo_inicial AS (
                     AND sb3.codigoconta = c.codigoconta AND sb3.excluido = 0
                     AND sb3.datasaldoatual < TO_DATE(:data_ini, 'YYYYMMDD')
               )
-              AND ROWNUM = 1
+            FETCH FIRST 1 ROW ONLY
         ) AS valor
     FROM contas c
 ),
@@ -132,7 +141,7 @@ SELECT
 FROM contas c
 LEFT JOIN saldo_inicial si ON si.codigobanco = c.codigobanco AND si.codigoagencia = c.codigoagencia AND si.codigoconta = c.codigoconta
 LEFT JOIN movimento_dia md ON md.codigobanco = c.codigobanco AND md.codigoagencia = c.codigoagencia AND md.codigoconta = c.codigoconta
-LEFT JOIN STAGE.bancobacen bb ON TO_CHAR(bb.codigo) = LPAD(TRIM(c.codigobanco), 3, '0')
+LEFT JOIN STAGE.bancobacen bb ON __TEXTO_CODIGO_BANCO__ = LPAD(TRIM(c.codigobanco), 3, '0')
 ORDER BY c.codigobanco, c.codigoagencia, c.codigoconta
 """
 
@@ -144,8 +153,11 @@ def _buscar_movimento(filiais: list[str], opcionais: dict[str, str]) -> tuple[li
 
     opcionais.pop("data_fim", None)
 
-    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace(
-        "__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN
+    sql = (
+        _QUERY.replace("__FILIAL_IN__", clausula_filial)
+        .replace("__TIPODOC_EXCLUIDOS__", _TIPODOC_EXCLUIDOS_IN)
+        .replace("__NUMERO_SALDO__", _comum.numero_coluna("sb2.valorsaldoatual"))
+        .replace("__TEXTO_CODIGO_BANCO__", _comum.texto_numero("bb.codigo"))
     )
 
     with get_connection() as connection:

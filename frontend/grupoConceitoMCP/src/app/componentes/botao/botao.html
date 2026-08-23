@@ -16,7 +16,10 @@
   (click)="clicked.emit()"
 >
   @if (loading()) {
-    {{ loadingText() }}
+    <span class="botao-spinner" aria-hidden="true"></span>
+    @if (loadingText()) {
+      {{ loadingText() }}
+    }
   } @else {
     <ng-content></ng-content>
   }

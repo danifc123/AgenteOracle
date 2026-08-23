@@ -40,6 +40,16 @@
       </text>
     }
 
+    @if (linhaZero(); as y) {
+      <line
+        class="grafico-linha-zero"
+        [attr.x1]="MARGEM_ESQUERDA"
+        [attr.x2]="LARGURA - MARGEM_DIREITA"
+        [attr.y1]="y"
+        [attr.y2]="y"
+      />
+    }
+
     @for (rotulo of rotulosEixoX(); track rotulo.x) {
       <text class="grafico-rotulo-x" [attr.x]="rotulo.x" [attr.y]="ALTURA - 8">
         {{ rotulo.texto }}

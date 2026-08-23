@@ -34,7 +34,7 @@ WITH linhas AS (
     FROM vw_faturamento
     WHERE filial IN __FILIAL_IN__
       AND data_emissao BETWEEN TO_DATE(:emissao_ini, 'YYYYMMDD') AND TO_DATE(:emissao_fim, 'YYYYMMDD')
-      AND (__FILTRO_PRODUTO__ OR produto_codigo = :produto)
+      AND __FILTRO_PRODUTO__
       AND valor_total > 0
 )
 SELECT
@@ -67,9 +67,18 @@ _CAMPOS_OPCIONAIS = ("emissao_ini", "emissao_fim", "produto")
 def _buscar_desvios(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
 
-    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace(
-        "__FILTRO_PRODUTO__", _comum.filtro_vazio("produto")
+    # `_comum.texto_coluna(":produto")` no primeiro uso, não `filtro_vazio()`
+    # puro: contra Postgres, `:produto IS NULL OR :produto = ''` sozinho não
+    # dá pro Postgres inferir o tipo do bind em modo prepared statement
+    # (`AmbiguousParameter`/`could not determine data type`), mesmo com
+    # `produto_codigo = :produto` mais adiante na mesma cláusula — precisa
+    # de um CAST explícito em algum ponto pra resolver (confirmado rodando
+    # de verdade contra o Postgres de teste). CAST(texto AS TEXT/VARCHAR2)
+    # não muda o valor, só dá o tipo que faltava.
+    filtro_produto = (
+        f"({_comum.texto_coluna(':produto')} IS NULL OR :produto = '' OR produto_codigo = :produto)"
     )
+    sql = _QUERY.replace("__FILIAL_IN__", clausula_filial).replace("__FILTRO_PRODUTO__", filtro_produto)
 
     with get_connection() as connection:
         cursor = connection.cursor()

@@ -1,0 +1,54 @@
+<div class="pilha-flutuante">
+  @for (item of toasts.itens(); track item.id) {
+    <div class="toast" [class.toast--erro]="item.tipo === 'erro'">
+      <span class="toast-icone" aria-hidden="true">
+        @if (item.tipo === 'sucesso') {
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          >
+            <path d="m5 12.5 5 5L19 7" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        } @else {
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <path d="M12 3.5 2.3 20h19.4L12 3.5Z" stroke-linejoin="round" />
+            <path d="M12 9.5v4" stroke-linecap="round" />
+            <path d="M12 16.8h.01" stroke-linecap="round" />
+          </svg>
+        }
+      </span>
+      <p class="toast-mensagem">{{ item.mensagem }}</p>
+      <button
+        type="button"
+        class="toast-fechar"
+        (click)="toasts.remover(item.id)"
+        aria-label="Dispensar aviso"
+        title="Dispensar"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  }
+</div>

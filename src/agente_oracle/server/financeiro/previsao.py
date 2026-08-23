@@ -7,13 +7,18 @@ nunca depender de o LLM estar no ar.
 
 Toda a SQL agrupa por mês/calcula prazo de um jeito portável entre Oracle e
 Postgres — `TO_CHAR(coluna, 'YYYY-MM')` pras colunas DATE de verdade
-(`data_vencimento`/`data_emissao` em vw_titulos_receber/vw_titulos_pagar),
-`SUBSTR`/`||` pra `data_emissao` de vw_faturamento (texto "YYYYMMDD",
-convenção TOTVS, não DATE) e `TO_DATE(coluna, 'YYYYMMDD')` quando essa mesma
-coluna texto precisa entrar numa subtração de datas — nunca `FILTER (WHERE
+(`data_vencimento`/`data_emissao` em vw_titulos_receber/vw_titulos_pagar/
+vw_faturamento — as três já são DATE/TIMESTAMP de verdade, confirmado
+direto no catálogo do Oracle: `STAGE.NOTASAIDA.DATAEMISSAO` é
+`TIMESTAMP(6) WITH LOCAL TIME ZONE`, não texto) — nunca `FILTER (WHERE
 ...)` nem casts `::tipo`, que são exclusivos do Postgres (ver aviso em
 `relatorios/fluxo_caixa_realizado.py`, que só roda com DB_BACKEND=postgres
 por causa disso).
+
+Nenhuma das views tem coluna de "loja" separada do código de cliente/
+fornecedor — STAGE não separa os dois (mesmo motivo documentado em
+`db/views/financeiro_science.sql`), então os agrupamentos abaixo são só
+por `cliente_codigo`/`fornecedor_codigo`.
 
 As duas rotas respondem em NDJSON (uma linha JSON por etapa concluída,
 terminando em `{"tipo": "resultado", "dados": {...}}`) em vez de um JSON
@@ -89,18 +94,13 @@ def _buscar_corte_periodo(view: str, filiais: list[str], data_corte: date) -> tu
 
 
 def _buscar_faturamento_mensal(filiais: list[str], mes_inicio: str) -> dict[str, float]:
-    # `data_emissao` em vw_faturamento vem como texto "YYYYMMDD" (convenção
-    # TOTVS de data em CHAR), não como DATE/TIMESTAMP — por isso usa SUBSTR
-    # em vez de TO_CHAR aqui (SUBSTR/`||` funcionam igual em Oracle e
-    # Postgres; TO_CHAR sobre uma coluna texto dá erro nos dois bancos).
     clausula_filial, binds_filial = clausula_in("filial", filiais)
-    mes_expressao = "SUBSTR(data_emissao, 1, 4) || '-' || SUBSTR(data_emissao, 5, 2)"
     sql = f"""
-        SELECT {mes_expressao} AS mes, SUM(valor_liquido) AS total
+        SELECT TO_CHAR(data_emissao, 'YYYY-MM') AS mes, SUM(valor_total) AS total
         FROM vw_faturamento
         WHERE filial IN {clausula_filial}
-          AND {mes_expressao} >= :mes_inicio
-        GROUP BY {mes_expressao}
+          AND TO_CHAR(data_emissao, 'YYYY-MM') >= :mes_inicio
+        GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
     """
     with get_connection() as connection:
         cursor = connection.cursor()
@@ -160,7 +160,7 @@ def _grupos_prazo_pagamento(filiais: list[str]) -> list[tuple[float, float]]:
             SUM(valor_original * (data_vencimento - data_emissao)) / NULLIF(SUM(valor_original), 0) AS prazo_medio_dias
         FROM vw_titulos_pagar
         WHERE filial IN {clausula_filial}
-        GROUP BY fornecedor_codigo, fornecedor_loja
+        GROUP BY fornecedor_codigo
         HAVING SUM(valor_original) > 0
     """
     with get_connection() as connection:
@@ -175,15 +175,14 @@ def _grupos_prazo_recebimento(filiais: list[str]) -> list[tuple[float, float]]:
     nota fiscal (vw_faturamento) e o vencimento do título que ela gerou
     (vw_titulos_receber, tipo='NF'), usando o relacionamento declarado em
     `agent/financeiro/schema.py`, ponderado por `valor_original` de cada
-    título (não por contagem de título). `TO_DATE(..., 'YYYYMMDD')` converte
-    o texto de data_emissao pra DATE de verdade — subtração entre DATEs
-    devolve dias direto, sem função de date-diff especial, portável entre
-    Oracle e Postgres."""
+    título (não por contagem de título). `data_emissao` já é DATE de
+    verdade nas duas views (confirmado direto no STAGE:
+    NOTASAIDA.DATAEMISSAO é TIMESTAMP), então a subtração entre DATEs
+    devolve dias direto, sem TO_DATE nem função de date-diff especial."""
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         WITH notas AS (
-            SELECT DISTINCT filial, nota_fiscal, serie, cliente_codigo, cliente_loja,
-                   TO_DATE(data_emissao, 'YYYYMMDD') AS data_emissao
+            SELECT DISTINCT filial, nota_fiscal, serie, cliente_codigo, data_emissao
             FROM vw_faturamento
             WHERE filial IN {clausula_filial}
         )
@@ -196,9 +195,8 @@ def _grupos_prazo_recebimento(filiais: list[str]) -> list[tuple[float, float]]:
          AND t.numero = n.nota_fiscal
          AND t.prefixo = n.serie
          AND t.cliente_codigo = n.cliente_codigo
-         AND t.cliente_loja = n.cliente_loja
         WHERE t.tipo = 'NF' AND t.filial IN {clausula_filial}
-        GROUP BY t.cliente_codigo, t.cliente_loja
+        GROUP BY t.cliente_codigo
         HAVING SUM(t.valor_original) > 0
     """
     with get_connection() as connection:

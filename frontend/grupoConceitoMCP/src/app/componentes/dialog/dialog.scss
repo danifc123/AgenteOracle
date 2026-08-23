@@ -5,12 +5,13 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 41, 26, 0.45);
+  background: var(--overlay-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 50;
+  animation: dialog-backdrop-entrada var(--duration-base) var(--ease-out);
 }
 
 .painel {
@@ -21,11 +22,25 @@
   flex-direction: column;
   background: var(--color-surface);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  animation: dialog-painel-entrada var(--duration-slow) var(--ease-out);
 
   &--compacto {
     max-width: 660px;
+  }
+}
+
+@keyframes dialog-backdrop-entrada {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-painel-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
   }
 }
 
@@ -56,12 +71,16 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    color 0.15s ease;
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
 
   &:hover {
     background: var(--color-bg);
     color: var(--color-text);
+  }
+
+  &:focus-visible {
+    box-shadow: var(--focus-ring);
   }
 }
 

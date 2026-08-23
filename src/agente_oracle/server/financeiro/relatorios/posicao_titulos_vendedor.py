@@ -46,7 +46,9 @@ O que TEM fidelidade real:
   (`NUMEROLIQUIDACAO` cru).
 
 Filtros opcionais usam `:bind IS NULL OR :bind = ''` (não `:bind = ''`
-puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`.
+puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`. Contra Postgres
+esse padrão sozinho não basta (`AmbiguousParameter`) — a query passa por
+`_comum.aplicar_cast_binds_opcionais()` antes de rodar.
 """
 
 from datetime import date
@@ -176,6 +178,7 @@ def _buscar_titulos(filiais: list[str], opcionais: dict[str, str]) -> tuple[list
         .replace("__TIPOS_INCLUIR_PERTENCE__", _comum.pertence_lista("TRIM(cr.tipo)", "tipos_incluir", ";"))
         .replace("__TIPOS_EXCLUIR_PERTENCE__", _comum.pertence_lista("TRIM(cr.tipo)", "tipos_excluir", ";"))
     )
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

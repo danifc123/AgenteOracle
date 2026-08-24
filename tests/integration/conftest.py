@@ -34,6 +34,7 @@ _TABELAS_TRILHA_AUDITORIA = (
     "auditoria_dispensados",
     "ti_acessos_dados",
     "ti_seguranca_historico",
+    "conversas_ia",
 )
 
 
@@ -84,6 +85,7 @@ def _garantir_tabelas_trilha_auditoria() -> None:
     primeira vez que a suíte roda contra um Postgres novo."""
     from agente_oracle.tools.auditoria import dispensados, historico
     from agente_oracle.tools.auth import eventos_seguranca
+    from agente_oracle.tools.financeiro import conversas_ia
     from agente_oracle.tools.ti import acessos_dados, historico_seguranca
 
     eventos_seguranca.listar(limite=1)
@@ -91,6 +93,7 @@ def _garantir_tabelas_trilha_auditoria() -> None:
     dispensados.listar_dispensados("_")
     acessos_dados.perfil_acessos(dias=1)
     historico_seguranca.achados_ativos()
+    conversas_ia.listar(limite=1)
 
 
 @pytest.fixture(autouse=True)

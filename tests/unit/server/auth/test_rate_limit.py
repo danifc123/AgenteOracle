@@ -79,3 +79,32 @@ def test_chaves_diferentes_nao_se_afetam(relogio):
 
     assert rate_limit.segundos_ate_liberar(chave_a) is not None
     assert rate_limit.segundos_ate_liberar(chave_b) is None
+
+
+def test_limite_customizado_mais_generoso_que_o_padrao(relogio):
+    chave = _chave()
+    for _ in range(rate_limit.LIMITE_TENTATIVAS):
+        rate_limit.registrar_falha(chave, janela_segundos=300)
+
+    # Com o limite padrão (5) já bloquearia, mas um limite customizado maior
+    # (ex: chat, mais generoso que login) ainda libera nessa mesma contagem.
+    assert rate_limit.segundos_ate_liberar(chave, limite=30, janela_segundos=300) is None
+
+
+def test_limite_customizado_bloqueia_ao_atingir_o_proprio_teto(relogio):
+    chave = _chave()
+    for _ in range(30):
+        rate_limit.registrar_falha(chave, janela_segundos=300)
+
+    assert rate_limit.segundos_ate_liberar(chave, limite=30, janela_segundos=300) is not None
+
+
+def test_janela_customizada_expira_independente_da_padrao(relogio):
+    chave = _chave()
+    for _ in range(30):
+        rate_limit.registrar_falha(chave, janela_segundos=60)
+
+    assert rate_limit.segundos_ate_liberar(chave, limite=30, janela_segundos=60) is not None
+
+    relogio.avancar(61)
+    assert rate_limit.segundos_ate_liberar(chave, limite=30, janela_segundos=60) is None

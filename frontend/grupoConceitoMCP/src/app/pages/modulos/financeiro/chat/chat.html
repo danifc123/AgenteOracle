@@ -2,19 +2,15 @@
 
 <section class="chat-card">
   <app-chat-mensagens
-    [mensagens]="mensagens()"
-    [enviando]="enviando()"
-    [baixandoSql]="baixandoSql()"
+    [mensagens]="servico.mensagens()"
+    [enviando]="servico.enviando()"
+    [baixandoSql]="servico.baixandoSql()"
     (baixarRelatorio)="baixarRelatorio($event)"
   />
 
-  @if (erro()) {
-    <p class="erro">{{ erro() }}</p>
-  }
-
   <app-chat-entrada
     [entrada]="entrada()"
-    [enviando]="enviando()"
+    [enviando]="servico.enviando()"
     (entradaChange)="entrada.set($event)"
     (enviar)="enviar()"
   />

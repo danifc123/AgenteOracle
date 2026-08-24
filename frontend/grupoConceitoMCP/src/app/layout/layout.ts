@@ -3,6 +3,7 @@ import { RouterOutlet } from '@angular/router';
 import { AuditoriaPainel } from '../componentes/auditoria-painel/auditoria-painel';
 import { NotificacaoAnaliseCurriculo } from '../componentes/notificacao-analise-curriculo/notificacao-analise-curriculo';
 import { NotificacaoAuditoria } from '../componentes/notificacao-auditoria/notificacao-auditoria';
+import { NotificacaoChatFinanceiro } from '../componentes/notificacao-chat-financeiro/notificacao-chat-financeiro';
 import { SeletorHomeDev } from '../componentes/seletor-home-dev/seletor-home-dev';
 import { Sidebar } from '../componentes/sidebar/sidebar';
 import { Toast } from '../componentes/toast/toast';
@@ -16,6 +17,7 @@ import { Toast } from '../componentes/toast/toast';
     AuditoriaPainel,
     SeletorHomeDev,
     NotificacaoAnaliseCurriculo,
+    NotificacaoChatFinanceiro,
     Toast,
   ],
   templateUrl: './layout.html',

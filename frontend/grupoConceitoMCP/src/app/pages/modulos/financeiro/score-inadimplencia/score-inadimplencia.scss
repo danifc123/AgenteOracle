@@ -114,6 +114,46 @@
   color: var(--color-text-muted);
 }
 
+.titulos-em-risco {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+
+.titulos-em-risco-titulo {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.titulos-em-risco-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+}
+
+.titulo-valor {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.titulo-vencimento {
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
 .localizacao-cliente {
   margin-top: 4px;
 }

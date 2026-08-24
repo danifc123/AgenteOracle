@@ -1,8 +1,14 @@
 """Clima regional via Open-Meteo — usado pelo Score de Inadimplência
-(`score_inadimplencia.py`) como um dos fatores de risco. Gratuito, sem
-chave de API (testado ao vivo antes de escrever isto: geocodificação por
-nome de cidade e histórico diário de precipitação, ambos funcionando sem
-autenticação — https://open-meteo.com/).
+(`score_inadimplencia.py`) como indício de como a SAFRA do cliente se saiu
+(seca/excesso de chuva prejudica a colheita, colheita ruim = menos receita
+pra pagar título), não como previsão de tempo. Por isso a janela consultada
+aqui não é fixa — é a janela real da safra (`safra_inicio`/`safra_fim` de
+`vw_safra_cliente`, recortada em `hoje` quando a safra ainda está em
+andamento), decidida por quem chama (`score_inadimplencia.py`).
+
+Gratuito, sem chave de API (testado ao vivo antes de escrever isto:
+geocodificação por nome de cidade e histórico diário de precipitação, ambos
+funcionando sem autenticação — https://open-meteo.com/).
 
 Geolocalização é por MUNICÍPIO, não por fazenda exata:
 `STAGE.PESSOA.LATITUDE/LONGITUDE` existem mas 9.854 de 9.855 clientes têm
@@ -19,7 +25,6 @@ from datetime import date, timedelta
 
 import httpx
 
-_DIAS_JANELA_CLIMA = 30
 _ANOS_HISTORICO_CLIMA = 5
 _LIMIAR_SECA_PERCENTUAL = -50.0  # 50% menos chuva que a média histórica
 _LIMIAR_EXCESSO_PERCENTUAL = 100.0  # o dobro (ou mais) da média histórica
@@ -92,21 +97,23 @@ async def _precipitacao_total(
 
 
 async def _indicador_a_partir_de_coordenadas(
-    http_client: httpx.AsyncClient, latitude: float, longitude: float, rotulo: str, uf: str, hoje: date
+    http_client: httpx.AsyncClient,
+    latitude: float,
+    longitude: float,
+    rotulo: str,
+    uf: str,
+    inicio: date,
+    fim: date,
 ) -> IndicadorClima:
-    fim_recente = hoje - timedelta(days=1)  # ontem — hoje pode não ter dado fechado ainda
-    inicio_recente = fim_recente - timedelta(days=_DIAS_JANELA_CLIMA - 1)
-    precipitacao_recente = await _precipitacao_total(
-        http_client, latitude, longitude, inicio_recente, fim_recente
-    )
-    if precipitacao_recente is None:
+    precipitacao_periodo = await _precipitacao_total(http_client, latitude, longitude, inicio, fim)
+    if precipitacao_periodo is None:
         return IndicadorClima(rotulo, uf, None, "indisponivel")
 
     totais_historicos = []
     for anos_atras in range(1, _ANOS_HISTORICO_CLIMA + 1):
         deslocamento = timedelta(days=365 * anos_atras)
         total = await _precipitacao_total(
-            http_client, latitude, longitude, inicio_recente - deslocamento, fim_recente - deslocamento
+            http_client, latitude, longitude, inicio - deslocamento, fim - deslocamento
         )
         if total is not None:
             totais_historicos.append(total)
@@ -118,27 +125,27 @@ async def _indicador_a_partir_de_coordenadas(
     if media_historica == 0:
         return IndicadorClima(rotulo, uf, None, "indisponivel")
 
-    anomalia_percentual = round((precipitacao_recente - media_historica) / media_historica * 100, 1)
+    anomalia_percentual = round((precipitacao_periodo - media_historica) / media_historica * 100, 1)
     return IndicadorClima(rotulo, uf, anomalia_percentual, _classificar(anomalia_percentual))
 
 
 async def buscar_indicador_clima(
-    http_client: httpx.AsyncClient, municipio_nome: str, uf: str, hoje: date | None = None
+    http_client: httpx.AsyncClient, municipio_nome: str, uf: str, inicio: date, fim: date
 ) -> IndicadorClima:
-    """Compara a precipitação dos últimos `_DIAS_JANELA_CLIMA` dias contra
-    a média do MESMO período de calendário nos últimos `_ANOS_HISTORICO_CLIMA`
+    """Compara a precipitação entre `inicio` e `fim` (a janela real da
+    safra que está sendo avaliada — ver `score_inadimplencia.py`) contra a
+    média do MESMO período de calendário nos últimos `_ANOS_HISTORICO_CLIMA`
     anos, pro mesmo município (comparação por dias corridos, não
     `date.replace(year=...)`, pra não quebrar em 29 de fevereiro) — nunca
     levanta erro, devolve `classificacao='indisponivel'` em qualquer
     falha (cidade não encontrada, API fora do ar, sem histórico
     suficiente)."""
-    hoje = hoje or date.today()
     coordenadas = await _geocodificar(http_client, municipio_nome)
     if coordenadas is None:
         return IndicadorClima(municipio_nome, uf, None, "indisponivel")
     latitude, longitude = coordenadas
     return await _indicador_a_partir_de_coordenadas(
-        http_client, latitude, longitude, municipio_nome, uf, hoje
+        http_client, latitude, longitude, municipio_nome, uf, inicio, fim
     )
 
 
@@ -148,11 +155,11 @@ async def buscar_indicador_clima_por_coordenadas(
     longitude: float,
     rotulo: str,
     uf: str,
-    hoje: date | None = None,
+    inicio: date,
+    fim: date,
 ) -> IndicadorClima:
     """Igual a `buscar_indicador_clima`, mas pula a geocodificação — pra
     cliente com localização já cadastrada (`tools/financeiro/
     localizacao_cliente.py`), fica mais rápido (uma chamada HTTP a menos)
     e não depende da geocodificação funcionar nesse instante."""
-    hoje = hoje or date.today()
-    return await _indicador_a_partir_de_coordenadas(http_client, latitude, longitude, rotulo, uf, hoje)
+    return await _indicador_a_partir_de_coordenadas(http_client, latitude, longitude, rotulo, uf, inicio, fim)

@@ -1,7 +1,16 @@
+from datetime import date
+
 from agente_oracle.agent.financeiro.clima_regional import (
     buscar_indicador_clima,
     buscar_indicador_clima_por_coordenadas,
 )
+
+# Janela usada nos testes — representa a janela real de uma safra (ver
+# `agent/financeiro/score_inadimplencia.py`); o conteúdo canônico é
+# irrelevante pros fakes abaixo, só o tamanho da resposta de precipitação
+# importa (`_precipitacao`).
+_INICIO = date(2026, 1, 1)
+_FIM = date(2026, 1, 30)
 
 
 class _RespostaFake:
@@ -47,44 +56,44 @@ def _precipitacao(total_por_dia: float, dias: int = 30) -> _RespostaFake:
 class TestBuscarIndicadorClima:
     async def test_geocodificacao_sem_resultado_devolve_indisponivel(self):
         http_client = _HttpClienteFake(_geocodificacao_vazia(), [])
-        indicador = await buscar_indicador_clima(http_client, "Cidade Inexistente", "XX")
+        indicador = await buscar_indicador_clima(http_client, "Cidade Inexistente", "XX", _INICIO, _FIM)
         assert indicador.classificacao == "indisponivel"
         assert indicador.anomalia_precipitacao_percentual is None
 
     async def test_geocodificacao_com_falha_de_rede_devolve_indisponivel(self):
         http_client = _HttpClienteFake(ConnectionError("fora do ar"), [])
-        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
+        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT", _INICIO, _FIM)
         assert indicador.classificacao == "indisponivel"
 
     async def test_precipitacao_recente_indisponivel_devolve_indisponivel(self):
         http_client = _HttpClienteFake(_geocodificacao(), [ConnectionError("fora do ar")])
-        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
+        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT", _INICIO, _FIM)
         assert indicador.classificacao == "indisponivel"
 
     async def test_sem_nenhum_ano_historico_disponivel_devolve_indisponivel(self):
         respostas = [_precipitacao(2.0), *([ConnectionError("fora do ar")] * 5)]
         http_client = _HttpClienteFake(_geocodificacao(), respostas)
-        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
+        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT", _INICIO, _FIM)
         assert indicador.classificacao == "indisponivel"
 
     async def test_seca_quando_precipitacao_recente_muito_abaixo_da_media(self):
         respostas = [_precipitacao(1.0), *([_precipitacao(20.0)] * 5)]
         http_client = _HttpClienteFake(_geocodificacao(), respostas)
-        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
+        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT", _INICIO, _FIM)
         assert indicador.classificacao == "seca"
         assert indicador.anomalia_precipitacao_percentual < -50
 
     async def test_excesso_chuva_quando_precipitacao_recente_muito_acima_da_media(self):
         respostas = [_precipitacao(50.0), *([_precipitacao(10.0)] * 5)]
         http_client = _HttpClienteFake(_geocodificacao(), respostas)
-        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
+        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT", _INICIO, _FIM)
         assert indicador.classificacao == "excesso_chuva"
         assert indicador.anomalia_precipitacao_percentual >= 100
 
     async def test_normal_quando_dentro_da_faixa_esperada(self):
         respostas = [_precipitacao(11.0), *([_precipitacao(10.0)] * 5)]
         http_client = _HttpClienteFake(_geocodificacao(), respostas)
-        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT")
+        indicador = await buscar_indicador_clima(http_client, "Cuiaba", "MT", _INICIO, _FIM)
         assert indicador.classificacao == "normal"
 
 
@@ -93,12 +102,14 @@ class TestBuscarIndicadorClimaPorCoordenadas:
         respostas = [_precipitacao(11.0), *([_precipitacao(10.0)] * 5)]
         http_client = _HttpClienteFake(ConnectionError("geocoding não deveria ser chamado"), respostas)
         indicador = await buscar_indicador_clima_por_coordenadas(
-            http_client, -15.6, -56.1, "Fazenda Santa Luzia", "MT"
+            http_client, -15.6, -56.1, "Fazenda Santa Luzia", "MT", _INICIO, _FIM
         )
         assert indicador.classificacao == "normal"
         assert indicador.municipio_nome == "Fazenda Santa Luzia"
 
     async def test_precipitacao_indisponivel_devolve_indisponivel(self):
         http_client = _HttpClienteFake(None, [ConnectionError("fora do ar")])
-        indicador = await buscar_indicador_clima_por_coordenadas(http_client, -15.6, -56.1, "Fazenda X", "MT")
+        indicador = await buscar_indicador_clima_por_coordenadas(
+            http_client, -15.6, -56.1, "Fazenda X", "MT", _INICIO, _FIM
+        )
         assert indicador.classificacao == "indisponivel"

@@ -19,10 +19,13 @@ from agente_oracle.agent.financeiro.clima_regional import (
 from agente_oracle.agent.financeiro.score_inadimplencia import (
     SafraCliente,
     ScoreInadimplencia,
+    TituloEmRisco,
+    TituloReceberAberto,
     TituloReceberLiquidado,
     calcular_score,
     comportamento_por_cliente,
-    safra_ativa_por_cliente,
+    safra_relevante_por_cliente,
+    titulos_em_risco_por_cliente,
 )
 from agente_oracle.db.connection import get_connection
 from agente_oracle.server.auth.decorador_rota import rota_protegida
@@ -33,6 +36,7 @@ from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 from agente_oracle.tools.financeiro import clima_cache, localizacao_cliente
 
 _DIAS_HISTORICO = 180
+_HORIZONTE_DIAS = 60
 _TIMEOUT_HTTP_SEGUNDOS = 10.0
 
 
@@ -120,20 +124,59 @@ def _buscar_safras(clientes_codigos: list[str]) -> list[SafraCliente]:
     ]
 
 
+def _buscar_abertos(
+    filiais: list[str], clientes_codigos: list[str], hoje: date, horizonte_dias: int
+) -> list[TituloReceberAberto]:
+    """Título em aberto (`data_baixa IS NULL`) vencendo entre hoje e
+    `horizonte_dias` à frente — escopado aos clientes informados (já
+    filtrados por `_apenas_com_risco`, ver `registrar`), pra não buscar
+    título de cliente sem nenhum indício de risco."""
+    if not clientes_codigos:
+        return []
+    clausula_filial, binds_filial = clausula_in("filial", filiais)
+    clausula_cliente, binds_cliente = clausula_in("cliente", clientes_codigos)
+    fim = hoje + timedelta(days=horizonte_dias)
+    sql = f"""
+        SELECT cliente_codigo, cliente_nome, numero, parcela, data_vencimento, saldo_aberto
+        FROM vw_titulos_receber
+        WHERE filial IN {clausula_filial}
+          AND cliente_codigo IN {clausula_cliente}
+          AND data_baixa IS NULL
+          AND data_vencimento BETWEEN :hoje AND :fim
+    """
+    with get_connection() as connection:
+        cursor = connection.cursor()
+        cursor.execute(sql, hoje=hoje, fim=fim, **binds_filial, **binds_cliente)
+        linhas = cursor.fetchall()
+    return [
+        TituloReceberAberto(
+            cliente_codigo=cliente_codigo,
+            cliente_nome=cliente_nome,
+            numero=numero,
+            parcela=parcela,
+            data_vencimento=_data(data_vencimento),
+            saldo_aberto=float(saldo_aberto) if saldo_aberto is not None else 0.0,
+        )
+        for (cliente_codigo, cliente_nome, numero, parcela, data_vencimento, saldo_aberto) in linhas
+    ]
+
+
 async def _climas_por_municipio(
-    municipios: set[tuple[str, str]],
-) -> dict[tuple[str, str], IndicadorClima]:
-    """Um indicador por município ÚNICO (não por cliente) — usa cache
-    (`tools/financeiro/clima_cache.py`) antes de chamar a Open-Meteo de
-    verdade."""
-    climas: dict[tuple[str, str], IndicadorClima] = {}
+    chaves: set[tuple[str, str, date, date]],
+) -> dict[tuple[str, str, date, date], IndicadorClima]:
+    """Um indicador por (município, janela) ÚNICOS — a janela agora é a da
+    safra relevante de cada cliente (não mais fixa), então o mesmo
+    município pode precisar de mais de uma consulta se clientes ali têm
+    safras diferentes. Usa cache (`tools/financeiro/clima_cache.py`) antes
+    de chamar a Open-Meteo de verdade."""
+    climas: dict[tuple[str, str, date, date], IndicadorClima] = {}
     async with httpx.AsyncClient(timeout=_TIMEOUT_HTTP_SEGUNDOS) as http_client:
-        for municipio_nome, uf in municipios:
-            indicador = clima_cache.buscar_cache(municipio_nome, uf)
+        for municipio_nome, uf, inicio, fim in chaves:
+            indicador = clima_cache.buscar_cache(municipio_nome, uf, inicio, fim)
             if indicador is None:
-                indicador = await buscar_indicador_clima(http_client, municipio_nome, uf)
-                clima_cache.salvar_cache(indicador)
-            climas[(municipio_nome, uf)] = indicador
+                indicador = await buscar_indicador_clima(http_client, municipio_nome, uf, inicio, fim)
+                clima_cache.salvar_cache(indicador, inicio, fim)
+            climas[(municipio_nome, uf, inicio, fim)] = indicador
     return climas
 
 
@@ -147,17 +190,21 @@ def _rotulo_localizacao(localizacao: localizacao_cliente.LocalizacaoCliente) -> 
 
 async def _climas_por_cliente_cadastrado(
     localizacoes: dict[str, localizacao_cliente.LocalizacaoCliente],
+    janelas_por_cliente: dict[str, tuple[date, date]],
 ) -> dict[str, IndicadorClima]:
     """Um indicador por CLIENTE (não por localização única) — cliente com
     localização própria cadastrada e resolvida pula tanto a geocodificação
-    quanto o fallback de município (mais rápido e mais preciso). Também
-    passa pelo cache de clima (`clima_cache`), chaveado pelo texto
-    cadastrado como se fosse um "município" — evita rebater a Open-Meteo
-    pro mesmo cliente a cada cálculo."""
+    quanto o fallback de município (mais rápido e mais preciso). Só busca
+    clima pra quem também tem uma janela de safra relevante (ver
+    `janelas_por_cliente`/`safra_relevante_por_cliente`) — sem isso o
+    clima nem seria usado no score. Também passa pelo cache de clima
+    (`clima_cache`), chaveado pelo texto cadastrado como se fosse um
+    "município" — evita rebater a Open-Meteo pro mesmo cliente+janela a
+    cada cálculo."""
     resolvidas = {
         cliente_codigo: localizacao
         for cliente_codigo, localizacao in localizacoes.items()
-        if localizacao.resolvido
+        if localizacao.resolvido and cliente_codigo in janelas_por_cliente
     }
     if not resolvidas:
         return {}
@@ -165,13 +212,14 @@ async def _climas_por_cliente_cadastrado(
     climas: dict[str, IndicadorClima] = {}
     async with httpx.AsyncClient(timeout=_TIMEOUT_HTTP_SEGUNDOS) as http_client:
         for cliente_codigo, localizacao in resolvidas.items():
+            inicio, fim = janelas_por_cliente[cliente_codigo]
             rotulo = _rotulo_localizacao(localizacao)
-            indicador = clima_cache.buscar_cache(rotulo, "cadastro")
+            indicador = clima_cache.buscar_cache(rotulo, "cadastro", inicio, fim)
             if indicador is None:
                 indicador = await buscar_indicador_clima_por_coordenadas(
-                    http_client, localizacao.latitude, localizacao.longitude, rotulo, "cadastro"
+                    http_client, localizacao.latitude, localizacao.longitude, rotulo, "cadastro", inicio, fim
                 )
-                clima_cache.salvar_cache(indicador)
+                clima_cache.salvar_cache(indicador, inicio, fim)
             climas[cliente_codigo] = indicador
     return climas
 
@@ -188,8 +236,20 @@ def _localizacao_para_json(localizacao: localizacao_cliente.LocalizacaoCliente |
     }
 
 
+def _titulo_em_risco_para_json(titulo: TituloEmRisco) -> dict:
+    return {
+        "numero": titulo.numero,
+        "parcela": titulo.parcela,
+        "data_vencimento": titulo.data_vencimento.isoformat(),
+        "saldo_aberto": titulo.saldo_aberto,
+        "dias_ate_vencimento": titulo.dias_ate_vencimento,
+    }
+
+
 def _score_para_json(
-    score: ScoreInadimplencia, localizacao: localizacao_cliente.LocalizacaoCliente | None
+    score: ScoreInadimplencia,
+    localizacao: localizacao_cliente.LocalizacaoCliente | None,
+    titulos_em_risco: list[TituloEmRisco],
 ) -> dict:
     return {
         "cliente_codigo": score.cliente_codigo,
@@ -220,6 +280,7 @@ def _score_para_json(
         ),
         "fatores": list(score.fatores),
         "localizacao": _localizacao_para_json(localizacao),
+        "titulos_em_risco": [_titulo_em_risco_para_json(titulo) for titulo in titulos_em_risco],
     }
 
 
@@ -240,18 +301,26 @@ def _coordenada_valida(latitude: float | None, longitude: float | None) -> bool:
 def _resolver_clima(
     cliente_codigo: str,
     municipios_por_cliente: dict[str, tuple[str, str]],
-    climas_por_municipio: dict[tuple[str, str], IndicadorClima],
+    janelas_por_cliente: dict[str, tuple[date, date]],
+    climas_por_municipio: dict[tuple[str, str, date, date], IndicadorClima],
     climas_por_cliente_cadastrado: dict[str, IndicadorClima],
 ) -> IndicadorClima | None:
     """Localização cadastrada e resolvida pro cliente tem prioridade;
     faltando ela (sem cadastro, ou cadastro que não resolveu), cai pro
-    centro do município. Função pura, sem I/O, só pra deixar essa regra
-    testável sem banco/HTTP — mesmo espírito de `_apenas_com_risco`."""
+    centro do município — em ambos os casos, só se o cliente tiver uma
+    janela de safra relevante (sem ela não tem o que buscar). Função pura,
+    sem I/O, só pra deixar essa regra testável sem banco/HTTP — mesmo
+    espírito de `_apenas_com_risco`."""
     clima_cadastrado = climas_por_cliente_cadastrado.get(cliente_codigo)
     if clima_cadastrado is not None:
         return clima_cadastrado
+    janela = janelas_por_cliente.get(cliente_codigo)
     chave_municipio = municipios_por_cliente.get(cliente_codigo)
-    return climas_por_municipio.get(chave_municipio) if chave_municipio else None
+    if janela is None or chave_municipio is None:
+        return None
+    municipio_nome, uf = chave_municipio
+    inicio, fim = janela
+    return climas_por_municipio.get((municipio_nome, uf, inicio, fim))
 
 
 def registrar(mcp) -> None:
@@ -259,13 +328,17 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def score_inadimplencia_route(request: Request, usuario: dict) -> Response:
         """Comportamento de pagamento (`vw_titulos_receber`, últimos
-        `_DIAS_HISTORICO` dias) + clima regional (Open-Meteo — localização
-        cadastrada manualmente pro cliente, se houver e tiver resolvido; senão
-        o centro do município via `vw_clientes`) — indicador composto por
+        `_DIAS_HISTORICO` dias) + clima regional na janela real da safra
+        relevante do cliente (Open-Meteo — localização cadastrada
+        manualmente pro cliente, se houver e tiver resolvido; senão o
+        centro do município via `vw_clientes`) — indicador composto por
         regra, sem IA (ver docstring de `agent/financeiro/
         score_inadimplencia.py`). Só devolve cliente com algum indício de
         risco (score > 0, ver `_apenas_com_risco`) — cliente 100% em dia
-        não aparece na lista."""
+        não aparece na lista. Cada cliente devolvido também traz
+        `titulos_em_risco`: os títulos em aberto dele vencendo nos
+        próximos `_HORIZONTE_DIAS` dias — a parte "antecipa" do score,
+        ligando o risco já calculado a compromissos concretos."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
             return JSONResponse(
@@ -278,29 +351,60 @@ def registrar(mcp) -> None:
 
         clientes_codigos = [c.cliente_codigo for c in comportamentos]
         municipios_por_cliente = _buscar_municipios(clientes_codigos)
-        municipios_unicos = set(municipios_por_cliente.values())
-        climas_por_municipio = await _climas_por_municipio(municipios_unicos)
+
+        safras_relevantes = safra_relevante_por_cliente(_buscar_safras(clientes_codigos), hoje)
+        janelas_por_cliente = {
+            cliente_codigo: (safra.safra_inicio, min(hoje, safra.safra_fim))
+            for cliente_codigo, safra in safras_relevantes.items()
+        }
+
+        # Só busca clima pra quem tem uma janela de safra relevante — sem
+        # ela o clima nem entraria no score (ver `calcular_score`).
+        chaves_municipio = {
+            (*municipios_por_cliente[cliente_codigo], *janelas_por_cliente[cliente_codigo])
+            for cliente_codigo in janelas_por_cliente
+            if cliente_codigo in municipios_por_cliente
+        }
+        climas_por_municipio = await _climas_por_municipio(chaves_municipio)
 
         localizacoes_por_cliente = localizacao_cliente.buscar_varios(clientes_codigos)
-        climas_por_cliente_cadastrado = await _climas_por_cliente_cadastrado(localizacoes_por_cliente)
-
-        safras_ativas = safra_ativa_por_cliente(_buscar_safras(clientes_codigos), hoje)
+        climas_por_cliente_cadastrado = await _climas_por_cliente_cadastrado(
+            localizacoes_por_cliente, janelas_por_cliente
+        )
 
         scores = []
         for comportamento in comportamentos:
             cliente_codigo = comportamento.cliente_codigo
             clima = _resolver_clima(
-                cliente_codigo, municipios_por_cliente, climas_por_municipio, climas_por_cliente_cadastrado
+                cliente_codigo,
+                municipios_por_cliente,
+                janelas_por_cliente,
+                climas_por_municipio,
+                climas_por_cliente_cadastrado,
             )
 
-            safra_ativa = safras_ativas.get(cliente_codigo)
+            safra_ativa = safras_relevantes.get(cliente_codigo)
             scores.append(calcular_score(comportamento, clima, safra_ativa))
         scores = _apenas_com_risco(scores)
         scores.sort(key=lambda score: score.score, reverse=True)
 
+        scores_por_cliente = {score.cliente_codigo: score for score in scores}
+        abertos = _buscar_abertos(filiais, list(scores_por_cliente), hoje, _HORIZONTE_DIAS)
+        titulos_em_risco = titulos_em_risco_por_cliente(abertos, scores_por_cliente, hoje, _HORIZONTE_DIAS)
+        titulos_por_cliente: dict[str, list[TituloEmRisco]] = {}
+        for titulo in titulos_em_risco:
+            titulos_por_cliente.setdefault(titulo.cliente_codigo, []).append(titulo)
+
         _comum.registrar_acesso(usuario, "score_inadimplencia:calcular", len(scores))
         return JSONResponse(
-            [_score_para_json(score, localizacoes_por_cliente.get(score.cliente_codigo)) for score in scores],
+            [
+                _score_para_json(
+                    score,
+                    localizacoes_por_cliente.get(score.cliente_codigo),
+                    titulos_por_cliente.get(score.cliente_codigo, []),
+                )
+                for score in scores
+            ],
             headers=CORS_HEADERS,
         )
 

@@ -1,3 +1,5 @@
+from datetime import date
+
 from agente_oracle.agent.financeiro.clima_regional import IndicadorClima
 from agente_oracle.agent.financeiro.score_inadimplencia import (
     ComportamentoPagamentoCliente,
@@ -49,6 +51,10 @@ class TestApenasComRisco:
         assert _apenas_com_risco(scores) == []
 
 
+_INICIO = date(2026, 1, 1)
+_FIM = date(2026, 4, 30)
+
+
 class TestResolverClima:
     def test_localizacao_cadastrada_resolvida_tem_prioridade(self):
         clima_cadastrado = IndicadorClima("Fazenda Santa Luzia", "cadastro", -80.0, "seca")
@@ -56,7 +62,8 @@ class TestResolverClima:
         clima = _resolver_clima(
             "C1",
             municipios_por_cliente={"C1": ("Sorriso", "MT")},
-            climas_por_municipio={("Sorriso", "MT"): clima_municipio},
+            janelas_por_cliente={"C1": (_INICIO, _FIM)},
+            climas_por_municipio={("Sorriso", "MT", _INICIO, _FIM): clima_municipio},
             climas_por_cliente_cadastrado={"C1": clima_cadastrado},
         )
         assert clima is clima_cadastrado
@@ -66,7 +73,8 @@ class TestResolverClima:
         clima = _resolver_clima(
             "C1",
             municipios_por_cliente={"C1": ("Sorriso", "MT")},
-            climas_por_municipio={("Sorriso", "MT"): clima_municipio},
+            janelas_por_cliente={"C1": (_INICIO, _FIM)},
+            climas_por_municipio={("Sorriso", "MT", _INICIO, _FIM): clima_municipio},
             climas_por_cliente_cadastrado={},
         )
         assert clima is clima_municipio
@@ -78,14 +86,32 @@ class TestResolverClima:
         clima = _resolver_clima(
             "C1",
             municipios_por_cliente={"C1": ("Sorriso", "MT")},
-            climas_por_municipio={("Sorriso", "MT"): clima_municipio},
+            janelas_por_cliente={"C1": (_INICIO, _FIM)},
+            climas_por_municipio={("Sorriso", "MT", _INICIO, _FIM): clima_municipio},
             climas_por_cliente_cadastrado={},
         )
         assert clima is clima_municipio
 
     def test_sem_cadastro_e_sem_municipio_devolve_none(self):
         clima = _resolver_clima(
-            "C1", municipios_por_cliente={}, climas_por_municipio={}, climas_por_cliente_cadastrado={}
+            "C1",
+            municipios_por_cliente={},
+            janelas_por_cliente={"C1": (_INICIO, _FIM)},
+            climas_por_municipio={},
+            climas_por_cliente_cadastrado={},
+        )
+        assert clima is None
+
+    def test_sem_janela_de_safra_devolve_none(self):
+        # Cliente sem safra relevante (`safra_relevante_por_cliente`) não
+        # tem janela — não faz sentido nem tentar buscar clima pra ele.
+        clima_municipio = IndicadorClima("Sorriso", "MT", 5.0, "normal")
+        clima = _resolver_clima(
+            "C1",
+            municipios_por_cliente={"C1": ("Sorriso", "MT")},
+            janelas_por_cliente={},
+            climas_por_municipio={("Sorriso", "MT", _INICIO, _FIM): clima_municipio},
+            climas_por_cliente_cadastrado={},
         )
         assert clima is None
 
@@ -105,7 +131,7 @@ class TestScoreParaJson:
             longitude=None,
             resolvido=False,
         )
-        json_saida = _score_para_json(_score("C1", 10), localizacao)
+        json_saida = _score_para_json(_score("C1", 10), localizacao, [])
         assert json_saida["localizacao"]["cidade"] == "Rio de Janeiro"
         assert json_saida["localizacao"]["bairro"] == "Jardim Excelsior"
         assert json_saida["localizacao"]["resolvido"] is False
@@ -119,12 +145,40 @@ class TestScoreParaJson:
             longitude=-55.7,
             resolvido=True,
         )
-        json_saida = _score_para_json(_score("C1", 10), localizacao)
+        json_saida = _score_para_json(_score("C1", 10), localizacao, [])
         assert json_saida["localizacao"]["resolvido"] is True
 
     def test_sem_cadastro_devolve_null(self):
-        json_saida = _score_para_json(_score("C1", 10), None)
+        json_saida = _score_para_json(_score("C1", 10), None, [])
         assert json_saida["localizacao"] is None
+
+    def test_titulos_em_risco_aparecem_no_json(self):
+        from agente_oracle.agent.financeiro.score_inadimplencia import TituloEmRisco
+
+        titulo = TituloEmRisco(
+            cliente_codigo="C1",
+            cliente_nome="Cliente C1",
+            numero="1001",
+            parcela="01",
+            data_vencimento=date(2026, 6, 20),
+            saldo_aberto=1500.0,
+            dias_ate_vencimento=19,
+            score=_score("C1", 10),
+        )
+        json_saida = _score_para_json(_score("C1", 10), None, [titulo])
+        assert json_saida["titulos_em_risco"] == [
+            {
+                "numero": "1001",
+                "parcela": "01",
+                "data_vencimento": "2026-06-20",
+                "saldo_aberto": 1500.0,
+                "dias_ate_vencimento": 19,
+            }
+        ]
+
+    def test_sem_titulos_em_risco_devolve_lista_vazia(self):
+        json_saida = _score_para_json(_score("C1", 10), None, [])
+        assert json_saida["titulos_em_risco"] == []
 
 
 class TestRotuloLocalizacao:

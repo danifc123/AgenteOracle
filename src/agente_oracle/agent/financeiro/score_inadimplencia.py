@@ -24,6 +24,12 @@ _PONTOS_MAXIMO_COMPORTAMENTO = 70
 _PONTOS_MAXIMO_CLIMA = 30
 _BONUS_TENDENCIA_PIORANDO = 15
 
+# Quantos dias depois do fim de uma safra sua colheita ainda "explica" um
+# atraso de pagamento — a receita de uma safra recém-encerrada é o que
+# financia os títulos vencendo agora, então o clima dela continua
+# relevante por um tempo depois de `safra_fim` (ver `safra_relevante_por_cliente`).
+_DIAS_GRACA_SAFRA_ENCERRADA = 90
+
 
 @dataclass(frozen=True)
 class TituloReceberLiquidado:
@@ -65,24 +71,96 @@ class ScoreInadimplencia:
     fatores: tuple[str, ...]
 
 
-def safra_ativa_por_cliente(safras: list[SafraCliente], hoje: date) -> dict[str, SafraCliente]:
-    """Por cliente, entre as compras cuja janela `[safra_inicio, safra_fim]`
-    CONTÉM `hoje` (cliente dentro da janela crítica da lavoura AGORA — é
-    só nessa janela que o clima é sinal de risco de verdade, fora dela é
-    ruído), escolhe a de `data_compra` mais recente. Cliente com nenhuma
-    janela ativa hoje (nunca comprou semente, ou a safra já
-    encerrou/ainda não começou) simplesmente não entra no dict — o clima
+@dataclass(frozen=True)
+class TituloReceberAberto:
+    cliente_codigo: str
+    cliente_nome: str
+    numero: str
+    parcela: str
+    data_vencimento: date
+    saldo_aberto: float
+
+
+@dataclass(frozen=True)
+class TituloEmRisco:
+    cliente_codigo: str
+    cliente_nome: str
+    numero: str
+    parcela: str
+    data_vencimento: date
+    saldo_aberto: float
+    dias_ate_vencimento: int
+    score: ScoreInadimplencia
+
+
+def safra_relevante_por_cliente(safras: list[SafraCliente], hoje: date) -> dict[str, SafraCliente]:
+    """Por cliente, entre as compras cuja safra JÁ COMEÇOU (`safra_inicio
+    <= hoje` — não dá pra avaliar clima de uma safra que ainda nem
+    começou) e que está em andamento (`safra_fim >= hoje`) OU terminou há
+    no máximo `_DIAS_GRACA_SAFRA_ENCERRADA` dias, escolhe uma: prioriza a
+    que está em andamento agora (a de `data_compra` mais recente, entre
+    essas); sem nenhuma em andamento, a que terminou mais recentemente
+    (`safra_fim` maior). A colheita que acabou de terminar é o que
+    financia os títulos vencendo agora, então o clima dela ainda importa
+    — só considerar a safra "em andamento agora" perderia justamente o
+    caso mais comum de explicar um atraso: colheita ruim recente. Cliente
+    sem nenhuma safra candidata simplesmente não entra no dict — o clima
     não conta pra ele (ver `calcular_score`). Cliente com mais de uma
-    cultura em janela ativa ao mesmo tempo fica só com a compra mais
-    recente — simplificação de v1."""
-    por_cliente: dict[str, SafraCliente] = {}
+    cultura candidata ao mesmo tempo fica só com a melhor candidata pelo
+    critério acima — simplificação de v1."""
+    candidatas_por_cliente: dict[str, list[SafraCliente]] = {}
     for safra in safras:
-        if not (safra.safra_inicio <= hoje <= safra.safra_fim):
+        if safra.safra_inicio > hoje:
             continue
-        atual = por_cliente.get(safra.cliente_codigo)
-        if atual is None or safra.data_compra > atual.data_compra:
-            por_cliente[safra.cliente_codigo] = safra
-    return por_cliente
+        em_andamento = safra.safra_fim >= hoje
+        dentro_da_graca = (hoje - safra.safra_fim).days <= _DIAS_GRACA_SAFRA_ENCERRADA
+        if not (em_andamento or dentro_da_graca):
+            continue
+        candidatas_por_cliente.setdefault(safra.cliente_codigo, []).append(safra)
+
+    resultado: dict[str, SafraCliente] = {}
+    for cliente_codigo, candidatas in candidatas_por_cliente.items():
+        em_andamento = [safra for safra in candidatas if safra.safra_fim >= hoje]
+        if em_andamento:
+            resultado[cliente_codigo] = max(em_andamento, key=lambda safra: safra.data_compra)
+        else:
+            resultado[cliente_codigo] = max(candidatas, key=lambda safra: safra.safra_fim)
+    return resultado
+
+
+def titulos_em_risco_por_cliente(
+    abertos: list[TituloReceberAberto],
+    scores_por_cliente: dict[str, ScoreInadimplencia],
+    hoje: date,
+    horizonte_dias: int = 60,
+) -> list[TituloEmRisco]:
+    """Liga cada título em aberto que vence dentro de `horizonte_dias` ao
+    score de risco que o cliente responsável já carrega — não inventa um
+    número novo, só mostra QUAIS títulos concretos estão em jogo pro
+    risco que o cliente já tem. Título de cliente sem nenhum indício de
+    risco (fora de `scores_por_cliente` — ver `_apenas_com_risco` no
+    server) não entra. Ordenado por `dias_ate_vencimento` crescente, o
+    mais urgente primeiro."""
+    fim_janela = hoje + timedelta(days=horizonte_dias)
+    resultado = []
+    for titulo in abertos:
+        score = scores_por_cliente.get(titulo.cliente_codigo)
+        if score is None or not (hoje <= titulo.data_vencimento <= fim_janela):
+            continue
+        resultado.append(
+            TituloEmRisco(
+                cliente_codigo=titulo.cliente_codigo,
+                cliente_nome=titulo.cliente_nome,
+                numero=titulo.numero,
+                parcela=titulo.parcela,
+                data_vencimento=titulo.data_vencimento,
+                saldo_aberto=titulo.saldo_aberto,
+                dias_ate_vencimento=(titulo.data_vencimento - hoje).days,
+                score=score,
+            )
+        )
+    resultado.sort(key=lambda item: item.dias_ate_vencimento)
+    return resultado
 
 
 def _percentual_atraso(titulos: list[TituloReceberLiquidado]) -> float:
@@ -155,10 +233,11 @@ def calcular_score(
     for piorando), até `_PONTOS_MAXIMO_CLIMA` pontos vêm de anomalia
     climática extrema (seca ou excesso de chuva) na região do cliente —
     mas SÓ quando `safra_ativa` não é `None`: clima só é sinal de risco
-    de inadimplência enquanto está afetando a safra que vai gerar a
-    receita que paga o título (`safra_ativa_por_cliente`); fora dessa
-    janela, o clima de hoje é ruído e não conta nada no score, mesmo que
-    esteja anômalo de verdade na região."""
+    de inadimplência enquanto está afetando a safra que vai gerar (ou
+    gerou, se recém-encerrada) a receita que paga o título
+    (`safra_relevante_por_cliente`); fora dessa janela, clima é ruído e
+    não conta nada no score, mesmo que esteja anômalo de verdade na
+    região."""
     fatores = [
         f"{comportamento.percentual_atraso_recente:.0f}% dos títulos pagos com atraso nos últimos 90 dias"
     ]
@@ -177,13 +256,12 @@ def calcular_score(
 
     pontos_clima = 0.0
     if safra_ativa is None:
-        fatores.append("sem safra ativa no momento — clima não considerado no score")
+        fatores.append("sem safra relevante no momento — clima não considerado no score")
     elif clima is not None and clima.classificacao in ("seca", "excesso_chuva"):
         pontos_clima = float(_PONTOS_MAXIMO_CLIMA)
         rotulo_clima = "seca" if clima.classificacao == "seca" else "excesso de chuva"
         fatores.append(
-            f"{rotulo_clima} na região durante a safra de {safra_ativa.cultura} "
-            f"({safra_ativa.safra_descricao})"
+            f"{rotulo_clima} na região na safra de {safra_ativa.cultura} ({safra_ativa.safra_descricao})"
         )
     elif clima is None or clima.classificacao == "indisponivel":
         fatores.append("clima regional indisponível no momento")

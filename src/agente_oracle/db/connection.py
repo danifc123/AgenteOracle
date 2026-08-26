@@ -7,7 +7,40 @@
   aponta pro banco escolhido em `DB_BACKEND` (Oracle em produção; Postgres
   localmente, contra views de teste, já que o Oracle real não é acessível
   fora de produção).
-"""
+
+IMPORTANTE — por que ter `vw_titulos_receber` (e as outras 6 views curadas
+do Financeiro) em DOIS bancos ao mesmo tempo NÃO causa consulta indo pro
+lugar errado: `get_connection` decide o POOL (Oracle ou Postgres) uma vez,
+ANTES de qualquer SQL ser executado — é uma decisão por `DB_BACKEND`
+(`.env`), nunca pelo texto da query. Cada pool já é uma conexão de rede
+comprometida com UM servidor só (o DSN do Oracle, ou o host do Postgres);
+o nome da view só é resolvido pelo servidor do outro lado daquele socket
+específico — Oracle nunca "vê" a cópia do Postgres, e vice-versa. O nome
+repetido é só rótulo (mesma tabela mental, propositalmente com o mesmo
+nome pra facilitar o desenvolvedor), não um vínculo real entre os bancos.
+
+Essas 7 views de teste no Postgres (`vw_titulos_pagar`, `vw_titulos_receber`,
+`vw_clientes`, `vw_fornecedores`, `vw_faturamento`, `vw_lancamentos_contabeis`,
+`vw_safra_cliente`) existem DE PROPÓSITO, mantidas mesmo com `DB_BACKEND=
+oracle` em uso — servem pra desenvolver/testar sem depender do Oracle real
+estar acessível (VPN, credencial, etc.), e pros testes de integração
+(`tests/integration/conftest.py::views_curadas_disponiveis`) rodarem
+localmente. Não precisam ser apagadas nem geram risco de mistura — só
+ficam inertes enquanto `DB_BACKEND=oracle`.
+
+IMPORTANTE (achado em 2026-08, verificado direto no banco): essas views NÃO
+vêm de `db/views/financeiro_science.sql` — aquele arquivo é sintaxe Oracle
+(`TRIM(x)`, `CAST(x AS DATE)`) e cria as views reais no schema Oracle. As
+views de teste no Postgres são outra definição, em sintaxe Postgres
+(`TRIM(BOTH FROM x)`, `x::date`), contra um schema `stage.*` próprio criado
+ali dentro do Postgres — e o SQL que criou esse schema/views de teste **não
+está versionado neste repositório** (procurei: só existem dois `.sql` no
+projeto, `financeiro_science.sql` e `protheus/login_seguranca.sql`, nenhum
+dos dois é isso). Ou seja, se essas 7 views forem apagadas algum dia, NÃO
+dá pra recriar só rodando um arquivo existente — precisaria escrever a
+versão Postgres de novo (ou achar onde esse setup original foi feito, fora
+do git). Enquanto elas continuarem existindo como estão, sem problema
+nenhum — só documentando esse risco pra quem for mexer nisso no futuro."""
 
 import re
 from contextlib import contextmanager

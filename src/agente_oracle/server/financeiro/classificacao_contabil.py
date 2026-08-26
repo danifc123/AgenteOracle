@@ -2,8 +2,12 @@
 `agent/financeiro/classificacao_contabil.py`; este módulo só busca a
 janela de `vw_lancamentos_contabeis` e monta a resposta HTTP, mesmo
 espírito de `server/financeiro/despesas_suspeitas.py` (roda sob demanda,
-nunca em background)."""
+nunca em background). Também soma as revisões locais confirmadas
+(`classificacao_revisoes.precedentes_confirmados`) no dicionário de
+sugestão, pra uma correção feita aqui não ser esquecida — ver comentário
+na rota principal."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 from starlette.requests import Request
@@ -92,7 +96,21 @@ def registrar(mcp) -> None:
 
         desde = date.today() - timedelta(days=_DIAS_HISTORICO)
         lancamentos = _buscar_lancamentos(filiais, desde)
+        lancamentos_por_chave = {(lanc.documento, lanc.linha): lanc for lanc in lancamentos}
         classificados = [lancamento for lancamento in lancamentos if lancamento.conta != _CONTA_NAO_DEFINIDA]
+
+        # Fecha o loop de aprendizado: a revisão local (aceita/corrigida)
+        # nunca é escrita no Oracle, então sem isso o mesmo padrão de
+        # histórico voltaria a ficar sem sugestão no mês seguinte, como se
+        # a correção nunca tivesse acontecido. Só conta revisão de
+        # lançamento que ainda está na janela/filiais consultadas agora
+        # (fora dela, `lancamentos_por_chave` não tem a chave — ignora).
+        precedentes_locais = [
+            replace(lancamentos_por_chave[(documento, linha)], conta=conta)
+            for documento, linha, conta in classificacao_revisoes.precedentes_confirmados()
+            if (documento, linha) in lancamentos_por_chave
+        ]
+        classificados_com_memoria = classificados + precedentes_locais
 
         revisadas = classificacao_revisoes.chaves_revisadas()
         nao_classificados = [
@@ -102,8 +120,8 @@ def registrar(mcp) -> None:
             and (lancamento.documento, lancamento.linha) not in revisadas
         ]
 
-        dicionario = construir_dicionario(classificados)
-        descricoes = mapa_conta_descricao(classificados)
+        dicionario = construir_dicionario(classificados_com_memoria)
+        descricoes = mapa_conta_descricao(classificados_com_memoria)
         sugestoes = sugerir_classificacoes(nao_classificados, dicionario, descricoes)
 
         _comum.registrar_acesso(usuario, "classificacao_contabil:analisar", len(sugestoes))

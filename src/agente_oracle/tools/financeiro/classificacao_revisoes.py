@@ -9,7 +9,13 @@ correção de verdade no plano de contas real.
 
 Sem essa revisão, o "99% de precisão" da planilha de demandas não passa de
 uma esperança — `resumo_precisao()` é o número medido de verdade, a partir
-do que o time realmente confirma/corrige."""
+do que o time realmente confirma/corrige.
+
+`precedentes_confirmados()` fecha o loop de aprendizado: como nunca
+escrevemos no Oracle, uma correção feita aqui sumiria pro sistema no mês
+seguinte (mesmo padrão de histórico apareceria sem sugestão de novo) se não
+fosse somada de volta no dicionário de sugestão a cada consulta — ver uso em
+`server/financeiro/classificacao_contabil.py`."""
 
 from datetime import UTC, datetime
 
@@ -51,6 +57,23 @@ def chaves_revisadas() -> set[tuple[str, str]]:
         cursor.execute("SELECT documento, linha FROM classificacao_contabil_revisoes")
         linhas = cursor.fetchall()
     return {(documento, linha) for documento, linha in linhas}
+
+
+def precedentes_confirmados() -> list[tuple[str, str, str]]:
+    """(documento, linha, conta) de toda revisão com conta confirmada certa
+    — aceita (a sugestão em si) ou corrigida com `conta_correta`
+    informada. Corrigida sem `conta_correta` fica de fora: sabemos que a
+    sugestão era errada, mas não a certa, então não tem o que ensinar."""
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute("""
+            SELECT documento, linha,
+                   CASE WHEN resultado = 'aceita' THEN conta_sugerida ELSE conta_correta END
+            FROM classificacao_contabil_revisoes
+            WHERE resultado = 'aceita' OR (resultado = 'corrigida' AND conta_correta IS NOT NULL)
+        """)
+        return cursor.fetchall()
 
 
 def resumo_precisao() -> dict:

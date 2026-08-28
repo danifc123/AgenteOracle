@@ -20,9 +20,19 @@ export interface RelacionamentoView {
   descricao: string;
 }
 
+/** De qual banco a view vem — "stage" (Oracle STAGE/SCIENCE_PROD) ou
+ * "protheus" (Protheus HML). Views de fontes diferentes nunca podem ser
+ * combinadas num mesmo relatório (ver `_fonte_comum` no backend) — são
+ * bancos Oracle separados, sem `DB LINK` entre eles. */
+export type FonteView = 'stage' | 'protheus';
+
 export interface ViewFinanceira {
   nome: string;
   descricao: string;
+  /** Opcional pra não obrigar todo placeholder/mock/teste que monta um
+   * `ViewFinanceira` à mão a declarar isso — quem exibe agrupamento por
+   * fonte trata ausência como 'stage' (ver `criar-relatorio.ts`). */
+  fonte?: FonteView;
   colunas: ColunaView[];
   relacionamentos: RelacionamentoView[];
 }

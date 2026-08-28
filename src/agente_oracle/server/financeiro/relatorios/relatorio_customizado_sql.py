@@ -28,7 +28,7 @@ from collections import deque
 from starlette.requests import Request
 
 from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ViewFinanceira, inferir_tipo_filtro
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import get_connection_para_fonte
 from agente_oracle.server.financeiro.relatorios import _comum
 
 LIMITE_MAXIMO_LINHAS = 1000
@@ -54,28 +54,59 @@ def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
         f'ORDER BY "{nome_coluna}" '
         f"FETCH FIRST {LIMITE_OPCOES_COLUNA} ROWS ONLY"
     )
-    with get_connection() as connection:
+    with get_connection_para_fonte(_VIEWS_POR_NOME[nome_view].fonte) as connection:
         cursor = connection.cursor()
         cursor.execute(sql)
         return [str(linha[0]) for linha in cursor.fetchall()]
 
 
 def buscar_relatorio_customizado(
-    colunas_por_view: dict[str, list[str]], filiais: list[str], filtros: dict[str, dict[str, str | list[str]]]
-) -> tuple[list[str], list[tuple]]:
-    sql, binds = _montar_sql(colunas_por_view, filiais, filtros)
+    colunas_por_view: dict[str, list[str]],
+    filiais: list[str],
+    filtros: dict[str, dict[str, str | list[str]]],
+    pagina: int,
+) -> tuple[list[str], list[tuple], bool]:
+    fonte = _fonte_comum(list(colunas_por_view.keys()))
+    offset = (pagina - 1) * LIMITE_MAXIMO_LINHAS
+    sql, binds = _montar_sql(colunas_por_view, filiais, filtros, offset)
 
-    with get_connection() as connection:
+    with get_connection_para_fonte(fonte) as connection:
         cursor = connection.cursor()
         cursor.execute(sql, **binds)
         colunas = [descricao[0] for descricao in cursor.description]
         linhas = cursor.fetchall()
-    return colunas, linhas
+
+    # Pede uma linha a mais que o necessário (ver `_montar_sql`) só pra saber
+    # se existe próxima página sem precisar de um `COUNT(*)` — que seria caro
+    # nas views com CTE pesada (ex: `vw_baixas_pagar`) pelo mesmo motivo que
+    # a consulta principal já é.
+    tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
+    return colunas, linhas[:LIMITE_MAXIMO_LINHAS], tem_mais_paginas
+
+
+def _fonte_comum(views_selecionadas: list[str]) -> str:
+    """Todas as views escolhidas precisam vir da mesma fonte: STAGE e
+    Protheus são instâncias Oracle separadas, sem `DB LINK` entre elas, então
+    não existe SQL único capaz de fazer JOIN entre uma view de cada lado.
+    Levanta `RelatorioCustomizadoInvalido` com uma mensagem específica pra
+    esse caso — sem essa checagem, a combinação ainda falharia lá na frente
+    (nenhuma view declara relacionamento pra uma view de outra fonte), mas
+    com o erro genérico de "sem caminho de JOIN" do BFS, que não deixa claro
+    o motivo real."""
+    fontes = {_VIEWS_POR_NOME[nome].fonte for nome in views_selecionadas}
+    if len(fontes) > 1:
+        raise RelatorioCustomizadoInvalido(
+            "Não é possível combinar views de fontes diferentes (STAGE e Protheus) no mesmo relatório."
+        )
+    return fontes.pop()
 
 
 def _montar_sql(
-    colunas_por_view: dict[str, list[str]], filiais: list[str], filtros: dict[str, dict[str, str | list[str]]]
-) -> tuple[str, dict[str, str]]:
+    colunas_por_view: dict[str, list[str]],
+    filiais: list[str],
+    filtros: dict[str, dict[str, str | list[str]]],
+    offset: int,
+) -> tuple[str, dict[str, str | int]]:
     views_selecionadas = list(colunas_por_view.keys())
     arestas = _resolver_caminho_join(views_selecionadas)
 
@@ -104,7 +135,7 @@ def _montar_sql(
         )
         sql.append(f"LEFT JOIN {view_filha} {alias_filha} ON {condicoes}")
 
-    binds: dict[str, str] = {}
+    binds: dict[str, str | int] = {}
     condicoes_where = []
     for nome_view in colunas_por_view:
         view = _VIEWS_POR_NOME[nome_view]
@@ -164,7 +195,14 @@ def _montar_sql(
     if condicoes_where:
         sql.append(f"WHERE {' AND '.join(condicoes_where)}")
 
-    sql.append(f"FETCH FIRST {LIMITE_MAXIMO_LINHAS} ROWS ONLY")
+    # Pede uma linha a mais que `LIMITE_MAXIMO_LINHAS` (ver `buscar_relatorio_customizado`,
+    # que descarta essa linha extra) só pra saber se tem próxima página sem
+    # precisar de um `COUNT(*)` separado. `OFFSET ... FETCH NEXT ...` é ANSI
+    # SQL — funciona em Oracle e Postgres sem branch por `db_backend`, igual
+    # o `FETCH FIRST` que já existia aqui antes da paginação.
+    sql.append("OFFSET :pagina_offset ROWS FETCH NEXT :pagina_limite ROWS ONLY")
+    binds["pagina_offset"] = offset
+    binds["pagina_limite"] = LIMITE_MAXIMO_LINHAS + 1
 
     return "\n".join(sql), binds
 
@@ -234,11 +272,12 @@ def _grafo_relacionamentos() -> dict[str, list[tuple[str, tuple[str, ...], tuple
 
 def parametros_da_query(
     request: Request,
-) -> tuple[dict[str, list[str]], list[str], dict[str, dict[str, str | list[str]]]] | None:
+) -> tuple[dict[str, list[str]], list[str], dict[str, dict[str, str | list[str]]], int] | None:
     """Lê `filial` (obrigatório), `colunas` (obrigatório, formato
-    "view.coluna,view.coluna,...") e `filtros` (opcional) — devolve
-    (colunas_por_view, filiais, filtros) já validados contra o registro de
-    views, ou None se algo essencial faltar/for inválido."""
+    "view.coluna,view.coluna,...") `filtros` (opcional) e `pagina` (opcional,
+    default 1) — devolve (colunas_por_view, filiais, filtros, pagina) já
+    validados contra o registro de views, ou None se algo essencial faltar/
+    for inválido."""
     filial_bruto = request.query_params.get("filial", "").strip()
     filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
 
@@ -263,7 +302,11 @@ def parametros_da_query(
     if filtros is None:
         return None
 
-    return colunas_por_view, filiais, filtros
+    pagina_bruto = request.query_params.get("pagina", "1").strip()
+    pagina = int(pagina_bruto) if pagina_bruto.isdigit() else 1
+    pagina = max(pagina, 1)
+
+    return colunas_por_view, filiais, filtros, pagina
 
 
 def _parametros_filtros(request: Request) -> dict[str, dict[str, str | list[str]]] | None:

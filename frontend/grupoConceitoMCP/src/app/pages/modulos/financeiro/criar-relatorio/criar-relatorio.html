@@ -26,21 +26,33 @@
       >
     </div>
 
+    <p class="aviso-vinculo">
+      As tabelas vêm de bancos diferentes (STAGE e Protheus) — não é possível combinar
+      tabelas de grupos diferentes no mesmo relatório.
+    </p>
     @if (tabelasCompativeis()) {
       <p class="aviso-vinculo">Tabelas sem vínculo com sua seleção ficam bloqueadas.</p>
     }
 
     <div class="painel-lista-corpo">
-      @if (viewsFiltradas().length) {
-        @for (tabela of viewsFiltradas(); track tabela.nome) {
-          <app-tabela-item
-            [tabela]="tabela"
-            [aberta]="estaAberta(tabela)"
-            [bloqueada]="!tabelaCompativel(tabela)"
-            [colunasSelecionadas]="colunasDaView(tabela)"
-            (alternarAberta)="alternarTabela(tabela)"
-            (alternarColuna)="alternarColuna(tabela.nome, $event)"
-          />
+      @if (gruposViews().length) {
+        @for (grupo of gruposViews(); track grupo.fonte) {
+          <div class="grupo-fonte">
+            <p class="grupo-fonte-titulo">
+              {{ grupo.rotulo }}
+              <span class="grupo-fonte-contagem">({{ grupo.views.length }})</span>
+            </p>
+            @for (tabela of grupo.views; track tabela.nome) {
+              <app-tabela-item
+                [tabela]="tabela"
+                [aberta]="estaAberta(tabela)"
+                [bloqueada]="!tabelaCompativel(tabela)"
+                [colunasSelecionadas]="colunasDaView(tabela)"
+                (alternarAberta)="alternarTabela(tabela)"
+                (alternarColuna)="alternarColuna(tabela.nome, $event)"
+              />
+            }
+          </div>
         }
       } @else if (views().length) {
         <p class="lista-vazia">Nenhuma tabela encontrada para "{{ termoBusca() }}".</p>
@@ -77,6 +89,16 @@
     <p class="erro-exportacao">{{ relatorioErro() }}</p>
   } @else if (relatorioDados() && relatorioDados()!.length) {
     <app-visualizador-excel [dados]="relatorioDados()!" />
+    @if (temMaisPaginas()) {
+      <app-botao
+        variant="contorno"
+        [loading]="carregandoMaisLinhas()"
+        loadingText="Carregando..."
+        (clicked)="carregarMaisLinhas()"
+      >
+        Carregar mais
+      </app-botao>
+    }
   } @else {
     <p class="carregando">Nenhum dado encontrado para os filtros informados.</p>
   }

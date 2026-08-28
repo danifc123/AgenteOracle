@@ -35,7 +35,9 @@ def criar_app():
         # arquivo de download) mas não deixa o JS lê-lo via `fetch`/`XHR` —
         # todo download de Excel (chat, criar relatório, rotinas) caía no
         # nome padrão do frontend em vez do nome real vindo do backend.
-        expose_headers=["Content-Disposition"],
+        # `X-Tem-Mais-Paginas` é o mesmo problema pro botão "Carregar mais"
+        # do construtor de relatório (`relatorio_customizado.py`).
+        expose_headers=["Content-Disposition", "X-Tem-Mais-Paginas"],
     )
     app.add_middleware(HeadersDeSegurancaMiddleware)
     return app

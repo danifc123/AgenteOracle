@@ -10,7 +10,7 @@ import { TabelaDetalhe } from '../../../../componentes/tabela-detalhe/tabela-det
 import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
 import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
-import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
 import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
 import { filtrosPorColuna } from './filtros-relatorio';
@@ -49,6 +49,9 @@ export class CriarRelatorio {
   protected readonly relatorioErro = signal<string | null>(null);
   protected readonly relatorioDados = signal<Record<string, unknown>[] | null>(null);
   protected readonly baixandoRelatorio = signal(false);
+  protected readonly paginaAtual = signal(1);
+  protected readonly temMaisPaginas = signal(false);
+  protected readonly carregandoMaisLinhas = signal(false);
 
   protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
   protected readonly filiaisSelecionadas = signal<string[]>([]);
@@ -72,6 +75,24 @@ export class CriarRelatorio {
       (view) =>
         view.nome.toLowerCase().includes(termo) || view.descricao.toLowerCase().includes(termo),
     );
+  });
+
+  /** Agrupa as tabelas por banco de origem (STAGE x Protheus) só pra deixar
+   * visualmente claro que são bancos separados — nunca é possível combinar
+   * uma tabela de um grupo com outra do outro grupo no mesmo relatório
+   * (`_fonte_comum` já bloqueia isso no backend; aqui é só clareza visual). */
+  protected readonly gruposViews = computed(() => {
+    const rotulos: Record<FonteView, string> = { stage: 'STAGE', protheus: 'Protheus HML' };
+    const porFonte = new Map<FonteView, ViewFinanceira[]>();
+    for (const view of this.viewsFiltradas()) {
+      const fonte = view.fonte ?? 'stage';
+      const lista = porFonte.get(fonte) ?? [];
+      lista.push(view);
+      porFonte.set(fonte, lista);
+    }
+    return (['stage', 'protheus'] as const)
+      .filter((fonte) => porFonte.has(fonte))
+      .map((fonte) => ({ fonte, rotulo: rotulos[fonte], views: porFonte.get(fonte)! }));
   });
 
   protected readonly totalColunasSelecionadas = computed(() =>
@@ -149,7 +170,7 @@ export class CriarRelatorio {
       });
   }
 
-  private parametrosRelatorio(): HttpParams {
+  private parametrosRelatorio(pagina = 1): HttpParams {
     const colunas = Object.entries(this.colunasSelecionadas()).flatMap(([nomeView, nomesColunas]) =>
       nomesColunas.map((nomeColuna) => `${nomeView}.${nomeColuna}`),
     );
@@ -161,6 +182,10 @@ export class CriarRelatorio {
     const filtros = filtrosPorColuna(this.views(), this.colunasSelecionadas(), this.valoresFiltros());
     if (Object.keys(filtros).length) {
       params = params.set('filtros', JSON.stringify(filtros));
+    }
+
+    if (pagina > 1) {
+      params = params.set('pagina', String(pagina));
     }
 
     return params;
@@ -293,20 +318,34 @@ export class CriarRelatorio {
     this.buscarRelatorio();
   }
 
-  private buscarRelatorio(): void {
-    this.relatorioAberto.set(true);
-    this.relatorioDados.set(null);
-    this.relatorioErro.set(null);
-    this.relatorioCarregando.set(true);
+  /** `pagina` 1 (padrão) reseta a listagem — usado ao gerar um relatório
+   * novo ou trocar filtro. `pagina` > 1 soma linhas ao que já estava
+   * carregado — usado só pelo botão "Carregar mais". */
+  private buscarRelatorio(pagina = 1): void {
+    if (pagina === 1) {
+      this.relatorioAberto.set(true);
+      this.relatorioDados.set(null);
+      this.relatorioErro.set(null);
+      this.relatorioCarregando.set(true);
+      this.paginaAtual.set(1);
+      this.temMaisPaginas.set(false);
+    } else {
+      this.carregandoMaisLinhas.set(true);
+    }
 
     this.http
       .get<Record<string, unknown>[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado`, {
-        params: this.parametrosRelatorio(),
+        params: this.parametrosRelatorio(pagina),
+        observe: 'response',
       })
       .subscribe({
-        next: (dados) => {
-          this.relatorioDados.set(dados);
+        next: (resposta) => {
+          const dados = resposta.body ?? [];
+          this.relatorioDados.set(pagina === 1 ? dados : [...(this.relatorioDados() ?? []), ...dados]);
+          this.paginaAtual.set(pagina);
+          this.temMaisPaginas.set(resposta.headers.get('x-tem-mais-paginas') === 'true');
           this.relatorioCarregando.set(false);
+          this.carregandoMaisLinhas.set(false);
         },
         error: (erro: HttpErrorResponse) => {
           this.relatorioErro.set(
@@ -314,8 +353,16 @@ export class CriarRelatorio {
               'Não foi possível carregar o relatório. Verifique se o servidor está em execução.',
           );
           this.relatorioCarregando.set(false);
+          this.carregandoMaisLinhas.set(false);
         },
       });
+  }
+
+  protected carregarMaisLinhas(): void {
+    if (this.carregandoMaisLinhas() || !this.temMaisPaginas()) {
+      return;
+    }
+    this.buscarRelatorio(this.paginaAtual() + 1);
   }
 
   private sinalizarFiltroInvalido(): void {
@@ -376,6 +423,8 @@ export class CriarRelatorio {
     this.relatorioDados.set(null);
     this.relatorioErro.set(null);
     this.relatorioCarregando.set(false);
+    this.paginaAtual.set(1);
+    this.temMaisPaginas.set(false);
   }
 
   protected limparFiltrosSelecionados(): void {

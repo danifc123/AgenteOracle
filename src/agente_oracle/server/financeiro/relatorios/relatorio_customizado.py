@@ -38,7 +38,7 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
 
         try:
-            colunas, linhas = buscar_relatorio_customizado(*parametros)
+            colunas, linhas, _tem_mais_paginas = buscar_relatorio_customizado(*parametros)
         except RelatorioCustomizadoInvalido as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
@@ -62,7 +62,7 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
 
         try:
-            colunas, linhas = buscar_relatorio_customizado(*parametros)
+            colunas, linhas, tem_mais_paginas = buscar_relatorio_customizado(*parametros)
         except RelatorioCustomizadoInvalido as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
@@ -70,7 +70,8 @@ def registrar(mcp) -> None:
         dados = [
             dict(zip(colunas, (_comum.serializar(valor) for valor in linha), strict=True)) for linha in linhas
         ]
-        return JSONResponse(dados, headers=CORS_HEADERS)
+        headers = {**CORS_HEADERS, "X-Tem-Mais-Paginas": "true" if tem_mais_paginas else "false"}
+        return JSONResponse(dados, headers=headers)
 
     @mcp.custom_route("/api/financeiro/relatorio/opcoes-coluna", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
@@ -113,6 +114,7 @@ def registrar(mcp) -> None:
             {
                 "nome": view.nome,
                 "descricao": view.descricao,
+                "fonte": view.fonte,
                 "colunas": [
                     {
                         "nome": coluna.nome,

@@ -122,6 +122,22 @@ def get_connection():
 
 
 @contextmanager
+def get_connection_para_fonte(fonte: str):
+    """Roteia pela `fonte` declarada em `ViewFinanceira.fonte`
+    (`agent/financeiro/schema.py`) em vez de `DB_BACKEND` — usado só pelo
+    construtor de relatório customizado, que pode precisar tanto de views do
+    STAGE quanto (futuramente) de views que moram direto no Protheus HML.
+    `"protheus"` vai pro pool independente do Protheus; qualquer outro valor
+    (hoje só `"stage"`) cai no `get_connection` de sempre."""
+    if fonte == "protheus":
+        with get_protheus_connection() as connection:
+            yield connection
+    else:
+        with get_connection() as connection:
+            yield connection
+
+
+@contextmanager
 def get_postgres_connection():
     pool = _get_postgres_pool()
     with pool.connection() as connection:
@@ -141,22 +157,6 @@ def get_protheus_connection():
         yield _ConnectionAdapter(connection, "oracle")
     finally:
         pool.release(connection)
-
-
-@contextmanager
-def get_connection_para_fonte(fonte: str):
-    """Roteia pela `fonte` declarada em `ViewFinanceira.fonte`
-    (`agent/financeiro/schema.py`) em vez de `DB_BACKEND` — usado só pelo
-    construtor de relatório customizado, que pode precisar tanto de views do
-    STAGE quanto (futuramente) de views que moram direto no Protheus HML.
-    `"protheus"` vai pro pool independente do Protheus; qualquer outro valor
-    (hoje só `"stage"`) cai no `get_connection` de sempre."""
-    if fonte == "protheus":
-        with get_protheus_connection() as connection:
-            yield connection
-    else:
-        with get_connection() as connection:
-            yield connection
 
 
 def protheus_configurado() -> bool:

@@ -34,6 +34,26 @@ def _chamado_para_json(chamado: Chamado) -> dict:
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/ti/chamados/{id}/reportar", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
+    async def chamado_reportar_route(request: Request, usuario: dict) -> Response:
+        """Avisa o usuário que o chamado dele está `aguardando_usuario` —
+        hoje só marca `reportado_em` (mock, nenhum e-mail sai de verdade
+        ainda, ver docstring de `tools/ti/glpi.py`)."""
+        try:
+            chamado_id = int(request.path_params["id"])
+        except ValueError:
+            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        chamados_por_id = {chamado.id: chamado for chamado in _cliente.listar()}
+        if chamado_id not in chamados_por_id:
+            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        _cliente.reportar_usuario(chamado_id)
+
+        chamado_final = next(chamado for chamado in _cliente.listar() if chamado.id == chamado_id)
+        return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/ti/chamados", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_route(request: Request, usuario: dict) -> Response:
@@ -60,23 +80,3 @@ def registrar(mcp) -> None:
 
         chamados = _cliente.listar()
         return JSONResponse([_chamado_para_json(chamado) for chamado in chamados], headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/ti/chamados/{id}/reportar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
-    async def chamado_reportar_route(request: Request, usuario: dict) -> Response:
-        """Avisa o usuário que o chamado dele está `aguardando_usuario` —
-        hoje só marca `reportado_em` (mock, nenhum e-mail sai de verdade
-        ainda, ver docstring de `tools/ti/glpi.py`)."""
-        try:
-            chamado_id = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        chamados_por_id = {chamado.id: chamado for chamado in _cliente.listar()}
-        if chamado_id not in chamados_por_id:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        _cliente.reportar_usuario(chamado_id)
-
-        chamado_final = next(chamado for chamado in _cliente.listar() if chamado.id == chamado_id)
-        return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)

@@ -32,10 +32,6 @@ _CONTA_NAO_DEFINIDA = "-1"
 _RESULTADOS_VALIDOS = {"aceita", "corrigida"}
 
 
-def _data(valor):
-    return valor.date() if hasattr(valor, "date") else valor
-
-
 def _buscar_lancamentos(filiais: list[str], desde: date) -> list[LancamentoContabil]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
@@ -56,7 +52,7 @@ def _buscar_lancamentos(filiais: list[str], desde: date) -> list[LancamentoConta
             conta_descricao=conta_descricao,
             historico=historico,
             valor=float(_comum.serializar(valor)),
-            data_movimentacao=_data(data_movimentacao),
+            data_movimentacao=_comum.normalizar_data(data_movimentacao),
         )
         for (documento, linha, conta, conta_descricao, historico, valor, data_movimentacao) in linhas
     ]

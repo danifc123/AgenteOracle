@@ -1,6 +1,7 @@
 """Utilitários compartilhados entre os relatórios fixos de `relatorios/*.py` —
-extraído porque `serializar`, `filiais_da_query` e `parametros_opcionais`
-eram copiados byte-a-byte em praticamente todo arquivo do módulo.
+extraído porque `serializar`, `filiais_da_query`, `parametros_opcionais` e
+`normalizar_data` eram copiados byte-a-byte em praticamente todo arquivo do
+módulo.
 
 Datas do Protheus (E1_VENCTO, E5_DATA, C5_EMISSAO...) são guardadas como
 texto "YYYYMMDD" — mesmo no Oracle real, confirmado via `USER_TAB_COLUMNS`
@@ -43,6 +44,29 @@ from agente_oracle.tools.ti import acessos_dados
 # filtro opcional escrito à mão na maioria dos relatórios, sem passar por
 # `filtro_vazio()`) — usado por `aplicar_cast_binds_opcionais()` abaixo.
 _BIND_OPCIONAL_REGEX = re.compile(r":(\w+) IS NULL OR :\1 = ''")
+
+
+def aplicar_cast_binds_opcionais(sql: str) -> str:
+    """Aplica de uma vez, em toda a query, o mesmo CAST que resolve a
+    "pegadinha irmã" documentada em `filtro_vazio()` — sem precisar caçar
+    manualmente qual bind precisa (é fácil esquecer um: `desvio_margem.py`
+    tinha 1, `contas_receber_produto.py` tinha 4 espalhados, cada um exigindo
+    seu próprio CAST mesmo repetindo o mesmo bind).
+
+    Acha toda ocorrência textual de `:bind IS NULL OR :bind = ''` (o padrão
+    escrito à mão em quase todo `_QUERY` deste pacote) e insere
+    `CAST(:bind AS TEXT)` no primeiro `:bind`. Chame no fim de
+    `_buscar_*()`, depois de todos os `.replace()` de placeholder de SQL,
+    assim: `sql = _comum.aplicar_cast_binds_opcionais(sql)`.
+
+    No Oracle é um no-op puro (a função devolve a SQL sem tocar, nem roda a
+    regex) — a query já funciona sem CAST lá, então não tem custo nem risco
+    de mudar comportamento no banco real."""
+    if settings.db_backend != "postgres":
+        return sql
+    return _BIND_OPCIONAL_REGEX.sub(
+        lambda m: f"CAST(:{m.group(1)} AS TEXT) IS NULL OR :{m.group(1)} = ''", sql
+    )
 
 
 def exigir_filiais_liberadas(request: Request) -> dict | JSONResponse:
@@ -110,27 +134,13 @@ def filtro_vazio(bind: str) -> str:
     return f"(:{bind} IS NULL OR :{bind} = '')"
 
 
-def aplicar_cast_binds_opcionais(sql: str) -> str:
-    """Aplica de uma vez, em toda a query, o mesmo CAST que resolve a
-    "pegadinha irmã" documentada em `filtro_vazio()` — sem precisar caçar
-    manualmente qual bind precisa (é fácil esquecer um: `desvio_margem.py`
-    tinha 1, `contas_receber_produto.py` tinha 4 espalhados, cada um exigindo
-    seu próprio CAST mesmo repetindo o mesmo bind).
-
-    Acha toda ocorrência textual de `:bind IS NULL OR :bind = ''` (o padrão
-    escrito à mão em quase todo `_QUERY` deste pacote) e insere
-    `CAST(:bind AS TEXT)` no primeiro `:bind`. Chame no fim de
-    `_buscar_*()`, depois de todos os `.replace()` de placeholder de SQL,
-    assim: `sql = _comum.aplicar_cast_binds_opcionais(sql)`.
-
-    No Oracle é um no-op puro (a função devolve a SQL sem tocar, nem roda a
-    regex) — a query já funciona sem CAST lá, então não tem custo nem risco
-    de mudar comportamento no banco real."""
-    if settings.db_backend != "postgres":
-        return sql
-    return _BIND_OPCIONAL_REGEX.sub(
-        lambda m: f"CAST(:{m.group(1)} AS TEXT) IS NULL OR :{m.group(1)} = ''", sql
-    )
+def normalizar_data(valor):
+    """Coluna de data que pode vir como `date` ou `datetime` dependendo do
+    driver/coluna (`TIMESTAMP` do STAGE vs `DATE` puro) -> sempre `date`.
+    Copiada idêntica (mesmo nome `_data`) em `classificacao_contabil.py`,
+    `score_inadimplencia.py` e `otimizador_pagamento.py` antes de vir pra
+    cá — as três num mesmo commit (2026-08-18), nenhuma reusando a outra."""
+    return valor.date() if hasattr(valor, "date") else valor
 
 
 def numero_bind(bind: str) -> str:
@@ -157,19 +167,6 @@ def numero_coluna(expressao: str) -> str:
     if settings.db_backend == "postgres":
         return f"CAST({expressao} AS NUMERIC)"
     return f"TO_NUMBER({expressao})"
-
-
-def texto_numero(expressao: str) -> str:
-    """Coluna/expressão numérica -> texto. `TO_CHAR(expressao)` de 1
-    argumento (sem máscara) é sintaxe **exclusiva do Oracle**: o `TO_CHAR`
-    do Postgres não tem overload de 1 argumento pra `numeric` (só pra
-    `timestamp`) — exige uma máscara de formato como segundo argumento.
-    Achado nos JOINs com `STAGE.bancobacen` (`TO_CHAR(bb.codigo) =
-    LPAD(...)`) em `movimento_financeiro_diario.py`/`relacao_baixas.py` ao
-    popular o banco fictício."""
-    if settings.db_backend == "postgres":
-        return f"CAST({expressao} AS TEXT)"
-    return f"TO_CHAR({expressao})"
 
 
 def origem_linha_unica() -> str:
@@ -228,3 +225,16 @@ def texto_coluna(expressao: str) -> str:
     if settings.db_backend == "postgres":
         return f"CAST({expressao} AS TEXT)"
     return f"CAST({expressao} AS VARCHAR2(4000))"
+
+
+def texto_numero(expressao: str) -> str:
+    """Coluna/expressão numérica -> texto. `TO_CHAR(expressao)` de 1
+    argumento (sem máscara) é sintaxe **exclusiva do Oracle**: o `TO_CHAR`
+    do Postgres não tem overload de 1 argumento pra `numeric` (só pra
+    `timestamp`) — exige uma máscara de formato como segundo argumento.
+    Achado nos JOINs com `STAGE.bancobacen` (`TO_CHAR(bb.codigo) =
+    LPAD(...)`) em `movimento_financeiro_diario.py`/`relacao_baixas.py` ao
+    popular o banco fictício."""
+    if settings.db_backend == "postgres":
+        return f"CAST({expressao} AS TEXT)"
+    return f"TO_CHAR({expressao})"

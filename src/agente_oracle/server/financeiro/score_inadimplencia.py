@@ -40,10 +40,6 @@ _HORIZONTE_DIAS = 60
 _TIMEOUT_HTTP_SEGUNDOS = 10.0
 
 
-def _data(valor):
-    return valor.date() if hasattr(valor, "date") else valor
-
-
 def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloReceberLiquidado]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
@@ -61,8 +57,8 @@ def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloReceberLiq
         TituloReceberLiquidado(
             cliente_codigo=cliente_codigo,
             cliente_nome=cliente_nome,
-            data_vencimento=_data(data_vencimento),
-            data_baixa=_data(data_baixa),
+            data_vencimento=_comum.normalizar_data(data_vencimento),
+            data_baixa=_comum.normalizar_data(data_baixa),
         )
         for (cliente_codigo, cliente_nome, data_vencimento, data_baixa) in linhas
     ]
@@ -108,9 +104,9 @@ def _buscar_safras(clientes_codigos: list[str]) -> list[SafraCliente]:
             cultura=cultura,
             safra_codigo=safra_codigo,
             safra_descricao=safra_descricao,
-            safra_inicio=_data(safra_inicio),
-            safra_fim=_data(safra_fim),
-            data_compra=_data(data_compra),
+            safra_inicio=_comum.normalizar_data(safra_inicio),
+            safra_fim=_comum.normalizar_data(safra_fim),
+            data_compra=_comum.normalizar_data(data_compra),
         )
         for (
             cliente_codigo,
@@ -154,7 +150,7 @@ def _buscar_abertos(
             cliente_nome=cliente_nome,
             numero=numero,
             parcela=parcela,
-            data_vencimento=_data(data_vencimento),
+            data_vencimento=_comum.normalizar_data(data_vencimento),
             saldo_aberto=float(saldo_aberto) if saldo_aberto is not None else 0.0,
         )
         for (cliente_codigo, cliente_nome, numero, parcela, data_vencimento, saldo_aberto) in linhas

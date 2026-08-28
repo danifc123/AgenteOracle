@@ -57,7 +57,15 @@
 </ng-template>
 
 <ng-template #acoesFiltro>
-  <app-botao variant="primaria" (clicked)="confirmar()"> Gerar Relatório </app-botao>
+  <app-botao
+    variant="primaria"
+    [disabled]="carregando()"
+    [loading]="carregando()"
+    loadingText="Gerando..."
+    (clicked)="confirmar()"
+  >
+    Gerar Relatório
+  </app-botao>
   <app-botao variant="acao" [disabled]="totalColunas() === 0" (clicked)="salvar()">
     <svg
       viewBox="0 0 24 24"

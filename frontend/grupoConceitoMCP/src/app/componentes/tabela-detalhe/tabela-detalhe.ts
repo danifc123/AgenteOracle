@@ -30,6 +30,7 @@ export class TabelaDetalhe {
   opcoesColunas = input<Record<string, OpcaoSelectBusca[]>>({});
   filtroInvalido = input(false);
   filiais = input<OpcaoSelectBusca[]>([]);
+  carregando = input(false);
 
   filiaisSelecionadas = model<string[]>([]);
 
@@ -88,6 +89,9 @@ export class TabelaDetalhe {
   }
 
   protected confirmar(): void {
+    if (this.carregando()) {
+      return;
+    }
     this.fecharExpandido();
     this.confirmarFiltro.emit();
   }

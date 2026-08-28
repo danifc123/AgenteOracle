@@ -8,6 +8,7 @@ export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
   {
     nome: 'vw_movimentacao_estoque',
     descricao: 'Movimentações de entrada e saída de estoque, uma por lançamento.',
+    fonte: 'stage',
     colunas: [
       { nome: 'filial', descricao: 'código da filial', tipo: 'texto' },
       { nome: 'data', descricao: 'data da movimentação', tipo: 'periodo-data' },
@@ -39,6 +40,7 @@ export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
   {
     nome: 'vw_produtos',
     descricao: 'Cadastro de produtos e níveis de estoque atuais.',
+    fonte: 'stage',
     colunas: [
       { nome: 'codigo', descricao: 'código do produto', tipo: 'texto' },
       { nome: 'descricao', descricao: 'descrição do produto', tipo: 'texto' },
@@ -50,6 +52,7 @@ export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
   {
     nome: 'vw_fornecedores',
     descricao: 'Cadastro de fornecedores.',
+    fonte: 'stage',
     colunas: [
       { nome: 'codigo', descricao: 'código do fornecedor', tipo: 'texto' },
       { nome: 'nome', descricao: 'razão social', tipo: 'texto' },

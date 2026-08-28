@@ -49,12 +49,28 @@ class RelacionamentoView:
 class ViewFinanceira:
     """Uma view liberada para o agente consultar. `nome` precisa bater exatamente
     com o nome real da view no banco (Oracle deixa identificadores em maiúsculas
-    por padrão, salvo uso de aspas)."""
+    por padrão, salvo uso de aspas).
+
+    `fonte` diz qual conexão Oracle tem essa view — "stage" (padrão, `STAGE`/
+    `SCIENCE_PROD`, roteado por `DB_BACKEND`) ou "protheus" (Protheus HML,
+    `get_protheus_connection`). São duas instâncias Oracle diferentes, sem
+    `DB LINK` entre elas — por isso nunca declare `RelacionamentoView` entre
+    views de fontes diferentes: não existe SQL único capaz de fazer esse JOIN
+    (ver `relatorio_customizado_sql.py::_fonte_comum`, que bloqueia a
+    combinação antes de tentar montar a query).
+
+    Por que existem as duas fontes (e não só uma): ver o docstring do módulo
+    `db/connection.py` — resumo rápido, o STAGE é um espelho ETL achatado
+    (um título = uma linha só, sem baixa a baixa) e só serve pra relatório
+    "visão simples"; quando o relatório precisa do ciclo completo da nota
+    (baixa a baixa, devolução), só o Protheus transacional tem esse nível
+    de detalhe."""
 
     nome: str
     descricao: str
     colunas: tuple[ColunaView, ...]
     relacionamentos: tuple[RelacionamentoView, ...] = ()
+    fonte: str = "stage"
 
 
 VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
@@ -371,6 +387,166 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 descricao="Dado de cadastro do cliente (nome, município etc.) só existe em vw_clientes.",
             ),
         ),
+    ),
+    ViewFinanceira(
+        nome="vwia_notas_compra",
+        descricao="Nota de entrada (compra) até o título a pagar — sem dado de baixa (ver vwia_baixas_pagar).",
+        colunas=(
+            ColunaView("filial", "código da filial"),
+            ColunaView("data_emissao", "data de emissão desta nota"),
+            ColunaView("nota", "número desta nota fiscal"),
+            ColunaView("serie", "série desta nota fiscal"),
+            ColunaView("natureza_codigo", "código da natureza financeira"),
+            ColunaView("natureza_descricao", "descrição da natureza financeira"),
+            ColunaView("fornecedor_codigo", "código do fornecedor + loja, formato 'codigo - loja'"),
+            ColunaView("fornecedor_nome", "razão social do fornecedor"),
+            ColunaView("gera_duplicata", "flag do tipo de entrada de estoque (TES): se gera título a pagar"),
+            ColunaView("atualiza_estoque", "flag do tipo de entrada de estoque (TES): se movimenta estoque"),
+            ColunaView("prefixo", "prefixo do título a pagar"),
+            ColunaView("tipo", "tipo do título (sempre 'NF' nesta view — compra normal)"),
+            ColunaView("doc_financeiro", "número da duplicata gerada"),
+            ColunaView("numero_titulo", "número do título a pagar"),
+            ColunaView("parcela_titulo", "número da parcela do título"),
+            ColunaView("data_emissao_original", "data de emissão do título a pagar"),
+            ColunaView("data_vencimento_original", "data de vencimento do título a pagar"),
+            ColunaView("valor_original_titulo", "valor original do título, já convertido pra moeda corrente"),
+            ColunaView("valor_bruto_nf", "valor bruto da nota fiscal"),
+            ColunaView("moeda_titulo", "moeda do título, formato 'codigo-nome' (ex: '1-REAL')"),
+            ColunaView("taxa_moeda_origem", "taxa de câmbio na emissão do título"),
+            ColunaView("taxa_data_emissao_nf", "taxa de câmbio na data de emissão da nota"),
+            ColunaView("valor_moeda_titulo", "valor do título na moeda original dele"),
+            ColunaView("valor_reais_titulo", "valor do título em reais"),
+            ColunaView("saldo_moeda_titulo", "saldo em aberto na moeda original do título"),
+            ColunaView(
+                "saldo_aberto",
+                "valor numérico do saldo em aberto em reais — NÃO é um flag/booleano. "
+                "0 = título já quitado; qualquer valor MAIOR QUE 0 = título em aberto "
+                "(use 'saldo_aberto > 0', nunca 'saldo_aberto = 1')",
+            ),
+        ),
+        fonte="protheus",
+    ),
+    ViewFinanceira(
+        nome="vwia_devolucoes_compra",
+        descricao="Devolução de mercadoria ao fornecedor até o título gerado — sem dado de baixa (ver vwia_baixas_pagar).",
+        colunas=(
+            ColunaView("filial", "código da filial"),
+            ColunaView(
+                "data_emissao_origem_compra", "data de emissão da compra original que está sendo devolvida"
+            ),
+            ColunaView("numero_nota_origem", "número da nota de compra original"),
+            ColunaView("serie_origem", "série da nota de compra original"),
+            ColunaView("data_emissao", "data de emissão desta devolução"),
+            ColunaView("nota", "número desta nota fiscal de devolução"),
+            ColunaView("serie", "série desta nota fiscal de devolução"),
+            ColunaView("natureza_codigo", "código da natureza financeira"),
+            ColunaView("natureza_descricao", "descrição da natureza financeira"),
+            ColunaView("fornecedor_codigo", "código do fornecedor + loja, formato 'codigo - loja'"),
+            ColunaView("fornecedor_nome", "razão social do fornecedor"),
+            ColunaView("prefixo", "prefixo do título gerado pela devolução"),
+            ColunaView("tipo", "tipo do título (sempre 'NDF' nesta view — nota de débito ao fornecedor)"),
+            ColunaView("doc_financeiro", "número da duplicata gerada"),
+            ColunaView("numero_titulo", "número do título gerado pela devolução"),
+            ColunaView("parcela_titulo", "número da parcela do título"),
+            ColunaView("data_emissao_original", "data de emissão do título"),
+            ColunaView("data_vencimento_original", "data de vencimento do título"),
+            ColunaView("valor_original_titulo", "valor original do título, já convertido pra moeda corrente"),
+            ColunaView("valor_bruto_nf", "valor bruto da nota fiscal de devolução"),
+            ColunaView("moeda_titulo", "moeda do título, formato 'codigo-nome' (ex: '1-REAL')"),
+            ColunaView("taxa_moeda_origem", "taxa de câmbio na emissão do título"),
+            ColunaView("taxa_data_emissao_nf", "taxa de câmbio na data de emissão da nota"),
+            ColunaView("valor_moeda_titulo", "valor do título na moeda original dele"),
+            ColunaView("valor_reais_titulo", "valor do título em reais"),
+            ColunaView("saldo_moeda_titulo", "saldo em aberto na moeda original do título"),
+            ColunaView(
+                "saldo_aberto",
+                "valor numérico do saldo em aberto em reais — NÃO é um flag/booleano. "
+                "0 = título já quitado; qualquer valor MAIOR QUE 0 = título em aberto "
+                "(use 'saldo_aberto > 0', nunca 'saldo_aberto = 1')",
+            ),
+        ),
+        fonte="protheus",
+    ),
+    ViewFinanceira(
+        nome="vwia_baixas_pagar",
+        descricao=(
+            "Baixas (pagamentos) de títulos a pagar — uma linha por baixa. Combine com "
+            "vwia_notas_compra ou vwia_devolucoes_compra (mesma filial/prefixo/número/parcela/"
+            "tipo/fornecedor) pra ver o título de origem."
+        ),
+        colunas=(
+            ColunaView("filial", "código da filial"),
+            ColunaView("prefixo", "prefixo do título baixado"),
+            ColunaView("numero_titulo", "número do título baixado"),
+            ColunaView("parcela_titulo", "número da parcela baixada"),
+            ColunaView("tipo", "tipo do título baixado ('NF' = compra normal, 'NDF' = devolução)"),
+            ColunaView("fornecedor_codigo", "código do fornecedor + loja, formato 'codigo - loja'"),
+            ColunaView(
+                "seq_baixa",
+                "sequência da baixa (um título pode ter mais de uma baixa parcial), a partir de 1",
+            ),
+            ColunaView("tipo_doc_baixa", "código do tipo de documento da baixa (ex: 'CH', 'TR', 'DC')"),
+            ColunaView("desc_tipo_doc_baixa", "descrição por extenso do tipo de documento da baixa"),
+            ColunaView("data_baixa", "data em que o título foi efetivamente pago"),
+            ColunaView("taxa_data_baixa", "taxa de câmbio na data da baixa"),
+            ColunaView("valor_baixado_moeda", "valor baixado (pago) na moeda original do título"),
+            ColunaView("valor_baixado_reais", "valor baixado (pago) em reais"),
+            ColunaView("valor_juros_baixa", "valor de juros pago por atraso nessa baixa (0 se não houve)"),
+            ColunaView("valor_multa_baixa", "valor de multa paga por atraso nessa baixa (0 se não houve)"),
+            ColunaView("valor_correcao_baixa", "valor de correção monetária nessa baixa (0 se não houve)"),
+            ColunaView("valor_desconto_baixa", "valor de desconto obtido nessa baixa (0 se não houve)"),
+            ColunaView("valor_liquido_baixa", "valor líquido efetivamente pago nessa baixa"),
+            ColunaView("motivo_baixa", "código do motivo da baixa"),
+            ColunaView("banco_baixa", "código do banco usado na baixa"),
+            ColunaView("agencia_baixa", "agência bancária usada na baixa"),
+            ColunaView("conta_baixa", "conta bancária usada na baixa"),
+            ColunaView("documento_baixa", "número do documento da baixa (ex: número do cheque)"),
+            ColunaView("recibo_baixa", "número do recibo da baixa"),
+            ColunaView("historico_baixa", "descrição/histórico livre da baixa"),
+        ),
+        relacionamentos=(
+            RelacionamentoView(
+                view_destino="vwia_notas_compra",
+                colunas_locais=(
+                    "filial",
+                    "prefixo",
+                    "numero_titulo",
+                    "parcela_titulo",
+                    "tipo",
+                    "fornecedor_codigo",
+                ),
+                colunas_destino=(
+                    "filial",
+                    "prefixo",
+                    "numero_titulo",
+                    "parcela_titulo",
+                    "tipo",
+                    "fornecedor_codigo",
+                ),
+                descricao="Título de compra normal que essa baixa quitou (parcial ou totalmente).",
+            ),
+            RelacionamentoView(
+                view_destino="vwia_devolucoes_compra",
+                colunas_locais=(
+                    "filial",
+                    "prefixo",
+                    "numero_titulo",
+                    "parcela_titulo",
+                    "tipo",
+                    "fornecedor_codigo",
+                ),
+                colunas_destino=(
+                    "filial",
+                    "prefixo",
+                    "numero_titulo",
+                    "parcela_titulo",
+                    "tipo",
+                    "fornecedor_codigo",
+                ),
+                descricao="Título de devolução (NDF) que essa baixa quitou (parcial ou totalmente).",
+            ),
+        ),
+        fonte="protheus",
     ),
 )
 

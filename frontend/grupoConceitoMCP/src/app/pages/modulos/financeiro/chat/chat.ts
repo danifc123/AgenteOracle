@@ -1,16 +1,13 @@
-import { HttpClient } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
-import { MCP_API_BASE_URL } from '../../../../app-config';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
+import { ChatFinanceiro } from '../../../../servicos/chat-financeiro';
 import { ChatEntrada } from './entrada/chat-entrada';
-import { ChatMensagens, ConsultaUsada, MensagemChat } from './mensagens/chat-mensagens';
+import { ChatMensagens } from './mensagens/chat-mensagens';
 
-interface RespostaChat {
-  resposta: string;
-  consultas: ConsultaUsada[];
-}
-
+/** Estado da conversa (mensagens/enviando/erros) vive em `ChatFinanceiro`
+ * (serviço root), não aqui — sobrevive à navegação, então sair da tela no
+ * meio de uma pergunta não perde a resposta. Esta classe só cuida do
+ * rascunho ainda não enviado (`entrada`), que não faz sentido sobreviver. */
 @Component({
   selector: 'app-chat',
   imports: [ChatMensagens, ChatEntrada, ModuloHeader],
@@ -18,81 +15,20 @@ interface RespostaChat {
   styleUrl: './chat.scss',
 })
 export class Chat {
-  private readonly http = inject(HttpClient);
+  protected readonly servico = inject(ChatFinanceiro);
 
-  mensagens = signal<MensagemChat[]>([]);
   entrada = signal('');
-  enviando = signal(false);
-  erro = signal<string | null>(null);
-  baixandoSql = signal<string | null>(null);
 
   enviar(): void {
     const texto = this.entrada().trim();
-    if (!texto || this.enviando()) {
+    if (!texto || this.servico.enviando()) {
       return;
     }
-
-    const historico = this.mensagens().map(({ role, content }) => ({ role, content }));
-
-    this.mensagens.update((atual) => [...atual, { role: 'user', content: texto }]);
+    this.servico.enviarMensagem(texto);
     this.entrada.set('');
-    this.enviando.set(true);
-    this.erro.set(null);
-
-    this.http
-      .post<RespostaChat>(`${MCP_API_BASE_URL}/api/financeiro/chat`, { mensagem: texto, historico })
-      .subscribe({
-        next: (resultado) => {
-          this.mensagens.update((atual) => [
-            ...atual,
-            { role: 'assistant', content: resultado.resposta, consultas: resultado.consultas },
-          ]);
-          this.enviando.set(false);
-        },
-        error: () => {
-          this.erro.set(
-            'Não foi possível falar com o agente. Verifique se o servidor e o Ollama estão em execução.',
-          );
-          this.enviando.set(false);
-        },
-      });
   }
 
   baixarRelatorio(dados: { sql: string; titulo: string }): void {
-    const { sql, titulo } = dados;
-
-    if (this.baixandoSql()) {
-      return;
-    }
-
-    this.baixandoSql.set(sql);
-    this.erro.set(null);
-
-    this.http
-      .post(
-        `${MCP_API_BASE_URL}/api/financeiro/relatorio/exportar`,
-        { sql, titulo },
-        { observe: 'response', responseType: 'blob' },
-      )
-      .subscribe({
-        next: (resposta) => {
-          const blob = resposta.body;
-          if (!blob) {
-            this.baixandoSql.set(null);
-            return;
-          }
-
-          const nomeArquivo = extrairNomeArquivo(
-            resposta.headers.get('content-disposition'),
-            'relatorio.xlsx',
-          );
-          baixarBlob(blob, nomeArquivo);
-          this.baixandoSql.set(null);
-        },
-        error: () => {
-          this.erro.set('Não foi possível gerar o Excel do relatório.');
-          this.baixandoSql.set(null);
-        },
-      });
+    this.servico.baixarRelatorio(dados.sql, dados.titulo);
   }
 }

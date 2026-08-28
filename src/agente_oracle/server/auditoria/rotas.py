@@ -1,21 +1,30 @@
 """Rota de auditoria de dados — roda sob demanda (nunca em background), só
-quando o usuário clica no botão. Escopo por módulo/departamento, de
+quando o usuário clica num botão de ação. Escopo por módulo/departamento, de
 propósito: cada departamento roda e revisa só a própria auditoria — um
-Financeiro nunca dispara nem vê achado de outro módulo, e o tamanho do prompt
-mandado pra IA fica proporcional a UM departamento, não à soma de todos os
-que o usuário tem acesso (o que não escalaria bem conforme mais módulos
-forem ganhando provider). Hoje só existe o provedor do Financeiro, mas
-`_PROVEDORES_POR_MODULO` é o ponto de extensão pra quando outro módulo
-(Estoque, ...) ganhar backend de verdade — a análise genérica
-(`agent/auditoria/analise.py`) nunca importa nada de um módulo específico, só
-esta rota conhece os dois lados."""
+Financeiro nunca dispara nem vê achado de outro módulo.
+
+Cada módulo declara uma lista de `AcaoAuditoria` (`_ACOES_POR_MODULO`) — o
+usuário escolhe módulo E ação (`GET /api/auditoria?modulo=X&acao=Y`), nunca
+"roda tudo de uma vez": ação tipo `"ia"` gasta uma consulta real ao Ollama
+(prompt proporcional a UM departamento, não à soma de todos os que o usuário
+tem acesso); ação tipo `"deterministico"` é só SQL, sem custo de IA nenhum,
+por isso pode ser rodada solta sem preocupação. `GET /api/auditoria/acoes`
+devolve a lista pro frontend montar os botões — dado declarativo, não lista
+fixa no Angular, então um módulo novo (ou uma ação nova num módulo existente)
+não pede mudança de frontend, só uma entrada nova em `_ACOES_POR_MODULO`."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.agent.auditoria.analise import Achado, analisar_perfis, filtrar_valores_conhecidos
-from agente_oracle.agent.financeiro.auditoria import construir_perfis_financeiro
+from agente_oracle.agent.financeiro.auditoria import (
+    construir_achados_desvio_margem,
+    construir_perfis_financeiro,
+)
 from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_desenvolvedor
@@ -24,8 +33,33 @@ from agente_oracle.tools.auditoria import dispensados
 from agente_oracle.tools.auditoria import historico as historico_tools
 from agente_oracle.tools.auth import papeis
 
-_PROVEDORES_POR_MODULO = {
-    "financeiro": construir_perfis_financeiro,
+
+@dataclass(frozen=True)
+class AcaoAuditoria:
+    id: str
+    rotulo: str
+    descricao: str
+    tipo: str  # "ia" (gasta Ollama, devolve list[PerfilCampo]) | "deterministico" (só SQL, devolve list[Achado])
+    executar: Callable[[], list]
+
+
+_ACOES_POR_MODULO: dict[str, list[AcaoAuditoria]] = {
+    "financeiro": [
+        AcaoAuditoria(
+            id="qualidade_dado",
+            rotulo="Qualidade de Dado",
+            descricao="A IA aponta valores fora do padrão em filial, estado, CPF/CNPJ etc.",
+            tipo="ia",
+            executar=construir_perfis_financeiro,
+        ),
+        AcaoAuditoria(
+            id="desvio_margem",
+            rotulo="Desvio de Margem",
+            descricao="Vendas com margem bem abaixo da média do produto nos últimos 30 dias — sem IA.",
+            tipo="deterministico",
+            executar=construir_achados_desvio_margem,
+        ),
+    ],
 }
 
 
@@ -40,6 +74,28 @@ def _achado_para_json(achado: Achado) -> dict:
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/auditoria/acoes", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS")
+    async def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
+        """Ações de auditoria disponíveis pro módulo informado — o frontend
+        monta um botão por ação (`auditoria-painel`), cada uma rodando só a
+        própria verificação. Módulo sem ação nenhuma (Estoque/RH/TI hoje)
+        devolve lista vazia, não erro — a tela mostra um estado vazio."""
+        modulo = request.query_params.get("modulo", "").strip()
+        if not modulo or modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
+            return JSONResponse(
+                {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
+            )
+
+        acoes = _ACOES_POR_MODULO.get(modulo, [])
+        return JSONResponse(
+            [
+                {"id": acao.id, "rotulo": acao.rotulo, "descricao": acao.descricao, "tipo": acao.tipo}
+                for acao in acoes
+            ],
+            headers=CORS_HEADERS,
+        )
+
     @mcp.custom_route("/api/auditoria/historico/ativo", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
     async def auditoria_historico_ativo_route(request: Request, usuario: dict) -> Response:
@@ -103,27 +159,24 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/auditoria", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")
     async def auditoria_route(request: Request, usuario: dict) -> Response:
-        """Roda a análise de qualidade de dados ao vivo pra UM módulo só
-        (`?modulo=financeiro`) — cada departamento roda e revisa a própria
-        auditoria, nunca a de outro. Devolve TODO achado ATIVO daquele
-        módulo — o quadro completo do que está pendente, não só o que
-        apareceu nesta execução. Valores já identificados por QUALQUER
-        execução (de qualquer usuário) são tirados dos perfis ANTES de
-        chamar a IA (`historico.ja_identificados` + `filtrar_valores_conhecidos`),
-        pra não gastar uma chamada de IA "redescobrindo" o que já se sabe; os
-        achados assim excluídos da análise são buscados de volta prontos,
-        via `historico.achados_ativos` — chamado ANTES de `historico.salvar`,
-        de propósito: `achados_novos` e `achados_ja_conhecidos` só ficam
-        disjuntos se `achados_ativos` for lido do banco ANTES dos achados
-        novos serem gravados; lido depois, cada achado novo aparecia
-        duplicado (uma vez vindo da análise, outra vindo do banco já com a
-        linha recém-inserida) — bug real que já aconteceu. `ativo` é a ÚNICA
-        fonte de verdade do que aparece aqui — dispensar
-        (`/api/auditoria/dispensar`) desativa, então não tem filtro adicional
-        por usuário depois disso; sem isso, um achado com `ativo=True`
-        (mostrado como "Ativo" na Lista de Auditoria) podia sumir do dialog
-        por causa de uma dispensa antiga, de antes de dispensar passar a
-        desativar — bug real que já aconteceu."""
+        """Roda UMA ação de auditoria ao vivo (`?modulo=financeiro&acao=
+        desvio_margem`) — cada departamento roda e revisa a própria
+        auditoria, nunca a de outro, e cada ação só gasta o custo dela
+        mesma (`tipo="ia"` chama Ollama; `tipo="deterministico"` é só SQL).
+        Devolve TODO achado ATIVO daquele módulo — o quadro completo do que
+        está pendente, de qualquer ação já rodada antes, não só o que essa
+        execução achou agora. Valor já identificado por QUALQUER execução
+        (de qualquer usuário, de qualquer ação) é tirado ANTES de rodar de
+        novo (`historico.ja_identificados`), pra não gastar IA
+        "redescobrindo" o que já se sabe nem duplicar achado determinístico
+        no histórico a cada clique; o que foi excluído assim é buscado de
+        volta pronto via `historico.achados_ativos` — chamado ANTES de
+        `historico.salvar`, de propósito: `achados_novos` e
+        `achados_ja_conhecidos` só ficam disjuntos nessa ordem (lido depois,
+        cada achado novo aparecia duplicado — bug real que já aconteceu).
+        `ativo` é a ÚNICA fonte de verdade do que aparece aqui — dispensar
+        (`/api/auditoria/dispensar`) desativa, então não tem filtro
+        adicional por usuário depois disso."""
         modulo = request.query_params.get("modulo", "").strip()
         if not modulo:
             return JSONResponse(
@@ -135,23 +188,29 @@ def registrar(mcp) -> None:
                 {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
             )
 
-        construir_perfis = _PROVEDORES_POR_MODULO.get(modulo)
-        if construir_perfis is None:
+        acao_id = request.query_params.get("acao", "").strip()
+        acao = next((item for item in _ACOES_POR_MODULO.get(modulo, []) if item.id == acao_id), None)
+        if acao is None:
             return JSONResponse(
-                {"erro": "Este módulo ainda não tem auditoria disponível."},
+                {"erro": "Informe uma ação de auditoria válida pra esse módulo."},
                 status_code=400,
                 headers=CORS_HEADERS,
             )
 
-        perfis = construir_perfis()
-
         # Global: um problema já identificado antes (por qualquer execução,
-        # de qualquer usuário) não é reanalisado — evita gastar uma chamada
-        # de IA "redescobrindo" o que já se sabe que existe.
-        perfis = filtrar_valores_conhecidos(perfis, historico_tools.ja_identificados())
+        # de qualquer ação) não é reanalisado nem re-registrado.
+        conhecidos = historico_tools.ja_identificados()
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
-        achados_novos = await analisar_perfis(ollama_client, settings.ollama_model, perfis)
+        if acao.tipo == "ia":
+            perfis = filtrar_valores_conhecidos(acao.executar(), conhecidos)
+            ollama_client = AsyncClient(host=settings.ollama_host)
+            achados_novos = await analisar_perfis(ollama_client, settings.ollama_model, perfis)
+        else:
+            achados_novos = [
+                achado
+                for achado in acao.executar()
+                if (achado.modulo, achado.view, achado.campo, achado.valor) not in conhecidos
+            ]
 
         # Busca o que já era conhecido e continua ativo ANTES de salvar os
         # achados novos — nessa ordem, `achados_ja_conhecidos` nunca inclui

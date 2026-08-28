@@ -1,8 +1,10 @@
-"""Testa `/api/auditoria` e `/api/auditoria/dispensar` de ponta a ponta
-contra o Postgres de teste. A análise em si depende do Ollama estar
-disponível no ambiente — `analisar_perfis` já cai em lista vazia nesse caso
-(mesmo fallback usado nos testes de previsão), então os testes aqui cobrem
-shape/autorização/RBAC, não o conteúdo exato dos achados."""
+"""Testa `/api/auditoria`, `/api/auditoria/acoes` e `/api/auditoria/dispensar`
+de ponta a ponta contra o Postgres de teste. A ação `tipo="ia"`
+(`qualidade_dado`) depende do Ollama estar disponível no ambiente —
+`analisar_perfis` já cai em lista vazia nesse caso (mesmo fallback usado nos
+testes de previsão), então os testes aqui cobrem shape/autorização/RBAC, não
+o conteúdo exato dos achados. Ação `tipo="deterministico"` (`desvio_margem`)
+não depende do Ollama."""
 
 import uuid
 
@@ -35,13 +37,78 @@ def test_auditoria_sem_token_e_nao_autorizado(mcp_app):
 
 
 def test_auditoria_com_token_devolve_lista(mcp_app, token_teste):
-    resposta = mcp_app.get("/api/auditoria", params={"modulo": "financeiro"}, headers=_auth(token_teste))
+    resposta = mcp_app.get(
+        "/api/auditoria",
+        params={"modulo": "financeiro", "acao": "qualidade_dado"},
+        headers=_auth(token_teste),
+    )
     assert resposta.status_code == 200
     achados = resposta.json()
     assert isinstance(achados, list)
     for achado in achados:
         assert set(achado.keys()) == {"modulo", "view", "campo", "valor", "descricao"}
         # `usuario_teste` só tem o papel "financeiro" — nunca deveria ver achado de outro módulo.
+        assert achado["modulo"] == "financeiro"
+
+
+def test_auditoria_acoes_lista_as_disponiveis_do_modulo(mcp_app, token_teste):
+    resposta = mcp_app.get(
+        "/api/auditoria/acoes", params={"modulo": "financeiro"}, headers=_auth(token_teste)
+    )
+    assert resposta.status_code == 200
+    acoes = resposta.json()
+    ids = {acao["id"] for acao in acoes}
+    assert {"qualidade_dado", "desvio_margem"} <= ids
+    for acao in acoes:
+        assert set(acao.keys()) == {"id", "rotulo", "descricao", "tipo"}
+        assert acao["tipo"] in ("ia", "deterministico")
+
+
+def test_auditoria_acoes_modulo_sem_acao_devolve_lista_vazia(mcp_app):
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    login = f"teste_estoque_acoes_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    criado = usuarios_tools.criar_usuario(login, senha, "Estoque de Teste (integração)", ["estoque"])
+    try:
+        resposta_login = mcp_app.post("/api/auth/login", json={"usuario": login, "senha": senha})
+        token = resposta_login.json()["token"]
+
+        resposta = mcp_app.get("/api/auditoria/acoes", params={"modulo": "estoque"}, headers=_auth(token))
+        assert resposta.status_code == 200
+        assert resposta.json() == []
+    finally:
+        usuarios_tools.deletar_usuario(criado["id"])
+
+
+def test_auditoria_sem_acao_e_rejeitado(mcp_app, token_teste):
+    """Sem `?acao=`, a rota não escolhe uma ação sozinha — cada ação tem
+    custo/comportamento diferente (uma gasta Ollama, outra não), então o
+    chamador sempre precisa dizer qual quer rodar."""
+    resposta = mcp_app.get("/api/auditoria", params={"modulo": "financeiro"}, headers=_auth(token_teste))
+    assert resposta.status_code == 400
+
+
+def test_auditoria_acao_invalida_e_rejeitada(mcp_app, token_teste):
+    resposta = mcp_app.get(
+        "/api/auditoria",
+        params={"modulo": "financeiro", "acao": "nao-existe"},
+        headers=_auth(token_teste),
+    )
+    assert resposta.status_code == 400
+
+
+def test_auditoria_acao_desvio_margem_nao_precisa_de_ollama(mcp_app, token_teste):
+    """`desvio_margem` é `tipo="deterministico"` — só SQL, então precisa
+    responder normalmente mesmo sem depender do Ollama estar no ar (ao
+    contrário de `qualidade_dado`, que cai em lista vazia nesse caso)."""
+    resposta = mcp_app.get(
+        "/api/auditoria",
+        params={"modulo": "financeiro", "acao": "desvio_margem"},
+        headers=_auth(token_teste),
+    )
+    assert resposta.status_code == 200
+    for achado in resposta.json():
         assert achado["modulo"] == "financeiro"
 
 
@@ -64,9 +131,10 @@ def test_auditoria_usuario_estoque_nao_acessa_financeiro(mcp_app):
         )
         assert resposta_financeiro.status_code == 403
 
-        # Módulo liberado pro papel, mas ainda sem provider cadastrado em
-        # `_PROVEDORES_POR_MODULO` — 400, não 403 (a diferença importa: aqui
-        # o problema é "não implementado ainda", não "sem permissão").
+        # Módulo liberado pro papel, mas sem nenhuma ação cadastrada em
+        # `_ACOES_POR_MODULO` ainda — 400 (sem `acao` válida pra rodar), não
+        # 403 (a diferença importa: aqui o problema é "não implementado
+        # ainda", não "sem permissão").
         resposta_estoque = mcp_app.get("/api/auditoria", params={"modulo": "estoque"}, headers=_auth(token))
         assert resposta_estoque.status_code == 400
     finally:
@@ -154,7 +222,11 @@ def test_dispensados_sozinho_nao_esconde_do_get(mcp_app, token_teste, usuario_te
         str(usuario_teste["id"]), "financeiro", "vw_teste_dispensados_sozinho", "campo", "valor-r"
     )
 
-    resposta = mcp_app.get("/api/auditoria", params={"modulo": "financeiro"}, headers=_auth(token_teste))
+    resposta = mcp_app.get(
+        "/api/auditoria",
+        params={"modulo": "financeiro", "acao": "qualidade_dado"},
+        headers=_auth(token_teste),
+    )
     assert resposta.status_code == 200
     achados = resposta.json()
     assert any(

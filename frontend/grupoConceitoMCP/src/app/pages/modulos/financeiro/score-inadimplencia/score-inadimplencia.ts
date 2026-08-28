@@ -42,6 +42,14 @@ interface LocalizacaoCliente {
   resolvido: boolean;
 }
 
+interface TituloEmRisco {
+  numero: string;
+  parcela: string;
+  data_vencimento: string;
+  saldo_aberto: number;
+  dias_ate_vencimento: number;
+}
+
 interface ScoreInadimplencia {
   cliente_codigo: string;
   cliente_nome: string;
@@ -51,6 +59,7 @@ interface ScoreInadimplencia {
   safra_ativa: SafraAtiva | null;
   fatores: string[];
   localizacao: LocalizacaoCliente | null;
+  titulos_em_risco: TituloEmRisco[];
 }
 
 const ROTULOS_TENDENCIA: Record<ComportamentoPagamento['tendencia'], string> = {
@@ -64,12 +73,14 @@ const ROTULOS_TENDENCIA: Record<ComportamentoPagamento['tendencia'], string> = {
  * Item "Score Preditivo de Inadimplência" da planilha de demandas de IA
  * do Financeiro (Contas a Receber e Cobrança). NÃO é um modelo de
  * machine learning treinado — é um indicador composto por regra clara
- * (comportamento de pagamento + anomalia climática regional via
- * Open-Meteo), ver `agent/financeiro/score_inadimplencia.py`. O clima só
- * conta pontos quando o cliente está dentro da janela ativa da própria
- * safra (`safra_ativa` — cultura/safra inferida da compra mais recente
- * dele, `vw_safra_cliente`) — fora da janela crítica da lavoura, clima é
- * ruído, não sinal de risco.
+ * (comportamento de pagamento + anomalia climática na janela real da
+ * safra, via Open-Meteo), ver `agent/financeiro/score_inadimplencia.py`.
+ * O clima só conta pontos quando o cliente tem uma safra relevante
+ * (`safra_ativa` — em andamento agora, ou encerrada há pouco tempo: a
+ * colheita recém-vendida ainda explica um atraso hoje) — fora dessa
+ * janela, clima é ruído, não sinal de risco. Cada cliente com risco
+ * também traz `titulos_em_risco` — os títulos concretos dele vencendo nos
+ * próximos 60 dias, a parte "antecipa" do score.
  *
  * Localização do cliente é cadastrada com campos separados (cidade,
  * bairro, coordenadas) em vez de texto livre — achado desta sessão
@@ -151,6 +162,14 @@ export class ScoreInadimplenciaComponent {
       return 'badge-score--medio';
     }
     return 'badge-score--baixo';
+  }
+
+  protected formatarData(data: string): string {
+    return new Date(`${data}T00:00:00`).toLocaleDateString('pt-BR');
+  }
+
+  protected formatarMoeda(valor: number): string {
+    return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
   protected rotuloLocalizacao(localizacao: LocalizacaoCliente): string {

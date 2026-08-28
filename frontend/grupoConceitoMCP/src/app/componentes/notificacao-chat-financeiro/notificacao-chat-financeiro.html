@@ -1,0 +1,66 @@
+<div class="pilha-flutuante">
+  @for (id of idsToastsVisiveis(); track id) {
+    @if (notificacaoPorId(id); as notificacao) {
+      <div class="toast">
+        <span class="toast-icone" aria-hidden="true">✓</span>
+        <div class="toast-texto">
+          <p class="toast-titulo">O agente respondeu</p>
+          <p class="toast-descricao">Sua pergunta no Assistente IA foi respondida.</p>
+        </div>
+        <div class="toast-acoes">
+          <button type="button" class="toast-botao" (click)="verConversa(id)">Ver conversa</button>
+          <button
+            type="button"
+            class="toast-fechar"
+            (click)="descartar(id)"
+            aria-label="Dispensar notificação"
+            title="Dispensar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    } @else if (erroPorId(id); as erro) {
+      <div class="toast toast--erro">
+        <span class="toast-icone" aria-hidden="true">!</span>
+        <div class="toast-texto">
+          <p class="toast-titulo">O agente não respondeu</p>
+          <p class="toast-descricao">{{ erro.mensagem }}</p>
+        </div>
+        <div class="toast-acoes">
+          <button
+            type="button"
+            class="toast-fechar"
+            (click)="descartarErro(id)"
+            aria-label="Dispensar aviso"
+            title="Dispensar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    }
+  }
+</div>

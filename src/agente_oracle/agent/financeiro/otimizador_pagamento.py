@@ -65,10 +65,6 @@ class RecomendacaoPagamento:
     motivo: str  # "desconto_por_antecipacao" | "evitar_penalidade_por_atraso"
 
 
-def _media(valores: list[float]) -> float | None:
-    return sum(valores) / len(valores) if valores else None
-
-
 def perfil_por_fornecedor(liquidados: list[TituloPagarLiquidado]) -> dict[str, PerfilPagamentoFornecedor]:
     """Agrupa o histórico de títulos já pagos por fornecedor e resume o
     padrão de desconto/penalidade de cada um. Só considera título com
@@ -101,6 +97,10 @@ def perfil_por_fornecedor(liquidados: list[TituloPagarLiquidado]) -> dict[str, P
             percentual_penalidade_medio=percentual_penalidade_medio,
         )
     return perfis
+
+
+def _media(valores: list[float]) -> float | None:
+    return sum(valores) / len(valores) if valores else None
 
 
 def recomendar_pagamentos(

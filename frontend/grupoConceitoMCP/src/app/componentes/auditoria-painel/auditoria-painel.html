@@ -16,49 +16,124 @@
         }
       </div>
     </div>
-  } @else if (!auditoria.jaExecutou() && !auditoria.carregando()) {
-    <div class="estado-inicial">
-      <p>
-        A auditoria analisa os dados do sistema em busca de possíveis problemas — cada execução é
-        uma consulta real à IA, por isso só roda quando você pedir.
-      </p>
-      <app-botao variant="primaria" (clicked)="rodar()">Rodar auditoria</app-botao>
-    </div>
-  } @else if (auditoria.carregando()) {
-    <p class="estado">Analisando os dados, isso pode levar alguns segundos...</p>
-  } @else if (auditoria.erro()) {
-    <p class="estado erro">{{ auditoria.erro() }}</p>
-  } @else if (auditoria.achados().length === 0) {
-    <p class="estado">Nenhum problema encontrado nos dados analisados.</p>
-  } @else {
-    <ul class="lista-achados">
-      @for (achado of auditoria.achados(); track chaveAchado(achado)) {
-        <li class="achado">
-          <div class="achado-corpo">
-            <p class="achado-descricao">{{ achado.descricao }}</p>
-            <p class="achado-detalhe">
-              <span class="achado-tag">{{ achado.modulo }} · {{ achado.view }}</span>
-              <span class="achado-campo-valor"
-                ><strong>{{ achado.campo }}</strong
-                >: <code>{{ achado.valor }}</code></span
-              >
-            </p>
-          </div>
-          <label
-            class="dispensar-opcao"
-            title="Some da lista agora — se o dado continuar errado, pode voltar a aparecer numa próxima auditoria"
-          >
-            <input type="checkbox" (change)="dispensar(achado)" />
-            <span>Dispensar</span>
-          </label>
-        </li>
-      }
-    </ul>
-  }
+  } @else if (auditoria.moduloAtual()) {
+    @if (auditoria.erro()) {
+      <p class="estado erro">{{ auditoria.erro() }}</p>
+    }
 
-  @if (auditoria.jaExecutou() && !auditoria.carregando()) {
-    <div class="rodape-acao">
-      <app-botao variant="contorno" (clicked)="rodar()">Rodar de novo</app-botao>
+    @if (auditoria.acoesDisponiveis().length === 0) {
+      <p class="estado">Esse módulo ainda não tem verificação de auditoria disponível.</p>
+    } @else {
+      <div class="lista-acoes">
+        @for (acao of auditoria.acoesDisponiveis(); track acao.id) {
+          <div class="cartao-acao">
+            <span
+              class="cartao-acao-icone"
+              [class.cartao-acao-icone--ia]="acao.tipo === 'ia'"
+              aria-hidden="true"
+            >
+              @if (acao.tipo === 'ia') {
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                >
+                  <path
+                    d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5"
+                    stroke-linecap="round"
+                  />
+                  <circle cx="12" cy="12" r="4" />
+                </svg>
+              } @else {
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                >
+                  <rect x="4" y="3" width="16" height="18" rx="2" />
+                  <path d="M8 8h8M8 12h3M8 16h3M14 12h2M14 16h2" stroke-linecap="round" />
+                </svg>
+              }
+            </span>
+            <div class="cartao-acao-corpo">
+              <p class="cartao-acao-titulo">{{ acao.rotulo }}</p>
+              <p class="cartao-acao-descricao">{{ acao.descricao }}</p>
+            </div>
+            <app-botao
+              variant="contorno"
+              [loading]="auditoria.acaoRodando() === acao.id"
+              [disabled]="auditoria.acaoRodando() !== null && auditoria.acaoRodando() !== acao.id"
+              loadingText="Rodando..."
+              (clicked)="rodar(acao.id)"
+            >
+              Rodar
+            </app-botao>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="secao-achados">
+      @if (gruposAchados().length === 0) {
+        <p class="estado">Nenhum achado conhecido pra esse módulo no momento.</p>
+      } @else {
+        @for (grupo of gruposAchados(); track grupo.view) {
+          <div class="grupo-achados">
+            <button
+              type="button"
+              class="grupo-achados-titulo"
+              [attr.aria-expanded]="!gruposRecolhidos().has(grupo.view)"
+              (click)="alternarGrupo(grupo.view)"
+            >
+              <svg
+                class="grupo-achados-seta"
+                [class.grupo-achados-seta--recolhida]="gruposRecolhidos().has(grupo.view)"
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                aria-hidden="true"
+              >
+                <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              {{ grupo.view }}
+              <span class="grupo-achados-contagem">({{ grupo.achados.length }})</span>
+            </button>
+            @if (!gruposRecolhidos().has(grupo.view)) {
+              <ul class="lista-achados">
+                @for (achado of grupo.achados; track chaveAchado(achado)) {
+                  <li class="achado">
+                    <div class="achado-corpo">
+                      <p class="achado-descricao">{{ achado.descricao }}</p>
+                      <p class="achado-detalhe">
+                        <span class="achado-campo-valor"
+                          ><strong>{{ achado.campo }}</strong
+                          >: <code>{{ achado.valor }}</code></span
+                        >
+                      </p>
+                    </div>
+                    <label
+                      class="dispensar-opcao"
+                      title="Some da lista agora — se o dado continuar errado, pode voltar a aparecer numa próxima auditoria"
+                    >
+                      <input type="checkbox" (change)="dispensar(achado)" />
+                      <span>Dispensar</span>
+                    </label>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        }
+      }
     </div>
   }
 </app-dialog>

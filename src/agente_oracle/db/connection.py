@@ -7,7 +7,66 @@
   aponta pro banco escolhido em `DB_BACKEND` (Oracle em produção; Postgres
   localmente, contra views de teste, já que o Oracle real não é acessível
   fora de produção).
-"""
+- `get_protheus_connection`: SEMPRE Oracle do Protheus HML (`PROTHEUS_*`),
+  nunca depende de `DB_BACKEND` — schema `PROTHMG`, tabelas transacionais
+  cruas do Protheus (SE5010, SF1010, SE2010 etc.), não o STAGE.
+
+POR QUE DUAS FONTES DE DADO DE NEGÓCIO DIFERENTES (STAGE via `get_connection`
+E Protheus HML via `get_protheus_connection`) EM VEZ DE UMA SÓ: não é
+questão de performance nem de gosto — é que elas guardam níveis de detalhe
+diferentes, e cada relatório usa a que TEM o dado que ele precisa.
+
+O STAGE (schema `STAGE`, banco `SCIENCE_PROD`) é um espelho ETL (Pentaho/
+Kettle) simplificado, feito originalmente pra alimentar Power BI/dashboards
+— cada título a pagar/receber vira UMA linha só, com um único campo
+`data_baixa`. Ele não guarda (e não tem como reconstruir depois, o dado já
+chega achatado assim): baixa a baixa quando um título é pago em partes
+(banco/agência/conta/motivo/histórico de CADA baixa), renegociação/acordo,
+nem devolução ligada de volta à nota original. Serve bem pra relatório
+"visão simples" (as 9 views curadas em `agent/financeiro/schema.py`,
+`fonte="stage"`).
+
+Quando o relatório precisa do CICLO COMPLETO da nota (emissão → título →
+baixa a baixa → devolução — ex: `vwia_notas_compra`/`vwia_devolucoes_compra`/
+`vwia_baixas_pagar`, `fonte="protheus"`), essa granularidade só existe no
+Protheus transacional (tabelas cruas, antes do ETL achatar tudo) — por isso
+essas views leem direto do Protheus HML, não do STAGE. O preço é que o
+Protheus é o banco "vivo" (maior, sem o pré-processamento do ETL), exige
+mais cuidado de consulta (ver o achado de performance documentado no topo
+da seção VWIA_* de `db/views/financeiro_science.sql`).
+
+Caminho pra ter essa granularidade no STAGE também, se um dia fizer sentido:
+pedir pro time de dados reconstruir o ETL pra capturar isso — projeto à
+parte, não algo que se resolve só mexendo nas views daqui.
+
+IMPORTANTE — por que ter `vw_titulos_receber` (e as outras 6 views curadas
+do Financeiro) em DOIS bancos ao mesmo tempo NÃO causa consulta indo pro
+lugar errado: `get_connection` decide o POOL (Oracle ou Postgres) uma vez,
+ANTES de qualquer SQL ser executado — é uma decisão por `DB_BACKEND`
+(`.env`), nunca pelo texto da query. Cada pool já é uma conexão de rede
+comprometida com UM servidor só (o DSN do Oracle, ou o host do Postgres);
+o nome da view só é resolvido pelo servidor do outro lado daquele socket
+específico — Oracle nunca "vê" a cópia do Postgres, e vice-versa. O nome
+repetido é só rótulo (mesma tabela mental, propositalmente com o mesmo
+nome pra facilitar o desenvolvedor), não um vínculo real entre os bancos.
+
+ATUALIZAÇÃO (2026-08): as 7 views fictícias de teste que existiam no
+Postgres (`vw_titulos_pagar`, `vw_titulos_receber`, `vw_clientes`,
+`vw_fornecedores`, `vw_faturamento`, `vw_lancamentos_contabeis`,
+`vw_safra_cliente` — espelho de teste, sintaxe Postgres própria, nunca
+versionado neste repo) foram apagadas. Enquanto a VPN/credencial do Oracle
+real não estava disponível, elas serviam pra desenvolver sem depender
+disso; agora que o fluxo de trabalho já usa Oracle (STAGE) e Protheus HML
+reais diretamente, mantê-las só custava confusão sem ganho — por isso
+saíram, em vez de ficarem inertes pra sempre. As 9 views curadas do STAGE
+continuam cadastradas normalmente em `agent/financeiro/schema.py`; só o
+espelho local em Postgres que deixou de existir.
+
+Consequência prática: `tests/integration/conftest.py::
+views_curadas_disponiveis()` agora só encontra as views curadas quando
+`DB_BACKEND=oracle` e elas já tiverem sido criadas de verdade no STAGE
+(via `db/views/financeiro_science.sql`, rodado pelo DBA) — contra Postgres
+ela sempre devolve `False` (skip gracioso via `DatabaseError`, não falha)."""
 
 import re
 from contextlib import contextmanager
@@ -60,6 +119,22 @@ def get_connection():
             yield _ConnectionAdapter(connection, "oracle")
         finally:
             pool.release(connection)
+
+
+@contextmanager
+def get_connection_para_fonte(fonte: str):
+    """Roteia pela `fonte` declarada em `ViewFinanceira.fonte`
+    (`agent/financeiro/schema.py`) em vez de `DB_BACKEND` — usado só pelo
+    construtor de relatório customizado, que pode precisar tanto de views do
+    STAGE quanto (futuramente) de views que moram direto no Protheus HML.
+    `"protheus"` vai pro pool independente do Protheus; qualquer outro valor
+    (hoje só `"stage"`) cai no `get_connection` de sempre."""
+    if fonte == "protheus":
+        with get_protheus_connection() as connection:
+            yield connection
+    else:
+        with get_connection() as connection:
+            yield connection
 
 
 @contextmanager

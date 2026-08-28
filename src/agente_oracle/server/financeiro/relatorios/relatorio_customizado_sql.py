@@ -1,9 +1,10 @@
 """Lógica pura (sem HTTP, sem I/O exceto a consulta em si) do relatório
 customizado: validação de coluna, montagem do SELECT com JOINs resolvidos
 automaticamente pelo grafo de relacionamentos das views, e execução da
-consulta. Separado de `relatorio_customizado.py` (que só cuida das rotas
-HTTP) pra ficar testável isoladamente, sem precisar de um `Request` do
-Starlette pra exercitar a parte que realmente tem lógica de negócio.
+consulta. Separado de `relatorio_customizado.py` (que cuida das rotas HTTP,
+incluindo o parsing de query params em `parametros_da_query`) pra ficar
+testável isoladamente, sem precisar de um `Request` do Starlette pra
+exercitar a parte que realmente tem lógica de negócio.
 
 Diferente de `consulta_livre` (que valida um SQL gerado pela IA), aqui o SQL
 inteiro é montado a partir de nomes já validados contra o registro
@@ -22,19 +23,15 @@ tela pede os valores de um <select multiplo> preenchido com os valores
 distintos que já existem naquela coluna — ver `buscar_opcoes_coluna` — não
 com texto livre digitado pelo usuário)."""
 
-import json
 from collections import deque
 
-from starlette.requests import Request
-
 from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ViewFinanceira, inferir_tipo_filtro
-from agente_oracle.db.connection import get_connection
+from agente_oracle.db.connection import get_connection_para_fonte
 from agente_oracle.server.financeiro.relatorios import _comum
+from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
 LIMITE_MAXIMO_LINHAS = 1000
 LIMITE_OPCOES_COLUNA = 500
-
-_CAMPOS_FILTRO_ACEITOS = {"valores", "min", "max", "ini", "fim"}
 
 _VIEWS_POR_NOME: dict[str, ViewFinanceira] = {view.nome: view for view in VIEWS_DISPONIVEIS}
 
@@ -54,28 +51,59 @@ def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
         f'ORDER BY "{nome_coluna}" '
         f"FETCH FIRST {LIMITE_OPCOES_COLUNA} ROWS ONLY"
     )
-    with get_connection() as connection:
+    with get_connection_para_fonte(_VIEWS_POR_NOME[nome_view].fonte) as connection:
         cursor = connection.cursor()
         cursor.execute(sql)
         return [str(linha[0]) for linha in cursor.fetchall()]
 
 
 def buscar_relatorio_customizado(
-    colunas_por_view: dict[str, list[str]], filiais: list[str], filtros: dict[str, dict[str, str | list[str]]]
-) -> tuple[list[str], list[tuple]]:
-    sql, binds = _montar_sql(colunas_por_view, filiais, filtros)
+    colunas_por_view: dict[str, list[str]],
+    filiais: list[str],
+    filtros: dict[str, dict[str, str | list[str]]],
+    pagina: int,
+) -> tuple[list[str], list[tuple], bool]:
+    fonte = _fonte_comum(list(colunas_por_view.keys()))
+    offset = (pagina - 1) * LIMITE_MAXIMO_LINHAS
+    sql, binds = _montar_sql(colunas_por_view, filiais, filtros, offset)
 
-    with get_connection() as connection:
+    with get_connection_para_fonte(fonte) as connection:
         cursor = connection.cursor()
         cursor.execute(sql, **binds)
         colunas = [descricao[0] for descricao in cursor.description]
         linhas = cursor.fetchall()
-    return colunas, linhas
+
+    # Pede uma linha a mais que o necessário (ver `_montar_sql`) só pra saber
+    # se existe próxima página sem precisar de um `COUNT(*)` — que seria caro
+    # nas views com CTE pesada (ex: `vw_baixas_pagar`) pelo mesmo motivo que
+    # a consulta principal já é.
+    tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
+    return colunas, linhas[:LIMITE_MAXIMO_LINHAS], tem_mais_paginas
+
+
+def _fonte_comum(views_selecionadas: list[str]) -> str:
+    """Todas as views escolhidas precisam vir da mesma fonte: STAGE e
+    Protheus são instâncias Oracle separadas, sem `DB LINK` entre elas, então
+    não existe SQL único capaz de fazer JOIN entre uma view de cada lado.
+    Levanta `RelatorioCustomizadoInvalido` com uma mensagem específica pra
+    esse caso — sem essa checagem, a combinação ainda falharia lá na frente
+    (nenhuma view declara relacionamento pra uma view de outra fonte), mas
+    com o erro genérico de "sem caminho de JOIN" do BFS, que não deixa claro
+    o motivo real."""
+    fontes = {_VIEWS_POR_NOME[nome].fonte for nome in views_selecionadas}
+    if len(fontes) > 1:
+        raise RelatorioCustomizadoInvalido(
+            "Não é possível combinar views de fontes diferentes (STAGE e Protheus) no mesmo relatório."
+        )
+    return fontes.pop()
 
 
 def _montar_sql(
-    colunas_por_view: dict[str, list[str]], filiais: list[str], filtros: dict[str, dict[str, str | list[str]]]
-) -> tuple[str, dict[str, str]]:
+    colunas_por_view: dict[str, list[str]],
+    filiais: list[str],
+    filtros: dict[str, dict[str, str | list[str]]],
+    offset: int,
+) -> tuple[str, dict[str, str | int]]:
     views_selecionadas = list(colunas_por_view.keys())
     arestas = _resolver_caminho_join(views_selecionadas)
 
@@ -104,19 +132,16 @@ def _montar_sql(
         )
         sql.append(f"LEFT JOIN {view_filha} {alias_filha} ON {condicoes}")
 
-    binds: dict[str, str] = {}
+    binds: dict[str, str | int] = {}
     condicoes_where = []
     for nome_view in colunas_por_view:
         view = _VIEWS_POR_NOME[nome_view]
         if not any(coluna.nome == "filial" for coluna in view.colunas):
             continue
         alias = alias_por_view[nome_view]
-        marcadores = []
-        for indice, valor in enumerate(filiais):
-            chave = f"filial_{alias}_{indice}"
-            binds[chave] = valor
-            marcadores.append(f":{chave}")
-        clausula = f'{alias}."filial" IN ({", ".join(marcadores)})'
+        marcadores, binds_filial = clausula_in(f"filial_{alias}", filiais)
+        binds.update(binds_filial)
+        clausula = f'{alias}."filial" IN {marcadores}'
         if nome_view != raiz:
             clausula = f'({clausula} OR {alias}."filial" IS NULL)'
         condicoes_where.append(clausula)
@@ -164,7 +189,14 @@ def _montar_sql(
     if condicoes_where:
         sql.append(f"WHERE {' AND '.join(condicoes_where)}")
 
-    sql.append(f"FETCH FIRST {LIMITE_MAXIMO_LINHAS} ROWS ONLY")
+    # Pede uma linha a mais que `LIMITE_MAXIMO_LINHAS` (ver `buscar_relatorio_customizado`,
+    # que descarta essa linha extra) só pra saber se tem próxima página sem
+    # precisar de um `COUNT(*)` separado. `OFFSET ... FETCH NEXT ...` é ANSI
+    # SQL — funciona em Oracle e Postgres sem branch por `db_backend`, igual
+    # o `FETCH FIRST` que já existia aqui antes da paginação.
+    sql.append("OFFSET :pagina_offset ROWS FETCH NEXT :pagina_limite ROWS ONLY")
+    binds["pagina_offset"] = offset
+    binds["pagina_limite"] = LIMITE_MAXIMO_LINHAS + 1
 
     return "\n".join(sql), binds
 
@@ -230,82 +262,6 @@ def _grafo_relacionamentos() -> dict[str, list[tuple[str, tuple[str, ...], tuple
             grafo[view.nome].append((rel.view_destino, rel.colunas_locais, rel.colunas_destino))
             grafo[rel.view_destino].append((view.nome, rel.colunas_destino, rel.colunas_locais))
     return grafo
-
-
-def parametros_da_query(
-    request: Request,
-) -> tuple[dict[str, list[str]], list[str], dict[str, dict[str, str | list[str]]]] | None:
-    """Lê `filial` (obrigatório), `colunas` (obrigatório, formato
-    "view.coluna,view.coluna,...") e `filtros` (opcional) — devolve
-    (colunas_por_view, filiais, filtros) já validados contra o registro de
-    views, ou None se algo essencial faltar/for inválido."""
-    filial_bruto = request.query_params.get("filial", "").strip()
-    filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
-
-    colunas_bruto = request.query_params.get("colunas", "").strip()
-    if not filiais or not colunas_bruto:
-        return None
-
-    colunas_por_view: dict[str, list[str]] = {}
-    for token in colunas_bruto.split(","):
-        validado = validar_coluna(token.strip())
-        if validado is None:
-            return None
-        nome_view, nome_coluna = validado
-        colunas_por_view.setdefault(nome_view, [])
-        if nome_coluna not in colunas_por_view[nome_view]:
-            colunas_por_view[nome_view].append(nome_coluna)
-
-    if not colunas_por_view:
-        return None
-
-    filtros = _parametros_filtros(request)
-    if filtros is None:
-        return None
-
-    return colunas_por_view, filiais, filtros
-
-
-def _parametros_filtros(request: Request) -> dict[str, dict[str, str | list[str]]] | None:
-    """Lê `filtros` (opcional, JSON: {"view.coluna": {"valores"|"min"|"max"|"ini"|"fim": ...}}
-    — "valores" é sempre uma lista, os demais são string) e devolve só as
-    entradas com coluna válida e algum valor não vazio — ignora
-    silenciosamente chaves de filtro que o tipo da coluna não usa (quem
-    decide que campos valem pra cada coluna é sempre `_montar_sql`, via
-    `inferir_tipo_filtro`, nunca o que vier daqui)."""
-    bruto = request.query_params.get("filtros", "").strip()
-    if not bruto:
-        return {}
-
-    try:
-        dados = json.loads(bruto)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if not isinstance(dados, dict):
-        return None
-
-    filtros: dict[str, dict[str, str | list[str]]] = {}
-    for chave, valor in dados.items():
-        if validar_coluna(chave) is None or not isinstance(valor, dict):
-            return None
-
-        entrada: dict[str, str | list[str]] = {}
-        for campo, conteudo in valor.items():
-            if campo not in _CAMPOS_FILTRO_ACEITOS:
-                continue
-            if campo == "valores":
-                if not isinstance(conteudo, list):
-                    return None
-                limpos = [str(item).strip() for item in conteudo if str(item).strip()]
-                if limpos:
-                    entrada["valores"] = limpos
-            elif str(conteudo).strip():
-                entrada[campo] = str(conteudo).strip()
-
-        if entrada:
-            filtros[chave] = entrada
-
-    return filtros
 
 
 def validar_coluna(token: str) -> tuple[str, str] | None:

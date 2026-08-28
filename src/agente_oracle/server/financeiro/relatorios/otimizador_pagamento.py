@@ -42,10 +42,6 @@ _COLUNAS = (
 )
 
 
-def _data(valor):
-    return valor.date() if hasattr(valor, "date") else valor
-
-
 def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloPagarLiquidado]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
@@ -65,8 +61,8 @@ def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloPagarLiqui
             fornecedor_codigo=fornecedor_codigo,
             fornecedor_nome=fornecedor_nome,
             valor_original=float(_comum.serializar(valor_original)),
-            data_vencimento=_data(data_vencimento),
-            data_baixa=_data(data_baixa),
+            data_vencimento=_comum.normalizar_data(data_vencimento),
+            data_baixa=_comum.normalizar_data(data_baixa),
             valor_desconto=float(_comum.serializar(valor_desconto) or 0),
             valor_multa=float(_comum.serializar(valor_multa) or 0),
             valor_juros=float(_comum.serializar(valor_juros) or 0),
@@ -104,7 +100,7 @@ def _buscar_abertos(filiais: list[str]) -> list[TituloPagarAberto]:
             numero=numero,
             parcela=parcela,
             valor_original=float(_comum.serializar(valor_original)),
-            data_vencimento=_data(data_vencimento),
+            data_vencimento=_comum.normalizar_data(data_vencimento),
         )
         for (
             fornecedor_codigo,

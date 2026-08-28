@@ -10,6 +10,10 @@
   font-size: 14px;
 }
 
+.estado.erro {
+  color: #9a2f2f;
+}
+
 .trocar-modulo {
   display: block;
   margin: -4px 0 14px;
@@ -67,32 +71,114 @@
   }
 }
 
-.estado-inicial {
+// Cartões de ação — um por verificação disponível no módulo (ver
+// `auditoria.acoesDisponiveis()`), cada um rodando independente.
+.lista-acoes {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  padding: 24px 4px;
-  text-align: center;
-  max-width: 420px;
-  margin: 0 auto;
+  gap: 10px;
+  margin-bottom: 22px;
+}
 
-  p {
-    margin: 0;
-    color: var(--color-text-muted);
-    font-size: 13.5px;
-    line-height: 1.5;
+.cartao-acao {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.cartao-acao-icone {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(47, 158, 88, 0.12);
+  color: #2f9e58;
+
+  &--ia {
+    background: rgba(124, 58, 237, 0.12);
+    color: #7c3aed;
   }
 }
 
-.rodape-acao {
+.cartao-acao-corpo {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  justify-content: center;
-  margin-top: 18px;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.estado.erro {
-  color: #9a2f2f;
+.cartao-acao-titulo {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cartao-acao-descricao {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+// Achados agrupados por `view` — separa visualmente "isso veio de qual
+// verificação" sem precisar guardar a origem em cada achado.
+.secao-achados {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.grupo-achados {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grupo-achados-titulo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 6px;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    color: var(--color-text);
+  }
+}
+
+.grupo-achados-seta {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+
+  &--recolhida {
+    transform: rotate(-90deg);
+  }
+}
+
+.grupo-achados-contagem {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .lista-achados {
@@ -138,16 +224,6 @@
   gap: 8px;
   font-size: 12px;
   color: var(--color-text-muted);
-}
-
-.achado-tag {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--color-border);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  font-size: 10.5px;
-  font-weight: 600;
 }
 
 .achado-campo-valor {

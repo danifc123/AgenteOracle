@@ -17,8 +17,8 @@ _lock = threading.Lock()
 _tentativas: dict[str, list[float]] = {}
 
 
-def _tentativas_na_janela(chave: str, agora: float) -> list[float]:
-    tentativas = [instante for instante in _tentativas.get(chave, []) if agora - instante < JANELA_SEGUNDOS]
+def _tentativas_na_janela(chave: str, agora: float, janela_segundos: int = JANELA_SEGUNDOS) -> list[float]:
+    tentativas = [instante for instante in _tentativas.get(chave, []) if agora - instante < janela_segundos]
     _tentativas[chave] = tentativas
     return tentativas
 
@@ -28,18 +28,23 @@ def limpar(chave: str) -> None:
         _tentativas.pop(chave, None)
 
 
-def registrar_falha(chave: str) -> None:
+def registrar_falha(chave: str, *, janela_segundos: int = JANELA_SEGUNDOS) -> None:
     with _lock:
         agora = time.monotonic()
-        tentativas = _tentativas_na_janela(chave, agora)
+        tentativas = _tentativas_na_janela(chave, agora, janela_segundos)
         tentativas.append(agora)
 
 
-def segundos_ate_liberar(chave: str) -> int | None:
-    """`None` se `chave` pode tentar login; senão, quantos segundos faltam até poder de novo."""
+def segundos_ate_liberar(
+    chave: str, *, limite: int = LIMITE_TENTATIVAS, janela_segundos: int = JANELA_SEGUNDOS
+) -> int | None:
+    """`None` se `chave` pode tentar de novo; senão, quantos segundos faltam
+    até poder. `limite`/`janela_segundos` permitem um limiar diferente do
+    login (ex: chat, mais generoso) sem afetar quem chama sem esses
+    argumentos — os defaults preservam o comportamento original."""
     with _lock:
         agora = time.monotonic()
-        tentativas = _tentativas_na_janela(chave, agora)
-        if len(tentativas) < LIMITE_TENTATIVAS:
+        tentativas = _tentativas_na_janela(chave, agora, janela_segundos)
+        if len(tentativas) < limite:
             return None
-        return max(1, int(JANELA_SEGUNDOS - (agora - min(tentativas))))
+        return max(1, int(janela_segundos - (agora - min(tentativas))))

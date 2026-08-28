@@ -25,6 +25,17 @@
   </app-botao>
 </div>
 
+@if (precisao(); as p) {
+  <p class="indicador-precisao">
+    @if (p.precisao_percentual !== null) {
+      Precisão observada: <strong>{{ p.precisao_percentual }}%</strong>
+      ({{ p.total_revisado }} {{ p.total_revisado === 1 ? 'revisão' : 'revisões' }})
+    } @else {
+      Ainda sem revisões suficientes pra medir precisão.
+    }
+  </p>
+}
+
 @if (erro()) {
   <p class="erro">{{ erro() }}</p>
 }
@@ -101,6 +112,43 @@
               Documento {{ sugestao.documento }}-{{ sugestao.linha }} · baseado em
               {{ sugestao.suporte_historico }} lançamentos parecidos já classificados
             </p>
+
+            <div class="acoes-sugestao">
+              <app-botao
+                variant="primaria"
+                [disabled]="revisando().has(chave(sugestao))"
+                (clicked)="aceitar(sugestao)"
+              >
+                Aceitar
+              </app-botao>
+              <app-botao
+                variant="contorno"
+                [disabled]="revisando().has(chave(sugestao))"
+                (clicked)="abrirCorrigir(sugestao)"
+              >
+                Corrigir
+              </app-botao>
+            </div>
+
+            @if (corrigindoChave() === chave(sugestao)) {
+              <div class="corrigir-inline">
+                <input
+                  type="text"
+                  placeholder="Conta correta (opcional, se souber)"
+                  [ngModel]="contaCorretaTexto()"
+                  (ngModelChange)="contaCorretaTexto.set($event)"
+                  autocomplete="off"
+                />
+                <app-botao
+                  variant="primaria"
+                  [disabled]="revisando().has(chave(sugestao))"
+                  (clicked)="confirmarCorrigir(sugestao)"
+                >
+                  Confirmar
+                </app-botao>
+                <app-botao variant="contorno" (clicked)="fecharCorrigir()">Cancelar</app-botao>
+              </div>
+            }
           </div>
         }
       </div>

@@ -9,14 +9,6 @@
   overflow: hidden;
 }
 
-.erro {
-  margin: 0;
-  padding: 10px 24px;
-  color: #9a2f2f;
-  font-size: 13px;
-  border-top: 1px solid var(--color-border);
-}
-
 @media (max-width: 720px) {
   .chat-card {
     height: calc(100vh - 220px);

@@ -25,7 +25,12 @@ número — por isso o `TO_NUMBER(...)` explícito.
 Filtros opcionais usam `:bind IS NULL OR :bind = ''` em vez de `:bind = ''`
 puro (nem `COALESCE(:bind, '') = ''` resolve — o literal `''` também é NULL
 no Oracle) — achado ao validar esta migração, ver `_comum.filtro_vazio` e o
-"ACHADO IMPORTANTE" no topo de `_comum.py`.
+"ACHADO IMPORTANTE" no topo de `_comum.py`. Vários desses binds reaparecem
+mais de uma vez na mesma cláusula (ex: `:vencto_ini` dentro do `TO_DATE`
+logo depois do `IS NULL OR ... = ''`) — a "pegadinha irmã" documentada em
+`_comum.filtro_vazio()`, por isso passa por
+`_comum.aplicar_cast_binds_opcionais()` antes de rodar (no-op contra
+Oracle, só importa se um dia isto rodar contra Postgres).
 
 O filtro "Prefixo" também ficou sem fonte de dado — `STAGE.DUPLICATA` não
 tem coluna de prefixo de documento (só `DUPLICATA`, o número em si). O
@@ -93,6 +98,7 @@ _CAMPOS_OPCIONAIS = (
 def _buscar_duplicatas(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = _QUERY.replace("__FILIAL_IN__", clausula_filial)
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

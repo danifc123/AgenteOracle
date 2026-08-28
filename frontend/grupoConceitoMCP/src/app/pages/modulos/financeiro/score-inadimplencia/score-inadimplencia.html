@@ -70,16 +70,33 @@
             </p>
             @if (item.safra_ativa) {
               <p class="safra-cliente">
-                Safra ativa: {{ item.safra_ativa.cultura }} — {{ item.safra_ativa.safra_descricao }}
+                Safra considerada: {{ item.safra_ativa.cultura }} — {{ item.safra_ativa.safra_descricao }}
               </p>
             } @else {
-              <p class="safra-cliente safra-cliente--inativa">Sem safra ativa no momento</p>
+              <p class="safra-cliente safra-cliente--inativa">Sem safra relevante no momento</p>
             }
             <ul class="fatores-score">
               @for (fator of item.fatores; track fator) {
                 <li>{{ fator }}</li>
               }
             </ul>
+
+            @if (item.titulos_em_risco.length > 0) {
+              <div class="titulos-em-risco">
+                <p class="titulos-em-risco-titulo">Títulos vencendo nos próximos 60 dias</p>
+                <ul class="titulos-em-risco-lista">
+                  @for (titulo of item.titulos_em_risco; track titulo.numero + titulo.parcela) {
+                    <li>
+                      <span class="titulo-valor">{{ formatarMoeda(titulo.saldo_aberto) }}</span>
+                      <span class="titulo-vencimento">
+                        vence em {{ formatarData(titulo.data_vencimento) }} ({{ titulo.dias_ate_vencimento }}
+                        {{ titulo.dias_ate_vencimento === 1 ? 'dia' : 'dias' }})
+                      </span>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
 
             <div class="localizacao-cliente">
               <button

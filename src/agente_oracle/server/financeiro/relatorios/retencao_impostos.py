@@ -80,7 +80,11 @@ Filtros opcionais corrigidos (2026-08) de `:bind = ''` para `:bind IS NULL OR
 :bind = ''` — Oracle converte bind de string vazia (e o literal `''`) em NULL,
 e `NULL = ''` nunca é TRUE, então todo filtro em branco fazia a consulta
 devolver zero linhas silenciosamente. Ver o "ACHADO IMPORTANTE" no topo de
-`_comum.py`. Este arquivo ainda consulta tabela crua do Protheus (não migrado
+`_comum.py`. `:vencimento_ini/fim` e `:emissao_ini/fim` reaparecem dentro do
+`TO_DATE` na mesma cláusula — a "pegadinha irmã" documentada em
+`_comum.filtro_vazio()` — por isso passa por
+`_comum.aplicar_cast_binds_opcionais()` antes de rodar (no-op contra
+Oracle). Este arquivo ainda consulta tabela crua do Protheus (não migrado
 pro STAGE ainda).
 
 MIGRAÇÃO PRO STAGE EM ESPERA (2026-08): investigamos `STAGE.IMPOSTORETIDO`
@@ -310,6 +314,7 @@ def _buscar_titulos(filiais: list[str], opcionais: dict[str, str]) -> tuple[list
         .replace("__ORDEM__", ordem_sql)
         .replace("__LIMIAR_10925__", str(_LIMIAR_10925))
     )
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

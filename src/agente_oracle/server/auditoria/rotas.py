@@ -74,6 +74,28 @@ def _achado_para_json(achado: Achado) -> dict:
 
 
 def registrar(mcp) -> None:
+    @mcp.custom_route("/api/auditoria/acoes", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS")
+    async def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
+        """Ações de auditoria disponíveis pro módulo informado — o frontend
+        monta um botão por ação (`auditoria-painel`), cada uma rodando só a
+        própria verificação. Módulo sem ação nenhuma (Estoque/RH/TI hoje)
+        devolve lista vazia, não erro — a tela mostra um estado vazio."""
+        modulo = request.query_params.get("modulo", "").strip()
+        if not modulo or modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
+            return JSONResponse(
+                {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
+            )
+
+        acoes = _ACOES_POR_MODULO.get(modulo, [])
+        return JSONResponse(
+            [
+                {"id": acao.id, "rotulo": acao.rotulo, "descricao": acao.descricao, "tipo": acao.tipo}
+                for acao in acoes
+            ],
+            headers=CORS_HEADERS,
+        )
+
     @mcp.custom_route("/api/auditoria/historico/ativo", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
     async def auditoria_historico_ativo_route(request: Request, usuario: dict) -> Response:
@@ -133,28 +155,6 @@ def registrar(mcp) -> None:
             modulos_liberados, incluir_desativados=papeis.eh_desenvolvedor(papeis_usuario)
         )
         return JSONResponse(registros, headers=CORS_HEADERS)
-
-    @mcp.custom_route("/api/auditoria/acoes", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS")
-    async def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
-        """Ações de auditoria disponíveis pro módulo informado — o frontend
-        monta um botão por ação (`auditoria-painel`), cada uma rodando só a
-        própria verificação. Módulo sem ação nenhuma (Estoque/RH/TI hoje)
-        devolve lista vazia, não erro — a tela mostra um estado vazio."""
-        modulo = request.query_params.get("modulo", "").strip()
-        if not modulo or modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
-            return JSONResponse(
-                {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
-            )
-
-        acoes = _ACOES_POR_MODULO.get(modulo, [])
-        return JSONResponse(
-            [
-                {"id": acao.id, "rotulo": acao.rotulo, "descricao": acao.descricao, "tipo": acao.tipo}
-                for acao in acoes
-            ],
-            headers=CORS_HEADERS,
-        )
 
     @mcp.custom_route("/api/auditoria", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")

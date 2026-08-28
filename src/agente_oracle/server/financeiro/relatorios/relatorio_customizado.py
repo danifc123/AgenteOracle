@@ -4,7 +4,12 @@ liberadas (`agent/financeiro/schema.py` — o mesmo registro que a IA usa em
 `consulta_livre`) e monta um relatório com os JOINs resolvidos
 automaticamente pelos relacionamentos declarados entre as views. A lógica de
 validação/montagem de SQL em si mora em `relatorio_customizado_sql.py` — este
-módulo só cuida do HTTP (parsing de request, status code, resposta)."""
+módulo só cuida do HTTP (parsing de request, status code, resposta), mesmo
+padrão dos outros relatórios fixos deste pacote (ex: `desvio_margem.py`,
+`duplicata_mercantil.py`: `_parametros_da_query` privada aqui, `registrar`
+por último)."""
+
+import json
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -18,9 +23,10 @@ from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import
     RelatorioCustomizadoInvalido,
     buscar_opcoes_coluna,
     buscar_relatorio_customizado,
-    parametros_da_query,
     validar_coluna,
 )
+
+_CAMPOS_FILTRO_ACEITOS = {"valores", "min", "max", "ini", "fim"}
 
 _ERRO_PARAMETROS = (
     "Informe ao menos uma filial e uma coluna válida (formato view.coluna) — "
@@ -28,12 +34,94 @@ _ERRO_PARAMETROS = (
 )
 
 
+def _parametros_da_query(
+    request: Request,
+) -> tuple[dict[str, list[str]], list[str], dict[str, dict[str, str | list[str]]], int] | None:
+    """Lê `filial` (obrigatório), `colunas` (obrigatório, formato
+    "view.coluna,view.coluna,...") `filtros` (opcional) e `pagina` (opcional,
+    default 1) — devolve (colunas_por_view, filiais, filtros, pagina) já
+    validados contra o registro de views, ou None se algo essencial faltar/
+    for inválido."""
+    filial_bruto = request.query_params.get("filial", "").strip()
+    filiais = [item.strip() for item in filial_bruto.split(",") if item.strip()]
+
+    colunas_bruto = request.query_params.get("colunas", "").strip()
+    if not filiais or not colunas_bruto:
+        return None
+
+    colunas_por_view: dict[str, list[str]] = {}
+    for token in colunas_bruto.split(","):
+        validado = validar_coluna(token.strip())
+        if validado is None:
+            return None
+        nome_view, nome_coluna = validado
+        colunas_por_view.setdefault(nome_view, [])
+        if nome_coluna not in colunas_por_view[nome_view]:
+            colunas_por_view[nome_view].append(nome_coluna)
+
+    if not colunas_por_view:
+        return None
+
+    filtros = _parametros_filtros(request)
+    if filtros is None:
+        return None
+
+    pagina_bruto = request.query_params.get("pagina", "1").strip()
+    pagina = int(pagina_bruto) if pagina_bruto.isdigit() else 1
+    pagina = max(pagina, 1)
+
+    return colunas_por_view, filiais, filtros, pagina
+
+
+def _parametros_filtros(request: Request) -> dict[str, dict[str, str | list[str]]] | None:
+    """Lê `filtros` (opcional, JSON: {"view.coluna": {"valores"|"min"|"max"|"ini"|"fim": ...}}
+    — "valores" é sempre uma lista, os demais são string) e devolve só as
+    entradas com coluna válida e algum valor não vazio — ignora
+    silenciosamente chaves de filtro que o tipo da coluna não usa (quem
+    decide que campos valem pra cada coluna é sempre `_montar_sql` de
+    `relatorio_customizado_sql.py`, via `inferir_tipo_filtro`, nunca o que
+    vier daqui)."""
+    bruto = request.query_params.get("filtros", "").strip()
+    if not bruto:
+        return {}
+
+    try:
+        dados = json.loads(bruto)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(dados, dict):
+        return None
+
+    filtros: dict[str, dict[str, str | list[str]]] = {}
+    for chave, valor in dados.items():
+        if validar_coluna(chave) is None or not isinstance(valor, dict):
+            return None
+
+        entrada: dict[str, str | list[str]] = {}
+        for campo, conteudo in valor.items():
+            if campo not in _CAMPOS_FILTRO_ACEITOS:
+                continue
+            if campo == "valores":
+                if not isinstance(conteudo, list):
+                    return None
+                limpos = [str(item).strip() for item in conteudo if str(item).strip()]
+                if limpos:
+                    entrada["valores"] = limpos
+            elif str(conteudo).strip():
+                entrada[campo] = str(conteudo).strip()
+
+        if entrada:
+            filtros[chave] = entrada
+
+    return filtros
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def exportar_relatorio_customizado_route(request: Request, usuario: dict) -> Response:
         """Mesma consulta da rota acima, mas devolvendo um arquivo Excel (.xlsx) para download."""
-        parametros = parametros_da_query(request)
+        parametros = _parametros_da_query(request)
         if parametros is None:
             return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
 
@@ -57,7 +145,7 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def gerar_relatorio_customizado_route(request: Request, usuario: dict) -> JSONResponse:
         """Monta e executa o SELECT (com JOINs resolvidos automaticamente) para as colunas/filial escolhidas na tela "Criar Relatório"."""
-        parametros = parametros_da_query(request)
+        parametros = _parametros_da_query(request)
         if parametros is None:
             return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
 

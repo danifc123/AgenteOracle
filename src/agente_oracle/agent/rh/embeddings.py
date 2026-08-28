@@ -20,6 +20,17 @@ class AnaliseIndisponivel(Exception):
     mesmo propósito."""
 
 
+async def gerar_embedding(ollama_client: AsyncClient, modelo_embedding: str, texto: str) -> list[float]:
+    try:
+        resposta = await ollama_client.embed(model=modelo_embedding, input=texto)
+        return list(resposta.embeddings[0])
+    except Exception as erro:
+        raise AnaliseIndisponivel(
+            "Não foi possível gerar o embedding com a IA no momento (confira se o modelo de "
+            "embeddings está baixado no Ollama)."
+        ) from erro
+
+
 def similaridade_cosseno(vetor_a: list[float], vetor_b: list[float]) -> float:
     """1.0 = vetores idênticos em direção, 0.0 = ortogonais (sem relação),
     -1.0 = opostos. Devolve 0.0 se algum vetor for nulo (norma zero) ou se os
@@ -36,14 +47,3 @@ def similaridade_cosseno(vetor_a: list[float], vetor_b: list[float]) -> float:
     if norma_a == 0 or norma_b == 0:
         return 0.0
     return produto_escalar / (norma_a * norma_b)
-
-
-async def gerar_embedding(ollama_client: AsyncClient, modelo_embedding: str, texto: str) -> list[float]:
-    try:
-        resposta = await ollama_client.embed(model=modelo_embedding, input=texto)
-        return list(resposta.embeddings[0])
-    except Exception as erro:
-        raise AnaliseIndisponivel(
-            "Não foi possível gerar o embedding com a IA no momento (confira se o modelo de "
-            "embeddings está baixado no Ollama)."
-        ) from erro

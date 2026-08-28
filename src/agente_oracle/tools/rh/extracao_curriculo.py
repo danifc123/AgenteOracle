@@ -23,6 +23,24 @@ class ArquivoCurriculoInvalido(Exception):
     escaneado sem OCR)."""
 
 
+def extrair_texto(nome_arquivo: str, conteudo: bytes) -> str:
+    nome_normalizado = nome_arquivo.lower()
+
+    if nome_normalizado.endswith(".pdf"):
+        texto = _extrair_pdf(conteudo)
+    elif nome_normalizado.endswith(".docx"):
+        texto = _extrair_docx(conteudo)
+    else:
+        raise ArquivoCurriculoInvalido("Formato de arquivo não suportado — envie um .pdf ou .docx.")
+
+    texto = texto.strip()
+    if not texto:
+        raise ArquivoCurriculoInvalido(
+            "Não encontrei texto nesse arquivo — se for um PDF escaneado (imagem), ainda não conseguimos ler."
+        )
+    return texto
+
+
 def _extrair_docx(conteudo: bytes) -> str:
     try:
         documento = docx.Document(io.BytesIO(conteudo))
@@ -41,21 +59,3 @@ def _extrair_pdf(conteudo: bytes) -> str:
         raise ArquivoCurriculoInvalido(
             "Não consegui ler esse arquivo .pdf — ele parece corrompido."
         ) from erro
-
-
-def extrair_texto(nome_arquivo: str, conteudo: bytes) -> str:
-    nome_normalizado = nome_arquivo.lower()
-
-    if nome_normalizado.endswith(".pdf"):
-        texto = _extrair_pdf(conteudo)
-    elif nome_normalizado.endswith(".docx"):
-        texto = _extrair_docx(conteudo)
-    else:
-        raise ArquivoCurriculoInvalido("Formato de arquivo não suportado — envie um .pdf ou .docx.")
-
-    texto = texto.strip()
-    if not texto:
-        raise ArquivoCurriculoInvalido(
-            "Não encontrei texto nesse arquivo — se for um PDF escaneado (imagem), ainda não conseguimos ler."
-        )
-    return texto

@@ -1,6 +1,13 @@
 """Checagem de login pras rotas HTTP protegidas — cada `custom_route` que
 precisa de usuário logado chama `exigir_usuario(request)` no início e, se o
-retorno for um `JSONResponse` (401), devolve isso direto em vez de continuar."""
+retorno for um `JSONResponse` (401), devolve isso direto em vez de continuar.
+
+`exigir_modulo_financeiro`/`_rh`/`_ti` são wrappers finos sobre
+`_exigir_modulo` — cada rota passa a função pelo nome (`exigir=
+exigir_modulo_financeiro`) pro decorator `rota_protegida`, então módulo
+novo precisa de uma função própria (não dá pra virar `exigir_modulo("rh")`
+direto no decorator sem mudar todo call site), mas a checagem em si (que é
+o que de fato mudava de módulo pra módulo) mora só em `_exigir_modulo`."""
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -8,6 +15,19 @@ from starlette.responses import JSONResponse
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis, usuarios
 from agente_oracle.tools.auth.token import verificar_token
+
+
+def _exigir_modulo(request: Request, modulo: str, rotulo: str) -> dict | JSONResponse:
+    resultado = exigir_usuario(request)
+    if isinstance(resultado, JSONResponse):
+        return resultado
+
+    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), modulo):
+        return JSONResponse(
+            {"erro": f"Acesso restrito ao módulo {rotulo}."}, status_code=403, headers=CORS_HEADERS
+        )
+
+    return resultado
 
 
 def exigir_administrador(request: Request) -> dict | JSONResponse:
@@ -47,42 +67,19 @@ def exigir_modulo_financeiro(request: Request) -> dict | JSONResponse:
     tenha acesso ao módulo financeiro — usada em toda rota `/api/financeiro/*`.
     Sem isso, qualquer conta autenticada
     (independente do papel atribuído) conseguia chamar essas rotas."""
-    resultado = exigir_usuario(request)
-    if isinstance(resultado, JSONResponse):
-        return resultado
-
-    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "financeiro"):
-        return JSONResponse(
-            {"erro": "Acesso restrito ao módulo Financeiro."}, status_code=403, headers=CORS_HEADERS
-        )
-
-    return resultado
+    return _exigir_modulo(request, "financeiro", "Financeiro")
 
 
 def exigir_modulo_rh(request: Request) -> dict | JSONResponse:
     """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
     tenha acesso ao módulo RH — usada em toda rota `/api/rh/*`."""
-    resultado = exigir_usuario(request)
-    if isinstance(resultado, JSONResponse):
-        return resultado
-
-    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "rh"):
-        return JSONResponse({"erro": "Acesso restrito ao módulo RH."}, status_code=403, headers=CORS_HEADERS)
-
-    return resultado
+    return _exigir_modulo(request, "rh", "RH")
 
 
 def exigir_modulo_ti(request: Request) -> dict | JSONResponse:
     """Mesma checagem de `exigir_usuario`, mais a exigência de que o usuário
     tenha acesso ao módulo TI — usada em toda rota `/api/ti/*`."""
-    resultado = exigir_usuario(request)
-    if isinstance(resultado, JSONResponse):
-        return resultado
-
-    if not papeis.tem_acesso_modulo(resultado.get("papeis", []), "ti"):
-        return JSONResponse({"erro": "Acesso restrito ao módulo TI."}, status_code=403, headers=CORS_HEADERS)
-
-    return resultado
+    return _exigir_modulo(request, "ti", "TI")
 
 
 def exigir_usuario(request: Request) -> dict | JSONResponse:

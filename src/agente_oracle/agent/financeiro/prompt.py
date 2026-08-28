@@ -4,21 +4,6 @@ from agente_oracle.config import settings
 NOME_BANCO = "Oracle" if settings.db_backend == "oracle" else "PostgreSQL"
 
 
-def _montar_schema_texto() -> str:
-    if not VIEWS_DISPONIVEIS:
-        return (
-            "As views financeiras ainda não foram criadas no banco — nenhuma view "
-            "está liberada para consulta pelo agente neste momento."
-        )
-
-    blocos = []
-    for view in VIEWS_DISPONIVEIS:
-        colunas_texto = "\n".join(f"  - {coluna.nome}: {coluna.descricao}" for coluna in view.colunas)
-        blocos.append(f"{view.nome} — {view.descricao}\n{colunas_texto}")
-
-    return "\n\n".join(blocos)
-
-
 def _montar_relacionamentos_texto() -> str:
     """Gera o texto de relacionamentos entre views direto do que está
     declarado em `schema.py` (`ViewFinanceira.relacionamentos`) — uma view
@@ -60,6 +45,21 @@ def _montar_relacionamentos_texto() -> str:
     if not linhas:
         return "Nenhuma view tem relacionamento declarado com outra — nenhum JOIN é necessário hoje."
     return "\n".join(linhas)
+
+
+def _montar_schema_texto() -> str:
+    if not VIEWS_DISPONIVEIS:
+        return (
+            "As views financeiras ainda não foram criadas no banco — nenhuma view "
+            "está liberada para consulta pelo agente neste momento."
+        )
+
+    blocos = []
+    for view in VIEWS_DISPONIVEIS:
+        colunas_texto = "\n".join(f"  - {coluna.nome}: {coluna.descricao}" for coluna in view.colunas)
+        blocos.append(f"{view.nome} — {view.descricao}\n{colunas_texto}")
+
+    return "\n\n".join(blocos)
 
 
 ESQUEMA_FINANCEIRO = _montar_schema_texto()

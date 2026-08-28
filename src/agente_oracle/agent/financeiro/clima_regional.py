@@ -41,61 +41,6 @@ class IndicadorClima:
     classificacao: str  # "seca" | "normal" | "excesso_chuva" | "indisponivel"
 
 
-def _classificar(anomalia_percentual: float | None) -> str:
-    if anomalia_percentual is None:
-        return "indisponivel"
-    if anomalia_percentual <= _LIMIAR_SECA_PERCENTUAL:
-        return "seca"
-    if anomalia_percentual >= _LIMIAR_EXCESSO_PERCENTUAL:
-        return "excesso_chuva"
-    return "normal"
-
-
-async def _geocodificar(http_client: httpx.AsyncClient, texto_busca: str) -> tuple[float, float] | None:
-    """`texto_busca` pode ser nome de município ou qualquer texto livre de
-    localização (ex: cadastro manual do cliente) — a Open-Meteo geocodifica
-    ambos do mesmo jeito."""
-    try:
-        resposta = await http_client.get(
-            _URL_GEOCODIFICACAO,
-            params={"name": texto_busca, "count": 1, "language": "pt", "format": "json", "country": "BR"},
-        )
-        resposta.raise_for_status()
-        resultados = resposta.json().get("results")
-    except Exception:
-        return None
-
-    if not resultados:
-        return None
-    primeiro = resultados[0]
-    return primeiro.get("latitude"), primeiro.get("longitude")
-
-
-async def _precipitacao_total(
-    http_client: httpx.AsyncClient, latitude: float, longitude: float, inicio: date, fim: date
-) -> float | None:
-    try:
-        resposta = await http_client.get(
-            _URL_HISTORICO,
-            params={
-                "latitude": latitude,
-                "longitude": longitude,
-                "start_date": inicio.isoformat(),
-                "end_date": fim.isoformat(),
-                "daily": "precipitation_sum",
-                "timezone": "auto",
-            },
-        )
-        resposta.raise_for_status()
-        valores = resposta.json().get("daily", {}).get("precipitation_sum")
-    except Exception:
-        return None
-
-    if not valores:
-        return None
-    return sum(valor for valor in valores if valor is not None)
-
-
 async def _indicador_a_partir_de_coordenadas(
     http_client: httpx.AsyncClient,
     latitude: float,
@@ -129,6 +74,41 @@ async def _indicador_a_partir_de_coordenadas(
     return IndicadorClima(rotulo, uf, anomalia_percentual, _classificar(anomalia_percentual))
 
 
+async def _precipitacao_total(
+    http_client: httpx.AsyncClient, latitude: float, longitude: float, inicio: date, fim: date
+) -> float | None:
+    try:
+        resposta = await http_client.get(
+            _URL_HISTORICO,
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "start_date": inicio.isoformat(),
+                "end_date": fim.isoformat(),
+                "daily": "precipitation_sum",
+                "timezone": "auto",
+            },
+        )
+        resposta.raise_for_status()
+        valores = resposta.json().get("daily", {}).get("precipitation_sum")
+    except Exception:
+        return None
+
+    if not valores:
+        return None
+    return sum(valor for valor in valores if valor is not None)
+
+
+def _classificar(anomalia_percentual: float | None) -> str:
+    if anomalia_percentual is None:
+        return "indisponivel"
+    if anomalia_percentual <= _LIMIAR_SECA_PERCENTUAL:
+        return "seca"
+    if anomalia_percentual >= _LIMIAR_EXCESSO_PERCENTUAL:
+        return "excesso_chuva"
+    return "normal"
+
+
 async def buscar_indicador_clima(
     http_client: httpx.AsyncClient, municipio_nome: str, uf: str, inicio: date, fim: date
 ) -> IndicadorClima:
@@ -140,7 +120,7 @@ async def buscar_indicador_clima(
     levanta erro, devolve `classificacao='indisponivel'` em qualquer
     falha (cidade não encontrada, API fora do ar, sem histórico
     suficiente)."""
-    coordenadas = await _geocodificar(http_client, municipio_nome)
+    coordenadas = await geocodificar(http_client, municipio_nome)
     if coordenadas is None:
         return IndicadorClima(municipio_nome, uf, None, "indisponivel")
     latitude, longitude = coordenadas
@@ -163,3 +143,25 @@ async def buscar_indicador_clima_por_coordenadas(
     localizacao_cliente.py`), fica mais rápido (uma chamada HTTP a menos)
     e não depende da geocodificação funcionar nesse instante."""
     return await _indicador_a_partir_de_coordenadas(http_client, latitude, longitude, rotulo, uf, inicio, fim)
+
+
+async def geocodificar(http_client: httpx.AsyncClient, texto_busca: str) -> tuple[float, float] | None:
+    """`texto_busca` pode ser nome de município ou qualquer texto livre de
+    localização (ex: cadastro manual do cliente) — a Open-Meteo geocodifica
+    ambos do mesmo jeito. Pública (sem `_`) porque `tools/financeiro/
+    localizacao_cliente.py::salvar` também chama direto, pra geocodificar
+    o endereço cadastrado manualmente do cliente."""
+    try:
+        resposta = await http_client.get(
+            _URL_GEOCODIFICACAO,
+            params={"name": texto_busca, "count": 1, "language": "pt", "format": "json", "country": "BR"},
+        )
+        resposta.raise_for_status()
+        resultados = resposta.json().get("results")
+    except Exception:
+        return None
+
+    if not resultados:
+        return None
+    primeiro = resultados[0]
+    return primeiro.get("latitude"), primeiro.get("longitude")

@@ -38,17 +38,6 @@ def _garantir_tabela(cursor) -> None:
     _tabela_garantida = True
 
 
-def _ultimo_sql_dos_eventos(eventos: list[dict[str, Any]]) -> str | None:
-    """Pega o SQL do último evento de consulta do turno (quando teve
-    consulta) — usado só pra facilitar a leitura da trilha depois, o
-    detalhe completo continua disponível na coluna `eventos`."""
-    for evento in reversed(eventos):
-        sql = evento.get("argumentos", {}).get("sql")
-        if sql:
-            return sql
-    return None
-
-
 def listar(limite: int = 200) -> list[dict]:
     """Últimas conversas registradas, mais recentes primeiro — sem tela no
     frontend ainda (uso hoje é só investigar um incidente direto no banco),
@@ -110,3 +99,14 @@ def registrar(
             )
     except DatabaseError:
         pass
+
+
+def _ultimo_sql_dos_eventos(eventos: list[dict[str, Any]]) -> str | None:
+    """Pega o SQL do último evento de consulta do turno (quando teve
+    consulta) — usado só pra facilitar a leitura da trilha depois, o
+    detalhe completo continua disponível na coluna `eventos`."""
+    for evento in reversed(eventos):
+        sql = evento.get("argumentos", {}).get("sql")
+        if sql:
+            return sql
+    return None

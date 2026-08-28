@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from agente_oracle.agent.financeiro.clima_regional import _geocodificar
+from agente_oracle.agent.financeiro.clima_regional import geocodificar
 from agente_oracle.db.connection import get_postgres_connection
 
 _tabela_garantida = False
@@ -36,15 +36,6 @@ class LocalizacaoCliente:
     latitude: float | None
     longitude: float | None
     resolvido: bool
-
-
-def _texto_busca(cidade: str | None, bairro: str | None) -> str | None:
-    """Monta o texto pra geocodificar a partir dos campos separados —
-    `bairro` só entra se `cidade` também tiver sido informada (bairro
-    sozinho, sem cidade, é ambíguo demais pra geocodificação)."""
-    if not cidade:
-        return None
-    return f"{bairro}, {cidade}" if bairro else cidade
 
 
 def _garantir_tabela(cursor) -> None:
@@ -129,9 +120,9 @@ async def salvar(
     if coordenadas is None:
         texto_busca = _texto_busca(cidade, bairro)
         if texto_busca is not None:
-            coordenadas = await _geocodificar(http_client, texto_busca)
+            coordenadas = await geocodificar(http_client, texto_busca)
         if coordenadas is None and bairro and cidade:
-            coordenadas = await _geocodificar(http_client, cidade)
+            coordenadas = await geocodificar(http_client, cidade)
 
     latitude_resolvida, longitude_resolvida = coordenadas if coordenadas is not None else (None, None)
     resolvido = coordenadas is not None
@@ -164,3 +155,12 @@ async def salvar(
     return LocalizacaoCliente(
         cliente_codigo, cidade, bairro, latitude_resolvida, longitude_resolvida, resolvido
     )
+
+
+def _texto_busca(cidade: str | None, bairro: str | None) -> str | None:
+    """Monta o texto pra geocodificar a partir dos campos separados —
+    `bairro` só entra se `cidade` também tiver sido informada (bairro
+    sozinho, sem cidade, é ambíguo demais pra geocodificação)."""
+    if not cidade:
+        return None
+    return f"{bairro}, {cidade}" if bairro else cidade

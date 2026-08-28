@@ -17,10 +17,52 @@ import random
 import statistics
 
 
-def variacoes_mensais(serie: list[float]) -> list[float]:
-    """Diferença mês a mês do histórico — a distribuição de onde a
-    simulação sorteia. Função pura."""
-    return [atual - anterior for anterior, atual in zip(serie, serie[1:])]  # noqa: B905
+def probabilidade_caixa_negativo(matriz: list[list[float]]) -> float:
+    """Fração das simulações em que o caixa líquido fica negativo em ALGUM
+    mês futuro (não só no último) — sinal de risco direto pro controller,
+    é o "suporte à decisão baseado em dado, não intuição" que a demanda
+    original pede. Função pura."""
+    if not matriz:
+        return 0.0
+    caminhos_com_negativo = sum(1 for caminho in matriz if any(valor < 0 for valor in caminho))
+    return caminhos_com_negativo / len(matriz)
+
+
+def resumir_percentis(matriz: list[list[float]]) -> list[dict]:
+    """Por mês futuro (coluna da matriz), calcula p10/mediana/p90/mínimo/
+    máximo entre todas as simulações daquele mês — só ordenação e
+    interpolação, sem numpy. Função pura."""
+    if not matriz:
+        return []
+
+    resumo = []
+    for indice_mes in range(len(matriz[0])):
+        valores = sorted(caminho[indice_mes] for caminho in matriz)
+        resumo.append(
+            {
+                "p10": _percentil(valores, 10),
+                "mediana": statistics.median(valores),
+                "p90": _percentil(valores, 90),
+                "minimo": valores[0],
+                "maximo": valores[-1],
+            }
+        )
+    return resumo
+
+
+def _percentil(valores_ordenados: list[float], percentil: int) -> float:
+    """Percentil por interpolação linear (mesmo método usado por padrão no
+    Excel/numpy) sobre uma lista já ordenada — evita depender de numpy só
+    por isso."""
+    if len(valores_ordenados) == 1:
+        return valores_ordenados[0]
+    posicao = (percentil / 100) * (len(valores_ordenados) - 1)
+    indice_baixo = int(posicao)
+    indice_alto = min(indice_baixo + 1, len(valores_ordenados) - 1)
+    fracao = posicao - indice_baixo
+    valor_baixo = valores_ordenados[indice_baixo]
+    valor_alto = valores_ordenados[indice_alto]
+    return valor_baixo + (valor_alto - valor_baixo) * fracao
 
 
 def simular_cenarios(
@@ -54,49 +96,7 @@ def simular_cenarios(
     return matriz
 
 
-def resumir_percentis(matriz: list[list[float]]) -> list[dict]:
-    """Por mês futuro (coluna da matriz), calcula p10/mediana/p90/mínimo/
-    máximo entre todas as simulações daquele mês — só ordenação e
-    interpolação, sem numpy. Função pura."""
-    if not matriz:
-        return []
-
-    resumo = []
-    for indice_mes in range(len(matriz[0])):
-        valores = sorted(caminho[indice_mes] for caminho in matriz)
-        resumo.append(
-            {
-                "p10": _percentil(valores, 10),
-                "mediana": statistics.median(valores),
-                "p90": _percentil(valores, 90),
-                "minimo": valores[0],
-                "maximo": valores[-1],
-            }
-        )
-    return resumo
-
-
-def probabilidade_caixa_negativo(matriz: list[list[float]]) -> float:
-    """Fração das simulações em que o caixa líquido fica negativo em ALGUM
-    mês futuro (não só no último) — sinal de risco direto pro controller,
-    é o "suporte à decisão baseado em dado, não intuição" que a demanda
-    original pede. Função pura."""
-    if not matriz:
-        return 0.0
-    caminhos_com_negativo = sum(1 for caminho in matriz if any(valor < 0 for valor in caminho))
-    return caminhos_com_negativo / len(matriz)
-
-
-def _percentil(valores_ordenados: list[float], percentil: int) -> float:
-    """Percentil por interpolação linear (mesmo método usado por padrão no
-    Excel/numpy) sobre uma lista já ordenada — evita depender de numpy só
-    por isso."""
-    if len(valores_ordenados) == 1:
-        return valores_ordenados[0]
-    posicao = (percentil / 100) * (len(valores_ordenados) - 1)
-    indice_baixo = int(posicao)
-    indice_alto = min(indice_baixo + 1, len(valores_ordenados) - 1)
-    fracao = posicao - indice_baixo
-    valor_baixo = valores_ordenados[indice_baixo]
-    valor_alto = valores_ordenados[indice_alto]
-    return valor_baixo + (valor_alto - valor_baixo) * fracao
+def variacoes_mensais(serie: list[float]) -> list[float]:
+    """Diferença mês a mês do histórico — a distribuição de onde a
+    simulação sorteia. Função pura."""
+    return [atual - anterior for anterior, atual in zip(serie, serie[1:])]  # noqa: B905

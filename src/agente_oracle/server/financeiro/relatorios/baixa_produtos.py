@@ -31,7 +31,11 @@ Filtros opcionais corrigidos (2026-08) de `:bind = ''` para `:bind IS NULL OR
 :bind = ''` — Oracle converte bind de string vazia (e o literal `''`) em NULL,
 e `NULL = ''` nunca é TRUE, então todo filtro em branco fazia a consulta
 devolver zero linhas silenciosamente. Ver o "ACHADO IMPORTANTE" no topo de
-`_comum.py`. Este arquivo ainda consulta tabela crua do Protheus (não migrado
+`_comum.py`. `:data_baixa_ini`/`:data_baixa_fim` reaparecem dentro do
+`TO_DATE` na mesma cláusula — a "pegadinha irmã" documentada em
+`_comum.filtro_vazio()` — por isso passa por
+`_comum.aplicar_cast_binds_opcionais()` antes de rodar (no-op contra
+Oracle). Este arquivo ainda consulta tabela crua do Protheus (não migrado
 pro STAGE ainda).
 
 MIGRAÇÃO PRO STAGE EM ESPERA (2026-08): não achamos `ZB4010`/`ZB2010` (nem
@@ -147,6 +151,7 @@ _CAMPOS_OPCIONAIS = (
 def _buscar_baixas(filiais: list[str], opcionais: dict[str, str]) -> tuple[list[str], list[tuple]]:
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = _QUERY.replace("__FILIAL_IN__", clausula_filial)
+    sql = _comum.aplicar_cast_binds_opcionais(sql)
 
     with get_connection() as connection:
         cursor = connection.cursor()

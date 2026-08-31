@@ -1,6 +1,6 @@
 from datetime import date
 
-from agente_oracle.agent.financeiro.clima_regional import (
+from agente_oracle.tools.financeiro.clima_regional import (
     buscar_indicador_clima,
     buscar_indicador_clima_por_coordenadas,
 )

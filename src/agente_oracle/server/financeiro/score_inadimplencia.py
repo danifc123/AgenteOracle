@@ -1,6 +1,6 @@
 """Rota do Score de Inadimplência — comportamento de pagamento mora em
 `agent/financeiro/score_inadimplencia.py`, clima regional em
-`agent/financeiro/clima_regional.py` (cache em `tools/financeiro/
+`tools/financeiro/clima_regional.py` (cache em `tools/financeiro/
 clima_cache.py`, TTL de 24h por município). Este módulo só busca dado do
 Oracle, monta o client HTTP da Open-Meteo e a resposta HTTP — roda sob
 demanda, nunca em background, mesmo espírito de `despesas_suspeitas.py`."""
@@ -11,11 +11,6 @@ import httpx
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.agent.financeiro.clima_regional import (
-    IndicadorClima,
-    buscar_indicador_clima,
-    buscar_indicador_clima_por_coordenadas,
-)
 from agente_oracle.agent.financeiro.score_inadimplencia import (
     SafraCliente,
     ScoreInadimplencia,
@@ -34,6 +29,11 @@ from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 from agente_oracle.tools.financeiro import clima_cache, localizacao_cliente
+from agente_oracle.tools.financeiro.clima_regional import (
+    IndicadorClima,
+    buscar_indicador_clima,
+    buscar_indicador_clima_por_coordenadas,
+)
 
 _DIAS_HISTORICO = 180
 _HORIZONTE_DIAS = 60

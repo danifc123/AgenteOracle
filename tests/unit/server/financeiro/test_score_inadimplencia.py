@@ -1,6 +1,5 @@
 from datetime import date
 
-from agente_oracle.agent.financeiro.clima_regional import IndicadorClima
 from agente_oracle.agent.financeiro.score_inadimplencia import (
     ComportamentoPagamentoCliente,
     ScoreInadimplencia,
@@ -12,6 +11,7 @@ from agente_oracle.server.financeiro.score_inadimplencia import (
     _rotulo_localizacao,
     _score_para_json,
 )
+from agente_oracle.tools.financeiro.clima_regional import IndicadorClima
 from agente_oracle.tools.financeiro.localizacao_cliente import LocalizacaoCliente
 
 

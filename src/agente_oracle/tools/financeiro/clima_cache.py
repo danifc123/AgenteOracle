@@ -8,7 +8,7 @@ EXISTS`), sem migração separada.
 
 Tabela `financeiro_clima_safra` (não `financeiro_clima_municipio`, o nome
 antigo): a janela consultada mudou de fixa (últimos 30 dias) pra ser a
-janela real de cada safra (ver `agent/financeiro/clima_regional.py`), então
+janela real de cada safra (ver `clima_regional.py`, vizinho aqui), então
 a chave de cache precisou ganhar `inicio`/`fim` — como é só cache (TTL de
 24h, sem dado que precise ser preservado), a forma mais simples de mudar o
 formato sem migração foi nascer numa tabela nova; a antiga fica órfã, sem
@@ -16,8 +16,8 @@ problema."""
 
 from datetime import UTC, date, datetime, timedelta
 
-from agente_oracle.agent.financeiro.clima_regional import IndicadorClima
 from agente_oracle.db.connection import get_postgres_connection
+from agente_oracle.tools.financeiro.clima_regional import IndicadorClima
 
 TEMPO_EXPIRACAO = timedelta(hours=24)
 

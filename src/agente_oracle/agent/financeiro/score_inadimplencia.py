@@ -14,7 +14,7 @@ Comportamento de pagamento é 100% cálculo sobre títulos já liquidados de
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from agente_oracle.agent.financeiro.clima_regional import IndicadorClima
+from agente_oracle.tools.financeiro.clima_regional import IndicadorClima
 
 _DIAS_JANELA_RECENTE = 90
 _DIAS_JANELA_ANTERIOR = 90  # os 90 dias imediatamente antes da janela recente

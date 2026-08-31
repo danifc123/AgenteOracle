@@ -2,12 +2,13 @@
 livre, encontra os candidatos mais adequados entre os já analisados
 (`agent/rh/perfil_candidato.py`).
 
-Duas etapas: (1) **retrieval** — embedding da descrição contra o embedding
-já salvo de cada candidato (`agent/rh/embeddings.py`), pega os N mais
-próximos por similaridade de cosseno, tudo em Python (sem `pgvector`, ver
-docstring de `embeddings.py`); (2) **generation** — manda só esse shortlist
-pra IA, que rankeia e justifica cada um contra a descrição da vaga. Mesma
-rede de segurança de sempre: `candidato_id` que a IA cita precisa estar no
+Duas etapas: (1) **retrieval** — embedding da descrição (gerado em
+`agent/rh/embeddings.py`) contra o embedding já salvo de cada candidato,
+pega os N mais próximos por similaridade de cosseno (`tools/rh/
+similaridade.py`, ver docstring de lá pra saber por que a comparação é em
+Python, sem `pgvector`); (2) **generation** — manda só esse shortlist pra
+IA, que rankeia e justifica cada um contra a descrição da vaga. Mesma rede
+de segurança de sempre: `candidato_id` que a IA cita precisa estar no
 shortlist que foi realmente enviado, nunca aceita um id inventado."""
 
 from dataclasses import dataclass
@@ -15,7 +16,8 @@ from dataclasses import dataclass
 from ollama import AsyncClient
 
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
-from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embedding, similaridade_cosseno
+from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embedding
+from agente_oracle.tools.rh.similaridade import similaridade_cosseno
 
 # Quantos candidatos (dos mais similares por embedding) vão pro shortlist
 # que a IA efetivamente lê e rankeia — retrieval antes de generation, não

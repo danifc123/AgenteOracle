@@ -59,6 +59,40 @@ class Settings(BaseSettings):
     # usuário precisa logar de novo, mesmo com a aba aberta o tempo todo.
     auth_token_horas: int = 8
 
+    # Integração real com o GLPI (service desk, `tools/ti/glpi.py`) — não
+    # existe mais cliente mock. Sem `glpi_base_url` preenchida, o servidor
+    # ainda sobe normal (outros módulos não dependem disso), mas a
+    # funcionalidade de TI (Auditoria de Chamados, webhook) não funciona
+    # até isso ser configurado.
+    #
+    # Autenticação confirmada contra a instância real: grant `password`
+    # (client_id/secret do client OAuth + usuário/senha de uma conta de
+    # serviço), não `client_credentials` — testado e confirmado que esse
+    # GLPI rejeita token de client_credentials puro (sem usuário por trás)
+    # em qualquer endpoint de recurso. Em homologação, `glpi_username`/
+    # `glpi_password` apontam pra uma conta compartilhada com outra
+    # integração ("api.ebarn") só pra teste; produção deve trocar por uma
+    # conta de serviço dedicada a este agente.
+    glpi_base_url: str = ""
+    glpi_client_id: str = ""
+    glpi_client_secret: str = ""
+    glpi_username: str = ""
+    glpi_password: str = ""
+    glpi_webhook_secret: str = ""
+
+    # API Legada do GLPI (`apirest.php`, autenticação por sessão + App-Token
+    # — mecanismo diferente do OAuth acima) — usada só pra marcar o motivo
+    # de pendência "Aguardando usuário" (`PendingReason_Item`), porque a API
+    # nova (v2.3) só lê essa informação, nunca escreve (confirmado no
+    # código-fonte do GLPI: só existe rota GET pra isso). OPCIONAL: sem
+    # isso configurado, `ClienteGLPIReal` continua marcando o chamado como
+    # "Pendente" (status genérico), só não consegue marcar o motivo
+    # específico — ver `tools/ti/glpi.py::ClienteGLPIReal.
+    # _marcar_aguardando_usuario`.
+    glpi_legacy_api_url: str = ""
+    glpi_legacy_app_token: str = ""
+    glpi_legacy_user_token: str = ""
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origem.strip() for origem in self.allowed_origins.split(",") if origem.strip()]
@@ -85,6 +119,45 @@ def validar_auth_secret_key(settings: Settings) -> None:
             '`python -c "import secrets; print(secrets.token_hex(32))"` e defina no .env '
             "antes de subir o servidor — sem uma chave forte, qualquer pessoa consegue "
             "forjar um token de login válido."
+        )
+
+
+def validar_glpi_configurado(settings: Settings) -> None:
+    """Sem `GLPI_BASE_URL` preenchida, não valida nada — não trava a subida
+    do servidor pros times que não mexem em TI (mesmo espírito de
+    `protheus_configurado()`), só a própria funcionalidade de TI não
+    funciona até isso ser configurado (não existe mais cliente mock de
+    fallback). Só quando alguém preenche `GLPI_BASE_URL` (decidindo usar o
+    GLPI real) é que as 4 credenciais do grant `password` (client_id/secret
+    + usuário/senha da conta de serviço — ver comentário acima do campo)
+    viram obrigatórias, e o segredo do webhook precisa da mesma entropia
+    mínima de `AUTH_SECRET_KEY` — mesmo espírito de `validar_auth_secret_key`.
+    Chamada só em `server/app.py:main()`, nunca ao importar este módulo."""
+    if not settings.glpi_base_url:
+        return
+
+    faltando = [
+        nome
+        for nome, valor in (
+            ("GLPI_CLIENT_ID", settings.glpi_client_id),
+            ("GLPI_CLIENT_SECRET", settings.glpi_client_secret),
+            ("GLPI_USERNAME", settings.glpi_username),
+            ("GLPI_PASSWORD", settings.glpi_password),
+        )
+        if not valor
+    ]
+    if faltando:
+        raise RuntimeError(
+            f"GLPI_BASE_URL está configurada, mas {', '.join(faltando)} não — todas as "
+            "credenciais (client OAuth + usuário/senha da conta de serviço) são "
+            "obrigatórias pra autenticar contra o GLPI real (grant `password`)."
+        )
+
+    if len(settings.glpi_webhook_secret) < TAMANHO_MINIMO_AUTH_SECRET_KEY:
+        raise RuntimeError(
+            f"GLPI_WEBHOOK_SECRET precisa ter pelo menos {TAMANHO_MINIMO_AUTH_SECRET_KEY} "
+            'caracteres. Gere um valor aleatório com `python -c "import secrets; '
+            'print(secrets.token_hex(32))"` e defina no .env antes de subir o servidor.'
         )
 
 

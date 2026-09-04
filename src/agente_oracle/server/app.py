@@ -1,6 +1,11 @@
 from mcp.server.fastmcp import FastMCP
 
-from agente_oracle.config import settings, validar_auth_secret_key, validar_ollama_host_seguro
+from agente_oracle.config import (
+    settings,
+    validar_auth_secret_key,
+    validar_glpi_configurado,
+    validar_ollama_host_seguro,
+)
 from agente_oracle.server import auditoria, auth, ferramentas, financeiro, rh, ti
 from agente_oracle.server.security_headers import HeadersDeSegurancaMiddleware
 
@@ -45,6 +50,7 @@ def criar_app():
 
 def main() -> None:
     validar_auth_secret_key(settings)
+    validar_glpi_configurado(settings)
     validar_ollama_host_seguro(settings)
 
     import uvicorn

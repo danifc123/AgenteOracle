@@ -1,7 +1,25 @@
 .barra-acoes {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
+}
+
+.toggle-usar-ia {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+
+  input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
 }
 
 .erro {
@@ -56,7 +74,9 @@ table {
 }
 
 .coluna-acao {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
   white-space: nowrap;
 }
 

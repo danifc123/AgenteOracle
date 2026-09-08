@@ -71,34 +71,34 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       },
     ],
   },
-  {
-    chave: 'estoque',
-    rotulo: 'Estoque',
-    iconeSvg: `<path d="M4 8 12 3l8 5-8 5-8-5Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M4 8v8l8 5 8-5V8" stroke-linecap="round" stroke-linejoin="round" /><path d="M12 13v8" stroke-linecap="round" />`,
-    itens: [
-      {
-        rota: '/estoque',
-        rotulo: 'Visão Geral',
-        exato: true,
-        iconeSvg: `<rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18" stroke-linecap="round" /><circle cx="8" cy="14.5" r="1.2" />`,
-      },
-      {
-        rota: '/estoque/criar-relatorio',
-        rotulo: 'Criar Relatório',
-        iconeSvg: `<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 10v10" stroke-linecap="round" />`,
-      },
-      {
-        rota: '/estoque/especifico-grupo-conceito',
-        rotulo: 'Específico Grupo Conceito',
-        iconeSvg: `<path d="M7 3h7l4 4v14H7V3Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 3v4h4" stroke-linecap="round" stroke-linejoin="round" /><path d="M9.5 13h5M9.5 16.5h5" stroke-linecap="round" />`,
-      },
-      {
-        rota: '/estoque/chat',
-        rotulo: 'Assistente IA',
-        iconeSvg: `<path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />`,
-      },
-    ],
-  },
+  //{
+  //  chave: 'estoque',
+  //  rotulo: 'Estoque',
+  //  iconeSvg: `<path d="M4 8 12 3l8 5-8 5-8-5Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M4 8v8l8 5 8-5V8" stroke-linecap="round" stroke-linejoin="round" /><path d="M12 13v8" stroke-linecap="round" />`,
+  //  itens: [
+  //    {
+  //      rota: '/estoque',
+  //      rotulo: 'Visão Geral',
+  //      exato: true,
+  //      iconeSvg: `<rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18" stroke-linecap="round" /><circle cx="8" cy="14.5" r="1.2" />`,
+  //    },
+  //    {
+  //      rota: '/estoque/criar-relatorio',
+  //      rotulo: 'Criar Relatório',
+  //      iconeSvg: `<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 10v10" stroke-linecap="round" />`,
+  //    },
+  //    {
+  //      rota: '/estoque/especifico-grupo-conceito',
+  //      rotulo: 'Específico Grupo Conceito',
+  //      iconeSvg: `<path d="M7 3h7l4 4v14H7V3Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M14 3v4h4" stroke-linecap="round" stroke-linejoin="round" /><path d="M9.5 13h5M9.5 16.5h5" stroke-linecap="round" />`,
+  //    },
+  //    {
+  //      rota: '/estoque/chat',
+  //      rotulo: 'Assistente IA',
+  //      iconeSvg: `<path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />`,
+  //    },
+  //  ],
+  //},
   {
     chave: 'rh',
     rotulo: 'RH',

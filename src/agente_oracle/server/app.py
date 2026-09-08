@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+
 from mcp.server.fastmcp import FastMCP
 
 from agente_oracle.config import (
@@ -45,6 +48,29 @@ def criar_app():
         expose_headers=["Content-Disposition", "X-Tem-Mais-Paginas"],
     )
     app.add_middleware(HeadersDeSegurancaMiddleware)
+
+    # Nesta versão do Starlette não existe mais `add_event_handler` — o
+    # único jeito de encaixar comportamento de startup/shutdown é
+    # envolvendo o `lifespan_context` que o `FastMCP` já colocou em
+    # `app.router` (ele mesmo é quem sobe/derruba o "StreamableHTTP
+    # session manager"). Preserva esse lifespan original e só ACRESCENTA
+    # a task do poller em background (ver docstring de `server/ti/
+    # chamados.py::iniciar_poller_verificar_chamados` pro motivo de abrir
+    # exceção à convenção "nunca em background" do resto do projeto) —
+    # cancelada de novo no shutdown, pra não vazar task solta em teste
+    # que sobe/derruba o app várias vezes.
+    lifespan_original = app.router.lifespan_context
+
+    @contextlib.asynccontextmanager
+    async def lifespan_com_poller(app):
+        tarefa_poller = asyncio.create_task(ti.chamados.iniciar_poller_verificar_chamados())
+        try:
+            async with lifespan_original(app):
+                yield
+        finally:
+            tarefa_poller.cancel()
+
+    app.router.lifespan_context = lifespan_com_poller
     return app
 
 

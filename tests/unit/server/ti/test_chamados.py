@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 from agente_oracle.agent.ti import roteamento_chamado
-from agente_oracle.server.ti.chamados import processar_chamado_novo
+from agente_oracle.server.ti import chamados as chamados_module
+from agente_oracle.server.ti.chamados import processar_chamado_novo, verificar_chamados_pendentes
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import Chamado
 
@@ -254,3 +255,25 @@ class TestProcessarChamadoNovo:
 
         assert resultado.avaliacao_suficiente is True
         assert len(cliente.atribuicoes) == 1
+
+
+class TestVerificarChamadosPendentes:
+    async def test_reprocessa_so_novo_ignora_aguardando_usuario(self, monkeypatch):
+        # Reavaliar `aguardando_usuario` de novo a cada rodada (a cada 5
+        # min, via poller) gastaria IA à toa sem que o solicitante tenha
+        # respondido nada — só `novo` é reprocessado (ver docstring de
+        # `verificar_chamados_pendentes`). `aguardando_usuario` continua
+        # saindo no retorno (é o que alimenta a tela), só não é escrito.
+        chamado_novo = _chamado(id_=1, categoria_id=999)
+        chamado_pendente = replace(_chamado(id_=2, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_novo, chamado_pendente])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        resultado = await verificar_chamados_pendentes(usar_ia=True)
+
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
+        assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {1}
+        assert {chamado.id for chamado in resultado} == {1, 2}

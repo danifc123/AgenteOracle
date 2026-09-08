@@ -4,19 +4,35 @@
 suficiente" em `agent/ti/qualidade_chamado.py`, a validação/correção de
 categoria (e a área que vem dela) em `agent/ti/roteamento_chamado.py`, e a
 escolha de técnico por menor carga em `tools/ti/tecnicos.py`; este módulo
-só orquestra os quatro e cuida do HTTP, mesmo espírito de
-`server/ti/seguranca.py` (roda sob demanda, nunca em background).
+só orquestra os quatro e cuida do HTTP.
 
 `processar_chamado_novo` é a função reutilizável entre `/verificar`
-(polling manual) e o webhook do GLPI (`server/ti/webhook_glpi.py`,
-disparado no evento "Ticket created") — os dois fazem exatamente a mesma
-triagem, só o gatilho muda. Ela em si nunca toca o Postgres de log de uso
+(rota manual, usada hoje só pra testar 1 chamado por vez),
+`iniciar_poller_verificar_chamados` (roda sozinho em background, a cada
+`_INTERVALO_POLLER_SEGUNDOS` — ver docstring dele pro motivo de este
+módulo abrir uma exceção à convenção "nunca em background" do resto do
+projeto) e o webhook do GLPI (`server/ti/webhook_glpi.py`, disparado no
+evento "Ticket created") — os três fazem exatamente a mesma triagem, só
+o gatilho muda. Ela em si nunca toca o Postgres de log de uso
 (`tools/ti/uso_ia_chamados.py`) — só devolve `ResultadoProcessamento` pra
-quem chamou decidir o que fazer com isso; `chamados_verificar_route` é
-quem mede o tempo e grava o log, de propósito (mantém a função testável
-com fakes, sem precisar de Postgres real pra rodar teste unitário — ver
-docstring de `uso_ia_chamados.py`)."""
+quem chamou decidir o que fazer com isso; `verificar_chamados_pendentes`
+é quem mede o tempo e grava o log, de propósito (mantém
+`processar_chamado_novo` testável com fakes, sem precisar de Postgres
+real pra rodar teste unitário — ver docstring de `uso_ia_chamados.py`).
 
+`verificar_chamados_pendentes` só reprocessa chamado `novo` — a TELA
+continua mostrando `aguardando_usuario` também (`chamados_route`, sem
+filtro de status), mas reavaliar de novo um chamado que já está esperando
+resposta do solicitante, a cada 5 minutos, sem que nada tenha mudado, é
+uma chamada de IA gasta à toa; o GLPI já tem o próprio mecanismo de
+resolver sozinho depois de 3 dias sem resposta (`PendingReason` — ver
+`tools/ti/glpi.py::ClienteGLPIReal._marcar_aguardando_usuario`). Um
+chamado assim só é reavaliado de novo via o botão "Verificar" individual
+por chamado (`/api/ti/chamados/{id}/verificar`, que não tem esse filtro
+de propósito — é o suporte a teste manual)."""
+
+import asyncio
+import logging
 import time
 from dataclasses import dataclass
 
@@ -36,6 +52,11 @@ from agente_oracle.tools.ti.glpi import Chamado, ClienteGLPI, criar_cliente
 from agente_oracle.tools.ti.tecnicos import TECNICOS, escolher_tecnico
 
 _cliente = criar_cliente(settings)
+_logger = logging.getLogger(__name__)
+
+# 5 minutos — equilíbrio entre reagir rápido a chamado novo/atualizado e
+# não sobrecarregar a API do GLPI/Ollama com verificação constante.
+_INTERVALO_POLLER_SEGUNDOS = 300
 
 
 @dataclass(frozen=True)
@@ -147,6 +168,75 @@ async def processar_chamado_novo(
     )
 
 
+async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
+    """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
+    também devolve `aguardando_usuario` (é o que a tela mostra), mas
+    reavaliar de novo um chamado que já está esperando resposta do
+    solicitante, sem que nada tenha mudado, é uma chamada de IA gasta à
+    toa a cada rodada; o GLPI já resolve sozinho depois de 3 dias sem
+    resposta (`PendingReason`, ver docstring do módulo). `cargas` é
+    buscado uma vez só no início do lote — cada chamado processado no
+    meio do loop já conta pro próximo, então o lote inteiro se
+    equilibra entre si.
+
+    Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
+    real de volume/duração pra decidir se a IA nessa etapa está pesando
+    (nunca em dinheiro por chamada, Ollama é local — ver docstring de
+    `tools/ti/uso_ia_chamados.py`). Chamada tanto pela rota manual
+    quanto pelo poller em background (`iniciar_poller_verificar_chamados`).
+
+    Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
+    filtrar por status) — é o que alimenta a tela, mesmo os chamados que
+    este loop pulou de propósito."""
+    ollama_client = AsyncClient(host=settings.ollama_host)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+
+    for chamado in await _cliente.listar():
+        if chamado.status != "novo":
+            continue
+        inicio = time.monotonic()
+        resultado = await processar_chamado_novo(
+            _cliente, ollama_client, settings.ollama_model, chamado, cargas, usar_ia
+        )
+        duracao_ms = round((time.monotonic() - inicio) * 1000)
+        uso_ia_chamados.registrar(
+            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+        )
+
+    return await _cliente.listar()
+
+
+async def iniciar_poller_verificar_chamados() -> None:
+    """Substitui o clique manual em "Verificar Chamados Novos" — roda pra
+    sempre em background, a cada `_INTERVALO_POLLER_SEGUNDOS`, enquanto o
+    servidor estiver de pé. Única exceção deste projeto à convenção
+    "roda sob demanda, nunca em background" (ver `seguranca.py`,
+    `auditoria/rotas.py` etc.): sem isso, um chamado novo só seria
+    triado quando alguém abrisse a tela e clicasse (ou via webhook, que
+    ainda não foi ativado/testado contra a instância real — ver TODO em
+    `server/ti/webhook_glpi.py`).
+
+    Só reprocessa `novo` (ver `verificar_chamados_pendentes`) — não
+    reavalia `aguardando_usuario` de novo a cada rodada, de propósito
+    (gastaria IA à toa; esse caso é o botão "Verificar" individual ou o
+    próprio GLPI resolvendo sozinho em 3 dias).
+
+    Nunca deixa uma falha de uma rodada (rede instável, Ollama fora do
+    ar) derrubar o loop inteiro — loga e tenta de novo na próxima volta.
+    Só roda se o GLPI estiver configurado (mesmo espírito de
+    `criar_cliente()`: TI opcional não deveria travar nada pros outros
+    times); iniciado em `server/app.py::criar_app()`."""
+    if not settings.glpi_base_url:
+        return
+    while True:
+        try:
+            usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+            await verificar_chamados_pendentes(usar_ia)
+        except Exception:
+            _logger.exception("Falha no poller de verificação de chamados")
+        await asyncio.sleep(_INTERVALO_POLLER_SEGUNDOS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/chamados/{id}/reportar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
@@ -183,34 +273,12 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/chamados/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_verificar_route(request: Request, usuario: dict) -> Response:
-        """Roda `processar_chamado_novo` em todo chamado ainda `novo`: vago
-        vira `aguardando_usuario` com a pergunta da IA; com informação
-        suficiente, classifica a área, atribui ao técnico de menor carga e
-        vai pra `fila_atendimento`. `cargas` é buscado uma vez só no início
-        do lote — cada chamado processado no meio do loop já conta pro
-        próximo, então o lote inteiro se equilibra entre si.
-
-        Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
-        real de volume/duração pra decidir se a IA nessa etapa está
-        pesando (nunca em dinheiro por chamada, Ollama é local — ver
-        docstring de `tools/ti/uso_ia_chamados.py`)."""
-        ollama_client = AsyncClient(host=settings.ollama_host)
-        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+        """Dispara manualmente a mesma verificação que o poller em
+        background já roda sozinho a cada `_INTERVALO_POLLER_SEGUNDOS` —
+        útil pra forçar uma rodada na hora, sem esperar o intervalo,
+        durante teste. Ver `verificar_chamados_pendentes`."""
         usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
-
-        for chamado in await _cliente.listar():
-            if chamado.status != "novo":
-                continue
-            inicio = time.monotonic()
-            resultado = await processar_chamado_novo(
-                _cliente, ollama_client, settings.ollama_model, chamado, cargas, usar_ia
-            )
-            duracao_ms = round((time.monotonic() - inicio) * 1000)
-            uso_ia_chamados.registrar(
-                chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
-            )
-
-        chamados = await _cliente.listar()
+        chamados = await verificar_chamados_pendentes(usar_ia)
         return JSONResponse(
             [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
             headers=CORS_HEADERS,

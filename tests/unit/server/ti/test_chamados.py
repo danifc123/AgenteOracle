@@ -277,3 +277,33 @@ class TestVerificarChamadosPendentes:
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {1}
         assert {chamado.id for chamado in resultado} == {1, 2}
+
+    async def test_falha_num_chamado_nao_bloqueia_o_resto_do_lote(self, monkeypatch):
+        # Reproduz o bug real do chamado #2660: um chamado que quebra ao
+        # processar (ex: GLPI rejeitando reatribuição duplicada) não pode
+        # travar todo mundo que vem depois dele na lista — sem isolar por
+        # chamado, essa exceção interrompia o `for` inteiro, e nenhum
+        # chamado seguinte era processado, nem naquela rodada nem em
+        # nenhuma das próximas.
+        chamado_com_erro = _chamado(id_=1, categoria_id=999)
+        chamado_ok = _chamado(id_=2, categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado_com_erro, chamado_ok])
+
+        atribuir_original = cliente.atribuir
+
+        async def _atribuir_falha_no_primeiro(chamado_id, area, tecnico_identificador):
+            if chamado_id == 1:
+                raise RuntimeError("400 simulado do GLPI")
+            await atribuir_original(chamado_id, area, tecnico_identificador)
+
+        cliente.atribuir = _atribuir_falha_no_primeiro
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        resultado = await verificar_chamados_pendentes(usar_ia=True)
+
+        assert cliente.avaliacoes == [(2, "fila_atendimento", None)]
+        assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {2}
+        assert {chamado.id for chamado in resultado} == {1, 2}

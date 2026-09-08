@@ -187,7 +187,15 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
 
     Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
     filtrar por status) — é o que alimenta a tela, mesmo os chamados que
-    este loop pulou de propósito."""
+    este loop pulou de propósito.
+
+    Falha isolada num chamado (rede, um erro de validação do GLPI etc.)
+    não pode travar o lote inteiro — sem isolar por chamado, um problema
+    num único chamado (ex: já visto na prática — GLPI rejeitando
+    reatribuir o mesmo técnico) interrompe o `for` no meio, e todo
+    chamado que viria depois dele na lista nunca chega a ser processado
+    NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
+    ponto."""
     ollama_client = AsyncClient(host=settings.ollama_host)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
 
@@ -195,9 +203,13 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
         if chamado.status != "novo":
             continue
         inicio = time.monotonic()
-        resultado = await processar_chamado_novo(
-            _cliente, ollama_client, settings.ollama_model, chamado, cargas, usar_ia
-        )
+        try:
+            resultado = await processar_chamado_novo(
+                _cliente, ollama_client, settings.ollama_model, chamado, cargas, usar_ia
+            )
+        except Exception:
+            _logger.exception("Falha processando o chamado %s", chamado.id)
+            continue
         duracao_ms = round((time.monotonic() - inicio) * 1000)
         uso_ia_chamados.registrar(
             chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms

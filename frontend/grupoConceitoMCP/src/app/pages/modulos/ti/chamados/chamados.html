@@ -9,15 +9,6 @@
     <input type="checkbox" [checked]="usarIa()" (change)="alternarUsarIa()" />
     Usar IA na avaliação de chamados
   </label>
-
-  <app-botao
-    variant="primaria"
-    [loading]="verificando()"
-    loadingText="Verificando..."
-    (clicked)="verificarChamadosNovos()"
-  >
-    Verificar Chamados Novos
-  </app-botao>
 </div>
 
 @if (erro()) {
@@ -42,24 +33,14 @@
           <tr>
             <th>Título</th>
             <th>Categoria</th>
-            <th>Status</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          @for (chamado of chamados(); track chamado.id) {
+          @for (chamado of chamadosDaPagina(); track chamado.id) {
             <tr>
               <td>{{ chamado.titulo }}</td>
               <td>{{ chamado.categoria }}</td>
-              <td>
-                <span
-                  class="badge"
-                  [class.badge--ok]="chamado.status === 'fila_atendimento'"
-                  [class.badge--aviso]="chamado.status === 'aguardando_usuario'"
-                >
-                  {{ rotuloStatus(chamado.status) }}
-                </span>
-              </td>
               <td class="coluna-acao">
                 <app-botao
                   variant="contorno"
@@ -77,6 +58,18 @@
         </tbody>
       </table>
     </div>
+
+    @if (totalPaginas() > 1) {
+      <div class="paginacao">
+        <app-botao variant="contorno" [disabled]="paginaAtual() === 1" (clicked)="paginaAnterior()">
+          Anterior
+        </app-botao>
+        <span class="paginacao-info">Página {{ paginaAtual() }} de {{ totalPaginas() }}</span>
+        <app-botao variant="contorno" [disabled]="paginaAtual() === totalPaginas()" (clicked)="proximaPagina()">
+          Próxima
+        </app-botao>
+      </div>
+    }
   }
 </section>
 

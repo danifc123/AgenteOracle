@@ -80,25 +80,17 @@ table {
   white-space: nowrap;
 }
 
-.badge {
-  display: inline-flex;
+.paginacao {
+  display: flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--color-bg);
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.paginacao-info {
+  font-size: 13px;
   color: var(--color-text-muted);
-
-  &--ok {
-    background: rgba(47, 158, 88, 0.14);
-    color: #2f9e58;
-  }
-
-  &--aviso {
-    background: rgba(232, 135, 30, 0.14);
-    color: #e8871e;
-  }
 }
 
 .detalhe-chamado {

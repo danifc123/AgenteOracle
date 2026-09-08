@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { Dialog } from '../../../../componentes/dialog/dialog';
@@ -24,33 +24,26 @@ export interface Chamado {
   criado_em: string;
 }
 
-const ROTULOS_STATUS: Record<StatusChamado, string> = {
-  novo: 'Novo',
-  // Quem vê essa tela é sempre o time de TI acompanhando, nunca o
-  // solicitante — "aguardando você" lido pela TI parece cobrar uma ação
-  // dela mesma, quando quem precisa responder é o solicitante no GLPI.
-  aguardando_usuario: 'Aguardando solicitante',
-  fila_atendimento: 'Na fila',
-};
-
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
  * Item "Service Desk IA" da planilha de demandas — integração real com o
- * GLPI (`tools/ti/glpi.py::ClienteGLPIReal`), sem cliente mock. "Verificar
- * Chamados Novos" chama `POST /api/ti/chamados/verificar`: a IA julga se
- * cada chamado `novo` tem informação suficiente e se a categoria escolhida
- * bate com o conteúdo (contra as ~211 categorias reais do GLPI) — se não
- * tem informação suficiente, o chamado fica "Aguardando solicitante" com a
- * pergunta da IA em vez de ir pra fila.
+ * GLPI (`tools/ti/glpi.py::ClienteGLPIReal`), sem cliente mock. A
+ * verificação de chamado `novo` não depende mais de clique manual: um
+ * poller em background no próprio servidor (`server/ti/chamados.py::
+ * iniciar_poller_verificar_chamados`) roda sozinho a cada poucos
+ * minutos. Chamado `aguardando_usuario` (aparece na tela, mas não é
+ * reavaliado pelo poller de propósito — gastaria IA à toa a cada rodada
+ * sem que o solicitante tenha respondido nada) só volta a ser avaliado
+ * via o botão "Verificar" por linha, ou quando o GLPI resolver sozinho
+ * depois de 3 dias sem resposta.
  *
  * "Reportar ao usuário" (no detalhe de um chamado aguardando) só marca
  * `reportado_em` e mostra na tela o que teria sido enviado — nenhum
  * e-mail sai de verdade ainda, mesmo com o GLPI real (ver docstring de
- * `tools/ti/glpi.py::ClienteGLPIReal.reportar_usuario`). O chamado
- * também não volta sozinho pra fila quando o usuário completa lá no
- * GLPI: `/verificar` só reavalia chamado com status `novo`, e o webhook só
- * dispara no evento "Ticket created" — gap conhecido, fora do escopo desta
- * rodada de integração. */
+ * `tools/ti/glpi.py::ClienteGLPIReal.reportar_usuario`). A tela em si só
+ * carrega a lista uma vez, ao abrir — não se atualiza sozinha enquanto o
+ * poller processa em background; recarregar a página mostra o estado
+ * mais recente. */
 @Component({
   selector: 'app-chamados-ti',
   imports: [Botao, DatePipe, Dialog, EstadoVazio, ModuloHeader],
@@ -60,10 +53,10 @@ const ROTULOS_STATUS: Record<StatusChamado, string> = {
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
+  private readonly ITENS_POR_PAGINA = 10;
 
   protected readonly chamados = signal<Chamado[]>([]);
   protected readonly carregando = signal(true);
-  protected readonly verificando = signal(false);
   // id do chamado sendo verificado individualmente — só aquele botão da
   // linha mostra loading, o resto da tabela continua clicável.
   protected readonly verificandoId = signal<number | null>(null);
@@ -71,6 +64,15 @@ export class ChamadosTi {
   protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly usarIa = this.configuracoesTi.usarIaAvaliacaoChamado;
+
+  protected readonly paginaAtual = signal(1);
+  protected readonly totalPaginas = computed(() =>
+    Math.max(1, Math.ceil(this.chamados().length / this.ITENS_POR_PAGINA)),
+  );
+  protected readonly chamadosDaPagina = computed(() => {
+    const inicio = (this.paginaAtual() - 1) * this.ITENS_POR_PAGINA;
+    return this.chamados().slice(inicio, inicio + this.ITENS_POR_PAGINA);
+  });
 
   constructor() {
     this.carregarChamados();
@@ -94,10 +96,27 @@ export class ChamadosTi {
     this.http.get<Chamado[]>(`${MCP_API_BASE_URL}/api/ti/chamados`).subscribe({
       next: (chamados) => {
         this.chamados.set(chamados);
+        this.paginaAtual.set(1);
         this.carregando.set(false);
       },
       error: () => this.carregando.set(false),
     });
+  }
+
+  protected paginaAnterior(): void {
+    this.paginaAtual.update((atual) => Math.max(1, atual - 1));
+  }
+
+  protected proximaPagina(): void {
+    this.paginaAtual.update((atual) => Math.min(this.totalPaginas(), atual + 1));
+  }
+
+  // Chamado removido da lista (foi pra fila) pode esvaziar a última
+  // página — sem isso, ficaria preso numa página vazia até recarregar.
+  private ajustarPaginaAtual(): void {
+    if (this.paginaAtual() > this.totalPaginas()) {
+      this.paginaAtual.set(this.totalPaginas());
+    }
   }
 
   protected fecharDetalhe(): void {
@@ -125,10 +144,6 @@ export class ChamadosTi {
     });
   }
 
-  protected rotuloStatus(status: StatusChamado): string {
-    return ROTULOS_STATUS[status];
-  }
-
   protected verificarChamado(chamado: Chamado): void {
     if (this.verificandoId() !== null) {
       return;
@@ -143,6 +158,7 @@ export class ChamadosTi {
         // critério de `_precisa_atencao` no backend.
         if (atualizado.status === 'fila_atendimento') {
           this.chamados.update((atual) => atual.filter((item) => item.id !== atualizado.id));
+          this.ajustarPaginaAtual();
         } else {
           this.chamados.update((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
         }
@@ -154,26 +170,6 @@ export class ChamadosTi {
       error: (erro: HttpErrorResponse) => {
         this.erro.set(mensagemErro(erro, 'Não foi possível verificar este chamado.'));
         this.verificandoId.set(null);
-      },
-    });
-  }
-
-  protected verificarChamadosNovos(): void {
-    if (this.verificando()) {
-      return;
-    }
-
-    this.verificando.set(true);
-    this.erro.set(null);
-
-    this.http.post<Chamado[]>(`${MCP_API_BASE_URL}/api/ti/chamados/verificar`, {}).subscribe({
-      next: (chamados) => {
-        this.chamados.set(chamados);
-        this.verificando.set(false);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erro.set(mensagemErro(erro, 'Não foi possível verificar os chamados.'));
-        this.verificando.set(false);
       },
     });
   }

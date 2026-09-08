@@ -102,7 +102,15 @@ async def processar_chamado_novo(
     NAQUELE momento (`cargas` é atualizado in-place — importante quando
     processando um lote: duas chamadas seguidas não caem sempre no mesmo
     técnico só porque nenhum dos dois ainda foi salvo no GLPI), atribui e
-    libera pra fila.
+    libera pra fila. Se `chamado.tecnico_atribuido` já for exatamente
+    esse técnico, pula a atribuição — confirmado contra a instância
+    real que o GLPI rejeita (`400 ERROR_INVALID_PARAMETER`) atribuir a
+    MESMA pessoa com o mesmo papel duas vezes. Isso acontece quando um
+    chamado ficou "meio processado" numa rodada anterior (técnico
+    atribuído, mas a chamada seguinte — marcar `fila_atendimento` —
+    falhou ou foi interrompida antes de terminar); sem esse pulo, o
+    chamado ficaria travado pra sempre, tropeçando nessa mesma falha a
+    cada rodada do poller.
 
     `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
     aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
@@ -129,7 +137,8 @@ async def processar_chamado_novo(
         await cliente.atualizar_categoria(chamado.id, resultado_classificacao.categoria_id)
 
     tecnico = escolher_tecnico(resultado_classificacao.area, cargas)
-    await cliente.atribuir(chamado.id, resultado_classificacao.area, tecnico.identificador)
+    if chamado.tecnico_atribuido != tecnico.identificador:
+        await cliente.atribuir(chamado.id, resultado_classificacao.area, tecnico.identificador)
     await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
 

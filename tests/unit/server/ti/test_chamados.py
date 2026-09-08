@@ -29,6 +29,7 @@ def _chamado(
     descricao: str = "detalhe",
     categoria: str = "Hardware",
     categoria_id: int | None = None,
+    tecnico_atribuido: str | None = None,
 ) -> Chamado:
     return Chamado(
         id=id_,
@@ -43,7 +44,7 @@ def _chamado(
         reportado_em=None,
         criado_em=datetime(2026, 1, 1, tzinfo=UTC),
         area=None,
-        tecnico_atribuido=None,
+        tecnico_atribuido=tecnico_atribuido,
     )
 
 
@@ -186,6 +187,31 @@ class TestProcessarChamadoNovo:
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert resultado.avaliacao_suficiente is True
         assert resultado.precisou_embedding is True
+
+    async def test_chamado_ja_atribuido_ao_tecnico_certo_nao_reatribui(self):
+        # Confirmado contra a instância real: o GLPI rejeita (400
+        # ERROR_INVALID_PARAMETER) atribuir a mesma pessoa/papel duas
+        # vezes — acontece quando um chamado fica "meio processado"
+        # numa rodada anterior (técnico já atribuído, mas a chamada
+        # seguinte, marcar `fila_atendimento`, falhou ou foi
+        # interrompida antes de terminar). Sem pular a reatribuição, o
+        # chamado ficaria travado pra sempre nessa mesma falha.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999, tecnico_atribuido="7")])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"7": 0}
+
+        resultado = await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999, tecnico_atribuido="7"),
+            cargas,
+            True,
+        )
+
+        assert cliente.atribuicoes == []
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
+        assert resultado.avaliacao_suficiente is True
 
     async def test_categoria_atual_ja_correta_nao_reescreve_categoria(self):
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])

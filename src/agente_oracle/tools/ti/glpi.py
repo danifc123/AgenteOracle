@@ -39,6 +39,7 @@ ainda não confirmados).
 solicitante na criação do chamado; notificação de "chamado incompleto"
 (e-mail/Teams) é fase seguinte, fora do escopo aqui."""
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal, Protocol
@@ -52,6 +53,11 @@ AreaChamado = Literal["processos", "sistemas", "infra"]
 
 _TIMEOUT_HTTP_SEGUNDOS = 10.0
 _MARGEM_EXPIRACAO_TOKEN_SEGUNDOS = 30
+# `_requisicao` repete só métodos idempotentes (nunca `POST`, que cria
+# recurso) quando a conexão cai no meio — ver a docstring do método.
+_MAX_TENTATIVAS_HTTP = 3
+_ESPERA_ENTRE_TENTATIVAS_SEGUNDOS = 1.0
+_METODOS_SEGUROS_PRA_REPETIR = frozenset({"GET", "PATCH", "DELETE"})
 # Só um teto de pedido — o GLPI limita a resposta a ~100 itens de
 # qualquer forma (ver `ClienteGLPIReal._listar_com_filtro`).
 _TAMANHO_PAGINA_SOLICITADO = 999
@@ -438,9 +444,26 @@ class ClienteGLPIReal:
         return
 
     async def _requisicao(self, metodo: str, caminho: str, **kwargs) -> httpx.Response:
+        """Repete `GET`/`PATCH`/`DELETE` até `_MAX_TENTATIVAS_HTTP` vezes se
+        a conexão cair no meio (confirmado contra a instância real: a rede
+        interna tem instabilidade ocasional, já vimos `httpx.ReadError` no
+        meio de uma resposta mais de uma vez). `POST` fica de fora de
+        propósito — cria recurso (Followup, TeamMember, categoria); se a
+        escrita já tiver sido processada no servidor e só a resposta não
+        tiver chegado, repetir criaria duplicata."""
         token = await self._token_valido()
         cabecalhos = {"Authorization": f"Bearer {token}", **kwargs.pop("headers", {})}
-        return await self._http_client.request(metodo, caminho, headers=cabecalhos, **kwargs)
+        if metodo not in _METODOS_SEGUROS_PRA_REPETIR:
+            return await self._http_client.request(metodo, caminho, headers=cabecalhos, **kwargs)
+
+        for tentativa in range(1, _MAX_TENTATIVAS_HTTP + 1):
+            try:
+                return await self._http_client.request(metodo, caminho, headers=cabecalhos, **kwargs)
+            except httpx.TransportError:
+                if tentativa == _MAX_TENTATIVAS_HTTP:
+                    raise
+                await asyncio.sleep(_ESPERA_ENTRE_TENTATIVAS_SEGUNDOS * tentativa)
+        raise AssertionError("inalcançável — o loop sempre retorna ou levanta na última tentativa")
 
     async def _token_valido(self) -> str:
         agora = datetime.now(UTC)

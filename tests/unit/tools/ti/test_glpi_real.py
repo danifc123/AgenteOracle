@@ -1,4 +1,5 @@
 import json
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -53,6 +54,11 @@ class _GlpiApiFake:
         self.pending_reason_items_criados: list[dict] = []
         self.sessoes_legadas_abertas = 0
         self.sessoes_legadas_fechadas = 0
+        # Simula queda de conexão transitória (ver `_requisicao`) — chave
+        # "METODO caminho", valor = quantas vezes ainda deve falhar antes
+        # de deixar a rota responder normalmente.
+        self.falhas_transitorias_restantes: dict[str, int] = {}
+        self.tentativas_por_rota: dict[str, int] = {}
         self.tickets: list[dict] = [
             {
                 "id": 1,
@@ -70,6 +76,12 @@ class _GlpiApiFake:
     def handler(self, request: httpx.Request) -> httpx.Response:
         caminho = request.url.path
         metodo = request.method
+
+        chave = f"{metodo} {caminho}"
+        self.tentativas_por_rota[chave] = self.tentativas_por_rota.get(chave, 0) + 1
+        if self.falhas_transitorias_restantes.get(chave, 0) > 0:
+            self.falhas_transitorias_restantes[chave] -= 1
+            raise httpx.ReadError("conexão caiu (simulado)")
 
         if caminho == "/api.php/token" and metodo == "POST":
             self.chamadas_token += 1
@@ -146,6 +158,47 @@ class TestTokenCache:
         await cliente.listar()
 
         assert fake.chamadas_token == 1
+
+
+class TestRetryHttp:
+    @pytest.fixture(autouse=True)
+    def _sem_espera_de_verdade(self, monkeypatch):
+        # Não precisa esperar de verdade entre tentativas só pra testar
+        # que elas acontecem.
+        monkeypatch.setattr("agente_oracle.tools.ti.glpi.asyncio.sleep", AsyncMock())
+
+    async def test_get_repete_apos_erro_transitorio_e_completa(self):
+        fake = _GlpiApiFake()
+        fake.falhas_transitorias_restantes["GET /api.php/v2.3/Assistance/Ticket/1"] = 1
+        cliente = _cliente_fake(fake)
+
+        chamado = await cliente.buscar(1)
+
+        assert chamado is not None
+        assert chamado.id == 1
+        assert fake.tentativas_por_rota["GET /api.php/v2.3/Assistance/Ticket/1"] == 2
+
+    async def test_get_desiste_apos_esgotar_tentativas(self):
+        fake = _GlpiApiFake()
+        fake.falhas_transitorias_restantes["GET /api.php/v2.3/Assistance/Ticket/1"] = 99
+        cliente = _cliente_fake(fake)
+
+        with pytest.raises(httpx.TransportError):
+            await cliente.buscar(1)
+
+        assert fake.tentativas_por_rota["GET /api.php/v2.3/Assistance/Ticket/1"] == 3
+
+    async def test_post_nao_repete_mesmo_apos_erro_transitorio(self):
+        # POST cria recurso (TeamMember) — repetir arriscaria duplicar uma
+        # atribuição que já tenha sido processada no servidor.
+        fake = _GlpiApiFake()
+        fake.falhas_transitorias_restantes["POST /api.php/v2.3/Assistance/Ticket/1/TeamMember"] = 1
+        cliente = _cliente_fake(fake)
+
+        with pytest.raises(httpx.TransportError):
+            await cliente.atribuir(1, "infra", "7")
+
+        assert fake.tentativas_por_rota["POST /api.php/v2.3/Assistance/Ticket/1/TeamMember"] == 1
 
 
 class TestListarEBuscar:

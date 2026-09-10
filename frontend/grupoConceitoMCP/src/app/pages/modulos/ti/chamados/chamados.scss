@@ -93,6 +93,30 @@ table {
   color: var(--color-text-muted);
 }
 
+.badge-situacao {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+// Ainda só com a conta de serviço da IA, esperando o solicitante —
+// mesmo tom de "atenção" já usado em `.aviso-ia`.
+.badge-situacao--aguardando {
+  background: rgba(232, 135, 30, 0.12);
+  color: #b5620a;
+}
+
+// Já escalado pra um técnico humano — tom do verde da marca
+// (`--color-primary`), sinalizando que alguém assumiu o chamado.
+.badge-situacao--escalado {
+  background: rgba(27, 67, 50, 0.1);
+  color: var(--color-primary);
+}
+
 .detalhe-chamado {
   display: flex;
   flex-direction: column;
@@ -116,12 +140,37 @@ table {
   font-weight: 600;
 }
 
+// Conteúdo vem em HTML de verdade do GLPI (rich text) — renderizado via
+// [innerHTML] (Angular sanitiza sozinho), por isso as regras abaixo pros
+// elementos que costumam vir dentro (parágrafo, lista, imagem anexada).
 .descricao-chamado {
-  margin: 0;
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--color-text);
-  white-space: pre-line;
+
+  p {
+    margin: 0 0 10px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  ul,
+  ol {
+    margin: 0 0 10px;
+    padding-left: 20px;
+  }
+
+  img {
+    max-width: 100%;
+    border-radius: var(--radius-sm);
+    margin: 6px 0;
+  }
+
+  a {
+    color: var(--color-primary);
+  }
 }
 
 .aviso-ia {
@@ -149,38 +198,4 @@ table {
   margin: 0;
   font-size: 13px;
   color: var(--color-text-muted);
-}
-
-.preview-email {
-  padding: 12px 14px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-
-  strong {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 12.5px;
-    color: var(--color-text-muted);
-  }
-}
-
-.preview-email-campo {
-  margin: 0 0 4px;
-  font-size: 13px;
-  color: var(--color-text);
-
-  span {
-    font-weight: 600;
-    color: var(--color-text-muted);
-  }
-}
-
-.preview-email-corpo {
-  margin: 10px 0 0;
-  padding-top: 10px;
-  border-top: 1px dashed var(--color-border);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-text);
 }

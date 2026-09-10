@@ -33,6 +33,7 @@
           <tr>
             <th>Título</th>
             <th>Categoria</th>
+            <th>Situação</th>
             <th></th>
           </tr>
         </thead>
@@ -41,6 +42,15 @@
             <tr>
               <td>{{ chamado.titulo }}</td>
               <td>{{ chamado.categoria }}</td>
+              <td>
+                @if (chamado.status === 'aguardando_usuario') {
+                  @if (tecnicoEscalado(chamado); as tecnico) {
+                    <span class="badge-situacao badge-situacao--escalado">Com {{ tecnico }}</span>
+                  } @else {
+                    <span class="badge-situacao badge-situacao--aguardando">Aguardando resposta</span>
+                  }
+                }
+              </td>
               <td class="coluna-acao">
                 <app-botao
                   variant="contorno"
@@ -73,54 +83,32 @@
   }
 </section>
 
-<app-dialog
-  [aberto]="!!chamadoAberto()"
-  [titulo]="chamadoAberto()?.titulo ?? ''"
-  [temRodape]="chamadoAberto()?.status === 'aguardando_usuario'"
-  (fechar)="fecharDetalhe()"
->
+<app-dialog [aberto]="!!chamadoAberto()" [titulo]="chamadoAberto()?.titulo ?? ''" (fechar)="fecharDetalhe()">
   @if (chamadoAberto(); as chamado) {
     <div class="detalhe-chamado">
       <div class="linha-meta-badges">
         <span class="badge-meta">{{ chamado.categoria }}</span>
         <span class="badge-meta">{{ chamado.solicitante }}</span>
         <span class="badge-meta">{{ chamado.criado_em | date: 'dd/MM/yyyy HH:mm' }}</span>
+        @if (chamado.status === 'aguardando_usuario') {
+          @if (tecnicoEscalado(chamado); as tecnico) {
+            <span class="badge-situacao badge-situacao--escalado">Com {{ tecnico }}</span>
+          } @else {
+            <span class="badge-situacao badge-situacao--aguardando">Aguardando resposta</span>
+          }
+        }
       </div>
-      <p class="descricao-chamado">{{ chamado.descricao }}</p>
+      <div class="descricao-chamado" [innerHTML]="chamado.descricao"></div>
 
       @if (chamado.status === 'aguardando_usuario' && chamado.avaliacao_mensagem) {
         <div class="aviso-ia">
           <strong>A IA identificou que falta informação:</strong>
           <p>{{ chamado.avaliacao_mensagem }}</p>
         </div>
-
-        @if (chamado.reportado_em) {
-          <div class="preview-email">
-            <strong>Aviso registrado em {{ chamado.reportado_em | date: 'dd/MM/yyyy HH:mm' }}</strong>
-            <p class="preview-email-campo"><span>Para:</span> {{ chamado.email }}</p>
-            <p class="preview-email-campo">
-              <span>Assunto:</span> Chamado #{{ chamado.id }} precisa de mais informação
-            </p>
-            <p class="preview-email-corpo">
-              Olá, {{ chamado.solicitante }}! O chamado #{{ chamado.id }} ("{{ chamado.titulo }}") ainda não
-              tem informação suficiente pra nossa equipe de TI atender: {{ chamado.avaliacao_mensagem }}
-              Enquanto não for detalhado, o chamado continua em espera e não entra na fila de atendimento.
-            </p>
-          </div>
-        } @else {
-          <p class="ainda-nao-reportado">O usuário ainda não foi avisado sobre esse chamado.</p>
-        }
+        <p class="ainda-nao-reportado">
+          O GLPI já notificou o solicitante por e-mail junto com essa pergunta.
+        </p>
       }
     </div>
-  }
-
-  @if (chamadoAberto(); as chamado) {
-    @if (chamado.status === 'aguardando_usuario') {
-      <ng-container rodape>
-        <app-botao variant="primaria" [loading]="reportando()" loadingText="Enviando..." (clicked)="reportar(chamado)">
-          {{ chamado.reportado_em ? 'Reportar novamente' : 'Reportar ao usuário' }}
-        </app-botao>
-      </ng-container>
-    }
   }
 </app-dialog>

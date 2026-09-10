@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     glpi_legacy_app_token: str = ""
     glpi_legacy_user_token: str = ""
 
+    # Id do usuário GLPI da própria conta de serviço (a mesma de
+    # `glpi_username`/`glpi_password` acima) — confirmado ao vivo contra a
+    # instância real que um chamado sem NINGUÉM atribuído (usuário, não só
+    # Group) rejeita silenciosamente qualquer troca de status. Usado só
+    # como "segurador de lugar": atribuído no instante de trocar o status
+    # pela primeira vez, depois desatribuído — ver
+    # `server/ti/chamados.py::processar_chamado_novo`. OPCIONAL: sem isso,
+    # `processar_chamado_novo` pula esse passo (mesmo espírito dos outros
+    # campos de TI opcionais).
+    glpi_conta_ia_id: str = ""
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [origem.strip() for origem in self.allowed_origins.split(",") if origem.strip()]

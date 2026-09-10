@@ -62,6 +62,7 @@ class _GlpiApiFake:
         # Formato confirmado ao vivo contra a instância real: uma lista de
         # `{"type": "Followup", "item": {...}}`, não um objeto plano.
         self.followups: list[dict] = []
+        self.team_members_removidos: list[dict] = []
         self.tickets: list[dict] = [
             {
                 "id": 1,
@@ -103,6 +104,9 @@ class _GlpiApiFake:
             return httpx.Response(200, json=self.followups)
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/TeamMember" and metodo == "POST":
             return httpx.Response(201, json={"id": 1})
+        if caminho == "/api.php/v2.3/Assistance/Ticket/1/TeamMember" and metodo == "DELETE":
+            self.team_members_removidos.append(json.loads(request.read()))
+            return httpx.Response(200, json=None)
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/PendingReason" and metodo == "GET":
             if self.tem_pending_reason:
                 return httpx.Response(200, json={"id": 1, "itemtype": "Ticket", "items_id": 1})
@@ -342,6 +346,24 @@ class TestAtribuir:
     async def test_nao_levanta(self):
         cliente = _cliente_fake(_GlpiApiFake())
         await cliente.atribuir(1, "infra", "7")
+
+
+class TestAtribuirDesatribuirUsuario:
+    async def test_atribuir_usuario_nao_levanta(self):
+        # Mesmo endpoint de `atribuir()`, só sem o campo `area` (que já
+        # não ia pro payload mesmo) — usado pra atribuir a conta da IA.
+        cliente = _cliente_fake(_GlpiApiFake())
+        await cliente.atribuir_usuario(1, "274")
+
+    async def test_desatribuir_usuario_manda_delete_com_o_corpo_certo(self):
+        # Rota confirmada na fonte do GLPI (ITILController::removeTeamMember)
+        # e testada ao vivo — mesmo caminho do POST, método DELETE.
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake)
+
+        await cliente.desatribuir_usuario(1, "274")
+
+        assert fake.team_members_removidos == [{"type": "User", "id": 274, "role": "assigned"}]
 
 
 class TestCargaAtualPorTecnico:

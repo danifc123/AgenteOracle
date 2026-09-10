@@ -38,7 +38,16 @@ propósito fora desta função testável-com-fake) decide entre perguntar
 a partir da segunda vez que o MESMO chamado segue insuficiente) — bug
 real visto em produção: o mesmo chamado recebendo a mesma pergunta
 genérica repetida em dias diferentes, porque ninguém tinha memória do
-que já tinha sido perguntado antes."""
+que já tinha sido perguntado antes.
+
+Regra do GLPI confirmada ao vivo: um chamado SEM NINGUÉM atribuído
+(usuário, não só Group) rejeita silenciosamente qualquer troca de
+status — o `PATCH` volta 200, mas o status não muda de verdade (era por
+isso que o `PendingReason` nunca persistia). `processar_chamado_novo`
+atribui a própria conta de serviço da IA (`settings.glpi_conta_ia_id`)
+como "segurador de lugar" só no instante da 1ª troca de status, e
+desatribui quando a triagem termina (suficiente ou escalado) — a troca
+de status já feita continua valendo mesmo depois de desatribuir."""
 
 import asyncio
 import logging
@@ -130,8 +139,17 @@ async def processar_chamado_novo(
     ver abaixo), não manda outra pergunta automática — repetiria algo
     parecido com o que já foi perguntado (bug real visto no #3262: a
     mesma pergunta genérica voltando em dias diferentes). Em vez disso,
-    escala pra um técnico humano (`_escalar_para_tecnico`) tentar extrair
-    a informação diretamente, sem mudar o status.
+    escala pra um técnico humano (`_escalar_para_tecnico`).
+
+    Antes de marcar `aguardando_usuario` pela 1ª vez, atribui a própria
+    conta de serviço da IA (`settings.glpi_conta_ia_id`) como "segurador
+    de lugar" — confirmado ao vivo contra a instância real que um chamado
+    sem NINGUÉM atribuído (usuário, não só Group) rejeita silenciosamente
+    qualquer troca de status (o `PATCH` retorna 200, mas o GLPI ignora).
+    A conta fica atribuída enquanto o chamado está pendente; quando a
+    triagem terminar de verdade (suficiente ou escalado), é desatribuída
+    e o técnico de verdade assume — desatribuir não desfaz a troca de
+    status já feita (confirmado ao vivo: o status fica onde foi deixado).
 
     Sem categoria (`categoria_id is None`) — chamado aberto por e-mail,
     confirmado com o responsável do GLPI que esses já entram direto na
@@ -169,6 +187,8 @@ async def processar_chamado_novo(
         if ja_foi_avaliado_insuficiente:
             await _escalar_para_tecnico(cliente, chamado, cargas)
         else:
+            if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
+                await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
             await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
@@ -185,6 +205,9 @@ async def processar_chamado_novo(
     )
     if resultado_classificacao.categoria_id is not None:
         await cliente.atualizar_categoria(chamado.id, resultado_classificacao.categoria_id)
+
+    if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
+        await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
 
     tecnico = escolher_tecnico(resultado_classificacao.area, cargas)
     if chamado.tecnico_atribuido != tecnico.identificador:
@@ -215,21 +238,26 @@ async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: 
     """Chamado que segue sem informação suficiente numa segunda (ou
     enésima) avaliação não ganha outra pergunta automática — em vez
     disso, atribui um técnico humano de menor carga pra tentar extrair a
-    informação diretamente com o solicitante. De propósito NÃO muda o
-    status (continua `aguardando_usuario`/Pendente no GLPI) — só sai
-    dessa pendência de verdade quando a informação completar e o fluxo
-    normal de `processar_chamado_novo` conseguir classificar e liberar
-    pra fila.
+    informação diretamente com o solicitante. Atribuir alguém muda o
+    status sozinho pra "Em atendimento" (confirmado ao vivo, não dá pra
+    atribuir e manter "Pendente") — aceito de propósito: o técnico
+    escalado passa a possuir o chamado oficialmente, igual uma resolução
+    normal, então o PATCH pra `fila_atendimento` no final é só deixar
+    explícito o que o GLPI já fez sozinho.
 
     Área vem da categoria ATUAL do chamado (`AREA_POR_CATEGORIA_ID`), sem
     chamar `classificar_categoria`/Ollama de novo — mais barato, e nesta
     altura corrigir a categoria não é o problema (falta informação, não
     categoria errada). Cai em `_AREA_PADRAO_ESCALONAMENTO` se o chamado
     não tiver categoria nenhuma (aberto por e-mail)."""
+    if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
+        await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
+
     area = categorias.AREA_POR_CATEGORIA_ID.get(chamado.categoria_id, _AREA_PADRAO_ESCALONAMENTO)
     tecnico = escolher_tecnico(area, cargas)
     if chamado.tecnico_atribuido != tecnico.identificador:
         await cliente.atribuir(chamado.id, area, tecnico.identificador)
+    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
 
 

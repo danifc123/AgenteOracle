@@ -95,6 +95,8 @@ class _ClienteGLPIFake:
         self.avaliacoes: list[tuple[int, str, str | None]] = []
         self.categorias_atualizadas: list[tuple[int, int]] = []
         self.followups_por_chamado: dict[int, list[Followup]] = {}
+        self.usuarios_atribuidos: list[tuple[int, str]] = []
+        self.usuarios_desatribuidos: list[tuple[int, str]] = []
 
     async def listar(self) -> list[Chamado]:
         return list(self._chamados.values())
@@ -127,6 +129,14 @@ class _ClienteGLPIFake:
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         return self.followups_por_chamado.get(chamado_id, [])
 
+    async def atribuir_usuario(self, chamado_id: int, usuario_id: str) -> None:
+        self.usuarios_atribuidos.append((chamado_id, usuario_id))
+        self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=usuario_id)
+
+    async def desatribuir_usuario(self, chamado_id: int, usuario_id: str) -> None:
+        self.usuarios_desatribuidos.append((chamado_id, usuario_id))
+        self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=None)
+
 
 class TestProcessarChamadoNovo:
     async def test_chamado_insuficiente_fica_aguardando_usuario_sem_atribuir(self):
@@ -137,10 +147,50 @@ class TestProcessarChamadoNovo:
         resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(), cargas, True)
 
         assert cliente.avaliacoes == [(1, "aguardando_usuario", "Qual sistema está afetado?")]
-        assert cliente.atribuicoes == []
+        assert cliente.atribuicoes == []  # nenhum técnico "de negócio" atribuído
         assert cargas == {}
         assert resultado.avaliacao_suficiente is False
         assert resultado.precisou_embedding is None  # nem chegou a classificar_categoria
+
+    async def test_chamado_insuficiente_pela_primeira_vez_atribui_a_conta_da_ia(self, monkeypatch):
+        # GLPI rejeita silenciosamente troca de status sem ninguém
+        # atribuído (confirmado ao vivo) — a conta da IA entra só como
+        # "segurador de lugar" pro PATCH de status funcionar de verdade.
+        monkeypatch.setattr(settings, "glpi_conta_ia_id", "274-teste")
+        cliente = _ClienteGLPIFake([_chamado()])
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(), cargas, True)
+
+        assert cliente.usuarios_atribuidos == [(1, "274-teste")]
+
+    async def test_chamado_insuficiente_com_ia_ja_atribuida_nao_reatribui(self, monkeypatch):
+        # Idempotente — reavaliar (via botão individual, por exemplo) um
+        # chamado que já tem a conta da IA atribuída não deveria tentar
+        # atribuir de novo (GLPI rejeitaria com 400).
+        monkeypatch.setattr(settings, "glpi_conta_ia_id", "274-teste")
+        cliente = _ClienteGLPIFake([_chamado(tecnico_atribuido="274-teste")])
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(
+            cliente, ollama, "modelo-teste", _chamado(tecnico_atribuido="274-teste"), cargas, True
+        )
+
+        assert cliente.usuarios_atribuidos == []
+
+    async def test_chamado_insuficiente_sem_conta_da_ia_configurada_pula_o_passo(self, monkeypatch):
+        # Campo opcional (mesmo espírito dos outros campos de TI
+        # opcionais) — sem configurar, só pula esse passo, não trava nada.
+        monkeypatch.setattr(settings, "glpi_conta_ia_id", "")
+        cliente = _ClienteGLPIFake([_chamado()])
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(), cargas, True)
+
+        assert cliente.usuarios_atribuidos == []
 
     async def test_chamado_sem_categoria_insuficiente_fica_aguardando_usuario_normal(self):
         # Chamado por e-mail (sem categoria) com conteúdo insuficiente
@@ -198,6 +248,28 @@ class TestProcessarChamadoNovo:
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert resultado.avaliacao_suficiente is True
         assert resultado.precisou_embedding is True
+
+    async def test_chamado_suficiente_com_ia_atribuida_desatribui_antes_do_tecnico_real(self, monkeypatch):
+        # Reavaliação depois de resposta nova (`verificar_chamados_
+        # aguardando_resposta`): a conta da IA estava atribuída desde a
+        # 1ª avaliação insuficiente — precisa sair antes do técnico real
+        # assumir de vez.
+        monkeypatch.setattr(settings, "glpi_conta_ia_id", "274-teste")
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=1, tecnico_atribuido="274-teste")])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=1, tecnico_atribuido="274-teste"),
+            cargas,
+            True,
+        )
+
+        assert cliente.usuarios_desatribuidos == [(1, "274-teste")]
+        assert len(cliente.atribuicoes) == 1
 
     async def test_chamado_ja_atribuido_ao_tecnico_certo_nao_reatribui(self):
         # Confirmado contra a instância real: o GLPI rejeita (400
@@ -271,8 +343,11 @@ class TestProcessarChamadoNovo:
         # manda a mesma pergunta genérica de novo a cada reavaliação.
         # `ja_foi_avaliado_insuficiente=True` (decidido por quem chama,
         # via `uso_ia_chamados.ultima_avaliacao`) muda o comportamento:
-        # em vez de outro Followup, atribui um técnico humano, sem mudar
-        # o status.
+        # em vez de outro Followup, atribui um técnico humano. Atribuir
+        # alguém muda o status sozinho pra "Em atendimento" (confirmado
+        # ao vivo) — por isso o escalonamento também chama
+        # `atualizar_avaliacao` com `fila_atendimento`, deixando isso
+        # explícito.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
         ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
         cargas = {"7": 0}
@@ -287,12 +362,31 @@ class TestProcessarChamadoNovo:
             ja_foi_avaliado_insuficiente=True,
         )
 
-        assert cliente.avaliacoes == []  # nenhum Followup/PATCH de status novo
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert len(cliente.atribuicoes) == 1
         chamado_id, area, _tecnico = cliente.atribuicoes[0]
         assert chamado_id == 1
         assert area == "infra"
         assert resultado.avaliacao_suficiente is False
+
+    async def test_escalonamento_desatribui_a_conta_da_ia_se_estiver_atribuida(self, monkeypatch):
+        monkeypatch.setattr(settings, "glpi_conta_ia_id", "274-teste")
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999, tecnico_atribuido="274-teste")])
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
+        cargas = {"7": 0}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999, tecnico_atribuido="274-teste"),
+            cargas,
+            True,
+            ja_foi_avaliado_insuficiente=True,
+        )
+
+        assert cliente.usuarios_desatribuidos == [(1, "274-teste")]
+        assert len(cliente.atribuicoes) == 1
 
     async def test_insuficiente_de_novo_sem_categoria_usa_area_padrao(self):
         # Chamado aberto por e-mail (sem categoria) que segue insuficiente

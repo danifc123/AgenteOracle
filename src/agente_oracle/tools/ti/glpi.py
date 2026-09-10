@@ -106,6 +106,10 @@ class ClienteGLPI(Protocol):
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None: ...
 
+    async def atribuir_usuario(self, chamado_id: int, usuario_id: str) -> None: ...
+
+    async def desatribuir_usuario(self, chamado_id: int, usuario_id: str) -> None: ...
+
     async def atualizar_categoria(self, chamado_id: int, categoria_id: int) -> None: ...
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
@@ -421,6 +425,37 @@ class ClienteGLPIReal:
             "POST",
             f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/TeamMember",
             json={"type": "User", "id": int(tecnico_identificador), "role": "assigned"},
+        )
+        resposta.raise_for_status()
+
+    async def atribuir_usuario(self, chamado_id: int, usuario_id: str) -> None:
+        """Atribuição crua (sem `area`) — diferente de `atribuir()`, que é a
+        escolha "de negócio" de técnico por área. Usada pra atribuir a
+        própria conta de serviço da IA como "segurador de lugar": confirmado
+        contra a instância real que um chamado sem NINGUÉM atribuído
+        (usuário, não só Group) rejeita silenciosamente qualquer troca de
+        status — ver `server/ti/chamados.py::processar_chamado_novo` pro
+        fluxo completo."""
+        resposta = await self._requisicao(
+            "POST",
+            f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/TeamMember",
+            json={"type": "User", "id": int(usuario_id), "role": "assigned"},
+        )
+        resposta.raise_for_status()
+
+    async def desatribuir_usuario(self, chamado_id: int, usuario_id: str) -> None:
+        """`DELETE .../TeamMember` (mesmo caminho do POST, corpo igual) —
+        rota confirmada no código-fonte do GLPI (`ITILController::
+        removeTeamMember`) e testada ao vivo (atribuir → confirmar →
+        remover → confirmar, round-trip limpo). Atribuir alguém muda o
+        status sozinho (pra "Em atendimento"), mas desatribuir NÃO reverte
+        — o status fica onde foi deixado, então essa chamada é segura de
+        rodar a qualquer momento depois da troca de status já ter
+        acontecido."""
+        resposta = await self._requisicao(
+            "DELETE",
+            f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/TeamMember",
+            json={"type": "User", "id": int(usuario_id), "role": "assigned"},
         )
         resposta.raise_for_status()
 

@@ -68,6 +68,14 @@ _MAX_PAGINAS_LISTAR = 50
 
 
 @dataclass(frozen=True)
+class Followup:
+    autor_id: int
+    autor_nome: str
+    conteudo: str
+    criado_em: datetime
+
+
+@dataclass(frozen=True)
 class Chamado:
     id: int
     titulo: str
@@ -103,6 +111,8 @@ class ClienteGLPI(Protocol):
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
 
     async def reportar_usuario(self, chamado_id: int) -> None: ...
+
+    async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
 
 
 # Códigos confirmados contra o schema `status` da instância real (campo
@@ -442,6 +452,27 @@ class ClienteGLPIReal:
         na criação do chamado; notificação de "chamado incompleto" fica
         pra fase seguinte (e-mail/Teams), fora do escopo desta integração."""
         return
+
+    async def buscar_followups(self, chamado_id: int) -> list[Followup]:
+        """Formato confirmado contra a instância real: uma lista de
+        `{"type": "Followup", "item": {...}}` (não um objeto plano como
+        `Ticket`) — `item.user` é quem escreveu (id + login), usado por
+        quem chama pra distinguir resposta do solicitante/técnico de um
+        comentário da própria IA (`GLPI_USERNAME`, conta de serviço)."""
+        resposta = await self._requisicao(
+            "GET", f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/Timeline/Followup"
+        )
+        resposta.raise_for_status()
+        followups = [
+            Followup(
+                autor_id=(entry["item"].get("user") or {}).get("id", 0),
+                autor_nome=(entry["item"].get("user") or {}).get("name", ""),
+                conteudo=entry["item"].get("content", ""),
+                criado_em=_data_do_glpi(entry["item"].get("date_creation")),
+            )
+            for entry in resposta.json()
+        ]
+        return sorted(followups, key=lambda followup: followup.criado_em)
 
     async def _requisicao(self, metodo: str, caminho: str, **kwargs) -> httpx.Response:
         """Repete `GET`/`PATCH`/`DELETE` até `_MAX_TENTATIVAS_HTTP` vezes se

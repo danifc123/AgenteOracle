@@ -5,10 +5,16 @@ from datetime import UTC, datetime
 import pytest
 
 from agente_oracle.agent.ti import roteamento_chamado
+from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
-from agente_oracle.server.ti.chamados import processar_chamado_novo, verificar_chamados_pendentes
+from agente_oracle.server.ti.chamados import (
+    processar_chamado_novo,
+    verificar_chamados_aguardando_resposta,
+    verificar_chamados_pendentes,
+)
+from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
-from agente_oracle.tools.ti.glpi import Chamado
+from agente_oracle.tools.ti.glpi import Chamado, Followup
 
 # `classificar_categoria` compara contra as ~211 categorias reais — pesado
 # e não-determinístico de mais pra um teste unitário. Substitui por uma
@@ -88,6 +94,7 @@ class _ClienteGLPIFake:
         self.atribuicoes: list[tuple[int, str, str]] = []
         self.avaliacoes: list[tuple[int, str, str | None]] = []
         self.categorias_atualizadas: list[tuple[int, int]] = []
+        self.followups_por_chamado: dict[int, list[Followup]] = {}
 
     async def listar(self) -> list[Chamado]:
         return list(self._chamados.values())
@@ -116,6 +123,9 @@ class _ClienteGLPIFake:
 
     async def reportar_usuario(self, chamado_id: int) -> None:
         self._chamados[chamado_id] = replace(self._chamados[chamado_id], reportado_em=datetime.now(UTC))
+
+    async def buscar_followups(self, chamado_id: int) -> list[Followup]:
+        return self.followups_por_chamado.get(chamado_id, [])
 
 
 class TestProcessarChamadoNovo:
@@ -256,6 +266,56 @@ class TestProcessarChamadoNovo:
         assert resultado.avaliacao_suficiente is True
         assert len(cliente.atribuicoes) == 1
 
+    async def test_insuficiente_de_novo_escala_pro_tecnico_em_vez_de_perguntar_de_novo(self):
+        # Bug real visto em produção (#3262): sem essa distinção, a IA
+        # manda a mesma pergunta genérica de novo a cada reavaliação.
+        # `ja_foi_avaliado_insuficiente=True` (decidido por quem chama,
+        # via `uso_ia_chamados.ultima_avaliacao`) muda o comportamento:
+        # em vez de outro Followup, atribui um técnico humano, sem mudar
+        # o status.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
+        cargas = {"7": 0}
+
+        resultado = await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999),
+            cargas,
+            True,
+            ja_foi_avaliado_insuficiente=True,
+        )
+
+        assert cliente.avaliacoes == []  # nenhum Followup/PATCH de status novo
+        assert len(cliente.atribuicoes) == 1
+        chamado_id, area, _tecnico = cliente.atribuicoes[0]
+        assert chamado_id == 1
+        assert area == "infra"
+        assert resultado.avaliacao_suficiente is False
+
+    async def test_insuficiente_de_novo_sem_categoria_usa_area_padrao(self):
+        # Chamado aberto por e-mail (sem categoria) que segue insuficiente
+        # na segunda passada ainda precisa de alguém pra escalar — cai na
+        # área padrão em vez de travar por falta de categoria.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=None)])
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=None),
+            cargas,
+            True,
+            ja_foi_avaliado_insuficiente=True,
+        )
+
+        assert len(cliente.atribuicoes) == 1
+        _chamado_id, area, _tecnico = cliente.atribuicoes[0]
+        assert area == "processos"
+
 
 class TestVerificarChamadosPendentes:
     async def test_reprocessa_so_novo_ignora_aguardando_usuario(self, monkeypatch):
@@ -307,3 +367,78 @@ class TestVerificarChamadosPendentes:
         assert cliente.avaliacoes == [(2, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {2}
         assert {chamado.id for chamado in resultado} == {1, 2}
+
+
+class TestVerificarChamadosAguardandoResposta:
+    async def test_reavalia_quando_tem_resposta_nova_do_solicitante(self, monkeypatch):
+        chamado_pendente = replace(_chamado(id_=1, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_pendente])
+        registro_anterior = uso_ia_chamados.RegistroUsoIa(
+            avaliacao_suficiente=False, criado_em=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        cliente.followups_por_chamado[1] = [
+            Followup(
+                autor_id=999,
+                autor_nome="solicitante.teste",
+                conteudo="Ah, é o sistema X que trava.",
+                criado_em=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ]
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
+        )
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await verificar_chamados_aguardando_resposta(usar_ia=True)
+
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
+        assert len(cliente.atribuicoes) == 1
+
+    async def test_nao_reavalia_sem_resposta_nova(self, monkeypatch):
+        # Followup existe, mas é da própria conta de serviço (a pergunta
+        # que a IA já fez) — não conta como resposta nova.
+        chamado_pendente = replace(_chamado(id_=1, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_pendente])
+        registro_anterior = uso_ia_chamados.RegistroUsoIa(
+            avaliacao_suficiente=False, criado_em=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        cliente.followups_por_chamado[1] = [
+            Followup(
+                autor_id=274,
+                autor_nome=settings.glpi_username,
+                conteudo="Qual sistema está afetado?",
+                criado_em=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ]
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
+        )
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await verificar_chamados_aguardando_resposta(usar_ia=True)
+
+        assert cliente.avaliacoes == []
+        assert cliente.atribuicoes == []
+
+    async def test_pula_chamado_sem_registro_anterior(self, monkeypatch):
+        # Não deveria acontecer na prática (`aguardando_usuario` só existe
+        # depois de pelo menos 1 avaliação), mas não deveria quebrar nem
+        # assumir nada se acontecer.
+        chamado_pendente = replace(_chamado(id_=1, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_pendente])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await verificar_chamados_aguardando_resposta(usar_ia=True)
+
+        assert cliente.avaliacoes == []
+        assert cliente.atribuicoes == []

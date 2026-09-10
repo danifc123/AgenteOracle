@@ -59,6 +59,9 @@ class _GlpiApiFake:
         # de deixar a rota responder normalmente.
         self.falhas_transitorias_restantes: dict[str, int] = {}
         self.tentativas_por_rota: dict[str, int] = {}
+        # Formato confirmado ao vivo contra a instância real: uma lista de
+        # `{"type": "Followup", "item": {...}}`, não um objeto plano.
+        self.followups: list[dict] = []
         self.tickets: list[dict] = [
             {
                 "id": 1,
@@ -96,6 +99,8 @@ class _GlpiApiFake:
             return httpx.Response(200, json={"ok": True})
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/Timeline/Followup" and metodo == "POST":
             return httpx.Response(201, json={"id": 1})
+        if caminho == "/api.php/v2.3/Assistance/Ticket/1/Timeline/Followup" and metodo == "GET":
+            return httpx.Response(200, json=self.followups)
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/TeamMember" and metodo == "POST":
             return httpx.Response(201, json={"id": 1})
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/PendingReason" and metodo == "GET":
@@ -393,6 +398,67 @@ class TestAtualizarCategoria:
         # só o corpo muda (`category` em vez de `status`).
         cliente = _cliente_fake(_GlpiApiFake())
         await cliente.atualizar_categoria(1, 175)
+
+
+class TestBuscarFollowups:
+    async def test_mapeia_formato_confirmado_contra_a_instancia_real(self):
+        # Formato exato confirmado via `GET /Ticket/3262/Timeline/Followup`
+        # contra o GLPI real (não é um objeto plano como `Ticket`).
+        fake = _GlpiApiFake()
+        fake.followups = [
+            {
+                "type": "Followup",
+                "item": {
+                    "id": 5254,
+                    "itemtype": "Ticket",
+                    "items_id": 1,
+                    "content": "Qual é a mensagem de erro?",
+                    "is_private": False,
+                    "date": "2026-09-04T15:48:05-03:00",
+                    "date_creation": "2026-09-04T15:48:05-03:00",
+                    "date_mod": "2026-09-04T15:48:05-03:00",
+                    "user": {"id": 274, "name": "api.ebarn"},
+                },
+            }
+        ]
+        cliente = _cliente_fake(fake)
+
+        followups = await cliente.buscar_followups(1)
+
+        assert len(followups) == 1
+        assert followups[0].autor_id == 274
+        assert followups[0].autor_nome == "api.ebarn"
+        assert followups[0].conteudo == "Qual é a mensagem de erro?"
+
+    async def test_devolve_vazio_sem_followup_nenhum(self):
+        cliente = _cliente_fake(_GlpiApiFake())
+        assert await cliente.buscar_followups(1) == []
+
+    async def test_ordena_por_data_de_criacao(self):
+        fake = _GlpiApiFake()
+        fake.followups = [
+            {
+                "type": "Followup",
+                "item": {
+                    "content": "segundo",
+                    "date_creation": "2026-09-05T00:00:00-03:00",
+                    "user": {"id": 1, "name": "a"},
+                },
+            },
+            {
+                "type": "Followup",
+                "item": {
+                    "content": "primeiro",
+                    "date_creation": "2026-09-04T00:00:00-03:00",
+                    "user": {"id": 1, "name": "a"},
+                },
+            },
+        ]
+        cliente = _cliente_fake(fake)
+
+        followups = await cliente.buscar_followups(1)
+
+        assert [f.conteudo for f in followups] == ["primeiro", "segundo"]
 
 
 class TestReportarUsuario:

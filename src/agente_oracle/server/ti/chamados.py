@@ -22,19 +22,28 @@ real pra rodar teste unitário — ver docstring de `uso_ia_chamados.py`).
 
 `verificar_chamados_pendentes` só reprocessa chamado `novo` — a TELA
 continua mostrando `aguardando_usuario` também (`chamados_route`, sem
-filtro de status), mas reavaliar de novo um chamado que já está esperando
-resposta do solicitante, a cada 5 minutos, sem que nada tenha mudado, é
-uma chamada de IA gasta à toa; o GLPI já tem o próprio mecanismo de
-resolver sozinho depois de 3 dias sem resposta (`PendingReason` — ver
-`tools/ti/glpi.py::ClienteGLPIReal._marcar_aguardando_usuario`). Um
-chamado assim só é reavaliado de novo via o botão "Verificar" individual
-por chamado (`/api/ti/chamados/{id}/verificar`, que não tem esse filtro
-de propósito — é o suporte a teste manual)."""
+filtro de status). `verificar_chamados_aguardando_resposta` é quem cobre
+`aguardando_usuario`, mas só reavalia quando detecta uma resposta nova
+(Followup mais recente que a última avaliação registrada) — reprocessar
+um chamado parado, sem que nada tenha mudado, seria IA gasta à toa; sem
+resposta nova, o GLPI já tem o próprio mecanismo de resolver sozinho
+depois de 3 dias (`PendingReason` — ver
+`tools/ti/glpi.py::ClienteGLPIReal._marcar_aguardando_usuario`).
+
+`processar_chamado_novo` nunca manda a mesma pergunta automática duas
+vezes pro mesmo chamado — `ja_foi_avaliado_insuficiente` (calculado por
+quem chama, via `tools/ti/uso_ia_chamados.py::ultima_avaliacao`, de
+propósito fora desta função testável-com-fake) decide entre perguntar
+(primeira vez) e escalar pra um técnico humano (`_escalar_para_tecnico`,
+a partir da segunda vez que o MESMO chamado segue insuficiente) — bug
+real visto em produção: o mesmo chamado recebendo a mesma pergunta
+genérica repetida em dias diferentes, porque ninguém tinha memória do
+que já tinha sido perguntado antes."""
 
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ollama import AsyncClient
 from starlette.requests import Request
@@ -43,12 +52,13 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.agent.ti.qualidade_chamado import avaliar_chamado
 from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
 from agente_oracle.config import settings
+from agente_oracle.db.connection import DatabaseError
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.tools.ti import categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
-from agente_oracle.tools.ti import uso_ia_chamados
-from agente_oracle.tools.ti.glpi import Chamado, ClienteGLPI, criar_cliente
+from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, criar_cliente
 from agente_oracle.tools.ti.tecnicos import TECNICOS, escolher_tecnico
 
 _cliente = criar_cliente(settings)
@@ -57,6 +67,12 @@ _logger = logging.getLogger(__name__)
 # 5 minutos — equilíbrio entre reagir rápido a chamado novo/atualizado e
 # não sobrecarregar a API do GLPI/Ollama com verificação constante.
 _INTERVALO_POLLER_SEGUNDOS = 300
+
+# Mesma escolha de `agent/ti/roteamento_chamado.py::_AREA_PADRAO` — duplicada
+# de propósito (é 1 linha, não compensa acoplar os dois módulos por isso).
+# Só entra em jogo em `_escalar_para_tecnico`, quando o chamado nem tem
+# categoria pra derivar a área de outro jeito.
+_AREA_PADRAO_ESCALONAMENTO: AreaChamado = "processos"
 
 
 @dataclass(frozen=True)
@@ -103,9 +119,19 @@ async def processar_chamado_novo(
     chamado: Chamado,
     cargas: dict[str, int],
     usar_ia: bool,
+    ja_foi_avaliado_insuficiente: bool = False,
 ) -> ResultadoProcessamento:
-    """Avalia se o chamado tem informação suficiente; se não tiver, marca
-    `aguardando_usuario` com a pergunta da IA e para por aqui.
+    """Avalia se o chamado tem informação suficiente. Se não tiver e for
+    a primeira vez (`ja_foi_avaliado_insuficiente=False`), marca
+    `aguardando_usuario` com a pergunta da IA e para por aqui — igual
+    sempre foi. Se **já** tinha sido avaliado insuficiente antes (quem
+    chama decide isso, olhando `tools/ti/uso_ia_chamados.py::ultima_avaliacao`
+    — de propósito fora desta função, que continua sem tocar Postgres,
+    ver abaixo), não manda outra pergunta automática — repetiria algo
+    parecido com o que já foi perguntado (bug real visto no #3262: a
+    mesma pergunta genérica voltando em dias diferentes). Em vez disso,
+    escala pra um técnico humano (`_escalar_para_tecnico`) tentar extrair
+    a informação diretamente, sem mudar o status.
 
     Sem categoria (`categoria_id is None`) — chamado aberto por e-mail,
     confirmado com o responsável do GLPI que esses já entram direto na
@@ -140,7 +166,10 @@ async def processar_chamado_novo(
         ollama_client, modelo, chamado.titulo, chamado.descricao, chamado.categoria, usar_ia
     )
     if not avaliacao.suficiente:
-        await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
+        if ja_foi_avaliado_insuficiente:
+            await _escalar_para_tecnico(cliente, chamado, cargas)
+        else:
+            await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
     if chamado.categoria_id is None:
@@ -168,16 +197,51 @@ async def processar_chamado_novo(
     )
 
 
+def _ultima_avaliacao_ou_none(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa | None:
+    """Envolve `uso_ia_chamados.ultima_avaliacao` (que de propósito não
+    engole erro — ver docstring dela) só nos pontos de chamada: uma falha
+    real de Postgres aqui não deveria travar a triagem do chamado em si
+    (que não depende de Postgres pra mais nada) — cai no caminho mais
+    conservador (trata como primeira vez, pergunta de novo em vez de
+    escalar), o mesmo comportamento de antes desta função existir."""
+    try:
+        return uso_ia_chamados.ultima_avaliacao(chamado_id)
+    except DatabaseError:
+        _logger.exception("Falha consultando última avaliação do chamado %s", chamado_id)
+        return None
+
+
+async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int]) -> None:
+    """Chamado que segue sem informação suficiente numa segunda (ou
+    enésima) avaliação não ganha outra pergunta automática — em vez
+    disso, atribui um técnico humano de menor carga pra tentar extrair a
+    informação diretamente com o solicitante. De propósito NÃO muda o
+    status (continua `aguardando_usuario`/Pendente no GLPI) — só sai
+    dessa pendência de verdade quando a informação completar e o fluxo
+    normal de `processar_chamado_novo` conseguir classificar e liberar
+    pra fila.
+
+    Área vem da categoria ATUAL do chamado (`AREA_POR_CATEGORIA_ID`), sem
+    chamar `classificar_categoria`/Ollama de novo — mais barato, e nesta
+    altura corrigir a categoria não é o problema (falta informação, não
+    categoria errada). Cai em `_AREA_PADRAO_ESCALONAMENTO` se o chamado
+    não tiver categoria nenhuma (aberto por e-mail)."""
+    area = categorias.AREA_POR_CATEGORIA_ID.get(chamado.categoria_id, _AREA_PADRAO_ESCALONAMENTO)
+    tecnico = escolher_tecnico(area, cargas)
+    if chamado.tecnico_atribuido != tecnico.identificador:
+        await cliente.atribuir(chamado.id, area, tecnico.identificador)
+    cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
+
+
 async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
     também devolve `aguardando_usuario` (é o que a tela mostra), mas
-    reavaliar de novo um chamado que já está esperando resposta do
-    solicitante, sem que nada tenha mudado, é uma chamada de IA gasta à
-    toa a cada rodada; o GLPI já resolve sozinho depois de 3 dias sem
-    resposta (`PendingReason`, ver docstring do módulo). `cargas` é
-    buscado uma vez só no início do lote — cada chamado processado no
-    meio do loop já conta pro próximo, então o lote inteiro se
-    equilibra entre si.
+    reprocessar esses é trabalho de `verificar_chamados_aguardando_resposta`,
+    que só reavalia quando detecta resposta nova (ver docstring dela). O
+    GLPI também resolve sozinho depois de 3 dias sem resposta
+    (`PendingReason`, ver docstring do módulo). `cargas` é buscado uma
+    vez só no início do lote — cada chamado processado no meio do loop
+    já conta pro próximo, então o lote inteiro se equilibra entre si.
 
     Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
     real de volume/duração pra decidir se a IA nessa etapa está pesando
@@ -204,8 +268,16 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
             continue
         inicio = time.monotonic()
         try:
+            registro_anterior = _ultima_avaliacao_ou_none(chamado.id)
             resultado = await processar_chamado_novo(
-                _cliente, ollama_client, settings.ollama_model, chamado, cargas, usar_ia
+                _cliente,
+                ollama_client,
+                settings.ollama_model,
+                chamado,
+                cargas,
+                usar_ia,
+                ja_foi_avaliado_insuficiente=registro_anterior is not None
+                and not registro_anterior.avaliacao_suficiente,
             )
         except Exception:
             _logger.exception("Falha processando o chamado %s", chamado.id)
@@ -218,6 +290,72 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     return await _cliente.listar()
 
 
+async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
+    """Segunda perna do poller: chamado `novo` é coberto por
+    `verificar_chamados_pendentes`, chamado `aguardando_usuario` é coberto
+    aqui — só reavalia quando detecta uma resposta NOVA (Followup mais
+    recente que a última avaliação registrada, escrito por alguém que não
+    seja a nossa própria conta de serviço), pra não gastar IA (nem uma
+    chamada de rede) à toa a cada rodada num chamado que ninguém tocou.
+
+    Sem log de "última avaliação" (`uso_ia_chamados.ultima_avaliacao`), não
+    dá pra saber se há resposta nova nem qual o histórico — chamado nessa
+    situação é pulado (não deveria acontecer, `aguardando_usuario` só
+    existe depois de pelo menos 1 avaliação, mas mais vale pular do que
+    assumir errado).
+
+    Reaproveita `processar_chamado_novo` passando uma cópia do chamado com
+    a(s) resposta(s) nova(s) anexada(s) à descrição (`dataclasses.replace`)
+    — mantém a avaliação da IA olhando o texto completo (pergunta original
+    + resposta), sem precisar mudar a assinatura de `avaliar_chamado`.
+    Ainda insuficiente escala pro técnico humano (nunca é a "primeira vez"
+    aqui, `aguardando_usuario` já implica que já houve 1 avaliação
+    insuficiente antes)."""
+    ollama_client = AsyncClient(host=settings.ollama_host)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+
+    for chamado in await _cliente.listar():
+        if chamado.status != "aguardando_usuario":
+            continue
+        try:
+            registro_anterior = _ultima_avaliacao_ou_none(chamado.id)
+            if registro_anterior is None:
+                continue
+            followups = await _cliente.buscar_followups(chamado.id)
+            respostas_novas = [
+                followup
+                for followup in followups
+                if followup.autor_nome != settings.glpi_username
+                and followup.criado_em > registro_anterior.criado_em
+            ]
+            if not respostas_novas:
+                continue
+
+            chamado_com_resposta = replace(
+                chamado,
+                descricao=chamado.descricao
+                + "\n\n"
+                + "\n".join(followup.conteudo for followup in respostas_novas),
+            )
+            inicio = time.monotonic()
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                settings.ollama_model,
+                chamado_com_resposta,
+                cargas,
+                usar_ia,
+                ja_foi_avaliado_insuficiente=True,
+            )
+        except Exception:
+            _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
+            continue
+        duracao_ms = round((time.monotonic() - inicio) * 1000)
+        uso_ia_chamados.registrar(
+            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+        )
+
+
 async def iniciar_poller_verificar_chamados() -> None:
     """Substitui o clique manual em "Verificar Chamados Novos" — roda pra
     sempre em background, a cada `_INTERVALO_POLLER_SEGUNDOS`, enquanto o
@@ -228,10 +366,12 @@ async def iniciar_poller_verificar_chamados() -> None:
     ainda não foi ativado/testado contra a instância real — ver TODO em
     `server/ti/webhook_glpi.py`).
 
-    Só reprocessa `novo` (ver `verificar_chamados_pendentes`) — não
-    reavalia `aguardando_usuario` de novo a cada rodada, de propósito
-    (gastaria IA à toa; esse caso é o botão "Verificar" individual ou o
-    próprio GLPI resolvendo sozinho em 3 dias).
+    Duas pernas por rodada, isoladas uma da outra (falha numa não impede a
+    outra de rodar): `verificar_chamados_pendentes` cobre chamado `novo`;
+    `verificar_chamados_aguardando_resposta` cobre `aguardando_usuario`,
+    mas só reavalia quando detecta resposta nova — nunca reprocessa um
+    chamado parado sem que nada tenha mudado (gastaria IA à toa; sem
+    resposta nova, é o próprio GLPI que resolve sozinho em 3 dias).
 
     Nunca deixa uma falha de uma rodada (rede instável, Ollama fora do
     ar) derrubar o loop inteiro — loga e tenta de novo na próxima volta.
@@ -241,11 +381,15 @@ async def iniciar_poller_verificar_chamados() -> None:
     if not settings.glpi_base_url:
         return
     while True:
+        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
         try:
-            usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
             await verificar_chamados_pendentes(usar_ia)
         except Exception:
-            _logger.exception("Falha no poller de verificação de chamados")
+            _logger.exception("Falha no poller de verificação de chamados novos")
+        try:
+            await verificar_chamados_aguardando_resposta(usar_ia)
+        except Exception:
+            _logger.exception("Falha no poller de verificação de respostas novas")
         await asyncio.sleep(_INTERVALO_POLLER_SEGUNDOS)
 
 
@@ -285,12 +429,14 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/chamados/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_verificar_route(request: Request, usuario: dict) -> Response:
-        """Dispara manualmente a mesma verificação que o poller em
-        background já roda sozinho a cada `_INTERVALO_POLLER_SEGUNDOS` —
-        útil pra forçar uma rodada na hora, sem esperar o intervalo,
-        durante teste. Ver `verificar_chamados_pendentes`."""
+        """Dispara manualmente as duas pernas que o poller em background já
+        roda sozinho a cada `_INTERVALO_POLLER_SEGUNDOS` — útil pra forçar
+        uma rodada na hora, sem esperar o intervalo, durante teste. Ver
+        `verificar_chamados_pendentes`/`verificar_chamados_aguardando_resposta`."""
         usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
-        chamados = await verificar_chamados_pendentes(usar_ia)
+        await verificar_chamados_pendentes(usar_ia)
+        await verificar_chamados_aguardando_resposta(usar_ia)
+        chamados = await _cliente.listar()
         return JSONResponse(
             [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
             headers=CORS_HEADERS,
@@ -305,7 +451,9 @@ def registrar(mcp) -> None:
         chamado ainda estar `novo` (ao contrário do lote, roda de novo
         mesmo em `aguardando_usuario`/`fila_atendimento` — útil pra
         reavaliar um chamado depois de ajustar algo manualmente durante
-        teste)."""
+        teste). Também respeita `ja_foi_avaliado_insuficiente`: clicar
+        "Verificar" de novo num chamado que já ficou insuficiente antes
+        escala pro técnico em vez de gerar outra pergunta repetida."""
         try:
             chamado_id = int(request.path_params["id"])
         except ValueError:
@@ -319,9 +467,17 @@ def registrar(mcp) -> None:
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
         usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
 
+        registro_anterior = _ultima_avaliacao_ou_none(chamado.id)
         inicio = time.monotonic()
         resultado = await processar_chamado_novo(
-            _cliente, ollama_client, settings.ollama_model, chamado, cargas, usar_ia
+            _cliente,
+            ollama_client,
+            settings.ollama_model,
+            chamado,
+            cargas,
+            usar_ia,
+            ja_foi_avaliado_insuficiente=registro_anterior is not None
+            and not registro_anterior.avaliacao_suficiente,
         )
         duracao_ms = round((time.monotonic() - inicio) * 1000)
         uso_ia_chamados.registrar(

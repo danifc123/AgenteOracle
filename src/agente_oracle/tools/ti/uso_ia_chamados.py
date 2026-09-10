@@ -55,6 +55,12 @@ class ResumoUsoIa:
     duracao_media_ms: float
 
 
+@dataclass(frozen=True)
+class RegistroUsoIa:
+    avaliacao_suficiente: bool
+    criado_em: datetime
+
+
 def registrar(
     chamado_id: int, avaliacao_suficiente: bool, precisou_embedding: bool | None, duracao_ms: int
 ) -> None:
@@ -80,6 +86,38 @@ def registrar(
             )
     except DatabaseError:
         pass
+
+
+def ultima_avaliacao(chamado_id: int) -> RegistroUsoIa | None:
+    """A linha mais recente registrada pra esse chamado, ou `None` se
+    ele nunca foi avaliado. Usada por `server/ti/chamados.py` pra decidir
+    se uma avaliação insuficiente é a primeira (pergunta a IA) ou uma
+    repetição (escala pra um técnico humano em vez de perguntar nas
+    mesmas palavras de novo), e pra saber desde quando datar "resposta
+    nova" na segunda perna do poller (chamado `aguardando_usuario`).
+
+    Diferente de `registrar`, sem try/except: aqui o resultado decide um
+    comportamento de verdade (perguntar de novo vs. escalar) — uma falha
+    silenciosa faria a IA repetir a mesma pergunta pra sempre, exatamente
+    o bug que essa função existe pra evitar."""
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            """
+            SELECT avaliacao_suficiente, criado_em
+            FROM ti_uso_ia_chamados
+            WHERE chamado_id = :chamado_id
+            ORDER BY criado_em DESC
+            LIMIT 1
+            """,
+            chamado_id=chamado_id,
+        )
+        linha = cursor.fetchone()
+    if linha is None:
+        return None
+    avaliacao_suficiente, criado_em = linha
+    return RegistroUsoIa(avaliacao_suficiente=avaliacao_suficiente, criado_em=criado_em)
 
 
 def resumo_uso(dias: int) -> ResumoUsoIa:

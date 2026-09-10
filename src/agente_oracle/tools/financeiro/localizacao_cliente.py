@@ -1,7 +1,7 @@
 """Cadastro manual de localização do cliente pro Score de Inadimplência
 (`server/financeiro/score_inadimplencia.py`) — quando o cliente cadastrado
 aqui, o clima usa a localização informada em vez do centro do município
-(ver `agent/financeiro/clima_regional.py::buscar_indicador_clima_por_coordenadas`).
+(ver `clima_regional.py::buscar_indicador_clima_por_coordenadas`, vizinho aqui).
 Mesmo padrão de `tools/financeiro/categoria_cores.py`: tabela própria no
 Postgres, criada sozinha (`CREATE TABLE IF NOT EXISTS`).
 
@@ -22,8 +22,8 @@ from datetime import UTC, datetime
 
 import httpx
 
-from agente_oracle.agent.financeiro.clima_regional import geocodificar
 from agente_oracle.db.connection import get_postgres_connection
+from agente_oracle.tools.financeiro.clima_regional import geocodificar
 
 _tabela_garantida = False
 

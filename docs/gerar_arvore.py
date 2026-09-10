@@ -52,6 +52,12 @@ BACKEND = ("src/agente_oracle/", None, True, "root", [
             ("financeiro.py", "orquestração do chat do módulo Financeiro", False, "agent", []),
             ("projecoes.py", "regressão linear + análise textual da IA, usado pelas telas de Previsão", False, "agent", []),
         ]),
+        ("rh/", None, True, "agent", [
+            ("perfil_candidato.py", "extrai perfil estruturado do currículo via IA (formação, experiência, habilidades)", False, "agent", []),
+            ("embeddings.py", "gera o embedding do currículo/vaga via Ollama (comparação mora em tools/rh/similaridade.py)", False, "agent", []),
+            ("busca_candidatos.py", "RAG: shortlist por similaridade de embedding, depois a IA rankeia e justifica", False, "agent", []),
+        ]),
+        ("ti/", "detecção de segurança de login/acesso (mesmo padrão candidato+IA da auditoria genérica) e avaliação de chamado de service desk", True, "agent", []),
     ]),
     ("db/", None, True, "db", [
         ("connection.py", "duas conexões fixas: Postgres sempre (estado do sistema) + negócio/RAG (Oracle ou Postgres, conforme DB_BACKEND)", False, "db", []),
@@ -86,6 +92,14 @@ BACKEND = ("src/agente_oracle/", None, True, "root", [
             ("categoria_cores.py", "cor personalizada por categoria (usado nos gráficos)", False, "server", []),
             ("ia.py", "registra as tools de IA + /api/financeiro/chat + /api/financeiro/relatorio/exportar", False, "server", []),
         ]),
+        ("rh/", "rotas HTTP do módulo RH", True, "server", [
+            ("candidatos.py", "CRUD do pool de candidatos + dispara análise de currículo pela IA", False, "server", []),
+            ("busca.py", "busca de candidatos por descrição de vaga (RAG)", False, "server", []),
+        ]),
+        ("ti/", "rotas HTTP do módulo TI", True, "server", [
+            ("chamados.py", "chamados de service desk (GLPI mock hoje) + avaliação de completude pela IA", False, "server", []),
+            ("seguranca.py", "roda a detecção de segurança ao vivo (login/acesso) + histórico de achados", False, "server", []),
+        ]),
     ]),
     ("tools/", None, True, "tools", [
         ("connectivity.py", "teste de conexão com o Oracle (genérico, qualquer módulo pode usar)", False, "tools", []),
@@ -106,6 +120,16 @@ BACKEND = ("src/agente_oracle/", None, True, "root", [
         ("financeiro/", None, True, "tools", [
             ("consulta_livre.py", "SQL livre gerado pela IA, com validação de segurança", False, "tools", []),
             ("historico.py", "dedup e CRUD do histórico de relatórios do Financeiro", False, "tools", []),
+        ]),
+        ("rh/", None, True, "tools", [
+            ("candidatos.py", "pool de candidatos analisados pela IA (tabela própria no Postgres)", False, "tools", []),
+            ("extracao_curriculo.py", "extrai texto de currículo PDF/DOCX pra IA analisar", False, "tools", []),
+            ("similaridade.py", "similaridade de cosseno entre embeddings — matemática pura, sem pgvector", False, "tools", []),
+        ]),
+        ("ti/", None, True, "tools", [
+            ("glpi.py", "cliente GLPI (mock hoje) — interface já pensada pro formato da API real", False, "tools", []),
+            ("acessos_dados.py", "log de quem exportou/listou o quê — insumo da detecção de segurança", False, "tools", []),
+            ("protheus_login.py", "leitura só-de-consulta do controle de login do próprio Protheus", False, "tools", []),
         ]),
     ]),
 ])

@@ -1,7 +1,25 @@
 .barra-acoes {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
+}
+
+.toggle-usar-ia {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+
+  input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
 }
 
 .erro {
@@ -56,29 +74,23 @@ table {
 }
 
 .coluna-acao {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
   white-space: nowrap;
 }
 
-.badge {
-  display: inline-flex;
+.paginacao {
+  display: flex;
   align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--color-bg);
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.paginacao-info {
+  font-size: 13px;
   color: var(--color-text-muted);
-
-  &--ok {
-    background: rgba(47, 158, 88, 0.14);
-    color: #2f9e58;
-  }
-
-  &--aviso {
-    background: rgba(232, 135, 30, 0.14);
-    color: #e8871e;
-  }
 }
 
 .detalhe-chamado {

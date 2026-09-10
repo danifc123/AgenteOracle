@@ -1,6 +1,5 @@
 from datetime import date
 
-from agente_oracle.agent.financeiro.clima_regional import IndicadorClima
 from agente_oracle.agent.financeiro.score_inadimplencia import (
     ComportamentoPagamentoCliente,
     SafraCliente,
@@ -11,6 +10,7 @@ from agente_oracle.agent.financeiro.score_inadimplencia import (
     safra_relevante_por_cliente,
     titulos_em_risco_por_cliente,
 )
+from agente_oracle.tools.financeiro.clima_regional import IndicadorClima
 
 _HOJE = date(2026, 6, 1)
 

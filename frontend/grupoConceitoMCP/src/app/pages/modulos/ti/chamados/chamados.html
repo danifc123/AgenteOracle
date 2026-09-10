@@ -1,18 +1,14 @@
 <app-modulo-header
   breadcrumb="TI"
   titulo="Auditoria de Chamados"
-  descricao="Não é a central de chamados (isso continua sendo o GLPI) — aqui a IA audita cada chamado novo e só libera pra fila de atendimento quando tem informação suficiente. Prova de conceito com dado mockado, ainda sem conexão real com o GLPI."
+  descricao="Não é a central de chamados (isso continua sendo o GLPI) — aqui a IA audita cada chamado novo do GLPI e só libera pra fila de atendimento quando tem informação suficiente e a categoria bate com o conteúdo."
 />
 
 <div class="barra-acoes">
-  <app-botao
-    variant="primaria"
-    [loading]="verificando()"
-    loadingText="Verificando..."
-    (clicked)="verificarChamadosNovos()"
-  >
-    Verificar Chamados Novos
-  </app-botao>
+  <label class="toggle-usar-ia">
+    <input type="checkbox" [checked]="usarIa()" (change)="alternarUsarIa()" />
+    Usar IA na avaliação de chamados
+  </label>
 </div>
 
 @if (erro()) {
@@ -37,25 +33,24 @@
           <tr>
             <th>Título</th>
             <th>Categoria</th>
-            <th>Status</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          @for (chamado of chamados(); track chamado.id) {
+          @for (chamado of chamadosDaPagina(); track chamado.id) {
             <tr>
               <td>{{ chamado.titulo }}</td>
               <td>{{ chamado.categoria }}</td>
-              <td>
-                <span
-                  class="badge"
-                  [class.badge--ok]="chamado.status === 'fila_atendimento'"
-                  [class.badge--aviso]="chamado.status === 'aguardando_usuario'"
-                >
-                  {{ rotuloStatus(chamado.status) }}
-                </span>
-              </td>
               <td class="coluna-acao">
+                <app-botao
+                  variant="contorno"
+                  [loading]="verificandoId() === chamado.id"
+                  [disabled]="verificandoId() !== null && verificandoId() !== chamado.id"
+                  loadingText="Verificando..."
+                  (clicked)="verificarChamado(chamado)"
+                >
+                  Verificar
+                </app-botao>
                 <app-botao variant="contorno" (clicked)="abrirDetalhe(chamado)">Ver chamado</app-botao>
               </td>
             </tr>
@@ -63,6 +58,18 @@
         </tbody>
       </table>
     </div>
+
+    @if (totalPaginas() > 1) {
+      <div class="paginacao">
+        <app-botao variant="contorno" [disabled]="paginaAtual() === 1" (clicked)="paginaAnterior()">
+          Anterior
+        </app-botao>
+        <span class="paginacao-info">Página {{ paginaAtual() }} de {{ totalPaginas() }}</span>
+        <app-botao variant="contorno" [disabled]="paginaAtual() === totalPaginas()" (clicked)="proximaPagina()">
+          Próxima
+        </app-botao>
+      </div>
+    }
   }
 </section>
 
@@ -89,7 +96,7 @@
 
         @if (chamado.reportado_em) {
           <div class="preview-email">
-            <strong>E-mail (mock) enviado em {{ chamado.reportado_em | date: 'dd/MM/yyyy HH:mm' }}</strong>
+            <strong>Aviso registrado em {{ chamado.reportado_em | date: 'dd/MM/yyyy HH:mm' }}</strong>
             <p class="preview-email-campo"><span>Para:</span> {{ chamado.email }}</p>
             <p class="preview-email-campo">
               <span>Assunto:</span> Chamado #{{ chamado.id }} precisa de mais informação

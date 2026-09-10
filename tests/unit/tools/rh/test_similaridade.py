@@ -1,6 +1,6 @@
 import pytest
 
-from agente_oracle.agent.rh import embeddings as mod
+from agente_oracle.tools.rh import similaridade as mod
 
 
 class TestSimilaridadeCosseno:

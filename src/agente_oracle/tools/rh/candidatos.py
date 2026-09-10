@@ -21,10 +21,11 @@ from datetime import UTC, datetime
 
 from ollama import AsyncClient
 
-from agente_oracle.agent.rh.embeddings import gerar_embedding, similaridade_cosseno
+from agente_oracle.agent.rh.embeddings import gerar_embedding
 from agente_oracle.agent.rh.perfil_candidato import gerar_perfil
 from agente_oracle.db.connection import get_postgres_connection
 from agente_oracle.tools.rh.extracao_curriculo import extrair_texto
+from agente_oracle.tools.rh.similaridade import similaridade_cosseno
 
 _COLUNAS_CANDIDATO = "id, nome, resumo_perfil, perfil_estruturado, status, criado_em"
 _COLUNAS_BUSCA = "id, nome, resumo_perfil, perfil_estruturado, embedding"

@@ -114,7 +114,6 @@ def _chamado_para_json(chamado: Chamado) -> dict:
         "solicitante": chamado.solicitante,
         "email": chamado.email,
         "avaliacao_mensagem": chamado.avaliacao_mensagem,
-        "reportado_em": chamado.reportado_em.isoformat() if chamado.reportado_em else None,
         "criado_em": chamado.criado_em.isoformat(),
         "area": chamado.area,
         "tecnico_atribuido": chamado.tecnico_atribuido,
@@ -422,27 +421,6 @@ async def iniciar_poller_verificar_chamados() -> None:
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/ti/chamados/{id}/reportar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
-    async def chamado_reportar_route(request: Request, usuario: dict) -> Response:
-        """Avisa o usuário que o chamado dele está `aguardando_usuario` —
-        `ClienteGLPIReal.reportar_usuario` é no-op de propósito nesta fase,
-        nenhum e-mail sai de verdade ainda, ver docstring de
-        `tools/ti/glpi.py`."""
-        try:
-            chamado_id = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        chamado = await _cliente.buscar(chamado_id)
-        if chamado is None:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        await _cliente.reportar_usuario(chamado_id)
-
-        chamado_final = await _cliente.buscar(chamado_id)
-        return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/ti/chamados", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_route(request: Request, usuario: dict) -> Response:

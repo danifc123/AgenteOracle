@@ -481,12 +481,3 @@ class TestBuscarFollowups:
         followups = await cliente.buscar_followups(1)
 
         assert [f.conteudo for f in followups] == ["primeiro", "segundo"]
-
-
-class TestReportarUsuario:
-    async def test_e_no_op_nao_chama_a_api(self):
-        # Fake sem nenhuma rota simulada pra "reportar" — se o método
-        # tentasse chamar a API de verdade, o handler devolveria 404 e
-        # `raise_for_status()` levantaria. Não levantar aqui confirma o no-op.
-        cliente = _cliente_fake(_GlpiApiFake())
-        await cliente.reportar_usuario(1)

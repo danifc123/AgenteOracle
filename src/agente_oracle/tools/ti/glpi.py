@@ -35,9 +35,11 @@ Ver também o TODO em `tools/ti/tecnicos.py` (formato do identificador de
 técnico) e em `server/ti/webhook_glpi.py` (header/payload do webhook,
 ainda não confirmados).
 
-`reportar_usuario` é no-op de propósito nesta fase: o GLPI já notifica o
-solicitante na criação do chamado; notificação de "chamado incompleto"
-(e-mail/Teams) é fase seguinte, fora do escopo aqui."""
+Sem método de "reportar ao usuário" de propósito: o Followup que a IA
+posta ao marcar `aguardando_usuario` já dispara a notificação nativa do
+GLPI pro solicitante (mecanismo padrão dele pra mensagem em chamado) —
+nenhum aviso extra é necessário daqui. Um segundo canal de notificação
+(Teams) é possibilidade futura, fora do escopo aqui."""
 
 import asyncio
 from dataclasses import dataclass
@@ -89,7 +91,6 @@ class Chamado:
     solicitante: str
     email: str
     avaliacao_mensagem: str | None
-    reportado_em: datetime | None
     criado_em: datetime
     area: AreaChamado | None
     tecnico_atribuido: str | None
@@ -113,8 +114,6 @@ class ClienteGLPI(Protocol):
     async def atualizar_categoria(self, chamado_id: int, categoria_id: int) -> None: ...
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
-
-    async def reportar_usuario(self, chamado_id: int) -> None: ...
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
 
@@ -227,8 +226,8 @@ def _chamado_do_json(item: dict) -> Chamado:
     "name"}`, não campo plano. `email` fica sempre vazio no cliente real:
     `user_recipient` só traz `id`/`name` (login), o e-mail exigiria uma
     chamada extra a `/User/{id}`, fora do escopo desta rodada.
-    `avaliacao_mensagem`/`reportado_em` não têm equivalente nativo no
-    GLPI — só existem no nosso modelo, ficam sempre `None` vindo de lá."""
+    `avaliacao_mensagem` não tem equivalente nativo no GLPI — só existe
+    no nosso modelo, fica sempre `None` vindo de lá."""
     status = item.get("status") or {}
     categoria = item.get("category")
     categoria_id = categoria["id"] if categoria else None
@@ -243,7 +242,6 @@ def _chamado_do_json(item: dict) -> Chamado:
         solicitante=solicitante.get("name", ""),
         email="",
         avaliacao_mensagem=None,
-        reportado_em=None,
         criado_em=_data_do_glpi(item.get("date_creation")),
         area=None,
         tecnico_atribuido=_tecnico_atribuido_do_time(item.get("team") or []),
@@ -481,12 +479,6 @@ class ClienteGLPIReal:
             if chamado.tecnico_atribuido in cargas:
                 cargas[chamado.tecnico_atribuido] += 1
         return cargas
-
-    async def reportar_usuario(self, chamado_id: int) -> None:
-        """No-op de propósito nesta fase — o GLPI já notifica o solicitante
-        na criação do chamado; notificação de "chamado incompleto" fica
-        pra fase seguinte (e-mail/Teams), fora do escopo desta integração."""
-        return
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         """Formato confirmado contra a instância real: uma lista de

@@ -93,10 +93,9 @@ class TestChamadoDoJson:
         }
         assert _chamado_do_json(item).tecnico_atribuido == "7"
 
-    def test_avaliacao_mensagem_e_reportado_em_sempre_none(self):
-        # Não têm equivalente nativo no GLPI — só o mock grava os dois.
+    def test_avaliacao_mensagem_sempre_none(self):
+        # Não tem equivalente nativo no GLPI — só existe no nosso modelo.
         item = {"id": 1, "name": "T", "content": "D", "status": {"id": 1}, "team": []}
         chamado = _chamado_do_json(item)
         assert chamado.avaliacao_mensagem is None
-        assert chamado.reportado_em is None
         assert chamado.area is None

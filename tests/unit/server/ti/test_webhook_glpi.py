@@ -35,7 +35,6 @@ def _chamado(id_: int = 1, categoria_id: int | None = None) -> Chamado:
         solicitante="Solicitante",
         email="solicitante@empresa.com",
         avaliacao_mensagem=None,
-        reportado_em=None,
         criado_em=datetime(2026, 1, 1, tzinfo=UTC),
         area=None,
         tecnico_atribuido=None,
@@ -94,9 +93,6 @@ class _ClienteGLPIFake:
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]:
         return dict.fromkeys(tecnicos_identificadores, 0)
-
-    async def reportar_usuario(self, chamado_id: int) -> None:
-        pass
 
 
 class TestAutorizado:

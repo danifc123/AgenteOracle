@@ -220,7 +220,7 @@ async def processar_chamado_novo(
     )
 
 
-def _ultima_avaliacao_ou_none(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa | None:
+def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa | None:
     """Envolve `uso_ia_chamados.ultima_avaliacao` (que de propósito não
     engole erro — ver docstring dela) só nos pontos de chamada: uma falha
     real de Postgres aqui não deveria travar a triagem do chamado em si
@@ -296,7 +296,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
             continue
         inicio = time.monotonic()
         try:
-            registro_anterior = _ultima_avaliacao_ou_none(chamado.id)
+            registro_anterior = _ultima_avaliacao_segura(chamado.id)
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
@@ -346,7 +346,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
         if chamado.status != "aguardando_usuario":
             continue
         try:
-            registro_anterior = _ultima_avaliacao_ou_none(chamado.id)
+            registro_anterior = _ultima_avaliacao_segura(chamado.id)
             if registro_anterior is None:
                 continue
             followups = await _cliente.buscar_followups(chamado.id)
@@ -495,7 +495,7 @@ def registrar(mcp) -> None:
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
         usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
 
-        registro_anterior = _ultima_avaliacao_ou_none(chamado.id)
+        registro_anterior = _ultima_avaliacao_segura(chamado.id)
         inicio = time.monotonic()
         resultado = await processar_chamado_novo(
             _cliente,

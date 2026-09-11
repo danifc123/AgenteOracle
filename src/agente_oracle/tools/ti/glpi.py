@@ -295,10 +295,11 @@ class ClienteGLPIReal:
         # Só chamado de TI: uma das ~211 categorias reais
         # (`tools/ti/categorias.py`) ou sem categoria nenhuma (chamado
         # aberto por e-mail — confirmado com o responsável do GLPI que
-        # esses já entram direto na fila de TI). Sem esse filtro,
-        # `listar()` devolveria chamado de qualquer departamento da
-        # empresa. `server/ti/chamados.py::processar_chamado_novo` trata
-        # o caso sem categoria à parte.
+        # esse é o padrão real pra esse tipo de abertura). Sem esse
+        # filtro, `listar()` devolveria chamado de qualquer departamento
+        # da empresa. `server/ti/chamados.py::processar_chamado_novo`
+        # classifica a categoria desses do zero, mesmo fluxo de quem já
+        # tem uma categoria errada pra corrigir.
         chamados = [
             chamado
             for chamado in chamados

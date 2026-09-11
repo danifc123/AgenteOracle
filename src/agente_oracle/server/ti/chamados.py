@@ -89,9 +89,7 @@ class ResultadoProcessamento:
     avaliacao_suficiente: bool
     # `None` quando `avaliacao_suficiente` é `False` — o chamado nem chegou
     # a `classificar_categoria`, a pergunta "precisou de embedding" não se
-    # aplica. `False` cobre dois casos: `usar_ia=False`, ou chamado sem
-    # categoria (nunca chega a chamar `classificar_categoria`, que é quem
-    # de fato usaria embedding).
+    # aplica. `False` só acontece com `usar_ia=False`.
     precisou_embedding: bool | None
 
 
@@ -150,19 +148,18 @@ async def processar_chamado_novo(
     e o técnico de verdade assume — desatribuir não desfaz a troca de
     status já feita (confirmado ao vivo: o status fica onde foi deixado).
 
-    Sem categoria (`categoria_id is None`) — chamado aberto por e-mail,
-    confirmado com o responsável do GLPI que esses já entram direto na
-    fila de TI sem categoria — a auditoria também para por aqui: não tem
-    categoria pra corrigir nem base pra decidir área/técnico, então só a
-    checagem de informação suficiente se aplica. De propósito, nada é
-    escrito no GLPI quando o conteúdo já está suficiente (marcar
-    `fila_atendimento` sem ninguém de fato atribuído deixaria o status
-    real do GLPI, "Em atendimento (atribuído)", mentindo) — o chamado
-    continua aparecendo nesta tela até um humano decidir o que fazer com
-    ele; só o caso insuficiente escreve algo (o pedido de mais
-    informação, igual o fluxo normal).
+    Chamado aberto por e-mail chega do GLPI sem categoria nenhuma
+    (`categoria_id is None`) — confirmado com quem cuida do GLPI que
+    esse é um padrão real, não uma falha de cadastro. `classificar_categoria`
+    já lida bem com "sem categoria atual" (escolhe a melhor categoria
+    pelas ~211 reais por similaridade, sem precisar de nada pra
+    comparar antes), então esses chamados passam pelo MESMO fluxo de
+    quem já tem categoria — a IA escolhe uma do zero, em vez de corrigir
+    uma errada. Sem isso, um chamado suficiente e sem categoria ficava
+    preso em `novo` pra sempre, sendo reavaliado (e gastando IA) a cada
+    rodada do poller sem nunca sair dali — bug real visto em produção.
 
-    Com categoria, classifica a área, escolhe o técnico de menor carga
+    Com ou sem categoria de partida, classifica a área, escolhe o técnico de menor carga
     NAQUELE momento (`cargas` é atualizado in-place — importante quando
     processando um lote: duas chamadas seguidas não caem sempre no mesmo
     técnico só porque nenhum dos dois ainda foi salvo no GLPI), atribui e
@@ -190,9 +187,6 @@ async def processar_chamado_novo(
                 await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
             await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
-
-    if chamado.categoria_id is None:
-        return ResultadoProcessamento(avaliacao_suficiente=True, precisou_embedding=False)
 
     resultado_classificacao = await classificar_categoria(
         ollama_client,

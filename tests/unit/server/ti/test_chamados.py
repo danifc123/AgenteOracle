@@ -202,27 +202,30 @@ class TestProcessarChamadoNovo:
         assert cliente.avaliacoes == [(1, "aguardando_usuario", "Qual sistema está afetado?")]
         assert resultado.avaliacao_suficiente is False
 
-    async def test_chamado_sem_categoria_suficiente_nao_escreve_nada_no_glpi(self):
-        # Chamado por e-mail (sem categoria) — confirmado com o
-        # responsável do GLPI que já entra direto na fila de TI. Sem
-        # categoria pra corrigir nem base pra escolher técnico, então só
-        # confirma que tem informação suficiente e não mexe em nada (não
-        # atribui técnico, não marca `fila_atendimento` — evitar marcar
-        # "Em atendimento" sem ninguém de fato atribuído no GLPI real).
+    async def test_chamado_sem_categoria_suficiente_classifica_do_zero_e_vai_pra_fila(self):
+        # Chamado por e-mail (sem categoria) — confirmado com quem cuida
+        # do GLPI que é o padrão real desse tipo de abertura, não uma
+        # falha de cadastro. Bug real visto em produção: sem classificar
+        # do zero, esses chamados ficavam presos em `novo` pra sempre,
+        # sendo reavaliados (gastando IA) a cada rodada do poller sem
+        # nunca sair dali. Agora segue o mesmo fluxo de quem já tem
+        # categoria — só que escolhendo uma do zero em vez de corrigir.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=None)])
         ollama = _OllamaClienteFake(suficiente=True)
-        cargas: dict[str, int] = {}
+        cargas = {"tecnico1": 0}
 
         resultado = await processar_chamado_novo(
             cliente, ollama, "modelo-teste", _chamado(categoria_id=None), cargas, True
         )
 
-        assert cliente.avaliacoes == []
-        assert cliente.atribuicoes == []
-        assert cliente.categorias_atualizadas == []
-        assert cargas == {}
+        assert cliente.categorias_atualizadas == [(1, 999)]
+        assert len(cliente.atribuicoes) == 1
+        chamado_id, area, _tecnico = cliente.atribuicoes[0]
+        assert chamado_id == 1
+        assert area == "infra"
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert resultado.avaliacao_suficiente is True
-        assert resultado.precisou_embedding is False
+        assert resultado.precisou_embedding is True
 
     async def test_chamado_suficiente_classifica_atribui_e_vai_pra_fila(self):
         # Categoria atual desconhecida (id 1 não está no mapa fake) — a

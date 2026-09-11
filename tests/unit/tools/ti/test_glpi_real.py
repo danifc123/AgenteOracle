@@ -55,6 +55,9 @@ class _GlpiApiFake:
         self.pending_reason_items_criados: list[dict] = []
         self.sessoes_legadas_abertas = 0
         self.sessoes_legadas_fechadas = 0
+        # Documento real simulado (ver `baixar_documento`) — id 1 existe,
+        # qualquer outro simula "não encontrado".
+        self.documentos: dict[int, tuple[bytes, str]] = {1: (b"conteudo-fake-da-imagem", "image/png")}
         # Simula queda de conexão transitória (ver `_requisicao`) — chave
         # "METODO caminho", valor = quantas vezes ainda deve falhar antes
         # de deixar a rota responder normalmente.
@@ -121,6 +124,12 @@ class _GlpiApiFake:
         if caminho == "/legacy/killSession" and metodo == "GET":
             self.sessoes_legadas_fechadas += 1
             return httpx.Response(200, json={})
+        if caminho.startswith("/legacy/Document/") and metodo == "GET":
+            documento_id = int(caminho.removeprefix("/legacy/Document/"))
+            if documento_id not in self.documentos:
+                return httpx.Response(404, json={"status": "ERROR_ITEM_NOT_FOUND"})
+            conteudo, content_type = self.documentos[documento_id]
+            return httpx.Response(200, content=conteudo, headers={"content-type": content_type})
         return httpx.Response(404, json={"erro": f"rota não simulada nesta suíte: {metodo} {caminho}"})
 
     def _pagina_de_tickets(self, request: httpx.Request) -> httpx.Response:
@@ -520,3 +529,37 @@ class TestBuscarFollowups:
         followups = await cliente.buscar_followups(1)
 
         assert [f.conteudo for f in followups] == ["primeiro", "segundo"]
+
+
+class TestBaixarDocumento:
+    async def test_sem_api_legada_configurada_devolve_none_sem_tentar_nada(self):
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake)  # com_api_legada=False (padrão)
+
+        documento = await cliente.baixar_documento(1)
+
+        assert documento is None
+        assert fake.sessoes_legadas_abertas == 0
+
+    async def test_documento_existente_devolve_conteudo_e_content_type(self):
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake, com_api_legada=True)
+
+        documento = await cliente.baixar_documento(1)
+
+        assert documento is not None
+        assert documento.conteudo == b"conteudo-fake-da-imagem"
+        assert documento.content_type == "image/png"
+        assert fake.sessoes_legadas_abertas == 1
+        assert fake.sessoes_legadas_fechadas == 1
+
+    async def test_documento_inexistente_devolve_none(self):
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake, com_api_legada=True)
+
+        documento = await cliente.baixar_documento(999)
+
+        assert documento is None
+        # Sessão é aberta e fechada mesmo quando o documento não existe.
+        assert fake.sessoes_legadas_abertas == 1
+        assert fake.sessoes_legadas_fechadas == 1

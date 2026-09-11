@@ -98,7 +98,7 @@
           }
         }
       </div>
-      <div class="descricao-chamado" [innerHTML]="chamado.descricao"></div>
+      <app-conteudo-chamado [html]="chamado.descricao" />
 
       @if (chamado.status === 'aguardando_usuario' && chamado.avaliacao_mensagem) {
         <div class="aviso-ia">

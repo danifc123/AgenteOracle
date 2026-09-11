@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
+import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteudo-chamado';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
@@ -61,7 +62,7 @@ const NOMES_TECNICOS: Record<string, string> = {
  * o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
-  imports: [Botao, DatePipe, Dialog, EstadoVazio, ModuloHeader],
+  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader],
   templateUrl: './chamados.html',
   styleUrl: './chamados.scss',
 })

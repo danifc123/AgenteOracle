@@ -42,6 +42,8 @@ nenhum aviso extra é necessário daqui. Um segundo canal de notificação
 (Teams) é possibilidade futura, fora do escopo aqui."""
 
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal, Protocol
@@ -75,6 +77,12 @@ class Followup:
     autor_nome: str
     conteudo: str
     criado_em: datetime
+
+
+@dataclass(frozen=True)
+class DocumentoBaixado:
+    conteudo: bytes
+    content_type: str
 
 
 @dataclass(frozen=True)
@@ -116,6 +124,8 @@ class ClienteGLPI(Protocol):
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
+
+    async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None: ...
 
 
 # Códigos confirmados contra o schema `status` da instância real (campo
@@ -407,20 +417,7 @@ class ClienteGLPIReal:
         if ja_tem_motivo.status_code == 200:
             return
 
-        base = self._settings.glpi_legacy_api_url
-        resposta_sessao = await self._http_client.get(
-            f"{base}/initSession",
-            headers={
-                "App-Token": self._settings.glpi_legacy_app_token,
-                "Authorization": f"user_token {self._settings.glpi_legacy_user_token}",
-            },
-        )
-        resposta_sessao.raise_for_status()
-        cabecalhos = {
-            "App-Token": self._settings.glpi_legacy_app_token,
-            "Session-Token": resposta_sessao.json()["session_token"],
-        }
-        try:
+        async with self._sessao_legada() as (base, cabecalhos):
             resposta_criacao = await self._http_client.post(
                 f"{base}/PendingReason_Item",
                 headers=cabecalhos,
@@ -441,8 +438,56 @@ class ClienteGLPIReal:
                 },
             )
             resposta_criacao.raise_for_status()
+
+    @asynccontextmanager
+    async def _sessao_legada(self) -> AsyncGenerator[tuple[str, dict[str, str]]]:
+        """Abre uma sessão na API Legada (`initSession` com `App-Token` +
+        token de usuário, devolve `session_token`) e garante o
+        `killSession` no final, mesmo se a chamada no meio falhar — usada
+        por qualquer operação que só a API Legada suporta (motivo de
+        pendência, download de documento; a v2.3 não tem nenhuma das
+        duas). Requer `glpi_legacy_api_url` configurada — quem chama
+        decide se isso é opcional (pula) ou obrigatório (deixa o
+        `AttributeError` de `base=""` estourar)."""
+        base = self._settings.glpi_legacy_api_url
+        resposta_sessao = await self._http_client.get(
+            f"{base}/initSession",
+            headers={
+                "App-Token": self._settings.glpi_legacy_app_token,
+                "Authorization": f"user_token {self._settings.glpi_legacy_user_token}",
+            },
+        )
+        resposta_sessao.raise_for_status()
+        cabecalhos = {
+            "App-Token": self._settings.glpi_legacy_app_token,
+            "Session-Token": resposta_sessao.json()["session_token"],
+        }
+        try:
+            yield base, cabecalhos
         finally:
             await self._http_client.get(f"{base}/killSession", headers=cabecalhos)
+
+    async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None:
+        """Proxy pro anexo/imagem real do GLPI — só a API Legada consegue
+        devolver o arquivo bruto (`GET .../Document/{id}` com `Accept:
+        application/octet-stream`; confirmado ao vivo, inclusive o
+        `content-type` correto vindo no header), a v2.3 não tem endpoint
+        de Document nenhum. Sem `glpi_legacy_api_url` configurada, ou
+        documento inexistente/sem permissão, devolve `None` — quem chama
+        (rota HTTP) decide o fallback (404, ícone quebrado no front)."""
+        if not self._settings.glpi_legacy_api_url:
+            return None
+        async with self._sessao_legada() as (base, cabecalhos):
+            resposta = await self._http_client.get(
+                f"{base}/Document/{documento_id}",
+                headers={**cabecalhos, "Accept": "application/octet-stream"},
+            )
+        if resposta.status_code != 200:
+            return None
+        return DocumentoBaixado(
+            conteudo=resposta.content,
+            content_type=resposta.headers.get("content-type", "application/octet-stream"),
+        )
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None:
         # `area` não tem onde ir no payload de TeamMember — se a instância

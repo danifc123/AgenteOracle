@@ -140,39 +140,6 @@ table {
   font-weight: 600;
 }
 
-// Conteúdo vem em HTML de verdade do GLPI (rich text) — renderizado via
-// [innerHTML] (Angular sanitiza sozinho), por isso as regras abaixo pros
-// elementos que costumam vir dentro (parágrafo, lista, imagem anexada).
-.descricao-chamado {
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--color-text);
-
-  p {
-    margin: 0 0 10px;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
-  }
-
-  ul,
-  ol {
-    margin: 0 0 10px;
-    padding-left: 20px;
-  }
-
-  img {
-    max-width: 100%;
-    border-radius: var(--radius-sm);
-    margin: 6px 0;
-  }
-
-  a {
-    color: var(--color-primary);
-  }
-}
-
 .aviso-ia {
   padding: 12px 14px;
   background: rgba(232, 135, 30, 0.1);

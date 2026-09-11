@@ -526,3 +526,20 @@ def registrar(mcp) -> None:
         if chamado_final is None:
             return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
         return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def chamado_documento_route(request: Request, usuario: dict) -> Response:
+        """Proxy autenticado pra imagem/anexo real do GLPI — o Angular não
+        tem (e não deveria ter) as credenciais da API Legada, então busca o
+        arquivo por aqui em vez de apontar `<img src>` direto pro GLPI (que
+        além de exigir essa credencial, rejeitaria por CORS)."""
+        try:
+            docid = int(request.path_params["docid"])
+        except ValueError:
+            return Response(status_code=404, headers=CORS_HEADERS)
+
+        documento = await _cliente.baixar_documento(docid)
+        if documento is None:
+            return Response(status_code=404, headers=CORS_HEADERS)
+        return Response(documento.conteudo, media_type=documento.content_type, headers=CORS_HEADERS)

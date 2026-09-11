@@ -1,0 +1,5 @@
+@if (htmlProcessado(); as html) {
+  <div class="conteudo-chamado" [innerHTML]="html"></div>
+} @else {
+  <p class="conteudo-chamado-carregando">Carregando conteúdo...</p>
+}

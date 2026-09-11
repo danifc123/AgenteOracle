@@ -136,6 +136,9 @@ class _ClienteGLPIFake:
         self.usuarios_desatribuidos.append((chamado_id, usuario_id))
         self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=None)
 
+    async def baixar_documento(self, documento_id: int) -> None:
+        return None
+
 
 class TestProcessarChamadoNovo:
     async def test_chamado_insuficiente_fica_aguardando_usuario_sem_atribuir(self):

@@ -21,7 +21,7 @@ def _categoria_ti_fake(monkeypatch):
     )
 
 
-def _settings_teste(com_api_legada: bool = False) -> Settings:
+def _settings_teste(com_api_legada: bool = False, conta_ia_id: str = "274") -> Settings:
     return Settings(
         glpi_base_url=_BASE_URL,
         glpi_client_id="id-teste",
@@ -31,6 +31,7 @@ def _settings_teste(com_api_legada: bool = False) -> Settings:
         glpi_legacy_api_url=f"{_BASE_URL}/legacy" if com_api_legada else "",
         glpi_legacy_app_token="app-token-teste",
         glpi_legacy_user_token="user-token-teste",
+        glpi_conta_ia_id=conta_ia_id,
     )
 
 
@@ -281,6 +282,44 @@ class TestListarFiltraSoTi:
         # quem decide o que fazer com ele é `processar_chamado_novo`.
         fake = _GlpiApiFake()
         fake.tickets.append({**fake.tickets[0], "id": 2, "category": None})
+        cliente = _cliente_fake(fake)
+
+        chamados = await cliente.listar()
+
+        assert sorted(chamado.id for chamado in chamados) == [1, 2]
+
+    async def test_exclui_chamado_alheio_pendente_com_tecnico_real(self):
+        # Combinação (Pendente + técnico de verdade) que o nosso fluxo
+        # nunca produz sozinho — chamado gerenciado fora do sistema (ex:
+        # #2530 real, "Aguardando fornecedor" com técnico já atribuído
+        # manualmente no GLPI). Ver `chamado_e_alheio`.
+        fake = _GlpiApiFake()
+        fake.tickets.append(
+            {
+                **fake.tickets[0],
+                "id": 2,
+                "status": {"id": 4, "name": "Pendente"},
+                "team": [{"role": "assigned", "type": "User", "id": 7, "name": "tec7"}],
+            }
+        )
+        cliente = _cliente_fake(fake)
+
+        chamados = await cliente.listar()
+
+        assert [chamado.id for chamado in chamados] == [1]
+
+    async def test_inclui_pendente_com_conta_da_ia_atribuida(self):
+        # A própria conta de serviço segurando o lugar enquanto pendente
+        # é o fluxo normal, não "alheio" — continua aparecendo.
+        fake = _GlpiApiFake()
+        fake.tickets.append(
+            {
+                **fake.tickets[0],
+                "id": 2,
+                "status": {"id": 4, "name": "Pendente"},
+                "team": [{"role": "assigned", "type": "User", "id": 274, "name": "api.ebarn"}],
+            }
+        )
         cliente = _cliente_fake(fake)
 
         chamados = await cliente.listar()

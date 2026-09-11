@@ -248,6 +248,28 @@ def _chamado_do_json(item: dict) -> Chamado:
     )
 
 
+def chamado_e_alheio(chamado: Chamado, conta_ia_id: str) -> bool:
+    """`aguardando_usuario` com um técnico de VERDADE já atribuído (não a
+    conta da IA, não ninguém) é uma combinação que o nosso próprio fluxo
+    nunca produz sozinho — enquanto pendente, só a conta da IA fica
+    atribuída (ou ninguém); um técnico de verdade só entra quando o
+    chamado já vai pra `fila_atendimento` (ver `server/ti/chamados.py::
+    processar_chamado_novo`). Essa combinação é a impressão digital de um
+    chamado gerenciado fora do nosso sistema — ex: "Pendente"/"Aguardando
+    fornecedor" que um técnico já está tocando manualmente no GLPI, sem
+    relação nenhuma com a nossa IA (confirmado ao vivo com um ticket
+    real). Usado tanto pra tirar esses chamados da listagem quanto pra
+    bloquear o botão "Verificar" individual neles — sem essa checagem, um
+    clique de teste poderia atribuir a conta da IA em cima do técnico já
+    lá, ou mudar o status/categoria por baixo de um trabalho manual em
+    andamento."""
+    return (
+        chamado.status == "aguardando_usuario"
+        and chamado.tecnico_atribuido is not None
+        and chamado.tecnico_atribuido != conta_ia_id
+    )
+
+
 class ClienteGLPIReal:
     """Integração real com a API REST v2.3 do GLPI, via `httpx.AsyncClient`.
     Endpoints e formato de payload confirmados contra o Swagger da
@@ -277,10 +299,17 @@ class ClienteGLPIReal:
         # `listar()` devolveria chamado de qualquer departamento da
         # empresa. `server/ti/chamados.py::processar_chamado_novo` trata
         # o caso sem categoria à parte.
-        return [
+        chamados = [
             chamado
             for chamado in chamados
             if chamado.categoria_id is None or chamado.categoria_id in categorias.AREA_POR_CATEGORIA_ID
+        ]
+
+        # Tira chamado gerenciado fora do nosso sistema (ver
+        # `chamado_e_alheio`) — mostrar ele na Auditoria como se fosse
+        # nosso só confunde, já que nunca passou pela nossa IA.
+        return [
+            chamado for chamado in chamados if not chamado_e_alheio(chamado, self._settings.glpi_conta_ia_id)
         ]
 
     async def _listar_com_filtro(self, filtro_status: str) -> list[Chamado]:

@@ -67,7 +67,7 @@ from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ti import categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
-from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, criar_cliente
+from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
 from agente_oracle.tools.ti.tecnicos import TECNICOS, escolher_tecnico
 
 _cliente = criar_cliente(settings)
@@ -459,7 +459,9 @@ def registrar(mcp) -> None:
         reavaliar um chamado depois de ajustar algo manualmente durante
         teste). Também respeita `ja_foi_avaliado_insuficiente`: clicar
         "Verificar" de novo num chamado que já ficou insuficiente antes
-        escala pro técnico em vez de gerar outra pergunta repetida."""
+        escala pro técnico em vez de gerar outra pergunta repetida.
+        Recusa (409) chamado "alheio" (`chamado_e_alheio`) — já
+        gerenciado fora do nosso sistema, ver docstring dele."""
         try:
             chamado_id = int(request.path_params["id"])
         except ValueError:
@@ -468,6 +470,13 @@ def registrar(mcp) -> None:
         chamado = await _cliente.buscar(chamado_id)
         if chamado is None:
             return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+        if chamado_e_alheio(chamado, settings.glpi_conta_ia_id):
+            return JSONResponse(
+                {"erro": "Chamado gerenciado fora da Auditoria (já tem técnico atribuído no GLPI)."},
+                status_code=409,
+                headers=CORS_HEADERS,
+            )
 
         ollama_client = AsyncClient(host=settings.ollama_host)
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])

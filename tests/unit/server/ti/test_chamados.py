@@ -8,6 +8,7 @@ from agente_oracle.agent.ti import roteamento_chamado
 from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
+    _texto_para_ia,
     processar_chamado_novo,
     verificar_chamados_aguardando_resposta,
     verificar_chamados_pendentes,
@@ -72,8 +73,10 @@ class _OllamaClienteFake:
     def __init__(self, suficiente: bool = True, mensagem: str = ""):
         self._suficiente = suficiente
         self._mensagem = mensagem
+        self.chamadas_chat: list[dict] = []
 
-    async def chat(self, **_kwargs):
+    async def chat(self, **kwargs):
+        self.chamadas_chat.append(kwargs)
         return _RespostaChatFake(json.dumps({"suficiente": self._suficiente, "mensagem": self._mensagem}))
 
     async def embed(self, **_kwargs):
@@ -535,3 +538,58 @@ class TestVerificarChamadosAguardandoResposta:
 
         assert cliente.avaliacoes == []
         assert cliente.atribuicoes == []
+
+
+class TestTextoParaIa:
+    def test_tira_tags_e_extrai_texto(self):
+        html = "<p>Computador <strong>não liga</strong> desde ontem.</p>"
+        assert _texto_para_ia(html) == "Computador não liga desde ontem."
+
+    def test_tira_bloco_de_estilo_inteiro(self):
+        # `<style>` traz regra CSS, não conteúdo — não devia sobrar nem
+        # como texto solto.
+        html = "<style>.header { color: red; font-size: 12px; }</style><p>Texto real.</p>"
+        assert _texto_para_ia(html) == "Texto real."
+
+    def test_email_com_boilerplate_confirmado_ao_vivo(self):
+        # Trecho reduzido do e-mail real que causou a inconsistência
+        # (ticket #3272) — confirma que o conteúdo de verdade sobrevive
+        # à limpeza, mesmo com tabela/estilo em volta.
+        html = (
+            '<table style="background-color: #efefef;" width="100%">'
+            "<tbody><tr><td>"
+            "<p>Solicitação: Paulo Henrique de Almeida wants to access "
+            "'Tabela_auxiliar_barter.xlsx'</p>"
+            "</td></tr></tbody></table>"
+        )
+        texto = _texto_para_ia(html)
+        assert "Solicitação: Paulo Henrique de Almeida wants to access" in texto
+        assert "<table" not in texto
+        assert "background-color" not in texto
+
+    def test_texto_sem_html_passa_direto(self):
+        assert _texto_para_ia("Só texto simples, sem tag nenhuma.") == "Só texto simples, sem tag nenhuma."
+
+    def test_string_vazia_devolve_vazia(self):
+        assert _texto_para_ia("") == ""
+
+
+class TestProcessarChamadoNovoLimpaHtml:
+    async def test_manda_texto_limpo_pro_ollama_nao_html_cru(self):
+        # A mesma checagem, só que na ponta a ponta: `processar_chamado_novo`
+        # não deveria vazar HTML pro prompt da IA.
+        descricao_html = (
+            "<style>.x{color:red}</style><p>Sistema <b>lento</b> desde ontem de manhã, no financeiro.</p>"
+        )
+        chamado = _chamado(descricao=descricao_html, categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        assert len(ollama.chamadas_chat) == 1
+        mensagem_usuario = ollama.chamadas_chat[0]["messages"][1]["content"]
+        assert "<style>" not in mensagem_usuario
+        assert "<p>" not in mensagem_usuario
+        assert "Sistema lento desde ontem de manhã, no financeiro." in mensagem_usuario

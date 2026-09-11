@@ -40,6 +40,13 @@ real visto em produção: o mesmo chamado recebendo a mesma pergunta
 genérica repetida em dias diferentes, porque ninguém tinha memória do
 que já tinha sido perguntado antes.
 
+`_texto_para_ia` limpa o HTML da descrição antes de mandar pra IA — um
+chamado aberto por e-mail pode chegar como um e-mail HTML inteiro
+(cabeçalho, rodapé, tabela de estilo), e confirmamos ao vivo que isso
+fazia a mesma descrição dar resultado diferente em avaliações
+separadas. `chamado.descricao` em si não muda (a tela continua
+renderizando o HTML original via `[innerHTML]`).
+
 Regra do GLPI confirmada ao vivo: um chamado SEM NINGUÉM atribuído
 (usuário, não só Group) rejeita silenciosamente qualquer troca de
 status — o `PATCH` volta 200, mas o status não muda de verdade (era por
@@ -54,6 +61,7 @@ import logging
 import time
 from dataclasses import dataclass, replace
 
+from bs4 import BeautifulSoup
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -118,6 +126,26 @@ def _chamado_para_json(chamado: Chamado) -> dict:
     }
 
 
+def _texto_para_ia(html: str) -> str:
+    """GLPI guarda a descrição em HTML — às vezes rich text simples, às
+    vezes um e-mail inteiro (cabeçalho, rodapé, tabela de estilo), quando
+    o chamado chega por e-mail. Confirmado ao vivo: um chamado real
+    chegou com um bloco gigante de HTML de notificação (links "Accept/
+    Decline", rodapé "Automaticamente gerado por GLPI", 7 blocos de
+    "Acompanhamento" vazios) em volta de uma frase só de conteúdo real —
+    e a mesma descrição dava resultado diferente em avaliações separadas
+    da IA, provavelmente por causa do volume de marcação sendo
+    interpretado junto com o texto. Tira as tags e extrai só o texto —
+    não separa boilerplate de conteúdo real (isso exigiria regra própria
+    pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
+    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
+    si não muda, a tela continua renderizando o HTML original."""
+    sopa = BeautifulSoup(html, "html.parser")
+    for tag_indesejada in sopa(["style", "script"]):
+        tag_indesejada.decompose()
+    return sopa.get_text(separator=" ", strip=True)
+
+
 async def processar_chamado_novo(
     cliente: ClienteGLPI,
     ollama_client: AsyncClient,
@@ -176,8 +204,9 @@ async def processar_chamado_novo(
     `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
     aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
     Postgres fora das funções testáveis com fake)."""
+    descricao_limpa = _texto_para_ia(chamado.descricao)
     avaliacao = await avaliar_chamado(
-        ollama_client, modelo, chamado.titulo, chamado.descricao, chamado.categoria, usar_ia
+        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, usar_ia
     )
     if not avaliacao.suficiente:
         if ja_foi_avaliado_insuficiente:
@@ -192,7 +221,7 @@ async def processar_chamado_novo(
         ollama_client,
         settings.ollama_embedding_model,
         chamado.titulo,
-        chamado.descricao,
+        descricao_limpa,
         chamado.categoria_id,
         usar_ia,
     )

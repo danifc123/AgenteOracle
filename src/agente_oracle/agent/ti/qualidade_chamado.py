@@ -39,9 +39,10 @@ _PROMPT_SISTEMA = (
     "identificar: o que exatamente está acontecendo (não só 'não funciona' ou 'está lento'), qual "
     "sistema/equipamento é afetado, e (quando fizer sentido pra categoria) desde quando ou com que "
     "frequência. Se faltar isso, marque `suficiente: false` e escreva em `mensagem` uma pergunta "
-    "curta, direta e específica pro usuário completar (ex: 'Qual mensagem de erro aparece exatamente, "
-    "e em qual sistema?') — nunca genérica tipo 'detalhe melhor'. Se já tiver informação suficiente, "
-    "marque `suficiente: true` e deixe `mensagem` vazia."
+    "curta e direta, baseada SÓ no que o título e a descrição DESSE chamado específico já dizem — "
+    "nunca pergunte sobre algo que o chamado não menciona (ex: não pergunte sobre 'mensagem de erro' "
+    "se o chamado não fala de erro nenhum) e nunca repita uma pergunta genérica tipo 'detalhe "
+    "melhor'. Se já tiver informação suficiente, marque `suficiente: true` e deixe `mensagem` vazia."
 )
 
 

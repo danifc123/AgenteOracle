@@ -48,6 +48,11 @@ export class ConteudoChamado {
   html = input('');
 
   protected readonly htmlProcessado = signal<string | null>(null);
+  // >0 quando algum bloco de "Acompanhamento" vazio foi escondido — a tela
+  // mostra um aviso discreto, senão o rodapé do próprio GLPI ("N° de
+  // acompanhamentos: 7") não bate com nada visível e parece que sumiu
+  // mensagem de verdade (confirmado com o usuário: gerava dúvida real).
+  protected readonly acompanhamentosVaziosOcultados = signal(0);
 
   constructor() {
     effect(() => {
@@ -68,11 +73,12 @@ export class ConteudoChamado {
     const raiz = new DOMParser().parseFromString(html, 'text/html').body;
     removerTagsIndesejadas(raiz);
     removerBoilerplateDeEmail(raiz);
-    removerAcompanhamentosVazios(raiz);
+    const acompanhamentosOcultados = removerAcompanhamentosVazios(raiz);
     despirAtributosDeLayout(raiz);
     await this.resolverImagens(raiz);
 
     if (geracao === this.geracaoAtual) {
+      this.acompanhamentosVaziosOcultados.set(acompanhamentosOcultados);
       this.htmlProcessado.set(raiz.innerHTML);
     }
   }
@@ -121,9 +127,11 @@ function removerBoilerplateDeEmail(raiz: HTMLElement): void {
 
 // Blocos de "Acompanhamento" que o GLPI ecoa na notificação por e-mail,
 // mas sem autor nem mensagem real — mostrar "estruturado mesmo vazio" só
-// seria ruído bonito (ver docstring do componente).
-function removerAcompanhamentosVazios(raiz: HTMLElement): void {
-  Array.from(raiz.querySelectorAll('table'))
+// seria ruído bonito (ver docstring do componente). Devolve quantos foram
+// escondidos, pra tela avisar (sem isso, o rodapé do próprio GLPI, tipo
+// "N° de acompanhamentos: 7", fica sem nenhum correspondente visível).
+function removerAcompanhamentosVazios(raiz: HTMLElement): number {
+  const vazios = Array.from(raiz.querySelectorAll('table'))
     // Só bloco-folha (sem tabela aninhada dentro) — o wrapper de layout que
     // ENVOLVE tanto o conteúdo real quanto os blocos de "Acompanhamento"
     // também tem "Acompanhamento" no textContent (herdado dos filhos);
@@ -137,8 +145,9 @@ function removerAcompanhamentosVazios(raiz: HTMLElement): void {
       );
       const valorAutor = linhaAutor?.querySelectorAll('td')[1]?.textContent?.trim();
       return !valorAutor;
-    })
-    .forEach((tabela) => tabela.remove());
+    });
+  vazios.forEach((tabela) => tabela.remove());
+  return vazios.length;
 }
 
 // Remove atributo de apresentação (herdado de e-mail montado pro

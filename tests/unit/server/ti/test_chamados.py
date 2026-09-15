@@ -31,6 +31,21 @@ def _categoria_unica_para_teste(monkeypatch):
     monkeypatch.setattr(roteamento_chamado, "_cache_embeddings_categorias", None)
 
 
+@pytest.fixture(autouse=True)
+def _roster_de_tecnicos_para_teste(monkeypatch):
+    # `escolher_tecnico`/`todos_os_tecnicos` (tools/ti/tecnicos.py) leem o
+    # roster do Postgres via `listar_tecnicos_ti` — sem essa fixture, um
+    # teste unitário sem banco real cairia num roster vazio e `min()`
+    # estouraria. `"7"` mantém compatibilidade com os testes que já
+    # fixam esse id (herdado de quando o roster era a tupla fixa).
+    roster = [
+        {"usuario": "7", "nome": "Técnico Infra", "tecnico_glpi_id": "7", "area_ti": "infra"},
+        {"usuario": "8", "nome": "Técnico Sistemas", "tecnico_glpi_id": "8", "area_ti": "sistemas"},
+        {"usuario": "278", "nome": "Técnico Processos", "tecnico_glpi_id": "278", "area_ti": "processos"},
+    ]
+    monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+
+
 def _chamado(
     id_: int = 1,
     titulo: str = "Computador não liga",
@@ -137,6 +152,12 @@ class _ClienteGLPIFake:
         self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=None)
 
     async def baixar_documento(self, documento_id: int) -> None:
+        return None
+
+    async def buscar_tecnicos_disponiveis(self) -> list:
+        return []
+
+    async def buscar_area_do_tecnico(self, usuario_id: str) -> None:
         return None
 
 

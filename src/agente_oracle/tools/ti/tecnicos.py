@@ -1,19 +1,15 @@
-"""Roster de técnicos de TI, em código (não banco) — muda raro o bastante
-pra "editar código, dar deploy" ser aceitável, e não existe tela de admin
-no projeto pra editar isso com segurança. Se um dia existir uma tela de
-admin de TI, migrar pra uma tabela Postgres (mesmo padrão `CREATE TABLE IF
-NOT EXISTS` já usado no projeto) é o caminho natural.
-
-Roster reduzido de propósito pra fase de teste em homologação: só 1
-técnico por área (Pablo/infra, Denner/sistemas, Suellen/processos),
-escolhidos pelo Daniel entre os membros reais dos grupos GLPI
-"Infraestrutura de TI"/"Sistemas"/"Processos e Projetos". Com só 1 por
-área, `escolher_tecnico` sempre devolve o mesmo — é o comportamento
-esperado nesta fase, não um bug. Expandir pra mais gente por área é só
-adicionar linha na tupla abaixo."""
+"""Roster de técnicos de TI — vem do cadastro de usuário do AgenteOracle
+(tela "Usuários"), não mais de uma lista fixa em código. Quem cadastra um
+usuário escolhe um técnico real do GLPI (`server/ti/tecnicos_glpi.py`
+lista os candidatos), e a área (infra/sistemas/processos) é descoberta
+sozinha a partir do grupo técnico manual da pessoa no GLPI
+(`ClienteGLPIReal.buscar_area_do_tecnico`) — ver `usuarios_route` em
+`server/auth/rotas.py`. `tools/auth/usuarios.py::listar_tecnicos_ti` é a
+fonte do dado; este módulo só traduz pra `Tecnico` e escolhe por carga."""
 
 from dataclasses import dataclass
 
+from agente_oracle.tools.auth.usuarios import listar_tecnicos_ti
 from agente_oracle.tools.ti.glpi import AreaChamado
 
 
@@ -27,19 +23,30 @@ class Tecnico:
     area: AreaChamado
 
 
-TECNICOS: tuple[Tecnico, ...] = (
-    Tecnico("Pablo Pires de Godoi Silva", "7", "infra"),
-    Tecnico("Denner Mendonça dos Santos", "8", "sistemas"),
-    Tecnico("Suellen Moraes Silva", "278", "processos"),
-)
+def todos_os_tecnicos() -> tuple[Tecnico, ...]:
+    """Consulta o Postgres a cada chamada, sem cache — aceitável pro
+    volume atual (poucos chamados por rodada do poller), mesmo padrão de
+    `server/auth/rotas.py::usuarios_route`, que já chama Postgres direto
+    de dentro de rota `async def` sem thread pool. Vira gargalo só se o
+    volume crescer muito; cacheia então, não antes. Público (não `_`) de
+    propósito: `server/ti/chamados.py`/`webhook_glpi.py` usam pra montar
+    a lista de identificadores em `carga_atual_por_tecnico` — precisam do
+    roster fresco a cada chamada, não de uma cópia importada uma vez só
+    na subida do servidor (`from ... import TECNICOS` congelaria o valor
+    pra sempre, sem nunca ver técnico cadastrado depois)."""
+    return tuple(
+        Tecnico(nome=linha["nome"], identificador=linha["tecnico_glpi_id"], area=linha["area_ti"])
+        for linha in listar_tecnicos_ti()
+    )
 
 
 def escolher_tecnico(area: AreaChamado, cargas: dict[str, int]) -> Tecnico:
-    """Escolhe o de menor carga dentro da área; empate resolvido pela ordem
-    fixa em `TECNICOS` (determinístico, sem aleatoriedade) — `min()` já
-    devolve o primeiro em caso de empate de chave."""
+    """Escolhe o de menor carga dentro da área; empate resolvido pela
+    ordem do roster (`listar_tecnicos_ti` ordena por quem cadastrou
+    primeiro — determinístico, sem aleatoriedade) — `min()` já devolve o
+    primeiro em caso de empate de chave."""
     return min(tecnicos_da_area(area), key=lambda tecnico: cargas.get(tecnico.identificador, 0))
 
 
 def tecnicos_da_area(area: AreaChamado) -> tuple[Tecnico, ...]:
-    return tuple(tecnico for tecnico in TECNICOS if tecnico.area == area)
+    return tuple(tecnico for tecnico in todos_os_tecnicos() if tecnico.area == area)

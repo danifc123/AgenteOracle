@@ -76,7 +76,7 @@ from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ti import categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
-from agente_oracle.tools.ti.tecnicos import TECNICOS, escolher_tecnico
+from agente_oracle.tools.ti.tecnicos import escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -311,7 +311,9 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
     ponto."""
     ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+    cargas = await _cliente.carga_atual_por_tecnico(
+        [tecnico.identificador for tecnico in todos_os_tecnicos()]
+    )
 
     for chamado in await _cliente.listar():
         if chamado.status != "novo":
@@ -362,7 +364,9 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     aqui, `aguardando_usuario` já implica que já houve 1 avaliação
     insuficiente antes)."""
     ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+    cargas = await _cliente.carga_atual_por_tecnico(
+        [tecnico.identificador for tecnico in todos_os_tecnicos()]
+    )
 
     for chamado in await _cliente.listar():
         if chamado.status != "aguardando_usuario":
@@ -502,7 +506,9 @@ def registrar(mcp) -> None:
             )
 
         ollama_client = AsyncClient(host=settings.ollama_host)
-        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+        cargas = await _cliente.carga_atual_por_tecnico(
+            [tecnico.identificador for tecnico in todos_os_tecnicos()]
+        )
         usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
 
         registro_anterior = _ultima_avaliacao_segura(chamado.id)

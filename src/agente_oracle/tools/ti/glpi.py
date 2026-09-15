@@ -86,6 +86,16 @@ class DocumentoBaixado:
 
 
 @dataclass(frozen=True)
+class TecnicoGlpiCandidato:
+    id: str
+    nome: str
+    # Cargo (`title.name`) — texto livre do GLPI, só uma dica visual pra
+    # quem cadastra (ex: "Analista de Infraestrutura de TI"); nunca usado
+    # pra decidir área de verdade (isso é `buscar_area_do_tecnico`).
+    titulo: str | None
+
+
+@dataclass(frozen=True)
 class Chamado:
     id: int
     titulo: str
@@ -127,6 +137,10 @@ class ClienteGLPI(Protocol):
 
     async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None: ...
 
+    async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]: ...
+
+    async def buscar_area_do_tecnico(self, usuario_id: str) -> AreaChamado | None: ...
+
 
 # Códigos confirmados contra o schema `status` da instância real (campo
 # `status.id` do Ticket, enum documentado no Swagger): 1=Novo, 10=Aprovação,
@@ -146,6 +160,24 @@ _STATUS_NOSSO_PARA_GLPI: dict[StatusChamado, int] = {
     "novo": 1,
     "aguardando_usuario": 4,
     "fila_atendimento": 2,
+}
+
+# Perfil GLPI "Technician" — confirmado ao vivo que filtrar por ele em
+# `Administration/User` devolve só gente de TI (11 pessoas reais, batendo
+# 1:1 com quem tem cargo de TI) — não é uma garantia formal do GLPI, é só
+# como a instância real está configurada hoje.
+_PERFIL_GLPI_TECHNICIAN = 6
+
+# Grupo técnico "de verdade" (atribuído manualmente, `is_dynamic: 0`) de
+# cada pessoa mapeia pra nossa área — confirmado ao vivo via `Group_User`
+# da API Legada pras 5 pessoas já conhecidas (Pablo/Denner/Suellen/
+# Rafaella/Carlos). O grupo "TI" genérico (id 4, sincronizado automático
+# via AD, `is_dynamic: 1`) não entra aqui de propósito — não diz nada
+# sobre a área da pessoa, só que ela é de TI.
+_GRUPO_GLPI_PARA_AREA: dict[int, AreaChamado] = {
+    2: "infra",
+    1: "sistemas",
+    8: "processos",
 }
 
 
@@ -488,6 +520,49 @@ class ClienteGLPIReal:
             conteudo=resposta.content,
             content_type=resposta.headers.get("content-type", "application/octet-stream"),
         )
+
+    async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]:
+        """Candidatos a vincular no cadastro de usuário — filtra pelo
+        perfil GLPI "Technician" (`_PERFIL_GLPI_TECHNICIAN`), confirmado
+        ao vivo que devolve só gente de TI. `firstname`+`realname` monta o
+        nome completo (não vem num campo só); `title.name` é só dica
+        visual, texto livre do GLPI."""
+        resposta = await self._requisicao(
+            "GET",
+            "/api.php/v2.3/Administration/User",
+            params={"filter": f"default_profile.id=={_PERFIL_GLPI_TECHNICIAN}"},
+        )
+        resposta.raise_for_status()
+        return [
+            TecnicoGlpiCandidato(
+                id=str(item["id"]),
+                nome=f"{item.get('firstname') or ''} {item.get('realname') or ''}".strip(),
+                titulo=(item.get("title") or {}).get("name"),
+            )
+            for item in resposta.json()
+        ]
+
+    async def buscar_area_do_tecnico(self, usuario_id: str) -> AreaChamado | None:
+        """Área de verdade da pessoa vem do grupo técnico atribuído
+        MANUALMENTE (`is_dynamic: 0`) — o grupo "TI" genérico (sincronizado
+        automático via AD) não conta, ver `_GRUPO_GLPI_PARA_AREA`. Só a API
+        Legada expõe a relação usuário↔grupo (`Group_User`, confirmado ao
+        vivo — a v2.3 não tem essa relação). Sem `glpi_legacy_api_url`
+        configurada, ou sem nenhum grupo manual reconhecido, devolve
+        `None` — quem chama (rota de cadastro) decide o erro."""
+        if not self._settings.glpi_legacy_api_url:
+            return None
+        async with self._sessao_legada() as (base, cabecalhos):
+            resposta = await self._http_client.get(f"{base}/User/{usuario_id}/Group_User", headers=cabecalhos)
+        if resposta.status_code != 200:
+            return None
+        for relacao in resposta.json():
+            if relacao.get("is_dynamic"):
+                continue
+            area = _GRUPO_GLPI_PARA_AREA.get(relacao.get("groups_id"))
+            if area is not None:
+                return area
+        return None
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None:
         # `area` não tem onde ir no payload de TeamMember — se a instância

@@ -58,6 +58,16 @@ class _GlpiApiFake:
         # Documento real simulado (ver `baixar_documento`) — id 1 existe,
         # qualquer outro simula "não encontrado".
         self.documentos: dict[int, tuple[bytes, str]] = {1: (b"conteudo-fake-da-imagem", "image/png")}
+        # Candidatos a técnico (ver `buscar_tecnicos_disponiveis`) — formato
+        # confirmado ao vivo contra `Administration/User`.
+        self.usuarios_technician: list[dict] = [
+            {"id": 7, "firstname": "Pablo", "realname": "Godoi", "title": {"name": "Analista de Infra"}}
+        ]
+        # Grupos por usuário (ver `buscar_area_do_tecnico`) — formato
+        # confirmado ao vivo contra `Group_User` da API Legada.
+        self.grupos_por_usuario: dict[int, list[dict]] = {
+            7: [{"groups_id": 4, "is_dynamic": 1}, {"groups_id": 2, "is_dynamic": 0}]
+        }
         # Simula queda de conexão transitória (ver `_requisicao`) — chave
         # "METODO caminho", valor = quantas vezes ainda deve falhar antes
         # de deixar a rota responder normalmente.
@@ -130,6 +140,13 @@ class _GlpiApiFake:
                 return httpx.Response(404, json={"status": "ERROR_ITEM_NOT_FOUND"})
             conteudo, content_type = self.documentos[documento_id]
             return httpx.Response(200, content=conteudo, headers={"content-type": content_type})
+        if caminho == "/api.php/v2.3/Administration/User" and metodo == "GET":
+            if request.url.params.get("filter") != "default_profile.id==6":
+                return httpx.Response(200, json=[])
+            return httpx.Response(200, json=self.usuarios_technician)
+        if caminho.startswith("/legacy/User/") and caminho.endswith("/Group_User") and metodo == "GET":
+            usuario_id = int(caminho.removeprefix("/legacy/User/").removesuffix("/Group_User"))
+            return httpx.Response(200, json=self.grupos_por_usuario.get(usuario_id, []))
         return httpx.Response(404, json={"erro": f"rota não simulada nesta suíte: {metodo} {caminho}"})
 
     def _pagina_de_tickets(self, request: httpx.Request) -> httpx.Response:
@@ -563,3 +580,42 @@ class TestBaixarDocumento:
         # Sessão é aberta e fechada mesmo quando o documento não existe.
         assert fake.sessoes_legadas_abertas == 1
         assert fake.sessoes_legadas_fechadas == 1
+
+
+class TestBuscarTecnicosDisponiveis:
+    async def test_devolve_candidatos_filtrados_por_perfil_technician(self):
+        cliente = _cliente_fake(_GlpiApiFake())
+
+        tecnicos = await cliente.buscar_tecnicos_disponiveis()
+
+        assert len(tecnicos) == 1
+        assert tecnicos[0].id == "7"
+        assert tecnicos[0].nome == "Pablo Godoi"
+        assert tecnicos[0].titulo == "Analista de Infra"
+
+
+class TestBuscarAreaDoTecnico:
+    async def test_sem_api_legada_configurada_devolve_none(self):
+        cliente = _cliente_fake(_GlpiApiFake())  # com_api_legada=False (padrão)
+
+        assert await cliente.buscar_area_do_tecnico("7") is None
+
+    async def test_ignora_grupo_dinamico_e_usa_o_manual(self):
+        # Pablo (fake) tem o grupo "TI" genérico (dinâmico, id 4 — sem
+        # mapeamento) e "Infraestrutura de TI" (manual, id 2) — só o
+        # segundo conta.
+        cliente = _cliente_fake(_GlpiApiFake(), com_api_legada=True)
+
+        assert await cliente.buscar_area_do_tecnico("7") == "infra"
+
+    async def test_sem_grupo_manual_reconhecido_devolve_none(self):
+        fake = _GlpiApiFake()
+        fake.grupos_por_usuario[7] = [{"groups_id": 4, "is_dynamic": 1}]
+        cliente = _cliente_fake(fake, com_api_legada=True)
+
+        assert await cliente.buscar_area_do_tecnico("7") is None
+
+    async def test_usuario_sem_grupo_nenhum_devolve_none(self):
+        cliente = _cliente_fake(_GlpiApiFake(), com_api_legada=True)
+
+        assert await cliente.buscar_area_do_tecnico("999") is None

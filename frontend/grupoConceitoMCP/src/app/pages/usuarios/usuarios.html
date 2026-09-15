@@ -105,6 +105,15 @@
       [(valores)]="formPapeis"
     />
 
+    @if (mostrarCampoTecnico()) {
+      <app-select-busca
+        rotulo="Técnico do GLPI (opcional)"
+        placeholder="Nenhum — este login não atende chamado"
+        [opcoes]="opcoesTecnicosGlpi()"
+        [(valor)]="formTecnicoGlpiId"
+      />
+    }
+
     <label class="campo">
       <span>Usuário (login)</span>
       <input

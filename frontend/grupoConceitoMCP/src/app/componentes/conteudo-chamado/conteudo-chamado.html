@@ -1,0 +1,14 @@
+@if (htmlProcessado(); as html) {
+  <div class="conteudo-chamado" [innerHTML]="html"></div>
+  @if (acompanhamentosVaziosOcultados(); as qtd) {
+    <p class="conteudo-chamado-aviso-ocultos">
+      @if (qtd === 1) {
+        1 acompanhamento vazio (sem autor nem mensagem) foi ocultado desta descrição.
+      } @else {
+        {{ qtd }} acompanhamentos vazios (sem autor nem mensagem) foram ocultados desta descrição.
+      }
+    </p>
+  }
+} @else {
+  <p class="conteudo-chamado-carregando">Carregando conteúdo...</p>
+}

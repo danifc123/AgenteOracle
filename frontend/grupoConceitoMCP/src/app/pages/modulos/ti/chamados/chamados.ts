@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
+import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteudo-chamado';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
@@ -18,35 +19,41 @@ export interface Chamado {
   categoria: string;
   status: StatusChamado;
   solicitante: string;
-  email: string;
   avaliacao_mensagem: string | null;
-  reportado_em: string | null;
   criado_em: string;
+  tecnico_atribuido: string | null;
+}
+
+interface TecnicoNome {
+  identificador: string;
+  nome: string;
 }
 
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
  * Item "Service Desk IA" da planilha de demandas — integração real com o
- * GLPI (`tools/ti/glpi.py::ClienteGLPIReal`), sem cliente mock. A
- * verificação de chamado `novo` não depende mais de clique manual: um
- * poller em background no próprio servidor (`server/ti/chamados.py::
- * iniciar_poller_verificar_chamados`) roda sozinho a cada poucos
- * minutos. Chamado `aguardando_usuario` (aparece na tela, mas não é
- * reavaliado pelo poller de propósito — gastaria IA à toa a cada rodada
- * sem que o solicitante tenha respondido nada) só volta a ser avaliado
- * via o botão "Verificar" por linha, ou quando o GLPI resolver sozinho
- * depois de 3 dias sem resposta.
+ * GLPI (`tools/ti/glpi.py::ClienteGLPIReal`), sem cliente mock. Um poller
+ * em background no próprio servidor (`server/ti/chamados.py::
+ * iniciar_poller_verificar_chamados`) roda sozinho a cada poucos minutos,
+ * em duas pernas: chamado `novo` é sempre avaliado; chamado
+ * `aguardando_usuario` só é reavaliado quando o poller detecta uma
+ * resposta nova do solicitante (não gasta IA à toa num chamado parado).
+ * Se a IA insistir que falta informação numa 2ª avaliação seguida, o
+ * chamado é escalado pra um técnico humano (`tecnicoEscalado()` mostra
+ * isso na tela — "Aguardando resposta" vira "Com {técnico}"). O botão
+ * "Verificar" por linha força uma reavaliação na hora, sem esperar o
+ * poller.
  *
- * "Reportar ao usuário" (no detalhe de um chamado aguardando) só marca
- * `reportado_em` e mostra na tela o que teria sido enviado — nenhum
- * e-mail sai de verdade ainda, mesmo com o GLPI real (ver docstring de
- * `tools/ti/glpi.py::ClienteGLPIReal.reportar_usuario`). A tela em si só
- * carrega a lista uma vez, ao abrir — não se atualiza sozinha enquanto o
- * poller processa em background; recarregar a página mostra o estado
- * mais recente. */
+ * Sem botão de "reportar ao usuário" de propósito: o Followup que a IA
+ * posta ao marcar `aguardando_usuario` já dispara a notificação nativa
+ * do GLPI pro solicitante (mecanismo padrão dele pra mensagem em
+ * chamado) — nenhum aviso extra é necessário da nossa parte. A tela em
+ * si só carrega a lista uma vez, ao abrir — não se atualiza sozinha
+ * enquanto o poller processa em background; recarregar a página mostra
+ * o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
-  imports: [Botao, DatePipe, Dialog, EstadoVazio, ModuloHeader],
+  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader],
   templateUrl: './chamados.html',
   styleUrl: './chamados.scss',
 })
@@ -60,10 +67,14 @@ export class ChamadosTi {
   // id do chamado sendo verificado individualmente — só aquele botão da
   // linha mostra loading, o resto da tabela continua clicável.
   protected readonly verificandoId = signal<number | null>(null);
-  protected readonly reportando = signal(false);
   protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly usarIa = this.configuracoesTi.usarIaAvaliacaoChamado;
+  // Nome pro badge "Com {técnico}" — vem do roster de verdade
+  // (`/api/ti/tecnicos`, backend por `tools/ti/tecnicos.py`), não mais
+  // fixo aqui — um técnico novo cadastrado aparece certo sem precisar
+  // editar o frontend.
+  private readonly nomesTecnicos = signal<Record<string, string>>({});
 
   protected readonly paginaAtual = signal(1);
   protected readonly totalPaginas = computed(() =>
@@ -76,6 +87,7 @@ export class ChamadosTi {
 
   constructor() {
     this.carregarChamados();
+    this.carregarTecnicos();
     this.configuracoesTi.carregar();
   }
 
@@ -91,6 +103,12 @@ export class ChamadosTi {
     this.chamadoAberto.set(chamado);
   }
 
+  // `null` = ainda só com a IA (aguardando resposta do solicitante); um
+  // nome = já escalado pra esse técnico.
+  protected tecnicoEscalado(chamado: Chamado): string | null {
+    return chamado.tecnico_atribuido ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null) : null;
+  }
+
   private carregarChamados(): void {
     this.carregando.set(true);
     this.http.get<Chamado[]>(`${MCP_API_BASE_URL}/api/ti/chamados`).subscribe({
@@ -100,6 +118,17 @@ export class ChamadosTi {
         this.carregando.set(false);
       },
       error: () => this.carregando.set(false),
+    });
+  }
+
+  private carregarTecnicos(): void {
+    this.http.get<TecnicoNome[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos`).subscribe({
+      next: (tecnicos) => {
+        this.nomesTecnicos.set(
+          Object.fromEntries(tecnicos.map((tecnico) => [tecnico.identificador, tecnico.nome])),
+        );
+      },
+      error: () => this.nomesTecnicos.set({}),
     });
   }
 
@@ -121,27 +150,6 @@ export class ChamadosTi {
 
   protected fecharDetalhe(): void {
     this.chamadoAberto.set(null);
-  }
-
-  protected reportar(chamado: Chamado): void {
-    if (this.reportando()) {
-      return;
-    }
-
-    this.reportando.set(true);
-    this.erro.set(null);
-
-    this.http.post<Chamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/reportar`, {}).subscribe({
-      next: (atualizado) => {
-        this.chamados.update((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
-        this.chamadoAberto.set(atualizado);
-        this.reportando.set(false);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erro.set(mensagemErro(erro, 'Não foi possível reportar ao usuário.'));
-        this.reportando.set(false);
-      },
-    });
   }
 
   protected verificarChamado(chamado: Chamado): void {

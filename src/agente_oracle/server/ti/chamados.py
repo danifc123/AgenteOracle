@@ -40,6 +40,13 @@ real visto em produção: o mesmo chamado recebendo a mesma pergunta
 genérica repetida em dias diferentes, porque ninguém tinha memória do
 que já tinha sido perguntado antes.
 
+`_texto_para_ia` limpa o HTML da descrição antes de mandar pra IA — um
+chamado aberto por e-mail pode chegar como um e-mail HTML inteiro
+(cabeçalho, rodapé, tabela de estilo), e confirmamos ao vivo que isso
+fazia a mesma descrição dar resultado diferente em avaliações
+separadas. `chamado.descricao` em si não muda (a tela continua
+renderizando o HTML original via `[innerHTML]`).
+
 Regra do GLPI confirmada ao vivo: um chamado SEM NINGUÉM atribuído
 (usuário, não só Group) rejeita silenciosamente qualquer troca de
 status — o `PATCH` volta 200, mas o status não muda de verdade (era por
@@ -54,6 +61,7 @@ import logging
 import time
 from dataclasses import dataclass, replace
 
+from bs4 import BeautifulSoup
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -67,8 +75,8 @@ from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ti import categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
-from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, criar_cliente
-from agente_oracle.tools.ti.tecnicos import TECNICOS, escolher_tecnico
+from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
+from agente_oracle.tools.ti.tecnicos import escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -89,9 +97,7 @@ class ResultadoProcessamento:
     avaliacao_suficiente: bool
     # `None` quando `avaliacao_suficiente` é `False` — o chamado nem chegou
     # a `classificar_categoria`, a pergunta "precisou de embedding" não se
-    # aplica. `False` cobre dois casos: `usar_ia=False`, ou chamado sem
-    # categoria (nunca chega a chamar `classificar_categoria`, que é quem
-    # de fato usaria embedding).
+    # aplica. `False` só acontece com `usar_ia=False`.
     precisou_embedding: bool | None
 
 
@@ -114,11 +120,30 @@ def _chamado_para_json(chamado: Chamado) -> dict:
         "solicitante": chamado.solicitante,
         "email": chamado.email,
         "avaliacao_mensagem": chamado.avaliacao_mensagem,
-        "reportado_em": chamado.reportado_em.isoformat() if chamado.reportado_em else None,
         "criado_em": chamado.criado_em.isoformat(),
         "area": chamado.area,
         "tecnico_atribuido": chamado.tecnico_atribuido,
     }
+
+
+def _texto_para_ia(html: str) -> str:
+    """GLPI guarda a descrição em HTML — às vezes rich text simples, às
+    vezes um e-mail inteiro (cabeçalho, rodapé, tabela de estilo), quando
+    o chamado chega por e-mail. Confirmado ao vivo: um chamado real
+    chegou com um bloco gigante de HTML de notificação (links "Accept/
+    Decline", rodapé "Automaticamente gerado por GLPI", 7 blocos de
+    "Acompanhamento" vazios) em volta de uma frase só de conteúdo real —
+    e a mesma descrição dava resultado diferente em avaliações separadas
+    da IA, provavelmente por causa do volume de marcação sendo
+    interpretado junto com o texto. Tira as tags e extrai só o texto —
+    não separa boilerplate de conteúdo real (isso exigiria regra própria
+    pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
+    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
+    si não muda, a tela continua renderizando o HTML original."""
+    sopa = BeautifulSoup(html, "html.parser")
+    for tag_indesejada in sopa(["style", "script"]):
+        tag_indesejada.decompose()
+    return sopa.get_text(separator=" ", strip=True)
 
 
 async def processar_chamado_novo(
@@ -151,19 +176,18 @@ async def processar_chamado_novo(
     e o técnico de verdade assume — desatribuir não desfaz a troca de
     status já feita (confirmado ao vivo: o status fica onde foi deixado).
 
-    Sem categoria (`categoria_id is None`) — chamado aberto por e-mail,
-    confirmado com o responsável do GLPI que esses já entram direto na
-    fila de TI sem categoria — a auditoria também para por aqui: não tem
-    categoria pra corrigir nem base pra decidir área/técnico, então só a
-    checagem de informação suficiente se aplica. De propósito, nada é
-    escrito no GLPI quando o conteúdo já está suficiente (marcar
-    `fila_atendimento` sem ninguém de fato atribuído deixaria o status
-    real do GLPI, "Em atendimento (atribuído)", mentindo) — o chamado
-    continua aparecendo nesta tela até um humano decidir o que fazer com
-    ele; só o caso insuficiente escreve algo (o pedido de mais
-    informação, igual o fluxo normal).
+    Chamado aberto por e-mail chega do GLPI sem categoria nenhuma
+    (`categoria_id is None`) — confirmado com quem cuida do GLPI que
+    esse é um padrão real, não uma falha de cadastro. `classificar_categoria`
+    já lida bem com "sem categoria atual" (escolhe a melhor categoria
+    pelas ~211 reais por similaridade, sem precisar de nada pra
+    comparar antes), então esses chamados passam pelo MESMO fluxo de
+    quem já tem categoria — a IA escolhe uma do zero, em vez de corrigir
+    uma errada. Sem isso, um chamado suficiente e sem categoria ficava
+    preso em `novo` pra sempre, sendo reavaliado (e gastando IA) a cada
+    rodada do poller sem nunca sair dali — bug real visto em produção.
 
-    Com categoria, classifica a área, escolhe o técnico de menor carga
+    Com ou sem categoria de partida, classifica a área, escolhe o técnico de menor carga
     NAQUELE momento (`cargas` é atualizado in-place — importante quando
     processando um lote: duas chamadas seguidas não caem sempre no mesmo
     técnico só porque nenhum dos dois ainda foi salvo no GLPI), atribui e
@@ -180,8 +204,9 @@ async def processar_chamado_novo(
     `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
     aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
     Postgres fora das funções testáveis com fake)."""
+    descricao_limpa = _texto_para_ia(chamado.descricao)
     avaliacao = await avaliar_chamado(
-        ollama_client, modelo, chamado.titulo, chamado.descricao, chamado.categoria, usar_ia
+        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, usar_ia
     )
     if not avaliacao.suficiente:
         if ja_foi_avaliado_insuficiente:
@@ -192,14 +217,11 @@ async def processar_chamado_novo(
             await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
-    if chamado.categoria_id is None:
-        return ResultadoProcessamento(avaliacao_suficiente=True, precisou_embedding=False)
-
     resultado_classificacao = await classificar_categoria(
         ollama_client,
         settings.ollama_embedding_model,
         chamado.titulo,
-        chamado.descricao,
+        descricao_limpa,
         chamado.categoria_id,
         usar_ia,
     )
@@ -289,7 +311,9 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
     ponto."""
     ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+    cargas = await _cliente.carga_atual_por_tecnico(
+        [tecnico.identificador for tecnico in todos_os_tecnicos()]
+    )
 
     for chamado in await _cliente.listar():
         if chamado.status != "novo":
@@ -340,7 +364,9 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     aqui, `aguardando_usuario` já implica que já houve 1 avaliação
     insuficiente antes)."""
     ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+    cargas = await _cliente.carga_atual_por_tecnico(
+        [tecnico.identificador for tecnico in todos_os_tecnicos()]
+    )
 
     for chamado in await _cliente.listar():
         if chamado.status != "aguardando_usuario":
@@ -422,27 +448,6 @@ async def iniciar_poller_verificar_chamados() -> None:
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/ti/chamados/{id}/reportar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
-    async def chamado_reportar_route(request: Request, usuario: dict) -> Response:
-        """Avisa o usuário que o chamado dele está `aguardando_usuario` —
-        `ClienteGLPIReal.reportar_usuario` é no-op de propósito nesta fase,
-        nenhum e-mail sai de verdade ainda, ver docstring de
-        `tools/ti/glpi.py`."""
-        try:
-            chamado_id = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        chamado = await _cliente.buscar(chamado_id)
-        if chamado is None:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        await _cliente.reportar_usuario(chamado_id)
-
-        chamado_final = await _cliente.buscar(chamado_id)
-        return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/ti/chamados", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_route(request: Request, usuario: dict) -> Response:
@@ -451,6 +456,21 @@ def registrar(mcp) -> None:
         chamados = await _cliente.listar()
         return JSONResponse(
             [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
+            headers=CORS_HEADERS,
+        )
+
+    @mcp.custom_route("/api/ti/tecnicos", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def tecnicos_route(request: Request, usuario: dict) -> Response:
+        """Nomes pro badge "Com {técnico}" na tela de Auditoria — o roster
+        de verdade (`tools/ti/tecnicos.py`), aberto pra qualquer um do
+        módulo TI. Diferente de `/api/ti/tecnicos-glpi` (candidatos crus
+        do GLPI, admin-only, usado só no cadastro de usuário)."""
+        return JSONResponse(
+            [
+                {"identificador": tecnico.identificador, "nome": tecnico.nome}
+                for tecnico in todos_os_tecnicos()
+            ],
             headers=CORS_HEADERS,
         )
 
@@ -481,7 +501,9 @@ def registrar(mcp) -> None:
         reavaliar um chamado depois de ajustar algo manualmente durante
         teste). Também respeita `ja_foi_avaliado_insuficiente`: clicar
         "Verificar" de novo num chamado que já ficou insuficiente antes
-        escala pro técnico em vez de gerar outra pergunta repetida."""
+        escala pro técnico em vez de gerar outra pergunta repetida.
+        Recusa (409) chamado "alheio" (`chamado_e_alheio`) — já
+        gerenciado fora do nosso sistema, ver docstring dele."""
         try:
             chamado_id = int(request.path_params["id"])
         except ValueError:
@@ -491,8 +513,17 @@ def registrar(mcp) -> None:
         if chamado is None:
             return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
 
+        if chamado_e_alheio(chamado, settings.glpi_conta_ia_id):
+            return JSONResponse(
+                {"erro": "Chamado gerenciado fora da Auditoria (já tem técnico atribuído no GLPI)."},
+                status_code=409,
+                headers=CORS_HEADERS,
+            )
+
         ollama_client = AsyncClient(host=settings.ollama_host)
-        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+        cargas = await _cliente.carga_atual_por_tecnico(
+            [tecnico.identificador for tecnico in todos_os_tecnicos()]
+        )
         usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
 
         registro_anterior = _ultima_avaliacao_segura(chamado.id)
@@ -516,3 +547,20 @@ def registrar(mcp) -> None:
         if chamado_final is None:
             return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
         return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def chamado_documento_route(request: Request, usuario: dict) -> Response:
+        """Proxy autenticado pra imagem/anexo real do GLPI — o Angular não
+        tem (e não deveria ter) as credenciais da API Legada, então busca o
+        arquivo por aqui em vez de apontar `<img src>` direto pro GLPI (que
+        além de exigir essa credencial, rejeitaria por CORS)."""
+        try:
+            docid = int(request.path_params["docid"])
+        except ValueError:
+            return Response(status_code=404, headers=CORS_HEADERS)
+
+        documento = await _cliente.baixar_documento(docid)
+        if documento is None:
+            return Response(status_code=404, headers=CORS_HEADERS)
+        return Response(documento.conteudo, media_type=documento.content_type, headers=CORS_HEADERS)

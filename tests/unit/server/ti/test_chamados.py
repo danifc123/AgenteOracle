@@ -8,6 +8,7 @@ from agente_oracle.agent.ti import roteamento_chamado
 from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
+    _texto_para_ia,
     processar_chamado_novo,
     verificar_chamados_aguardando_resposta,
     verificar_chamados_pendentes,
@@ -30,6 +31,21 @@ def _categoria_unica_para_teste(monkeypatch):
     monkeypatch.setattr(roteamento_chamado, "_cache_embeddings_categorias", None)
 
 
+@pytest.fixture(autouse=True)
+def _roster_de_tecnicos_para_teste(monkeypatch):
+    # `escolher_tecnico`/`todos_os_tecnicos` (tools/ti/tecnicos.py) leem o
+    # roster do Postgres via `listar_tecnicos_ti` — sem essa fixture, um
+    # teste unitário sem banco real cairia num roster vazio e `min()`
+    # estouraria. `"7"` mantém compatibilidade com os testes que já
+    # fixam esse id (herdado de quando o roster era a tupla fixa).
+    roster = [
+        {"usuario": "7", "nome": "Técnico Infra", "tecnico_glpi_id": "7", "area_ti": "infra"},
+        {"usuario": "8", "nome": "Técnico Sistemas", "tecnico_glpi_id": "8", "area_ti": "sistemas"},
+        {"usuario": "278", "nome": "Técnico Processos", "tecnico_glpi_id": "278", "area_ti": "processos"},
+    ]
+    monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+
+
 def _chamado(
     id_: int = 1,
     titulo: str = "Computador não liga",
@@ -48,7 +64,6 @@ def _chamado(
         solicitante="Solicitante",
         email="solicitante@empresa.com",
         avaliacao_mensagem=None,
-        reportado_em=None,
         criado_em=datetime(2026, 1, 1, tzinfo=UTC),
         area=None,
         tecnico_atribuido=tecnico_atribuido,
@@ -73,8 +88,10 @@ class _OllamaClienteFake:
     def __init__(self, suficiente: bool = True, mensagem: str = ""):
         self._suficiente = suficiente
         self._mensagem = mensagem
+        self.chamadas_chat: list[dict] = []
 
-    async def chat(self, **_kwargs):
+    async def chat(self, **kwargs):
+        self.chamadas_chat.append(kwargs)
         return _RespostaChatFake(json.dumps({"suficiente": self._suficiente, "mensagem": self._mensagem}))
 
     async def embed(self, **_kwargs):
@@ -123,9 +140,6 @@ class _ClienteGLPIFake:
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]:
         return dict.fromkeys(tecnicos_identificadores, 0)
 
-    async def reportar_usuario(self, chamado_id: int) -> None:
-        self._chamados[chamado_id] = replace(self._chamados[chamado_id], reportado_em=datetime.now(UTC))
-
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         return self.followups_por_chamado.get(chamado_id, [])
 
@@ -136,6 +150,15 @@ class _ClienteGLPIFake:
     async def desatribuir_usuario(self, chamado_id: int, usuario_id: str) -> None:
         self.usuarios_desatribuidos.append((chamado_id, usuario_id))
         self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=None)
+
+    async def baixar_documento(self, documento_id: int) -> None:
+        return None
+
+    async def buscar_tecnicos_disponiveis(self) -> list:
+        return []
+
+    async def buscar_area_do_tecnico(self, usuario_id: str) -> None:
+        return None
 
 
 class TestProcessarChamadoNovo:
@@ -206,27 +229,30 @@ class TestProcessarChamadoNovo:
         assert cliente.avaliacoes == [(1, "aguardando_usuario", "Qual sistema está afetado?")]
         assert resultado.avaliacao_suficiente is False
 
-    async def test_chamado_sem_categoria_suficiente_nao_escreve_nada_no_glpi(self):
-        # Chamado por e-mail (sem categoria) — confirmado com o
-        # responsável do GLPI que já entra direto na fila de TI. Sem
-        # categoria pra corrigir nem base pra escolher técnico, então só
-        # confirma que tem informação suficiente e não mexe em nada (não
-        # atribui técnico, não marca `fila_atendimento` — evitar marcar
-        # "Em atendimento" sem ninguém de fato atribuído no GLPI real).
+    async def test_chamado_sem_categoria_suficiente_classifica_do_zero_e_vai_pra_fila(self):
+        # Chamado por e-mail (sem categoria) — confirmado com quem cuida
+        # do GLPI que é o padrão real desse tipo de abertura, não uma
+        # falha de cadastro. Bug real visto em produção: sem classificar
+        # do zero, esses chamados ficavam presos em `novo` pra sempre,
+        # sendo reavaliados (gastando IA) a cada rodada do poller sem
+        # nunca sair dali. Agora segue o mesmo fluxo de quem já tem
+        # categoria — só que escolhendo uma do zero em vez de corrigir.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=None)])
         ollama = _OllamaClienteFake(suficiente=True)
-        cargas: dict[str, int] = {}
+        cargas = {"tecnico1": 0}
 
         resultado = await processar_chamado_novo(
             cliente, ollama, "modelo-teste", _chamado(categoria_id=None), cargas, True
         )
 
-        assert cliente.avaliacoes == []
-        assert cliente.atribuicoes == []
-        assert cliente.categorias_atualizadas == []
-        assert cargas == {}
+        assert cliente.categorias_atualizadas == [(1, 999)]
+        assert len(cliente.atribuicoes) == 1
+        chamado_id, area, _tecnico = cliente.atribuicoes[0]
+        assert chamado_id == 1
+        assert area == "infra"
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert resultado.avaliacao_suficiente is True
-        assert resultado.precisou_embedding is False
+        assert resultado.precisou_embedding is True
 
     async def test_chamado_suficiente_classifica_atribui_e_vai_pra_fila(self):
         # Categoria atual desconhecida (id 1 não está no mapa fake) — a
@@ -536,3 +562,58 @@ class TestVerificarChamadosAguardandoResposta:
 
         assert cliente.avaliacoes == []
         assert cliente.atribuicoes == []
+
+
+class TestTextoParaIa:
+    def test_tira_tags_e_extrai_texto(self):
+        html = "<p>Computador <strong>não liga</strong> desde ontem.</p>"
+        assert _texto_para_ia(html) == "Computador não liga desde ontem."
+
+    def test_tira_bloco_de_estilo_inteiro(self):
+        # `<style>` traz regra CSS, não conteúdo — não devia sobrar nem
+        # como texto solto.
+        html = "<style>.header { color: red; font-size: 12px; }</style><p>Texto real.</p>"
+        assert _texto_para_ia(html) == "Texto real."
+
+    def test_email_com_boilerplate_confirmado_ao_vivo(self):
+        # Trecho reduzido do e-mail real que causou a inconsistência
+        # (ticket #3272) — confirma que o conteúdo de verdade sobrevive
+        # à limpeza, mesmo com tabela/estilo em volta.
+        html = (
+            '<table style="background-color: #efefef;" width="100%">'
+            "<tbody><tr><td>"
+            "<p>Solicitação: Paulo Henrique de Almeida wants to access "
+            "'Tabela_auxiliar_barter.xlsx'</p>"
+            "</td></tr></tbody></table>"
+        )
+        texto = _texto_para_ia(html)
+        assert "Solicitação: Paulo Henrique de Almeida wants to access" in texto
+        assert "<table" not in texto
+        assert "background-color" not in texto
+
+    def test_texto_sem_html_passa_direto(self):
+        assert _texto_para_ia("Só texto simples, sem tag nenhuma.") == "Só texto simples, sem tag nenhuma."
+
+    def test_string_vazia_devolve_vazia(self):
+        assert _texto_para_ia("") == ""
+
+
+class TestProcessarChamadoNovoLimpaHtml:
+    async def test_manda_texto_limpo_pro_ollama_nao_html_cru(self):
+        # A mesma checagem, só que na ponta a ponta: `processar_chamado_novo`
+        # não deveria vazar HTML pro prompt da IA.
+        descricao_html = (
+            "<style>.x{color:red}</style><p>Sistema <b>lento</b> desde ontem de manhã, no financeiro.</p>"
+        )
+        chamado = _chamado(descricao=descricao_html, categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        assert len(ollama.chamadas_chat) == 1
+        mensagem_usuario = ollama.chamadas_chat[0]["messages"][1]["content"]
+        assert "<style>" not in mensagem_usuario
+        assert "<p>" not in mensagem_usuario
+        assert "Sistema lento desde ontem de manhã, no financeiro." in mensagem_usuario

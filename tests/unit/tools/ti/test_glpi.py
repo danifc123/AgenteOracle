@@ -1,7 +1,27 @@
+from dataclasses import replace
+from datetime import UTC, datetime
+
 from agente_oracle.tools.ti.glpi import (
+    Chamado,
     _chamado_do_json,
     _data_do_glpi,
     _status_do_glpi,
+    chamado_e_alheio,
+)
+
+_CHAMADO_TESTE = Chamado(
+    id=1,
+    titulo="T",
+    descricao="D",
+    categoria="Categoria",
+    categoria_id=1,
+    status="aguardando_usuario",
+    solicitante="Solicitante",
+    email="",
+    avaliacao_mensagem=None,
+    criado_em=datetime(2026, 1, 1, tzinfo=UTC),
+    area=None,
+    tecnico_atribuido=None,
 )
 
 
@@ -93,10 +113,38 @@ class TestChamadoDoJson:
         }
         assert _chamado_do_json(item).tecnico_atribuido == "7"
 
-    def test_avaliacao_mensagem_e_reportado_em_sempre_none(self):
-        # Não têm equivalente nativo no GLPI — só o mock grava os dois.
+    def test_avaliacao_mensagem_sempre_none(self):
+        # Não tem equivalente nativo no GLPI — só existe no nosso modelo.
         item = {"id": 1, "name": "T", "content": "D", "status": {"id": 1}, "team": []}
         chamado = _chamado_do_json(item)
         assert chamado.avaliacao_mensagem is None
-        assert chamado.reportado_em is None
         assert chamado.area is None
+
+
+class TestChamadoEAlheio:
+    def test_pendente_com_tecnico_real_e_alheio(self):
+        # Combinação que o nosso próprio fluxo nunca produz — chamado
+        # gerenciado fora do sistema (ex: #2530, "Aguardando fornecedor"
+        # com um técnico já atribuído manualmente no GLPI).
+        chamado = replace(_CHAMADO_TESTE, tecnico_atribuido="7")
+        assert chamado_e_alheio(chamado, conta_ia_id="274") is True
+
+    def test_pendente_com_conta_da_ia_nao_e_alheio(self):
+        # Ainda é a IA sozinha segurando o lugar — parte normal do fluxo.
+        chamado = replace(_CHAMADO_TESTE, tecnico_atribuido="274")
+        assert chamado_e_alheio(chamado, conta_ia_id="274") is False
+
+    def test_pendente_sem_ninguem_nao_e_alheio(self):
+        chamado = replace(_CHAMADO_TESTE, tecnico_atribuido=None)
+        assert chamado_e_alheio(chamado, conta_ia_id="274") is False
+
+    def test_novo_com_tecnico_nao_e_alheio(self):
+        # A checagem é só pra status `aguardando_usuario` — um chamado
+        # `novo` com técnico atribuído é um caso diferente, fora deste
+        # escopo.
+        chamado = replace(_CHAMADO_TESTE, status="novo", tecnico_atribuido="7")
+        assert chamado_e_alheio(chamado, conta_ia_id="274") is False
+
+    def test_fila_atendimento_com_tecnico_nao_e_alheio(self):
+        chamado = replace(_CHAMADO_TESTE, status="fila_atendimento", tecnico_atribuido="7")
+        assert chamado_e_alheio(chamado, conta_ia_id="274") is False

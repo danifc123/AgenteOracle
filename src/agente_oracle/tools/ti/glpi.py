@@ -35,11 +35,15 @@ Ver também o TODO em `tools/ti/tecnicos.py` (formato do identificador de
 técnico) e em `server/ti/webhook_glpi.py` (header/payload do webhook,
 ainda não confirmados).
 
-`reportar_usuario` é no-op de propósito nesta fase: o GLPI já notifica o
-solicitante na criação do chamado; notificação de "chamado incompleto"
-(e-mail/Teams) é fase seguinte, fora do escopo aqui."""
+Sem método de "reportar ao usuário" de propósito: o Followup que a IA
+posta ao marcar `aguardando_usuario` já dispara a notificação nativa do
+GLPI pro solicitante (mecanismo padrão dele pra mensagem em chamado) —
+nenhum aviso extra é necessário daqui. Um segundo canal de notificação
+(Teams) é possibilidade futura, fora do escopo aqui."""
 
 import asyncio
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal, Protocol
@@ -76,6 +80,22 @@ class Followup:
 
 
 @dataclass(frozen=True)
+class DocumentoBaixado:
+    conteudo: bytes
+    content_type: str
+
+
+@dataclass(frozen=True)
+class TecnicoGlpiCandidato:
+    id: str
+    nome: str
+    # Cargo (`title.name`) — texto livre do GLPI, só uma dica visual pra
+    # quem cadastra (ex: "Analista de Infraestrutura de TI"); nunca usado
+    # pra decidir área de verdade (isso é `buscar_area_do_tecnico`).
+    titulo: str | None
+
+
+@dataclass(frozen=True)
 class Chamado:
     id: int
     titulo: str
@@ -89,7 +109,6 @@ class Chamado:
     solicitante: str
     email: str
     avaliacao_mensagem: str | None
-    reportado_em: datetime | None
     criado_em: datetime
     area: AreaChamado | None
     tecnico_atribuido: str | None
@@ -114,9 +133,13 @@ class ClienteGLPI(Protocol):
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
 
-    async def reportar_usuario(self, chamado_id: int) -> None: ...
-
     async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
+
+    async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None: ...
+
+    async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]: ...
+
+    async def buscar_area_do_tecnico(self, usuario_id: str) -> AreaChamado | None: ...
 
 
 # Códigos confirmados contra o schema `status` da instância real (campo
@@ -137,6 +160,24 @@ _STATUS_NOSSO_PARA_GLPI: dict[StatusChamado, int] = {
     "novo": 1,
     "aguardando_usuario": 4,
     "fila_atendimento": 2,
+}
+
+# Perfil GLPI "Technician" — confirmado ao vivo que filtrar por ele em
+# `Administration/User` devolve só gente de TI (11 pessoas reais, batendo
+# 1:1 com quem tem cargo de TI) — não é uma garantia formal do GLPI, é só
+# como a instância real está configurada hoje.
+_PERFIL_GLPI_TECHNICIAN = 6
+
+# Grupo técnico "de verdade" (atribuído manualmente, `is_dynamic: 0`) de
+# cada pessoa mapeia pra nossa área — confirmado ao vivo via `Group_User`
+# da API Legada pras 5 pessoas já conhecidas (Pablo/Denner/Suellen/
+# Rafaella/Carlos). O grupo "TI" genérico (id 4, sincronizado automático
+# via AD, `is_dynamic: 1`) não entra aqui de propósito — não diz nada
+# sobre a área da pessoa, só que ela é de TI.
+_GRUPO_GLPI_PARA_AREA: dict[int, AreaChamado] = {
+    2: "infra",
+    1: "sistemas",
+    8: "processos",
 }
 
 
@@ -227,8 +268,8 @@ def _chamado_do_json(item: dict) -> Chamado:
     "name"}`, não campo plano. `email` fica sempre vazio no cliente real:
     `user_recipient` só traz `id`/`name` (login), o e-mail exigiria uma
     chamada extra a `/User/{id}`, fora do escopo desta rodada.
-    `avaliacao_mensagem`/`reportado_em` não têm equivalente nativo no
-    GLPI — só existem no nosso modelo, ficam sempre `None` vindo de lá."""
+    `avaliacao_mensagem` não tem equivalente nativo no GLPI — só existe
+    no nosso modelo, fica sempre `None` vindo de lá."""
     status = item.get("status") or {}
     categoria = item.get("category")
     categoria_id = categoria["id"] if categoria else None
@@ -243,10 +284,31 @@ def _chamado_do_json(item: dict) -> Chamado:
         solicitante=solicitante.get("name", ""),
         email="",
         avaliacao_mensagem=None,
-        reportado_em=None,
         criado_em=_data_do_glpi(item.get("date_creation")),
         area=None,
         tecnico_atribuido=_tecnico_atribuido_do_time(item.get("team") or []),
+    )
+
+
+def chamado_e_alheio(chamado: Chamado, conta_ia_id: str) -> bool:
+    """`aguardando_usuario` com um técnico de VERDADE já atribuído (não a
+    conta da IA, não ninguém) é uma combinação que o nosso próprio fluxo
+    nunca produz sozinho — enquanto pendente, só a conta da IA fica
+    atribuída (ou ninguém); um técnico de verdade só entra quando o
+    chamado já vai pra `fila_atendimento` (ver `server/ti/chamados.py::
+    processar_chamado_novo`). Essa combinação é a impressão digital de um
+    chamado gerenciado fora do nosso sistema — ex: "Pendente"/"Aguardando
+    fornecedor" que um técnico já está tocando manualmente no GLPI, sem
+    relação nenhuma com a nossa IA (confirmado ao vivo com um ticket
+    real). Usado tanto pra tirar esses chamados da listagem quanto pra
+    bloquear o botão "Verificar" individual neles — sem essa checagem, um
+    clique de teste poderia atribuir a conta da IA em cima do técnico já
+    lá, ou mudar o status/categoria por baixo de um trabalho manual em
+    andamento."""
+    return (
+        chamado.status == "aguardando_usuario"
+        and chamado.tecnico_atribuido is not None
+        and chamado.tecnico_atribuido != conta_ia_id
     )
 
 
@@ -275,14 +337,22 @@ class ClienteGLPIReal:
         # Só chamado de TI: uma das ~211 categorias reais
         # (`tools/ti/categorias.py`) ou sem categoria nenhuma (chamado
         # aberto por e-mail — confirmado com o responsável do GLPI que
-        # esses já entram direto na fila de TI). Sem esse filtro,
-        # `listar()` devolveria chamado de qualquer departamento da
-        # empresa. `server/ti/chamados.py::processar_chamado_novo` trata
-        # o caso sem categoria à parte.
-        return [
+        # esse é o padrão real pra esse tipo de abertura). Sem esse
+        # filtro, `listar()` devolveria chamado de qualquer departamento
+        # da empresa. `server/ti/chamados.py::processar_chamado_novo`
+        # classifica a categoria desses do zero, mesmo fluxo de quem já
+        # tem uma categoria errada pra corrigir.
+        chamados = [
             chamado
             for chamado in chamados
             if chamado.categoria_id is None or chamado.categoria_id in categorias.AREA_POR_CATEGORIA_ID
+        ]
+
+        # Tira chamado gerenciado fora do nosso sistema (ver
+        # `chamado_e_alheio`) — mostrar ele na Auditoria como se fosse
+        # nosso só confunde, já que nunca passou pela nossa IA.
+        return [
+            chamado for chamado in chamados if not chamado_e_alheio(chamado, self._settings.glpi_conta_ia_id)
         ]
 
     async def _listar_com_filtro(self, filtro_status: str) -> list[Chamado]:
@@ -379,20 +449,7 @@ class ClienteGLPIReal:
         if ja_tem_motivo.status_code == 200:
             return
 
-        base = self._settings.glpi_legacy_api_url
-        resposta_sessao = await self._http_client.get(
-            f"{base}/initSession",
-            headers={
-                "App-Token": self._settings.glpi_legacy_app_token,
-                "Authorization": f"user_token {self._settings.glpi_legacy_user_token}",
-            },
-        )
-        resposta_sessao.raise_for_status()
-        cabecalhos = {
-            "App-Token": self._settings.glpi_legacy_app_token,
-            "Session-Token": resposta_sessao.json()["session_token"],
-        }
-        try:
+        async with self._sessao_legada() as (base, cabecalhos):
             resposta_criacao = await self._http_client.post(
                 f"{base}/PendingReason_Item",
                 headers=cabecalhos,
@@ -413,8 +470,99 @@ class ClienteGLPIReal:
                 },
             )
             resposta_criacao.raise_for_status()
+
+    @asynccontextmanager
+    async def _sessao_legada(self) -> AsyncGenerator[tuple[str, dict[str, str]]]:
+        """Abre uma sessão na API Legada (`initSession` com `App-Token` +
+        token de usuário, devolve `session_token`) e garante o
+        `killSession` no final, mesmo se a chamada no meio falhar — usada
+        por qualquer operação que só a API Legada suporta (motivo de
+        pendência, download de documento; a v2.3 não tem nenhuma das
+        duas). Requer `glpi_legacy_api_url` configurada — quem chama
+        decide se isso é opcional (pula) ou obrigatório (deixa o
+        `AttributeError` de `base=""` estourar)."""
+        base = self._settings.glpi_legacy_api_url
+        resposta_sessao = await self._http_client.get(
+            f"{base}/initSession",
+            headers={
+                "App-Token": self._settings.glpi_legacy_app_token,
+                "Authorization": f"user_token {self._settings.glpi_legacy_user_token}",
+            },
+        )
+        resposta_sessao.raise_for_status()
+        cabecalhos = {
+            "App-Token": self._settings.glpi_legacy_app_token,
+            "Session-Token": resposta_sessao.json()["session_token"],
+        }
+        try:
+            yield base, cabecalhos
         finally:
             await self._http_client.get(f"{base}/killSession", headers=cabecalhos)
+
+    async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None:
+        """Proxy pro anexo/imagem real do GLPI — só a API Legada consegue
+        devolver o arquivo bruto (`GET .../Document/{id}` com `Accept:
+        application/octet-stream`; confirmado ao vivo, inclusive o
+        `content-type` correto vindo no header), a v2.3 não tem endpoint
+        de Document nenhum. Sem `glpi_legacy_api_url` configurada, ou
+        documento inexistente/sem permissão, devolve `None` — quem chama
+        (rota HTTP) decide o fallback (404, ícone quebrado no front)."""
+        if not self._settings.glpi_legacy_api_url:
+            return None
+        async with self._sessao_legada() as (base, cabecalhos):
+            resposta = await self._http_client.get(
+                f"{base}/Document/{documento_id}",
+                headers={**cabecalhos, "Accept": "application/octet-stream"},
+            )
+        if resposta.status_code != 200:
+            return None
+        return DocumentoBaixado(
+            conteudo=resposta.content,
+            content_type=resposta.headers.get("content-type", "application/octet-stream"),
+        )
+
+    async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]:
+        """Candidatos a vincular no cadastro de usuário — filtra pelo
+        perfil GLPI "Technician" (`_PERFIL_GLPI_TECHNICIAN`), confirmado
+        ao vivo que devolve só gente de TI. `firstname`+`realname` monta o
+        nome completo (não vem num campo só); `title.name` é só dica
+        visual, texto livre do GLPI."""
+        resposta = await self._requisicao(
+            "GET",
+            "/api.php/v2.3/Administration/User",
+            params={"filter": f"default_profile.id=={_PERFIL_GLPI_TECHNICIAN}"},
+        )
+        resposta.raise_for_status()
+        return [
+            TecnicoGlpiCandidato(
+                id=str(item["id"]),
+                nome=f"{item.get('firstname') or ''} {item.get('realname') or ''}".strip(),
+                titulo=(item.get("title") or {}).get("name"),
+            )
+            for item in resposta.json()
+        ]
+
+    async def buscar_area_do_tecnico(self, usuario_id: str) -> AreaChamado | None:
+        """Área de verdade da pessoa vem do grupo técnico atribuído
+        MANUALMENTE (`is_dynamic: 0`) — o grupo "TI" genérico (sincronizado
+        automático via AD) não conta, ver `_GRUPO_GLPI_PARA_AREA`. Só a API
+        Legada expõe a relação usuário↔grupo (`Group_User`, confirmado ao
+        vivo — a v2.3 não tem essa relação). Sem `glpi_legacy_api_url`
+        configurada, ou sem nenhum grupo manual reconhecido, devolve
+        `None` — quem chama (rota de cadastro) decide o erro."""
+        if not self._settings.glpi_legacy_api_url:
+            return None
+        async with self._sessao_legada() as (base, cabecalhos):
+            resposta = await self._http_client.get(f"{base}/User/{usuario_id}/Group_User", headers=cabecalhos)
+        if resposta.status_code != 200:
+            return None
+        for relacao in resposta.json():
+            if relacao.get("is_dynamic"):
+                continue
+            area = _GRUPO_GLPI_PARA_AREA.get(relacao.get("groups_id"))
+            if area is not None:
+                return area
+        return None
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None:
         # `area` não tem onde ir no payload de TeamMember — se a instância
@@ -481,12 +629,6 @@ class ClienteGLPIReal:
             if chamado.tecnico_atribuido in cargas:
                 cargas[chamado.tecnico_atribuido] += 1
         return cargas
-
-    async def reportar_usuario(self, chamado_id: int) -> None:
-        """No-op de propósito nesta fase — o GLPI já notifica o solicitante
-        na criação do chamado; notificação de "chamado incompleto" fica
-        pra fase seguinte (e-mail/Teams), fora do escopo desta integração."""
-        return
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         """Formato confirmado contra a instância real: uma lista de

@@ -30,10 +30,22 @@ interface Filial {
   nome: string;
 }
 
+interface TecnicoGlpi {
+  id: string;
+  nome: string;
+  titulo: string | null;
+}
+
 /** Papéis do módulo Financeiro — únicos com filial de verdade hoje (ver
  * `tools/auth/restricoes_filial.py`). Lista curta e fixa de propósito, não
  * vale a pena buscar do backend só pra isso. */
 const PAPEIS_FINANCEIRO = ['financeiro', 'financeiro_admin'];
+
+/** Papéis do módulo TI — mesmo espírito de `PAPEIS_FINANCEIRO` acima.
+ * Controla quando mostrar o campo de vínculo com técnico do GLPI (nem todo
+ * login de TI é de alguém que atende chamado, por isso o campo continua
+ * opcional mesmo aparecendo). */
+const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'desenvolvedor'];
 
 @Component({
   selector: 'app-usuarios',
@@ -68,6 +80,9 @@ export class Usuarios {
   formNome = signal('');
   formSenha = signal('');
   formPapeis = signal<string[]>([]);
+  formTecnicoGlpiId = signal<string | null>(null);
+
+  tecnicosGlpiDisponiveis = signal<TecnicoGlpi[]>([]);
 
   filiaisDisponiveis = signal<Filial[]>([]);
   dialogFiliaisAberto = signal(false);
@@ -92,6 +107,21 @@ export class Usuarios {
       valor: papel.slug,
       rotulo: papel.rotulo,
     }));
+
+  protected readonly opcoesTecnicosGlpi = () =>
+    this.tecnicosGlpiDisponiveis().map(
+      (tecnico): OpcaoSelectBusca => ({
+        valor: tecnico.id,
+        rotulo: tecnico.titulo ? `${tecnico.nome} — ${tecnico.titulo}` : tecnico.nome,
+      }),
+    );
+
+  /** Só aparece pra papel de TI — não é obrigatório mesmo aparecendo, nem
+   * todo login do módulo é de alguém que atende chamado. Mesmo padrão de
+   * `usuarioTemFinanceiro`. */
+  protected readonly mostrarCampoTecnico = computed(() =>
+    this.formPapeis().some((papel) => PAPEIS_TI.includes(papel)),
+  );
 
   protected readonly colunaOrdenada = signal<string | null>(null);
   protected readonly direcaoOrdenacao = signal<DirecaoOrdenacao>(null);
@@ -127,6 +157,16 @@ export class Usuarios {
     });
   }
 
+  private carregarTecnicosGlpiDisponiveis(): void {
+    if (this.tecnicosGlpiDisponiveis().length) {
+      return;
+    }
+    this.http.get<TecnicoGlpi[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos-glpi`).subscribe({
+      next: (tecnicos) => this.tecnicosGlpiDisponiveis.set(tecnicos),
+      error: () => this.tecnicosGlpiDisponiveis.set([]),
+    });
+  }
+
   private valorColuna(usuario: Usuario, coluna: string): unknown {
     switch (coluna) {
       case 'usuario':
@@ -147,8 +187,10 @@ export class Usuarios {
     this.formNome.set('');
     this.formSenha.set('');
     this.formPapeis.set([]);
+    this.formTecnicoGlpiId.set(null);
     this.erroForm.set(null);
     this.dialogAberto.set(true);
+    this.carregarTecnicosGlpiDisponiveis();
   }
 
   abrirDialogFiliais(usuario: Usuario): void {
@@ -248,6 +290,7 @@ export class Usuarios {
         nome: this.formNome().trim(),
         senha: this.formSenha(),
         papeis: this.formPapeis(),
+        tecnico_glpi_id: this.formTecnicoGlpiId(),
       })
       .subscribe({
         next: () => {

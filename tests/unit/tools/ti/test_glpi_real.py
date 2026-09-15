@@ -21,7 +21,7 @@ def _categoria_ti_fake(monkeypatch):
     )
 
 
-def _settings_teste(com_api_legada: bool = False) -> Settings:
+def _settings_teste(com_api_legada: bool = False, conta_ia_id: str = "274") -> Settings:
     return Settings(
         glpi_base_url=_BASE_URL,
         glpi_client_id="id-teste",
@@ -31,6 +31,7 @@ def _settings_teste(com_api_legada: bool = False) -> Settings:
         glpi_legacy_api_url=f"{_BASE_URL}/legacy" if com_api_legada else "",
         glpi_legacy_app_token="app-token-teste",
         glpi_legacy_user_token="user-token-teste",
+        glpi_conta_ia_id=conta_ia_id,
     )
 
 
@@ -54,6 +55,19 @@ class _GlpiApiFake:
         self.pending_reason_items_criados: list[dict] = []
         self.sessoes_legadas_abertas = 0
         self.sessoes_legadas_fechadas = 0
+        # Documento real simulado (ver `baixar_documento`) — id 1 existe,
+        # qualquer outro simula "não encontrado".
+        self.documentos: dict[int, tuple[bytes, str]] = {1: (b"conteudo-fake-da-imagem", "image/png")}
+        # Candidatos a técnico (ver `buscar_tecnicos_disponiveis`) — formato
+        # confirmado ao vivo contra `Administration/User`.
+        self.usuarios_technician: list[dict] = [
+            {"id": 7, "firstname": "Pablo", "realname": "Godoi", "title": {"name": "Analista de Infra"}}
+        ]
+        # Grupos por usuário (ver `buscar_area_do_tecnico`) — formato
+        # confirmado ao vivo contra `Group_User` da API Legada.
+        self.grupos_por_usuario: dict[int, list[dict]] = {
+            7: [{"groups_id": 4, "is_dynamic": 1}, {"groups_id": 2, "is_dynamic": 0}]
+        }
         # Simula queda de conexão transitória (ver `_requisicao`) — chave
         # "METODO caminho", valor = quantas vezes ainda deve falhar antes
         # de deixar a rota responder normalmente.
@@ -120,6 +134,19 @@ class _GlpiApiFake:
         if caminho == "/legacy/killSession" and metodo == "GET":
             self.sessoes_legadas_fechadas += 1
             return httpx.Response(200, json={})
+        if caminho.startswith("/legacy/Document/") and metodo == "GET":
+            documento_id = int(caminho.removeprefix("/legacy/Document/"))
+            if documento_id not in self.documentos:
+                return httpx.Response(404, json={"status": "ERROR_ITEM_NOT_FOUND"})
+            conteudo, content_type = self.documentos[documento_id]
+            return httpx.Response(200, content=conteudo, headers={"content-type": content_type})
+        if caminho == "/api.php/v2.3/Administration/User" and metodo == "GET":
+            if request.url.params.get("filter") != "default_profile.id==6":
+                return httpx.Response(200, json=[])
+            return httpx.Response(200, json=self.usuarios_technician)
+        if caminho.startswith("/legacy/User/") and caminho.endswith("/Group_User") and metodo == "GET":
+            usuario_id = int(caminho.removeprefix("/legacy/User/").removesuffix("/Group_User"))
+            return httpx.Response(200, json=self.grupos_por_usuario.get(usuario_id, []))
         return httpx.Response(404, json={"erro": f"rota não simulada nesta suíte: {metodo} {caminho}"})
 
     def _pagina_de_tickets(self, request: httpx.Request) -> httpx.Response:
@@ -281,6 +308,44 @@ class TestListarFiltraSoTi:
         # quem decide o que fazer com ele é `processar_chamado_novo`.
         fake = _GlpiApiFake()
         fake.tickets.append({**fake.tickets[0], "id": 2, "category": None})
+        cliente = _cliente_fake(fake)
+
+        chamados = await cliente.listar()
+
+        assert sorted(chamado.id for chamado in chamados) == [1, 2]
+
+    async def test_exclui_chamado_alheio_pendente_com_tecnico_real(self):
+        # Combinação (Pendente + técnico de verdade) que o nosso fluxo
+        # nunca produz sozinho — chamado gerenciado fora do sistema (ex:
+        # #2530 real, "Aguardando fornecedor" com técnico já atribuído
+        # manualmente no GLPI). Ver `chamado_e_alheio`.
+        fake = _GlpiApiFake()
+        fake.tickets.append(
+            {
+                **fake.tickets[0],
+                "id": 2,
+                "status": {"id": 4, "name": "Pendente"},
+                "team": [{"role": "assigned", "type": "User", "id": 7, "name": "tec7"}],
+            }
+        )
+        cliente = _cliente_fake(fake)
+
+        chamados = await cliente.listar()
+
+        assert [chamado.id for chamado in chamados] == [1]
+
+    async def test_inclui_pendente_com_conta_da_ia_atribuida(self):
+        # A própria conta de serviço segurando o lugar enquanto pendente
+        # é o fluxo normal, não "alheio" — continua aparecendo.
+        fake = _GlpiApiFake()
+        fake.tickets.append(
+            {
+                **fake.tickets[0],
+                "id": 2,
+                "status": {"id": 4, "name": "Pendente"},
+                "team": [{"role": "assigned", "type": "User", "id": 274, "name": "api.ebarn"}],
+            }
+        )
         cliente = _cliente_fake(fake)
 
         chamados = await cliente.listar()
@@ -483,10 +548,74 @@ class TestBuscarFollowups:
         assert [f.conteudo for f in followups] == ["primeiro", "segundo"]
 
 
-class TestReportarUsuario:
-    async def test_e_no_op_nao_chama_a_api(self):
-        # Fake sem nenhuma rota simulada pra "reportar" — se o método
-        # tentasse chamar a API de verdade, o handler devolveria 404 e
-        # `raise_for_status()` levantaria. Não levantar aqui confirma o no-op.
+class TestBaixarDocumento:
+    async def test_sem_api_legada_configurada_devolve_none_sem_tentar_nada(self):
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake)  # com_api_legada=False (padrão)
+
+        documento = await cliente.baixar_documento(1)
+
+        assert documento is None
+        assert fake.sessoes_legadas_abertas == 0
+
+    async def test_documento_existente_devolve_conteudo_e_content_type(self):
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake, com_api_legada=True)
+
+        documento = await cliente.baixar_documento(1)
+
+        assert documento is not None
+        assert documento.conteudo == b"conteudo-fake-da-imagem"
+        assert documento.content_type == "image/png"
+        assert fake.sessoes_legadas_abertas == 1
+        assert fake.sessoes_legadas_fechadas == 1
+
+    async def test_documento_inexistente_devolve_none(self):
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake, com_api_legada=True)
+
+        documento = await cliente.baixar_documento(999)
+
+        assert documento is None
+        # Sessão é aberta e fechada mesmo quando o documento não existe.
+        assert fake.sessoes_legadas_abertas == 1
+        assert fake.sessoes_legadas_fechadas == 1
+
+
+class TestBuscarTecnicosDisponiveis:
+    async def test_devolve_candidatos_filtrados_por_perfil_technician(self):
         cliente = _cliente_fake(_GlpiApiFake())
-        await cliente.reportar_usuario(1)
+
+        tecnicos = await cliente.buscar_tecnicos_disponiveis()
+
+        assert len(tecnicos) == 1
+        assert tecnicos[0].id == "7"
+        assert tecnicos[0].nome == "Pablo Godoi"
+        assert tecnicos[0].titulo == "Analista de Infra"
+
+
+class TestBuscarAreaDoTecnico:
+    async def test_sem_api_legada_configurada_devolve_none(self):
+        cliente = _cliente_fake(_GlpiApiFake())  # com_api_legada=False (padrão)
+
+        assert await cliente.buscar_area_do_tecnico("7") is None
+
+    async def test_ignora_grupo_dinamico_e_usa_o_manual(self):
+        # Pablo (fake) tem o grupo "TI" genérico (dinâmico, id 4 — sem
+        # mapeamento) e "Infraestrutura de TI" (manual, id 2) — só o
+        # segundo conta.
+        cliente = _cliente_fake(_GlpiApiFake(), com_api_legada=True)
+
+        assert await cliente.buscar_area_do_tecnico("7") == "infra"
+
+    async def test_sem_grupo_manual_reconhecido_devolve_none(self):
+        fake = _GlpiApiFake()
+        fake.grupos_por_usuario[7] = [{"groups_id": 4, "is_dynamic": 1}]
+        cliente = _cliente_fake(fake, com_api_legada=True)
+
+        assert await cliente.buscar_area_do_tecnico("7") is None
+
+    async def test_usuario_sem_grupo_nenhum_devolve_none(self):
+        cliente = _cliente_fake(_GlpiApiFake(), com_api_legada=True)
+
+        assert await cliente.buscar_area_do_tecnico("999") is None

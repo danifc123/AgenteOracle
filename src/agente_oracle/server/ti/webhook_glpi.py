@@ -58,7 +58,7 @@ from agente_oracle.server.ti.chamados import ResultadoProcessamento, processar_c
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.glpi import ClienteGLPI, criar_cliente
-from agente_oracle.tools.ti.tecnicos import TECNICOS
+from agente_oracle.tools.ti.tecnicos import todos_os_tecnicos
 
 # Cliente próprio deste módulo (não importa o `_cliente` privado de
 # `chamados.py`) — custa um segundo cache de token/pool HTTP quando
@@ -106,7 +106,9 @@ async def processar_webhook(
 
     resultado = None
     try:
-        cargas = await cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in TECNICOS])
+        cargas = await cliente.carga_atual_por_tecnico(
+            [tecnico.identificador for tecnico in todos_os_tecnicos()]
+        )
         resultado = await processar_chamado_novo(cliente, ollama_client, modelo, chamado, cargas, usar_ia)
     except Exception:
         _logger.exception("Falha processando webhook do GLPI pro chamado %s", chamado_id)

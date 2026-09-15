@@ -1,0 +1,63 @@
+.conteudo-chamado-carregando {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+}
+
+.conteudo-chamado {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-text);
+
+  p {
+    margin: 0 0 10px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  ul,
+  ol {
+    margin: 0 0 10px;
+    padding-left: 20px;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+    margin: 6px 0;
+  }
+
+  a {
+    color: var(--color-primary);
+    word-break: break-word;
+  }
+
+  strong {
+    color: var(--color-text);
+  }
+
+  // Chamado aberto por e-mail chega com tabela de layout aninhada (pensada
+  // pro Outlook renderizar, não pra gente) — "desenrola" tudo em blocos
+  // empilhados, que lê como texto normal em vez de grade.
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+    width: auto;
+  }
+
+  td {
+    padding: 1px 0;
+  }
+}
+
+.conteudo-chamado-aviso-ocultos {
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}

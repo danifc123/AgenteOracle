@@ -1,6 +1,7 @@
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_administrador, exigir_desenvolvedor
 from agente_oracle.server.auth.rate_limit import limpar, registrar_falha, segundos_ate_liberar
@@ -20,6 +21,7 @@ from agente_oracle.tools.auth.usuarios import (
     registrar_tentativa_falha,
     senha_fraca,
 )
+from agente_oracle.tools.ti.glpi import criar_cliente
 
 # Limite de tamanho da foto (string base64, já com o prefixo "data:...;base64,")
 # — generoso o bastante pra uma foto de perfil comum, sem deixar a tabela
@@ -299,6 +301,11 @@ def registrar(mcp) -> None:
         senha = str(corpo.get("senha", ""))
         nome = str(corpo.get("nome", "")).strip()
         papeis_pedidos = [str(papel).strip() for papel in corpo.get("papeis", []) if str(papel).strip()]
+        # `.get(...) or None` primeiro: o campo pode chegar `null` (JSON) —
+        # `str(None)` viraria a string literal `"None"` se stringado antes
+        # de checar isso.
+        tecnico_glpi_id_bruto = corpo.get("tecnico_glpi_id") or None
+        tecnico_glpi_id = str(tecnico_glpi_id_bruto).strip() if tecnico_glpi_id_bruto else None
 
         if not usuario or not senha or not nome or not papeis_pedidos:
             return JSONResponse(
@@ -323,8 +330,28 @@ def registrar(mcp) -> None:
                 headers=CORS_HEADERS,
             )
 
+        area_ti = None
+        if tecnico_glpi_id is not None:
+            # Área não é escolhida na mão — vem do grupo técnico manual da
+            # pessoa no GLPI (ver `ClienteGLPIReal.buscar_area_do_tecnico`).
+            # Campo opcional pra QUALQUER papel (não só os de TI, não
+            # obrigatório nem pros de TI) — nem todo login do módulo TI é
+            # de alguém que atende chamado.
+            area_ti = await criar_cliente(settings).buscar_area_do_tecnico(tecnico_glpi_id)
+            if area_ti is None:
+                return JSONResponse(
+                    {
+                        "erro": "Não foi possível determinar a área desse técnico no GLPI — "
+                        "confira se ele tem um grupo técnico específico atribuído."
+                    },
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+
         try:
-            usuario_criado = criar_usuario(usuario, senha, nome, papeis_pedidos)
+            usuario_criado = criar_usuario(
+                usuario, senha, nome, papeis_pedidos, tecnico_glpi_id=tecnico_glpi_id, area_ti=area_ti
+            )
         except UsuarioJaExiste as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 

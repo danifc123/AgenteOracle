@@ -17,7 +17,10 @@ import bcrypt
 from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_postgres_connection
 from agente_oracle.tools.auth import eventos_seguranca, restricoes_filial
 
-_COLUNAS = "id, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em"
+_COLUNAS = (
+    "id, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em, "
+    "tecnico_glpi_id, area_ti"
+)
 
 # A partir de 3 tentativas de login erradas seguidas, a conta bloqueia até o
 # time de TI (papel `desenvolvedor`) desbloquear manualmente — diferente do
@@ -59,11 +62,32 @@ def _garantir_tabela(cursor) -> None:
     )
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado BOOLEAN NOT NULL DEFAULT FALSE")
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado_em TIMESTAMPTZ")
+    # Vínculo opcional com um técnico real do GLPI (`tools/ti/glpi.py::
+    # buscar_tecnicos_disponiveis`/`buscar_area_do_tecnico`) — só
+    # preenchido pra quem de fato atende chamado; `area_ti` é resolvida ao
+    # vivo contra o GLPI na hora do cadastro (rota `usuarios_route`), não
+    # recalculada depois. `tools/ti/tecnicos.py` lê os dois pra montar o
+    # roster de técnicos, no lugar da tupla fixa que existia antes.
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tecnico_glpi_id VARCHAR")
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS area_ti VARCHAR")
     _tabela_garantida = True
 
 
 def _linha_para_usuario(linha: tuple) -> dict:
-    id_, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em = linha
+    (
+        id_,
+        usuario,
+        senha_hash,
+        nome,
+        papeis,
+        ativo,
+        foto,
+        tentativas_falhas,
+        bloqueado,
+        bloqueado_em,
+        tecnico_glpi_id,
+        area_ti,
+    ) = linha
     return {
         "id": id_,
         "usuario": usuario,
@@ -75,6 +99,8 @@ def _linha_para_usuario(linha: tuple) -> dict:
         "tentativas_falhas": tentativas_falhas,
         "bloqueado": bloqueado,
         "bloqueado_em": bloqueado_em,
+        "tecnico_glpi_id": tecnico_glpi_id,
+        "area_ti": area_ti,
     }
 
 
@@ -165,7 +191,18 @@ def autenticar(usuario: str, senha: str) -> dict | None:
     return {chave: valor for chave, valor in dados.items() if chave not in ocultos}
 
 
-def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dict:
+def criar_usuario(
+    usuario: str,
+    senha: str,
+    nome: str,
+    papeis: list[str],
+    tecnico_glpi_id: str | None = None,
+    area_ti: str | None = None,
+) -> dict:
+    """`tecnico_glpi_id`/`area_ti` só gravam o que recebem — este módulo
+    não conhece GLPI de propósito (evita `tools/auth` depender de
+    `tools/ti`). É `usuarios_route` (`server/auth/rotas.py`) quem resolve
+    `area_ti` ao vivo contra o GLPI antes de chamar isto aqui."""
     senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     try:
@@ -174,8 +211,10 @@ def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dic
             _garantir_tabela(cursor)
             cursor.execute(
                 f"""
-                INSERT INTO usuarios (usuario, senha_hash, nome, papeis, ativo, criado_em)
-                VALUES (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em)
+                INSERT INTO usuarios
+                    (usuario, senha_hash, nome, papeis, ativo, criado_em, tecnico_glpi_id, area_ti)
+                VALUES
+                    (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em, :tecnico_glpi_id, :area_ti)
                 RETURNING {_COLUNAS}
                 """,
                 usuario=usuario,
@@ -183,6 +222,8 @@ def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dic
                 nome=nome,
                 papeis=json.dumps(papeis),
                 criado_em=datetime.now(UTC),
+                tecnico_glpi_id=tecnico_glpi_id,
+                area_ti=area_ti,
             )
             linha = cursor.fetchone()
     except DatabaseError as erro:
@@ -191,6 +232,30 @@ def criar_usuario(usuario: str, senha: str, nome: str, papeis: list[str]) -> dic
         raise
 
     return _linha_para_usuario(linha)
+
+
+def listar_tecnicos_ti() -> list[dict]:
+    """Fonte de dado do roster de técnicos (`tools/ti/tecnicos.py`) — todo
+    usuário ativo com um técnico do GLPI vinculado no cadastro (ver
+    `criar_usuario`). Substitui a tupla fixa que existia antes; cresce
+    junto com o cadastro de usuário, sem precisar editar código.
+    `ORDER BY id` dá uma ordem estável (quem cadastrou primeiro) — mesmo
+    papel que a ordem literal da tupla fixa tinha, usado por
+    `escolher_tecnico` pra desempatar carga igual."""
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            "SELECT usuario, nome, tecnico_glpi_id, area_ti FROM usuarios "
+            "WHERE tecnico_glpi_id IS NOT NULL AND ativo = TRUE "
+            "ORDER BY id ASC"
+        )
+        linhas = cursor.fetchall()
+
+    return [
+        {"usuario": usuario, "nome": nome, "tecnico_glpi_id": tecnico_glpi_id, "area_ti": area_ti}
+        for usuario, nome, tecnico_glpi_id, area_ti in linhas
+    ]
 
 
 def deletar_usuario(id_usuario: int) -> str | None:

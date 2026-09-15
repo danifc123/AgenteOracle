@@ -459,6 +459,21 @@ def registrar(mcp) -> None:
             headers=CORS_HEADERS,
         )
 
+    @mcp.custom_route("/api/ti/tecnicos", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def tecnicos_route(request: Request, usuario: dict) -> Response:
+        """Nomes pro badge "Com {técnico}" na tela de Auditoria — o roster
+        de verdade (`tools/ti/tecnicos.py`), aberto pra qualquer um do
+        módulo TI. Diferente de `/api/ti/tecnicos-glpi` (candidatos crus
+        do GLPI, admin-only, usado só no cadastro de usuário)."""
+        return JSONResponse(
+            [
+                {"identificador": tecnico.identificador, "nome": tecnico.nome}
+                for tecnico in todos_os_tecnicos()
+            ],
+            headers=CORS_HEADERS,
+        )
+
     @mcp.custom_route("/api/ti/chamados/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_verificar_route(request: Request, usuario: dict) -> Response:

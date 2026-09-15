@@ -24,19 +24,10 @@ export interface Chamado {
   tecnico_atribuido: string | null;
 }
 
-// Roster de técnicos de TI — duplicado de `tools/ti/tecnicos.py` de
-// propósito (3 linhas, não compensa expor por API só pra isso). Serve só
-// pra distinguir, num chamado `aguardando_usuario`, se ele ainda está só
-// com a conta de serviço da IA (segurando o lugar pro status mudar de
-// verdade no GLPI — ver `server/ti/chamados.py::processar_chamado_novo`)
-// ou se já foi escalado pra um técnico humano tentar extrair a
-// informação (`_escalar_para_tecnico`, a partir da 2ª avaliação
-// insuficiente seguida).
-const NOMES_TECNICOS: Record<string, string> = {
-  '7': 'Pablo',
-  '8': 'Denner',
-  '278': 'Suellen',
-};
+interface TecnicoNome {
+  identificador: string;
+  nome: string;
+}
 
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
@@ -79,6 +70,11 @@ export class ChamadosTi {
   protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly usarIa = this.configuracoesTi.usarIaAvaliacaoChamado;
+  // Nome pro badge "Com {técnico}" — vem do roster de verdade
+  // (`/api/ti/tecnicos`, backend por `tools/ti/tecnicos.py`), não mais
+  // fixo aqui — um técnico novo cadastrado aparece certo sem precisar
+  // editar o frontend.
+  private readonly nomesTecnicos = signal<Record<string, string>>({});
 
   protected readonly paginaAtual = signal(1);
   protected readonly totalPaginas = computed(() =>
@@ -91,6 +87,7 @@ export class ChamadosTi {
 
   constructor() {
     this.carregarChamados();
+    this.carregarTecnicos();
     this.configuracoesTi.carregar();
   }
 
@@ -109,7 +106,7 @@ export class ChamadosTi {
   // `null` = ainda só com a IA (aguardando resposta do solicitante); um
   // nome = já escalado pra esse técnico.
   protected tecnicoEscalado(chamado: Chamado): string | null {
-    return chamado.tecnico_atribuido ? (NOMES_TECNICOS[chamado.tecnico_atribuido] ?? null) : null;
+    return chamado.tecnico_atribuido ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null) : null;
   }
 
   private carregarChamados(): void {
@@ -121,6 +118,17 @@ export class ChamadosTi {
         this.carregando.set(false);
       },
       error: () => this.carregando.set(false),
+    });
+  }
+
+  private carregarTecnicos(): void {
+    this.http.get<TecnicoNome[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos`).subscribe({
+      next: (tecnicos) => {
+        this.nomesTecnicos.set(
+          Object.fromEntries(tecnicos.map((tecnico) => [tecnico.identificador, tecnico.nome])),
+        );
+      },
+      error: () => this.nomesTecnicos.set({}),
     });
   }
 

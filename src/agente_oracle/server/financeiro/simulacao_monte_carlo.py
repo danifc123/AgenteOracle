@@ -66,7 +66,7 @@ def _buscar_titulos_mensal(view: str, filiais: list[str], mes_inicio: str) -> di
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/fpa/simulacao-monte-carlo", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def simulacao_monte_carlo_route(request: Request, usuario: dict) -> Response:
+    def simulacao_monte_carlo_route(request: Request, usuario: dict) -> Response:
         """Simula `_NUM_SIMULACOES` cenários de caixa líquido (recebido -
         pago) pros próximos `_MESES_FUTUROS` meses, por reamostragem
         (bootstrap) da variação histórica real dos últimos `_MESES_HISTORICO`

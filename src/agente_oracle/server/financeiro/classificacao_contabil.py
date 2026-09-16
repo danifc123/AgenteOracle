@@ -75,7 +75,7 @@ def _sugestao_para_json(sugestao: SugestaoClassificacao) -> dict:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/classificacao-contabil", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def classificacao_contabil_route(request: Request, usuario: dict) -> Response:
+    def classificacao_contabil_route(request: Request, usuario: dict) -> Response:
         """Busca os lançamentos contábeis do último ano (classificados e
         não) e sugere conta pros sem classificação, por semelhança de
         histórico contra os já classificados — nunca inventa código de
@@ -156,7 +156,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/classificacao-contabil/precisao", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def precisao_route(request: Request, usuario: dict) -> Response:
+    def precisao_route(request: Request, usuario: dict) -> Response:
         """Precisão medida de verdade (aceitas / total revisado) — ver
         `tools/financeiro/classificacao_revisoes.py::resumo_precisao`."""
         return JSONResponse(classificacao_revisoes.resumo_precisao(), headers=CORS_HEADERS)

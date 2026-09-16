@@ -103,7 +103,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/desvio-margem/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_desvio_margem_route(request: Request, usuario: dict) -> Response:
+    def exportar_desvio_margem_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Desvio de Margem — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -125,7 +125,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/desvio-margem", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_desvio_margem_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_desvio_margem_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Desvio de Margem — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

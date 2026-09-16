@@ -48,7 +48,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def exportar_historico_route(request: Request, usuario: dict) -> Response:
+    def exportar_historico_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de histórico para baixar em Excel um
         relatório já salvo, sem rodar a consulta de novo no Oracle."""
         documento = historico_tools.obter(request.path_params["id"])
@@ -70,7 +70,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/relatorios/historico", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_historico_route(request: Request, usuario: dict) -> Response:
+    def listar_historico_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de histórico para listar os relatórios
         já gerados pela IA, restritos aos módulos que quem está consultando
         tem acesso — desenvolvedor (`acesso_total`) vê o histórico de todos os

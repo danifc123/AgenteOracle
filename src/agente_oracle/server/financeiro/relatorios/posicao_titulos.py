@@ -206,7 +206,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/posicao-titulos/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_posicao_titulos_route(request: Request, usuario: dict) -> Response:
+    def exportar_posicao_titulos_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Posição dos Títulos a Receber (FINR130) — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -228,7 +228,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/posicao-titulos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_posicao_titulos_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_posicao_titulos_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Posição dos Títulos a Receber (FINR130) — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

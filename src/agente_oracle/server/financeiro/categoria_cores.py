@@ -10,7 +10,7 @@ from agente_oracle.tools.financeiro import categoria_cores as categoria_cores_to
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/categorias/cores", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def categoria_cores_route(request: Request, usuario: dict) -> Response:
+    def categoria_cores_route(request: Request, usuario: dict) -> Response:
         """Lista as cores de categoria personalizadas pelo usuário logado —
         categorias sem registro aqui usam a cor padrão resolvida no frontend."""
         usuario_id = int(usuario["sub"])

@@ -76,7 +76,7 @@ def _achado_para_json(achado: Achado) -> dict:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/auditoria/acoes", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")
-    async def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
+    def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
         """Ações de auditoria disponíveis pro módulo informado — o frontend
         monta um botão por ação (`auditoria-painel`), cada uma rodando só a
         própria verificação. Módulo sem ação nenhuma (Estoque/RH/TI hoje)
@@ -129,7 +129,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auditoria/historico", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")
-    async def auditoria_historico_route(request: Request, usuario: dict) -> Response:
+    def auditoria_historico_route(request: Request, usuario: dict) -> Response:
         """Lista os achados que a auditoria já encontrou ao longo do tempo
         (todas as execuções, de qualquer usuário), restritos aos módulos que
         quem está consultando tem acesso — nunca expira, ao contrário de

@@ -461,7 +461,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/ti/tecnicos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
-    async def tecnicos_route(request: Request, usuario: dict) -> Response:
+    def tecnicos_route(request: Request, usuario: dict) -> Response:
         """Nomes pro badge "Com {técnico}" na tela de Auditoria — o roster
         de verdade (`tools/ti/tecnicos.py`), aberto pra qualquer um do
         módulo TI. Diferente de `/api/ti/tecnicos-glpi` (candidatos crus

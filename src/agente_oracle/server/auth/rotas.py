@@ -135,7 +135,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
     @rota_protegida("DELETE, OPTIONS", exigir=exigir_administrador)
-    async def apagar_usuario_route(request: Request, usuario: dict) -> Response:
+    def apagar_usuario_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários pra
         apagar um usuário — restrito a administradores."""
         id_usuario = request.path_params["id"]
@@ -188,7 +188,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/usuarios/{id}/desbloquear", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
-    async def desbloquear_usuario_route(request: Request, usuario: dict) -> Response:
+    def desbloquear_usuario_route(request: Request, usuario: dict) -> Response:
         """Desbloqueia uma conta travada após 3 tentativas de login erradas
         seguidas — restrito ao time de TI (papel `desenvolvedor`)."""
         try:
@@ -209,7 +209,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/eventos-seguranca", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_desenvolvedor)
-    async def eventos_seguranca_route(request: Request, usuario: dict) -> Response:
+    def eventos_seguranca_route(request: Request, usuario: dict) -> Response:
         """Trilha de auditoria de login/administração de contas — restrita
         ao time de TI (papel `desenvolvedor`), pra investigar incidentes."""
         return JSONResponse(eventos_seguranca.listar(), headers=CORS_HEADERS)
@@ -260,7 +260,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/papeis", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_administrador)
-    async def listar_papeis_route(request: Request, usuario: dict) -> Response:
+    def listar_papeis_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários, pra
         popular o seletor de papéis do formulário de cadastro."""
         return JSONResponse(

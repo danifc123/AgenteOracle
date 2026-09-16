@@ -76,7 +76,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/rh/candidatos/{id}/curriculo", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_rh)
-    async def candidato_curriculo_route(request: Request, usuario: dict) -> Response:
+    def candidato_curriculo_route(request: Request, usuario: dict) -> Response:
         """Baixa o currículo original (PDF/DOCX) de um candidato já cadastrado."""
         try:
             id_candidato = int(request.path_params["id"])
@@ -119,7 +119,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/rh/candidatos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_rh)
-    async def candidatos_route(request: Request, usuario: dict) -> Response:
+    def candidatos_route(request: Request, usuario: dict) -> Response:
         """Lista os candidatos do pool, opcionalmente filtrados por status."""
         status = request.query_params.get("status", "").strip() or None
         candidatos = candidatos_tools.listar(status=status)

@@ -136,7 +136,7 @@ def _recomendacao_para_linha(recomendacao: RecomendacaoPagamento) -> tuple:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/otimizador-pagamento/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_otimizador_pagamento_route(request: Request, usuario: dict) -> Response:
+    def exportar_otimizador_pagamento_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Otimizador de Fluxo de Caixa Preditivo — exportação em Excel."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
@@ -159,7 +159,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/otimizador-pagamento", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_otimizador_pagamento_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_otimizador_pagamento_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Otimizador de Fluxo de Caixa Preditivo — endpoint JSON usado pela tela."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:

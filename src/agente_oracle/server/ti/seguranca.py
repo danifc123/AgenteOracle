@@ -67,7 +67,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/ti/seguranca/historico", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
-    async def seguranca_historico_route(request: Request, usuario: dict) -> Response:
+    def seguranca_historico_route(request: Request, usuario: dict) -> Response:
         """Lista os achados de segurança já encontrados ao longo do tempo —
         nunca expira, ao contrário de `/api/relatorios/historico`. Achado
         desativado só aparece pra quem tem o papel `desenvolvedor` — pra

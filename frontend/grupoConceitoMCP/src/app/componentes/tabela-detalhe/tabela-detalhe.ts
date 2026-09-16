@@ -2,6 +2,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, effect, input, model, output, signal } from '@angular/core';
 import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro';
 import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras';
+import { AlternadorListaFaixa } from '../alternador-lista-faixa/alternador-lista-faixa';
 import { Botao } from '../botao/botao';
 import { CampoFiltroDinamico } from '../campo-filtro-dinamico/campo-filtro-dinamico';
 import { Dialog } from '../dialog/dialog';
@@ -18,7 +19,7 @@ const LIMITE_FILTROS_PARA_EXPANDIR = 7;
 
 @Component({
   selector: 'app-tabela-detalhe',
-  imports: [SelectBusca, CampoFiltroDinamico, Botao, Dialog, NgTemplateOutlet],
+  imports: [SelectBusca, CampoFiltroDinamico, Botao, Dialog, NgTemplateOutlet, AlternadorListaFaixa],
   templateUrl: './tabela-detalhe.html',
   styleUrl: './tabela-detalhe.scss',
 })

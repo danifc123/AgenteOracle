@@ -40,24 +40,10 @@
           />
         } @else if (campo.tipo === 'texto-numerico') {
           <div class="campo-texto-numerico">
-            <div class="campo-alternador" role="group" [attr.aria-label]="campo.rotulo + ' - modo de filtro'">
-              <button
-                type="button"
-                class="campo-alternador-opcao"
-                [class.campo-alternador-opcao--ativa]="!emModoFaixa(campo.chave)"
-                (click)="definirModoFiltro(campo.chave, false)"
-              >
-                Lista
-              </button>
-              <button
-                type="button"
-                class="campo-alternador-opcao"
-                [class.campo-alternador-opcao--ativa]="emModoFaixa(campo.chave)"
-                (click)="definirModoFiltro(campo.chave, true)"
-              >
-                Faixa
-              </button>
-            </div>
+            <app-alternador-lista-faixa
+              [modo]="emModoFaixa(campo.chave) ? 'faixa' : 'lista'"
+              (modoChange)="definirModoFiltro(campo.chave, $event === 'faixa')"
+            />
             @if (emModoFaixa(campo.chave)) {
               <app-campo-filtro-dinamico
                 [campo]="{ chave: campo.chave, rotulo: campo.rotulo, tipo: 'numero' }"

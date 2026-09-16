@@ -88,19 +88,6 @@ def test_sem_token_e_nao_autorizado(mcp_app):
     assert resposta.status_code == 401
 
 
-def test_exportar_devolve_xlsx(mcp_app, token_teste):
-    resposta = mcp_app.get(
-        "/api/financeiro/relatorio-customizado/exportar",
-        params={"filial": _FILIAL, "colunas": "vw_titulos_pagar.filial,vw_titulos_pagar.valor_original"},
-        headers=_auth(token_teste),
-    )
-    assert resposta.status_code == 200
-    assert (
-        resposta.headers["content-type"]
-        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-
 class TestOpcoesColuna:
     """`/api/financeiro/relatorio/opcoes-coluna` aceita várias colunas numa
     chamada só (`colunas=view.col1,view.col2,...`) — antes era uma coluna

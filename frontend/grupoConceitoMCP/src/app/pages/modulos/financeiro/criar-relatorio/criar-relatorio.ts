@@ -290,19 +290,28 @@ export class CriarRelatorio {
     this.carregarOpcoesColunas(this.chavesComOpcoes(layout.colunas_selecionadas));
   }
 
+  /** Baixa exatamente o que já está carregado na tela (`relatorioDados`,
+   * que acumula toda página trazida via "Carregar mais") — manda as
+   * linhas no corpo pro backend só montar a planilha, em vez de
+   * reconsultar o banco (que sempre traria só a 1ª página de 1000
+   * linhas, mesmo que a tela já tivesse carregado mais). */
   protected baixarRelatorio(): void {
-    if (this.baixandoRelatorio()) {
+    const dados = this.relatorioDados();
+    if (this.baixandoRelatorio() || !dados?.length) {
       return;
     }
 
     this.baixandoRelatorio.set(true);
 
+    const colunas = Object.keys(dados[0]);
+    const linhas = dados.map((linha) => colunas.map((coluna) => linha[coluna] ?? null));
+
     this.http
-      .get(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar`, {
-        params: this.parametrosRelatorio(),
-        observe: 'response',
-        responseType: 'blob',
-      })
+      .post(
+        `${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar-linhas`,
+        { colunas, linhas },
+        { observe: 'response', responseType: 'blob' },
+      )
       .subscribe({
         next: (resposta) => {
           const blob = resposta.body;

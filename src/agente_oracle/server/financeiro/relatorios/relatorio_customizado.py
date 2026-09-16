@@ -11,6 +11,7 @@ por último)."""
 
 import json
 
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -33,6 +34,36 @@ _ERRO_PARAMETROS = (
     "Informe ao menos uma filial e uma coluna válida (formato view.coluna) — "
     "e, se enviar filtros, use o formato esperado."
 )
+
+_ERRO_EXPORTAR_LINHAS = (
+    'Informe "colunas" (lista de nomes) e "linhas" (lista de listas, cada uma do mesmo tamanho de colunas).'
+)
+
+
+def _corpo_exportar_linhas_valido(corpo: object) -> tuple[list[str], list[list]] | None:
+    if not isinstance(corpo, dict):
+        return None
+    colunas = corpo.get("colunas")
+    linhas = corpo.get("linhas")
+    if not isinstance(colunas, list) or not colunas or not all(isinstance(c, str) for c in colunas):
+        return None
+    if not isinstance(linhas, list) or not all(
+        isinstance(linha, list) and len(linha) == len(colunas) for linha in linhas
+    ):
+        return None
+    return colunas, linhas
+
+
+def _gerar_xlsx_relatorio_customizado(colunas: list[str], linhas: list[list]) -> Response:
+    conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Relatório Customizado")
+    return Response(
+        content=conteudo_xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="relatorio_customizado.xlsx"',
+            **CORS_HEADERS,
+        },
+    )
 
 
 def _parametros_da_query(
@@ -118,29 +149,24 @@ def _parametros_filtros(request: Request) -> dict[str, dict[str, str | list[str]
 
 
 def registrar(mcp) -> None:
-    @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar", methods=["GET", "OPTIONS"])
-    @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_relatorio_customizado_route(request: Request, usuario: dict) -> Response:
-        """Mesma consulta da rota acima, mas devolvendo um arquivo Excel (.xlsx) para download."""
-        parametros = _parametros_da_query(request)
-        if parametros is None:
-            return JSONResponse({"erro": _ERRO_PARAMETROS}, status_code=400, headers=CORS_HEADERS)
+    @mcp.custom_route("/api/financeiro/relatorio-customizado/exportar-linhas", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
+    async def exportar_linhas_relatorio_customizado_route(request: Request, usuario: dict) -> Response:
+        """Gera o .xlsx a partir das linhas que a tela MANDA no corpo — não
+        reconsulta o banco. `relatorioDados` no frontend acumula todas as
+        páginas já trazidas por "Carregar mais", então baixar exporta
+        exatamente o que está visível na tela (não só a 1ª página de 1000
+        linhas, como a versão antiga desta rota fazia reconsultando do
+        zero). Só o parsing do corpo é assíncrono de verdade (`request.json()`);
+        montar a planilha (`gerar_xlsx`, síncrono/CPU-bound) roda em thread
+        separada, mesmo padrão de `login_route`."""
+        corpo_valido = _corpo_exportar_linhas_valido(await request.json())
+        if corpo_valido is None:
+            return JSONResponse({"erro": _ERRO_EXPORTAR_LINHAS}, status_code=400, headers=CORS_HEADERS)
 
-        try:
-            colunas, linhas, _tem_mais_paginas = buscar_relatorio_customizado(*parametros)
-        except RelatorioCustomizadoInvalido as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
-
+        colunas, linhas = corpo_valido
         _comum.registrar_acesso(usuario, "relatorio_customizado:exportar", len(linhas))
-        conteudo_xlsx = gerar_xlsx(colunas, linhas, titulo="Relatório Customizado")
-        return Response(
-            content=conteudo_xlsx,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": 'attachment; filename="relatorio_customizado.xlsx"',
-                **CORS_HEADERS,
-            },
-        )
+        return await to_thread.run_sync(_gerar_xlsx_relatorio_customizado, colunas, linhas)
 
     @mcp.custom_route("/api/financeiro/relatorio-customizado", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)

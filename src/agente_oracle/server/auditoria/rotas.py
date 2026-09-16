@@ -205,7 +205,9 @@ def registrar(mcp) -> None:
         cada achado novo aparecia duplicado — bug real que já aconteceu).
         `ativo` é a ÚNICA fonte de verdade do que aparece aqui — dispensar
         (`/api/auditoria/dispensar`) desativa, então não tem filtro
-        adicional por usuário depois disso."""
+        adicional por usuário depois disso. Cada consulta/gravação
+        síncrona roda em thread separada; só a chamada à IA (`tipo="ia"`)
+        continua `await` normal."""
         modulo = request.query_params.get("modulo", "").strip()
         if not modulo:
             return JSONResponse(
@@ -228,16 +230,18 @@ def registrar(mcp) -> None:
 
         # Global: um problema já identificado antes (por qualquer execução,
         # de qualquer ação) não é reanalisado nem re-registrado.
-        conhecidos = historico_tools.ja_identificados()
+        conhecidos = await to_thread.run_sync(historico_tools.ja_identificados)
 
         if acao.tipo == "ia":
-            perfis = filtrar_valores_conhecidos(acao.executar(), conhecidos)
+            resultado_acao = await to_thread.run_sync(acao.executar)
+            perfis = filtrar_valores_conhecidos(resultado_acao, conhecidos)
             ollama_client = AsyncClient(host=settings.ollama_host)
             achados_novos = await analisar_perfis(ollama_client, settings.ollama_model, perfis)
         else:
+            resultado_acao = await to_thread.run_sync(acao.executar)
             achados_novos = [
                 achado
-                for achado in acao.executar()
+                for achado in resultado_acao
                 if (achado.modulo, achado.view, achado.campo, achado.valor) not in conhecidos
             ]
 
@@ -247,11 +251,11 @@ def registrar(mcp) -> None:
         # DEPOIS de salvar duplicava cada achado novo: um vindo de
         # `achados_novos` (em memória) e o mesmo de novo vindo de
         # `achados_ativos` (lido do banco, já com a linha recém-inserida).
-        achados_ja_conhecidos = historico_tools.achados_ativos([modulo])
+        achados_ja_conhecidos = await to_thread.run_sync(historico_tools.achados_ativos, [modulo])
 
         # Guarda todo achado novo no histórico (é o que alimenta
         # `ja_identificados` na próxima execução, de qualquer usuário).
-        historico_tools.salvar(usuario["sub"], achados_novos)
+        await to_thread.run_sync(historico_tools.salvar, usuario["sub"], achados_novos)
 
         # Junta com o que já era conhecido, senão o dialog só mostraria a
         # novidade desta execução — não o que ainda está pendente de

@@ -2,6 +2,7 @@
 generation mora em `agent/rh/busca_candidatos.py`, este módulo só cuida do
 HTTP."""
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -43,7 +44,9 @@ def registrar(mcp) -> None:
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_rh)
     async def buscar_candidatos_route(request: Request, usuario: dict) -> Response:
         """Recebe a descrição de uma necessidade de vaga e devolve os
-        candidatos mais adequados do pool, rankeados e justificados pela IA."""
+        candidatos mais adequados do pool, rankeados e justificados pela
+        IA. As duas consultas síncronas (Postgres) rodam em thread
+        separada; a busca por IA continua `await` normal."""
         corpo = await request.json()
         descricao = str(corpo.get("descricao") or "").strip()
         if not descricao:
@@ -55,7 +58,7 @@ def registrar(mcp) -> None:
         if status not in _STATUS_BUSCAVEIS:
             return JSONResponse({"erro": "Status inválido pra busca."}, status_code=400, headers=CORS_HEADERS)
 
-        candidatos = candidatos_tools.listar_para_busca(status=status)
+        candidatos = await to_thread.run_sync(candidatos_tools.listar_para_busca, status)
         ollama_client = AsyncClient(host=settings.ollama_host)
 
         try:
@@ -71,7 +74,9 @@ def registrar(mcp) -> None:
         except DescricaoVagaInsuficiente as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
-        acessos_dados.registrar(usuario["sub"], "rh", "busca:candidatos", len(resultados))
+        await to_thread.run_sync(
+            acessos_dados.registrar, usuario["sub"], "rh", "busca:candidatos", len(resultados)
+        )
         return JSONResponse(
             [_resultado_para_json(resultado) for resultado in resultados], headers=CORS_HEADERS
         )

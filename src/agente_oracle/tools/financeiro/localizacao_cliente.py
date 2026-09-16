@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
+from anyio import to_thread
 
 from agente_oracle.db.connection import get_postgres_connection
 from agente_oracle.tools.financeiro.clima_regional import geocodificar
@@ -100,33 +101,14 @@ def buscar_varios(clientes_codigos: list[str]) -> dict[str, LocalizacaoCliente]:
     }
 
 
-async def salvar(
-    http_client: httpx.AsyncClient,
+def _gravar(
     cliente_codigo: str,
     cidade: str | None,
     bairro: str | None,
-    latitude: float | None,
-    longitude: float | None,
+    latitude_resolvida: float | None,
+    longitude_resolvida: float | None,
+    resolvido: bool,
 ) -> LocalizacaoCliente:
-    """Coordenada informada (as duas) tem prioridade — usa direto, sem
-    geocodificar. Senão, geocodifica `bairro + cidade`; não encontrando (e
-    só se `bairro` foi informado), tenta de novo só com `cidade` — bairro
-    pequeno geralmente não existe na base da Open-Meteo (GeoNames), mas a
-    cidade sozinha costuma existir. Não resolvendo de jeito nenhum, salva
-    mesmo assim com `resolvido = False` (quem chamou decide o que avisar;
-    o score cai no fallback de município nesse caso)."""
-    coordenadas = (latitude, longitude) if latitude is not None and longitude is not None else None
-
-    if coordenadas is None:
-        texto_busca = _texto_busca(cidade, bairro)
-        if texto_busca is not None:
-            coordenadas = await geocodificar(http_client, texto_busca)
-        if coordenadas is None and bairro and cidade:
-            coordenadas = await geocodificar(http_client, cidade)
-
-    latitude_resolvida, longitude_resolvida = coordenadas if coordenadas is not None else (None, None)
-    resolvido = coordenadas is not None
-
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
@@ -154,6 +136,40 @@ async def salvar(
 
     return LocalizacaoCliente(
         cliente_codigo, cidade, bairro, latitude_resolvida, longitude_resolvida, resolvido
+    )
+
+
+async def salvar(
+    http_client: httpx.AsyncClient,
+    cliente_codigo: str,
+    cidade: str | None,
+    bairro: str | None,
+    latitude: float | None,
+    longitude: float | None,
+) -> LocalizacaoCliente:
+    """Coordenada informada (as duas) tem prioridade — usa direto, sem
+    geocodificar. Senão, geocodifica `bairro + cidade`; não encontrando (e
+    só se `bairro` foi informado), tenta de novo só com `cidade` — bairro
+    pequeno geralmente não existe na base da Open-Meteo (GeoNames), mas a
+    cidade sozinha costuma existir. Não resolvendo de jeito nenhum, salva
+    mesmo assim com `resolvido = False` (quem chamou decide o que avisar;
+    o score cai no fallback de município nesse caso). A geocodificação
+    (`geocodificar`, `httpx.AsyncClient`) é `await` genuíno; a gravação no
+    Postgres (`_gravar`, síncrona) roda em thread separada."""
+    coordenadas = (latitude, longitude) if latitude is not None and longitude is not None else None
+
+    if coordenadas is None:
+        texto_busca = _texto_busca(cidade, bairro)
+        if texto_busca is not None:
+            coordenadas = await geocodificar(http_client, texto_busca)
+        if coordenadas is None and bairro and cidade:
+            coordenadas = await geocodificar(http_client, cidade)
+
+    latitude_resolvida, longitude_resolvida = coordenadas if coordenadas is not None else (None, None)
+    resolvido = coordenadas is not None
+
+    return await to_thread.run_sync(
+        _gravar, cliente_codigo, cidade, bairro, latitude_resolvida, longitude_resolvida, resolvido
     )
 
 

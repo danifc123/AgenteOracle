@@ -94,10 +94,14 @@ def registrar(mcp) -> None:
         (`tools/ti/acessos_dados.py`), manda pra IA
         (`agent/ti/deteccao_seguranca.py`), salva os achados novos no
         histórico e junta com os que já estavam ativos (sem duplicar
-        `(usuario, sistema, tipo)` que a IA acabou de reapontar)."""
-        perfis_login = perfil_login.perfil_logins()
-        perfis_login_protheus = perfil_login.perfil_logins_protheus(dias=_DIAS_JANELA_ACESSO)
-        perfis_acesso = acessos_dados.perfil_acessos(dias=_DIAS_JANELA_ACESSO)
+        `(usuario, sistema, tipo)` que a IA acabou de reapontar). Cada
+        consulta/gravação síncrona roda em thread separada; só a chamada
+        à IA continua `await` normal."""
+        perfis_login = await to_thread.run_sync(perfil_login.perfil_logins)
+        perfis_login_protheus = await to_thread.run_sync(
+            perfil_login.perfil_logins_protheus, _DIAS_JANELA_ACESSO
+        )
+        perfis_acesso = await to_thread.run_sync(acessos_dados.perfil_acessos, _DIAS_JANELA_ACESSO)
 
         ollama_client = AsyncClient(host=settings.ollama_host)
         achados_novos = await detectar(
@@ -105,13 +109,14 @@ def registrar(mcp) -> None:
         )
 
         chaves_novas = {(achado.usuario, achado.sistema, achado.tipo) for achado in achados_novos}
+        achados_ativos = await to_thread.run_sync(historico_seguranca.achados_ativos)
         achados_ja_conhecidos = [
             achado
-            for achado in historico_seguranca.achados_ativos()
+            for achado in achados_ativos
             if (achado.usuario, achado.sistema, achado.tipo) not in chaves_novas
         ]
 
-        historico_seguranca.salvar(usuario["sub"], achados_novos)
+        await to_thread.run_sync(historico_seguranca.salvar, usuario["sub"], achados_novos)
 
         achados = achados_novos + achados_ja_conhecidos
         return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)

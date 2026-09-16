@@ -174,6 +174,35 @@ def _filiais_bloqueadas(
     return JSONResponse({"filiais": filiais}, headers=CORS_HEADERS)
 
 
+def _criar_usuario_e_responder(
+    usuario_logado: dict,
+    usuario: str,
+    senha: str,
+    nome: str,
+    papeis_pedidos: list[str],
+    tecnico_glpi_id: str | None,
+    area_ti: str | None,
+) -> Response:
+    try:
+        usuario_criado = criar_usuario(
+            usuario, senha, nome, papeis_pedidos, tecnico_glpi_id=tecnico_glpi_id, area_ti=area_ti
+        )
+    except UsuarioJaExiste as erro:
+        return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+
+    eventos_seguranca.registrar(
+        "usuario_criado",
+        usuario_afetado=usuario,
+        realizado_por=usuario_logado["usuario"],
+        detalhes={"papeis": papeis_pedidos},
+    )
+    return JSONResponse(
+        {chave: valor for chave, valor in usuario_criado.items() if chave != "senha_hash"},
+        status_code=201,
+        headers=CORS_HEADERS,
+    )
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/auth/senha", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS")
@@ -308,9 +337,13 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, POST, OPTIONS", exigir=exigir_administrador)
     async def usuarios_route(request: Request, usuario_logado: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários: lista
-        (GET) e cadastra (POST) usuários — restrito a administradores."""
+        (GET) e cadastra (POST) usuários — restrito a administradores.
+        Consultas/gravações síncronas rodam em thread separada; a busca
+        de área no GLPI (quando um técnico é vinculado) continua `await`
+        normal."""
         if request.method == "GET":
-            return JSONResponse(listar_usuarios(), headers=CORS_HEADERS)
+            usuarios_listados = await to_thread.run_sync(listar_usuarios)
+            return JSONResponse(usuarios_listados, headers=CORS_HEADERS)
 
         # Namespace própria ("criar_usuario:") pra não compartilhar contador
         # com o rate limit do login — limita quantas contas um mesmo admin
@@ -377,21 +410,13 @@ def registrar(mcp) -> None:
                     headers=CORS_HEADERS,
                 )
 
-        try:
-            usuario_criado = criar_usuario(
-                usuario, senha, nome, papeis_pedidos, tecnico_glpi_id=tecnico_glpi_id, area_ti=area_ti
-            )
-        except UsuarioJaExiste as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
-
-        eventos_seguranca.registrar(
-            "usuario_criado",
-            usuario_afetado=usuario,
-            realizado_por=usuario_logado["usuario"],
-            detalhes={"papeis": papeis_pedidos},
-        )
-        return JSONResponse(
-            {chave: valor for chave, valor in usuario_criado.items() if chave != "senha_hash"},
-            status_code=201,
-            headers=CORS_HEADERS,
+        return await to_thread.run_sync(
+            _criar_usuario_e_responder,
+            usuario_logado,
+            usuario,
+            senha,
+            nome,
+            papeis_pedidos,
+            tecnico_glpi_id,
+            area_ti,
         )

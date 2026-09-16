@@ -19,10 +19,11 @@ import json
 import unicodedata
 from datetime import UTC, datetime
 
+from anyio import to_thread
 from ollama import AsyncClient
 
 from agente_oracle.agent.rh.embeddings import gerar_embedding
-from agente_oracle.agent.rh.perfil_candidato import gerar_perfil
+from agente_oracle.agent.rh.perfil_candidato import PerfilCandidato, gerar_perfil
 from agente_oracle.db.connection import get_postgres_connection
 from agente_oracle.tools.rh.extracao_curriculo import extrair_texto
 from agente_oracle.tools.rh.similaridade import similaridade_cosseno
@@ -165,12 +166,26 @@ async def criar_candidato(
 
     Levanta `ArquivoCurriculoInvalido` (arquivo ilegível) ou
     `AnaliseIndisponivel` (IA fora do ar/resposta inválida) sem cadastrar
-    nada nesses casos."""
+    nada nesses casos. A extração de texto e as chamadas à IA
+    (`gerar_perfil`/`gerar_embedding`) são `await` genuíno; a gravação no
+    Postgres (`_gravar_candidato`, síncrona) roda em thread separada."""
     texto_curriculo = extrair_texto(nome_arquivo, conteudo_arquivo)
     perfil = await gerar_perfil(ollama_client, modelo, texto_curriculo)
     embedding = await gerar_embedding(ollama_client, modelo_embedding, perfil.resumo_objetivo)
     tipo_arquivo = "pdf" if nome_arquivo.lower().endswith(".pdf") else "docx"
 
+    return await to_thread.run_sync(
+        _gravar_candidato, perfil, embedding, nome_arquivo, tipo_arquivo, conteudo_arquivo
+    )
+
+
+def _gravar_candidato(
+    perfil: PerfilCandidato,
+    embedding: list[float],
+    nome_arquivo: str,
+    tipo_arquivo: str,
+    conteudo_arquivo: bytes,
+) -> dict:
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)

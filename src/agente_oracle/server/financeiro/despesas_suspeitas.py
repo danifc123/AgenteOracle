@@ -3,6 +3,7 @@ julgamento da IA mora em `agent/financeiro/despesas_suspeitas.py`; este
 módulo só cuida do HTTP, mesmo espírito de `server/ti/seguranca.py`
 (roda sob demanda, nunca em background)."""
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -42,16 +43,20 @@ def registrar(mcp) -> None:
         """Roda a auditoria de despesas ao vivo: busca os títulos a pagar
         dos últimos 90 dias das filiais informadas, acha candidatos de
         duplicidade/anomalia de valor (determinístico) e manda pra IA
-        revisar e descrever (`agent/financeiro/despesas_suspeitas.py`)."""
+        revisar e descrever (`agent/financeiro/despesas_suspeitas.py`). Só
+        as duas consultas síncronas (STAGE, registro de acesso) rodam em
+        thread separada — a chamada à IA continua `await` normal."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
             return JSONResponse(
                 {"erro": "Informe ao menos uma filial."}, status_code=400, headers=CORS_HEADERS
             )
 
-        titulos = buscar_titulos_pagar(filiais, _DIAS_JANELA)
+        titulos = await to_thread.run_sync(buscar_titulos_pagar, filiais, _DIAS_JANELA)
         ollama_client = AsyncClient(host=settings.ollama_host)
         achados = await analisar_despesas(ollama_client, settings.ollama_model, titulos)
 
-        _comum.registrar_acesso(usuario, "despesas_suspeitas:analisar", len(achados))
+        await to_thread.run_sync(
+            _comum.registrar_acesso, usuario, "despesas_suspeitas:analisar", len(achados)
+        )
         return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)

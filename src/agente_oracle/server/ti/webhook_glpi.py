@@ -49,6 +49,7 @@ import hmac
 import logging
 import time
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -106,9 +107,8 @@ async def processar_webhook(
 
     resultado = None
     try:
-        cargas = await cliente.carga_atual_por_tecnico(
-            [tecnico.identificador for tecnico in todos_os_tecnicos()]
-        )
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        cargas = await cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         resultado = await processar_chamado_novo(cliente, ollama_client, modelo, chamado, cargas, usar_ia)
     except Exception:
         _logger.exception("Falha processando webhook do GLPI pro chamado %s", chamado_id)
@@ -129,7 +129,7 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": "Payload inválido."}, status_code=400)
 
         ollama_client = AsyncClient(host=settings.ollama_host)
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
         inicio = time.monotonic()
         status_code, corpo_resposta, resultado = await processar_webhook(
             corpo, _cliente, ollama_client, settings.ollama_model, usar_ia
@@ -137,7 +137,11 @@ def registrar(mcp) -> None:
         if resultado is not None:
             duracao_ms = round((time.monotonic() - inicio) * 1000)
             chamado_id = _chamado_id_do_payload(corpo)
-            uso_ia_chamados.registrar(
-                chamado_id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+            await to_thread.run_sync(
+                uso_ia_chamados.registrar,
+                chamado_id,
+                resultado.avaliacao_suficiente,
+                resultado.precisou_embedding,
+                duracao_ms,
             )
         return JSONResponse(corpo_resposta, status_code=status_code)

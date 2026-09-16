@@ -8,6 +8,7 @@ demanda, nunca em background, mesmo espírito de `despesas_suspeitas.py`."""
 from datetime import date, timedelta
 
 import httpx
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -334,7 +335,9 @@ def registrar(mcp) -> None:
         não aparece na lista. Cada cliente devolvido também traz
         `titulos_em_risco`: os títulos em aberto dele vencendo nos
         próximos `_HORIZONTE_DIAS` dias — a parte "antecipa" do score,
-        ligando o risco já calculado a compromissos concretos."""
+        ligando o risco já calculado a compromissos concretos. Cada
+        consulta síncrona (STAGE/Postgres) roda em thread separada; as
+        chamadas de clima (Open-Meteo) continuam `await` normal."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
             return JSONResponse(
@@ -343,12 +346,14 @@ def registrar(mcp) -> None:
 
         desde = date.today() - timedelta(days=_DIAS_HISTORICO)
         hoje = date.today()
-        comportamentos = comportamento_por_cliente(_buscar_liquidados(filiais, desde), hoje)
+        liquidados = await to_thread.run_sync(_buscar_liquidados, filiais, desde)
+        comportamentos = comportamento_por_cliente(liquidados, hoje)
 
         clientes_codigos = [c.cliente_codigo for c in comportamentos]
-        municipios_por_cliente = _buscar_municipios(clientes_codigos)
+        municipios_por_cliente = await to_thread.run_sync(_buscar_municipios, clientes_codigos)
 
-        safras_relevantes = safra_relevante_por_cliente(_buscar_safras(clientes_codigos), hoje)
+        safras = await to_thread.run_sync(_buscar_safras, clientes_codigos)
+        safras_relevantes = safra_relevante_por_cliente(safras, hoje)
         janelas_por_cliente = {
             cliente_codigo: (safra.safra_inicio, min(hoje, safra.safra_fim))
             for cliente_codigo, safra in safras_relevantes.items()
@@ -363,7 +368,9 @@ def registrar(mcp) -> None:
         }
         climas_por_municipio = await _climas_por_municipio(chaves_municipio)
 
-        localizacoes_por_cliente = localizacao_cliente.buscar_varios(clientes_codigos)
+        localizacoes_por_cliente = await to_thread.run_sync(
+            localizacao_cliente.buscar_varios, clientes_codigos
+        )
         climas_por_cliente_cadastrado = await _climas_por_cliente_cadastrado(
             localizacoes_por_cliente, janelas_por_cliente
         )
@@ -385,13 +392,17 @@ def registrar(mcp) -> None:
         scores.sort(key=lambda score: score.score, reverse=True)
 
         scores_por_cliente = {score.cliente_codigo: score for score in scores}
-        abertos = _buscar_abertos(filiais, list(scores_por_cliente), hoje, _HORIZONTE_DIAS)
+        abertos = await to_thread.run_sync(
+            _buscar_abertos, filiais, list(scores_por_cliente), hoje, _HORIZONTE_DIAS
+        )
         titulos_em_risco = titulos_em_risco_por_cliente(abertos, scores_por_cliente, hoje, _HORIZONTE_DIAS)
         titulos_por_cliente: dict[str, list[TituloEmRisco]] = {}
         for titulo in titulos_em_risco:
             titulos_por_cliente.setdefault(titulo.cliente_codigo, []).append(titulo)
 
-        _comum.registrar_acesso(usuario, "score_inadimplencia:calcular", len(scores))
+        await to_thread.run_sync(
+            _comum.registrar_acesso, usuario, "score_inadimplencia:calcular", len(scores)
+        )
         return JSONResponse(
             [
                 _score_para_json(
@@ -412,7 +423,9 @@ def registrar(mcp) -> None:
         coordenadas diretas. Exige cidade OU coordenadas válidas. Não
         conseguindo geocodificar cidade/bairro, ainda assim salva (pra não
         perder o que a pessoa preencheu) e avisa que o clima segue usando o
-        município enquanto isso."""
+        município enquanto isso. O registro de acesso (Postgres) roda em
+        thread separada; a geocodificação/gravação de localização já é
+        `await` genuíno (`localizacao_cliente.salvar`)."""
         corpo = await request.json()
         cliente_codigo = str(corpo.get("cliente_codigo") or "").strip()
         cidade = str(corpo.get("cidade") or "").strip() or None
@@ -441,5 +454,7 @@ def registrar(mcp) -> None:
                 http_client, cliente_codigo, cidade, bairro, latitude, longitude
             )
 
-        _comum.registrar_acesso(usuario, "score_inadimplencia:cadastrar_localizacao", 1)
+        await to_thread.run_sync(
+            _comum.registrar_acesso, usuario, "score_inadimplencia:cadastrar_localizacao", 1
+        )
         return JSONResponse(_localizacao_para_json(localizacao), headers=CORS_HEADERS)

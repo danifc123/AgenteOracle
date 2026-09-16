@@ -61,6 +61,7 @@ import logging
 import time
 from dataclasses import dataclass, replace
 
+from anyio import to_thread
 from bs4 import BeautifulSoup
 from ollama import AsyncClient
 from starlette.requests import Request
@@ -309,18 +310,19 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     reatribuir o mesmo técnico) interrompe o `for` no meio, e todo
     chamado que viria depois dele na lista nunca chega a ser processado
     NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
-    ponto."""
+    ponto. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres, síncronos)
+    rodam em thread separada a cada chamada; o resto do fluxo (GLPI/
+    Ollama) continua `await` genuíno."""
     ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico(
-        [tecnico.identificador for tecnico in todos_os_tecnicos()]
-    )
+    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
     for chamado in await _cliente.listar():
         if chamado.status != "novo":
             continue
         inicio = time.monotonic()
         try:
-            registro_anterior = _ultima_avaliacao_segura(chamado.id)
+            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
@@ -335,8 +337,12 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
             _logger.exception("Falha processando o chamado %s", chamado.id)
             continue
         duracao_ms = round((time.monotonic() - inicio) * 1000)
-        uso_ia_chamados.registrar(
-            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
         )
 
     return await _cliente.listar()
@@ -362,17 +368,18 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     + resposta), sem precisar mudar a assinatura de `avaliar_chamado`.
     Ainda insuficiente escala pro técnico humano (nunca é a "primeira vez"
     aqui, `aguardando_usuario` já implica que já houve 1 avaliação
-    insuficiente antes)."""
+    insuficiente antes). `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
+    síncronos) rodam em thread separada a cada chamada; o resto do fluxo
+    (GLPI/Ollama) continua `await` genuíno."""
     ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico(
-        [tecnico.identificador for tecnico in todos_os_tecnicos()]
-    )
+    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
     for chamado in await _cliente.listar():
         if chamado.status != "aguardando_usuario":
             continue
         try:
-            registro_anterior = _ultima_avaliacao_segura(chamado.id)
+            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
             if registro_anterior is None:
                 continue
             followups = await _cliente.buscar_followups(chamado.id)
@@ -405,8 +412,12 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
             continue
         duracao_ms = round((time.monotonic() - inicio) * 1000)
-        uso_ia_chamados.registrar(
-            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
         )
 
 
@@ -481,7 +492,7 @@ def registrar(mcp) -> None:
         roda sozinho a cada `_INTERVALO_POLLER_SEGUNDOS` — útil pra forçar
         uma rodada na hora, sem esperar o intervalo, durante teste. Ver
         `verificar_chamados_pendentes`/`verificar_chamados_aguardando_resposta`."""
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
         await verificar_chamados_pendentes(usar_ia)
         await verificar_chamados_aguardando_resposta(usar_ia)
         chamados = await _cliente.listar()
@@ -521,12 +532,11 @@ def registrar(mcp) -> None:
             )
 
         ollama_client = AsyncClient(host=settings.ollama_host)
-        cargas = await _cliente.carga_atual_por_tecnico(
-            [tecnico.identificador for tecnico in todos_os_tecnicos()]
-        )
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
 
-        registro_anterior = _ultima_avaliacao_segura(chamado.id)
+        registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
         inicio = time.monotonic()
         resultado = await processar_chamado_novo(
             _cliente,
@@ -539,8 +549,12 @@ def registrar(mcp) -> None:
             and not registro_anterior.avaliacao_suficiente,
         )
         duracao_ms = round((time.monotonic() - inicio) * 1000)
-        uso_ia_chamados.registrar(
-            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
         )
 
         chamado_final = await _cliente.buscar(chamado_id)

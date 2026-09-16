@@ -36,6 +36,7 @@ por contagem de título) antes de somar de volta no total mensal — ver
 import json
 from datetime import date, timedelta
 
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -280,7 +281,11 @@ def registrar(mcp) -> None:
         tendência histórica de novas contas a pagar convertida pelo prazo
         médio de pagamento por fornecedor — ver `_resumo_participacoes`) —
         só o "*_estimado" carrega essa parte; os campos sem sufixo continuam
-        sendo só o confirmado, como antes."""
+        sendo só o confirmado, como antes. `gerador` precisa continuar
+        `async def` (o `StreamingResponse` exige um gerador assíncrono),
+        mas nenhuma consulta aqui é I/O assíncrono de verdade — cada uma
+        roda em thread separada, ponto a ponto, pra não travar o event
+        loop durante o streaming."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
             return JSONResponse(
@@ -293,30 +298,34 @@ def registrar(mcp) -> None:
             meses_janela = [mes_atual, *proximos_meses(mes_atual, _MESES_JANELA_FLUXO_CAIXA - 1)]
             data_corte = hoje + timedelta(days=_DIAS_CORTE_PERIODO)
 
-            bucket_receber = _buscar_bucket_mensal(
-                "vw_titulos_receber", "saldo_aberto", filiais, hoje, meses_janela[-1]
+            bucket_receber = await to_thread.run_sync(
+                _buscar_bucket_mensal, "vw_titulos_receber", "saldo_aberto", filiais, hoje, meses_janela[-1]
             )
-            bucket_pagar = _buscar_bucket_mensal(
-                "vw_titulos_pagar", "saldo_aberto", filiais, hoje, meses_janela[-1]
+            bucket_pagar = await to_thread.run_sync(
+                _buscar_bucket_mensal, "vw_titulos_pagar", "saldo_aberto", filiais, hoje, meses_janela[-1]
             )
-            receber_no_periodo, receber_fora_periodo = _buscar_corte_periodo(
-                "vw_titulos_receber", filiais, data_corte
+            receber_no_periodo, receber_fora_periodo = await to_thread.run_sync(
+                _buscar_corte_periodo, "vw_titulos_receber", filiais, data_corte
             )
-            pagar_no_periodo, pagar_fora_periodo = _buscar_corte_periodo(
-                "vw_titulos_pagar", filiais, data_corte
+            pagar_no_periodo, pagar_fora_periodo = await to_thread.run_sync(
+                _buscar_corte_periodo, "vw_titulos_pagar", filiais, data_corte
             )
             yield _linha_ndjson({"tipo": "etapa", "id": "titulos_abertos"})
 
-            prazo_recebimento, participacoes_receber = _resumo_participacoes(
-                _grupos_prazo_recebimento(filiais)
-            )
-            prazo_pagamento, participacoes_pagar = _resumo_participacoes(_grupos_prazo_pagamento(filiais))
+            grupos_receber = await to_thread.run_sync(_grupos_prazo_recebimento, filiais)
+            prazo_recebimento, participacoes_receber = _resumo_participacoes(grupos_receber)
+            grupos_pagar = await to_thread.run_sync(_grupos_prazo_pagamento, filiais)
+            prazo_pagamento, participacoes_pagar = _resumo_participacoes(grupos_pagar)
             yield _linha_ndjson({"tipo": "etapa", "id": "prazo_medio"})
 
             meses_historico = _janela_meses_historico(_MESES_HISTORICO)
-            faturamento_por_mes = _buscar_faturamento_mensal(filiais, meses_historico[0])
+            faturamento_por_mes = await to_thread.run_sync(
+                _buscar_faturamento_mensal, filiais, meses_historico[0]
+            )
             _, projecao_vendas = _historico_e_projecao(faturamento_por_mes, meses_historico, _MESES_PROJECAO)
-            titulos_pagar_por_mes = _buscar_titulos_pagar_mensal(filiais, meses_historico[0])
+            titulos_pagar_por_mes = await to_thread.run_sync(
+                _buscar_titulos_pagar_mensal, filiais, meses_historico[0]
+            )
             _, projecao_pagar = _historico_e_projecao(titulos_pagar_por_mes, meses_historico, _MESES_PROJECAO)
 
             estimado_receber = _distribuir_estimativa_ponderada(
@@ -368,7 +377,9 @@ def registrar(mcp) -> None:
         próximos `_MESES_PROJECAO` por regressão linear. A reta usa os
         `_MESES_HISTORICO` meses inteiros como base — só o `historico`
         devolvido pro gráfico é cortado pros últimos `_MESES_EXIBICAO_VENDAS`,
-        pra não lotar o eixo X de rótulo (o cálculo em si não muda)."""
+        pra não lotar o eixo X de rótulo (o cálculo em si não muda). Mesmo
+        motivo de `gerador` rodar a consulta em thread separada — ver
+        docstring de `previsao_fluxo_caixa_route`."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
             return JSONResponse(
@@ -377,7 +388,9 @@ def registrar(mcp) -> None:
 
         async def gerador():
             meses_historico = _janela_meses_historico(_MESES_HISTORICO)
-            faturamento_por_mes = _buscar_faturamento_mensal(filiais, meses_historico[0])
+            faturamento_por_mes = await to_thread.run_sync(
+                _buscar_faturamento_mensal, filiais, meses_historico[0]
+            )
             historico, projecao = _historico_e_projecao(faturamento_por_mes, meses_historico, _MESES_PROJECAO)
             yield _linha_ndjson({"tipo": "etapa", "id": "historico"})
             yield _linha_ndjson({"tipo": "etapa", "id": "projecao"})

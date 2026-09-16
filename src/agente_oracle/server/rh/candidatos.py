@@ -10,6 +10,7 @@ fica travado — mesmo espírito da chamada síncrona e longa que
 `Auditoria.buscar()` já faz contra o Ollama.
 """
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.datastructures import UploadFile
 from starlette.requests import Request
@@ -38,6 +39,22 @@ def _candidato_para_json(candidato: dict) -> dict:
     resultado = dict(candidato)
     resultado["criado_em"] = candidato["criado_em"].isoformat()
     return resultado
+
+
+def _candidato_detalhe(id_candidato_bruto: str, corpo: dict) -> Response:
+    try:
+        id_candidato = int(id_candidato_bruto)
+    except ValueError:
+        return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+    status = str(corpo.get("status") or "").strip()
+    if status not in _STATUS_VALIDOS:
+        return JSONResponse({"erro": "Status inválido."}, status_code=400, headers=CORS_HEADERS)
+
+    atualizado = candidatos_tools.atualizar_status(id_candidato, status)
+    if atualizado is None:
+        return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
+    return JSONResponse(_candidato_para_json(atualizado), headers=CORS_HEADERS)
 
 
 def registrar(mcp) -> None:
@@ -101,21 +118,11 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/rh/candidatos/{id}", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_modulo_rh)
     async def candidato_detalhe_route(request: Request, usuario: dict) -> Response:
-        """Atualiza o status (ativo/contratado/descartado) de um candidato."""
-        try:
-            id_candidato = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
+        """Atualiza o status (ativo/contratado/descartado) de um candidato.
+        Só o parsing do corpo é assíncrono de verdade; o resto roda em
+        thread separada, mesmo padrão de `login_route`."""
         corpo = await request.json()
-        status = str(corpo.get("status") or "").strip()
-        if status not in _STATUS_VALIDOS:
-            return JSONResponse({"erro": "Status inválido."}, status_code=400, headers=CORS_HEADERS)
-
-        atualizado = candidatos_tools.atualizar_status(id_candidato, status)
-        if atualizado is None:
-            return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
-        return JSONResponse(_candidato_para_json(atualizado), headers=CORS_HEADERS)
+        return await to_thread.run_sync(_candidato_detalhe, request.path_params["id"], corpo)
 
     @mcp.custom_route("/api/rh/candidatos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_rh)

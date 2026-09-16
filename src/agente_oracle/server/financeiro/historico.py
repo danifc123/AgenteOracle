@@ -1,3 +1,4 @@
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -18,33 +19,37 @@ def _historico_para_json(documento: dict) -> dict:
     return resultado
 
 
+def _atualizar_ou_deletar_historico(metodo: str, id_relatorio: str, corpo: dict | None) -> Response:
+    if metodo == "PATCH":
+        fixado = bool((corpo or {}).get("fixado"))
+        atualizado = historico_tools.fixar(id_relatorio) if fixado else historico_tools.desfixar(id_relatorio)
+        if not atualizado:
+            return JSONResponse(
+                {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+            )
+        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+    apagado = historico_tools.deletar(id_relatorio)
+    if not apagado:
+        return JSONResponse(
+            {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+        )
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/relatorios/historico/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
     @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_modulo_financeiro)
     async def atualizar_ou_deletar_historico_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de histórico para apagar (DELETE) um
         relatório salvo, ou fixar/desfixar (PATCH `{"fixado": bool}`) — um
-        relatório fixado não expira pelo TTL de 15h."""
-        id_relatorio = request.path_params["id"]
-
-        if request.method == "PATCH":
-            corpo = await request.json()
-            fixado = bool(corpo.get("fixado"))
-            atualizado = (
-                historico_tools.fixar(id_relatorio) if fixado else historico_tools.desfixar(id_relatorio)
-            )
-            if not atualizado:
-                return JSONResponse(
-                    {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-                )
-            return JSONResponse({"ok": True}, headers=CORS_HEADERS)
-
-        apagado = historico_tools.deletar(id_relatorio)
-        if not apagado:
-            return JSONResponse(
-                {"erro": "Relatório não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-            )
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        relatório fixado não expira pelo TTL de 15h. Só o parsing do corpo
+        (PATCH) é assíncrono de verdade; o resto roda em thread separada,
+        mesmo padrão de `login_route`."""
+        corpo = await request.json() if request.method == "PATCH" else None
+        return await to_thread.run_sync(
+            _atualizar_ou_deletar_historico, request.method, request.path_params["id"], corpo
+        )
 
     @mcp.custom_route("/api/relatorios/historico/{id}/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)

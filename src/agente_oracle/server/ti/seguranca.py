@@ -13,6 +13,7 @@ duplica um `(usuario, tipo)` que a IA acabou de reapontar com o que já
 estava ativo de uma execução anterior — o achado novo, mais atual,
 prevalece)."""
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -39,6 +40,25 @@ def _achado_para_json(achado: AchadoSeguranca) -> dict:
     }
 
 
+def _seguranca_dispensar(corpo: dict) -> Response:
+    usuario_alvo = str(corpo.get("usuario", "")).strip()
+    sistema = str(corpo.get("sistema", "")).strip()
+    tipo = str(corpo.get("tipo", "")).strip()
+
+    if not (usuario_alvo and sistema and tipo):
+        return JSONResponse(
+            {"erro": "Informe usuario, sistema e tipo."}, status_code=400, headers=CORS_HEADERS
+        )
+
+    atualizado = historico_seguranca.definir_ativo(usuario_alvo, sistema, tipo, False)
+    if not atualizado:
+        return JSONResponse(
+            {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+        )
+
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/seguranca/dispensar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
@@ -46,24 +66,11 @@ def registrar(mcp) -> None:
         """Dispensa um achado — desativa globalmente (some da tela de todo
         mundo do TI e das próximas execuções), mesmo mecanismo de
         `/api/auditoria/dispensar`. Se o padrão persistir, a IA pode
-        reencontrar e reapontar numa execução futura."""
+        reencontrar e reapontar numa execução futura. Só o parsing do
+        corpo é assíncrono de verdade; o resto roda em thread separada,
+        mesmo padrão de `login_route`."""
         corpo = await request.json()
-        usuario_alvo = str(corpo.get("usuario", "")).strip()
-        sistema = str(corpo.get("sistema", "")).strip()
-        tipo = str(corpo.get("tipo", "")).strip()
-
-        if not (usuario_alvo and sistema and tipo):
-            return JSONResponse(
-                {"erro": "Informe usuario, sistema e tipo."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        atualizado = historico_seguranca.definir_ativo(usuario_alvo, sistema, tipo, False)
-        if not atualizado:
-            return JSONResponse(
-                {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-            )
-
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return await to_thread.run_sync(_seguranca_dispensar, corpo)
 
     @mcp.custom_route("/api/ti/seguranca/historico", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)

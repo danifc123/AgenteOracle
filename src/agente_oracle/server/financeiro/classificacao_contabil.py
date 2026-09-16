@@ -10,6 +10,7 @@ na rota principal."""
 from dataclasses import replace
 from datetime import date, timedelta
 
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -72,6 +73,31 @@ def _sugestao_para_json(sugestao: SugestaoClassificacao) -> dict:
     }
 
 
+def _revisar(usuario: dict, corpo: dict) -> Response:
+    documento = str(corpo.get("documento") or "").strip()
+    linha = str(corpo.get("linha") or "").strip()
+    conta_sugerida = str(corpo.get("conta_sugerida") or "").strip()
+    resultado = str(corpo.get("resultado") or "").strip()
+    conta_correta = str(corpo.get("conta_correta") or "").strip() or None
+
+    if not documento or not linha or not conta_sugerida:
+        return JSONResponse(
+            {"erro": "Informe documento, linha e conta_sugerida."}, status_code=400, headers=CORS_HEADERS
+        )
+    if resultado not in _RESULTADOS_VALIDOS:
+        return JSONResponse(
+            {"erro": f"resultado precisa ser um de {sorted(_RESULTADOS_VALIDOS)}."},
+            status_code=400,
+            headers=CORS_HEADERS,
+        )
+
+    classificacao_revisoes.revisar(
+        usuario["usuario"], documento, linha, conta_sugerida, resultado, conta_correta
+    )
+    _comum.registrar_acesso(usuario, "classificacao_contabil:revisar", 1)
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/classificacao-contabil", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
@@ -129,30 +155,11 @@ def registrar(mcp) -> None:
         """Marca uma sugestão como aceita (confirmada certa) ou corrigida
         (errada — `conta_correta` opcional, só se o usuário souber qual é a
         certa). Nunca escreve no Oracle/STAGE — só alimenta
-        `resumo_precisao()`, a métrica real de acerto do sistema."""
+        `resumo_precisao()`, a métrica real de acerto do sistema. Só o
+        parsing do corpo é assíncrono de verdade; o resto roda em thread
+        separada, mesmo padrão de `login_route`."""
         corpo = await request.json()
-        documento = str(corpo.get("documento") or "").strip()
-        linha = str(corpo.get("linha") or "").strip()
-        conta_sugerida = str(corpo.get("conta_sugerida") or "").strip()
-        resultado = str(corpo.get("resultado") or "").strip()
-        conta_correta = str(corpo.get("conta_correta") or "").strip() or None
-
-        if not documento or not linha or not conta_sugerida:
-            return JSONResponse(
-                {"erro": "Informe documento, linha e conta_sugerida."}, status_code=400, headers=CORS_HEADERS
-            )
-        if resultado not in _RESULTADOS_VALIDOS:
-            return JSONResponse(
-                {"erro": f"resultado precisa ser um de {sorted(_RESULTADOS_VALIDOS)}."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        classificacao_revisoes.revisar(
-            usuario["usuario"], documento, linha, conta_sugerida, resultado, conta_correta
-        )
-        _comum.registrar_acesso(usuario, "classificacao_contabil:revisar", 1)
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return await to_thread.run_sync(_revisar, usuario, corpo)
 
     @mcp.custom_route("/api/financeiro/classificacao-contabil/precisao", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)

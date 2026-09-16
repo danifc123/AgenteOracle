@@ -143,7 +143,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/relatorio-customizado", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def gerar_relatorio_customizado_route(request: Request, usuario: dict) -> JSONResponse:
+    def gerar_relatorio_customizado_route(request: Request, usuario: dict) -> JSONResponse:
         """Monta e executa o SELECT (com JOINs resolvidos automaticamente) para as colunas/filial escolhidas na tela "Criar Relatório"."""
         parametros = _parametros_da_query(request)
         if parametros is None:

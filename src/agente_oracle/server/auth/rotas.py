@@ -1,3 +1,4 @@
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -44,6 +45,53 @@ def _resposta_limite_excedido(espera: int, mensagem: str) -> JSONResponse:
         },
         status_code=429,
         headers={**CORS_HEADERS, "Retry-After": str(espera)},
+    )
+
+
+def _autenticar_e_responder(usuario: str, senha: str) -> Response:
+    """Parte síncrona do login (checagem de bloqueio, rate limit, consulta de
+    credenciais no banco, registro de evento de segurança) — chamada via
+    `anyio.to_thread.run_sync` por `login_route` pra não travar o event loop
+    enquanto consulta o Postgres (mesmo motivo documentado em
+    `server/auth/decorador_rota.py::rota_protegida`; login não passa por esse
+    decorator, então recebe o offload na mão aqui)."""
+    if usuario and esta_bloqueado(usuario):
+        return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
+
+    chave_bloqueio = usuario or "desconhecido"
+    espera = segundos_ate_liberar(chave_bloqueio)
+    if espera is not None:
+        return _resposta_limite_excedido(
+            espera,
+            f"Você errou a senha muitas vezes seguidas. Por segurança, tente de novo em {espera} segundos.",
+        )
+
+    dados = autenticar(usuario, senha) if usuario and senha else None
+    if dados is None:
+        registrar_falha(chave_bloqueio)
+        if usuario:
+            eventos_seguranca.registrar("login_falha", usuario_afetado=usuario)
+            if registrar_tentativa_falha(usuario):
+                return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse({"erro": "Usuário ou senha inválidos."}, status_code=401, headers=CORS_HEADERS)
+
+    limpar(chave_bloqueio)
+    eventos_seguranca.registrar("login_sucesso", usuario_afetado=dados["usuario"])
+    token = gerar_token(dados["id"], dados["usuario"], dados["nome"], dados["papeis"])
+    return JSONResponse(
+        {
+            "token": token,
+            "usuario": dados["usuario"],
+            "nome": dados["nome"],
+            "foto": dados.get("foto"),
+            "papeis": dados["papeis"],
+            # Calculados aqui só pra UI decidir o que mostrar (sidebar) — a
+            # autorização de verdade em cada rota é sempre recalculada a
+            # partir de `papeis`, nunca confia num campo guardado no token.
+            "administrador": papeis.eh_administrador(dados["papeis"]),
+            "modulos": papeis.modulos_liberados(dados["papeis"]),
+        },
+        headers=CORS_HEADERS,
     )
 
 
@@ -222,58 +270,18 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/login", methods=["POST", "OPTIONS"])
     async def login_route(request: Request) -> Response:
-        """Endpoint HTTP usado pela tela de login do frontend."""
+        """Endpoint HTTP usado pela tela de login do frontend. Só o parsing
+        do corpo é I/O assíncrono de verdade (`request.json()`) — o resto
+        (checagem de bloqueio, rate limit, consulta de credenciais) é
+        trabalho síncrono contra o Postgres, delegado a `_autenticar_e_responder`
+        rodando em thread separada pra não travar o event loop."""
         if request.method == "OPTIONS":
             return resposta_preflight()
 
         corpo = await request.json()
         usuario = str(corpo.get("usuario", "")).strip()
         senha = str(corpo.get("senha", ""))
-
-        # Checado antes até do rate limit: uma conta já bloqueada sempre
-        # devolve a mensagem específica, em vez de às vezes cair no 429
-        # genérico dependendo de qual dos dois contadores está mais "fresco"
-        # (o bloqueio persistente não expira sozinho; o rate limit sim).
-        if usuario and esta_bloqueado(usuario):
-            return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
-
-        chave_bloqueio = usuario or "desconhecido"
-        espera = segundos_ate_liberar(chave_bloqueio)
-        if espera is not None:
-            return _resposta_limite_excedido(
-                espera,
-                f"Você errou a senha muitas vezes seguidas. Por segurança, tente de novo em {espera} segundos.",
-            )
-
-        dados = autenticar(usuario, senha) if usuario and senha else None
-        if dados is None:
-            registrar_falha(chave_bloqueio)
-            if usuario:
-                eventos_seguranca.registrar("login_falha", usuario_afetado=usuario)
-                if registrar_tentativa_falha(usuario):
-                    return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
-            return JSONResponse(
-                {"erro": "Usuário ou senha inválidos."}, status_code=401, headers=CORS_HEADERS
-            )
-
-        limpar(chave_bloqueio)
-        eventos_seguranca.registrar("login_sucesso", usuario_afetado=dados["usuario"])
-        token = gerar_token(dados["id"], dados["usuario"], dados["nome"], dados["papeis"])
-        return JSONResponse(
-            {
-                "token": token,
-                "usuario": dados["usuario"],
-                "nome": dados["nome"],
-                "foto": dados.get("foto"),
-                "papeis": dados["papeis"],
-                # Calculados aqui só pra UI decidir o que mostrar (sidebar) — a
-                # autorização de verdade em cada rota é sempre recalculada a
-                # partir de `papeis`, nunca confia num campo guardado no token.
-                "administrador": papeis.eh_administrador(dados["papeis"]),
-                "modulos": papeis.modulos_liberados(dados["papeis"]),
-            },
-            headers=CORS_HEADERS,
-        )
+        return await to_thread.run_sync(_autenticar_e_responder, usuario, senha)
 
     @mcp.custom_route("/api/auth/usuarios", methods=["GET", "POST", "OPTIONS"])
     @rota_protegida("GET, POST, OPTIONS", exigir=exigir_administrador)

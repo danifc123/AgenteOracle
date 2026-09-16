@@ -25,7 +25,12 @@ com texto livre digitado pelo usuário)."""
 
 from collections import deque
 
-from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ViewFinanceira, inferir_tipo_filtro
+from agente_oracle.agent.financeiro.schema import (
+    VIEWS_DISPONIVEIS,
+    ColunaView,
+    ViewFinanceira,
+    inferir_tipo_filtro,
+)
 from agente_oracle.db.connection import get_connection_para_fonte
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
@@ -40,11 +45,20 @@ class RelatorioCustomizadoInvalido(Exception):
     """Levantada quando a seleção de colunas/filtros pedida pela tela não pode virar um SQL válido."""
 
 
+def _coluna_view(nome_view: str, nome_coluna: str) -> ColunaView:
+    """Resolve o `ColunaView` (com `tipo_filtro`, se declarado) a partir de
+    um par nome_view/nome_coluna já validado contra o registro — usado
+    pelos pontos que precisam chamar `inferir_tipo_filtro`."""
+    view = _VIEWS_POR_NOME[nome_view]
+    return next(coluna for coluna in view.colunas if coluna.nome == nome_coluna)
+
+
 def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
-    """Valores distintos (não nulos) de uma coluna de tipo "texto" — usado
-    pra popular o <select multiplo> do filtro dessa coluna na tela. `nome_view`
-    e `nome_coluna` já vêm validados contra o registro (nunca texto cru do
-    cliente), então é seguro interpolar direto no SQL."""
+    """Valores distintos (não nulos) de uma coluna do tipo "texto" ou
+    "texto-numerico" — usado pra popular o <select multiplo> do filtro
+    dessa coluna na tela. `nome_view` e `nome_coluna` já vêm validados
+    contra o registro (nunca texto cru do cliente), então é seguro
+    interpolar direto no SQL."""
     sql = (
         f'SELECT DISTINCT "{nome_coluna}" FROM {nome_view} '
         f'WHERE "{nome_coluna}" IS NOT NULL '
@@ -55,6 +69,28 @@ def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
         cursor = connection.cursor()
         cursor.execute(sql)
         return [str(linha[0]) for linha in cursor.fetchall()]
+
+
+def suporta_lista_opcoes(nome_view: str, nome_coluna: str) -> bool:
+    """A coluna (já validada) tem filtro por lista de valores exatos —
+    "texto" ou "texto-numerico" — e por isso pode alimentar
+    `buscar_opcoes_coluna`/`buscar_opcoes_colunas`? Usado por
+    `listar_opcoes_coluna_route` pra rejeitar colunas do tipo "numero"/
+    "periodo-data", que não têm esse modo de filtro."""
+    return inferir_tipo_filtro(_coluna_view(nome_view, nome_coluna)) in ("texto", "texto-numerico")
+
+
+def buscar_opcoes_colunas(colunas: list[tuple[str, str]]) -> dict[str, list[str]]:
+    """Mesma consulta de `buscar_opcoes_coluna`, mas pra várias colunas de
+    uma vez — ainda um `SELECT DISTINCT` por coluna internamente (não dá
+    pra combinar num `SELECT` só, cada coluna tem sua própria lista de
+    distintos), mas numa chamada/thread só em vez de uma requisição HTTP
+    por coluna. `colunas` já vem validada; devolve um dict chaveado por
+    "view.coluna", no mesmo formato de `filtros` em `_montar_sql`."""
+    return {
+        f"{nome_view}.{nome_coluna}": buscar_opcoes_coluna(nome_view, nome_coluna)
+        for nome_view, nome_coluna in colunas
+    }
 
 
 def buscar_relatorio_customizado(
@@ -154,7 +190,8 @@ def _montar_sql(
 
         alias = alias_por_view[nome_view]
         coluna_sql = f'{alias}."{nome_coluna}"'
-        tipo = inferir_tipo_filtro(nome_coluna)
+        coluna_declarada = _coluna_view(nome_view, nome_coluna)
+        tipo = inferir_tipo_filtro(coluna_declarada)
 
         if tipo == "periodo-data":
             # `coluna_sql` já é DATE de verdade na view (não texto "YYYYMMDD" cru
@@ -167,15 +204,26 @@ def _montar_sql(
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
                 condicoes_where.append(f"{coluna_sql} {operador} TO_DATE(:{bind}, 'YYYY-MM-DD')")
-        elif tipo == "numero":
+            continue
+
+        # "texto-numerico" (ex: coluna "nota") aceita os dois filtros ao
+        # mesmo tempo — a tela deixa o usuário alternar entre lista e
+        # faixa pra essa coluna, mas o backend não presume qual dos dois
+        # veio preenchido, só aplica o que tiver valor.
+        if tipo in ("numero", "texto-numerico"):
+            # "numero" já é NUMBER de verdade na view; "texto-numerico" é
+            # texto zero-padded ("000000002") que precisa virar número
+            # antes de comparar com a faixa.
+            coluna_numerica = coluna_sql if tipo == "numero" else _comum.numero_coluna(coluna_sql)
             for extremo, operador in (("min", ">="), ("max", "<=")):
                 if not filtro.get(extremo):
                     continue
                 contador_filtro += 1
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
-                condicoes_where.append(f"{coluna_sql} {operador} {_comum.numero_bind(bind)}")
-        else:
+                condicoes_where.append(f"{coluna_numerica} {operador} {_comum.numero_bind(bind)}")
+
+        if tipo in ("texto", "texto-numerico"):
             valores_filtro = filtro.get("valores")
             if valores_filtro:
                 marcadores = []

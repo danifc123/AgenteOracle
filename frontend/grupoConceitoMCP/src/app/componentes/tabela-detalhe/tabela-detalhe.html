@@ -38,6 +38,49 @@
             [valores]="valoresSelecionados(campo.chave)"
             (valoresChange)="definirValoresFiltro(campo.chave, $event)"
           />
+        } @else if (campo.tipo === 'texto-numerico') {
+          <div class="campo-texto-numerico">
+            <div class="campo-alternador" role="group" [attr.aria-label]="campo.rotulo + ' - modo de filtro'">
+              <button
+                type="button"
+                class="campo-alternador-opcao"
+                [class.campo-alternador-opcao--ativa]="!emModoFaixa(campo.chave)"
+                (click)="definirModoFiltro(campo.chave, false)"
+              >
+                Lista
+              </button>
+              <button
+                type="button"
+                class="campo-alternador-opcao"
+                [class.campo-alternador-opcao--ativa]="emModoFaixa(campo.chave)"
+                (click)="definirModoFiltro(campo.chave, true)"
+              >
+                Faixa
+              </button>
+            </div>
+            @if (emModoFaixa(campo.chave)) {
+              <app-campo-filtro-dinamico
+                [campo]="{ chave: campo.chave, rotulo: campo.rotulo, tipo: 'numero' }"
+                [valorIni]="valorFiltro(campo.chave + '_ini')"
+                [valorFim]="valorFiltro(campo.chave + '_fim')"
+                (valorIniChange)="
+                  definirValorFiltro.emit({ chave: campo.chave + '_ini', valor: $event })
+                "
+                (valorFimChange)="
+                  definirValorFiltro.emit({ chave: campo.chave + '_fim', valor: $event })
+                "
+              />
+            } @else {
+              <app-select-busca
+                [rotulo]="campo.rotulo"
+                placeholder="Todos"
+                [multiplo]="true"
+                [opcoes]="opcoesDaColuna(campo.chave)"
+                [valores]="valoresSelecionados(campo.chave)"
+                (valoresChange)="definirValoresFiltro(campo.chave, $event)"
+              />
+            }
+          </div>
         } @else {
           <app-campo-filtro-dinamico
             [campo]="campo"

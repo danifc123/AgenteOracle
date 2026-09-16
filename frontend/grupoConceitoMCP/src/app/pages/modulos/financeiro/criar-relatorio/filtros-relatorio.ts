@@ -18,11 +18,23 @@ function entradaFaixa(
   return { ...(min ? { [chaveMin]: min } : {}), ...(max ? { [chaveMax]: max } : {}) };
 }
 
+/** `valores` (lista de valores exatos do select múltiplo, guardados em
+ * `valoresFiltros[chave]` como string separada por vírgula) — usado tanto
+ * pelo tipo "texto" quanto pelo modo "lista" de "texto-numerico". */
+function entradaValores(valores: ValoresFiltros, chave: string): Record<string, string[]> | null {
+  if (!valores[chave]) {
+    return null;
+  }
+  const selecionados = valores[chave].split(',').filter(Boolean);
+  return selecionados.length ? { valores: selecionados } : null;
+}
+
 /** Monta `{"view.coluna": {...}}` a partir de `valoresFiltros`, no formato
- * que cada tipo de coluna espera (texto: `valores`, lista de valores exatos
- * escolhidos no select multiplo — guardados como string separada por
- * vírgula; numero: `min`/`max`; periodo-data: `ini`/`fim`) — só entram
- * colunas com algum valor preenchido. */
+ * que cada tipo de coluna espera (texto: `valores`; numero: `min`/`max`;
+ * periodo-data: `ini`/`fim`; texto-numerico: os dois ao mesmo tempo —
+ * `valores` E/OU `min`/`max`, o que estiver preenchido, já que a tela
+ * deixa alternar entre os dois modos pra essa coluna) — só entram colunas
+ * com algum valor preenchido. */
 export function filtrosPorColuna(
   views: ViewFinanceira[],
   colunasSelecionadas: ColunasSelecionadas,
@@ -47,10 +59,18 @@ export function filtrosPorColuna(
         if (entrada) {
           filtros[chave] = entrada;
         }
-      } else if (valoresFiltros[chave]) {
-        const selecionados = valoresFiltros[chave].split(',').filter(Boolean);
-        if (selecionados.length) {
-          filtros[chave] = { valores: selecionados };
+      } else if (tipo === 'texto-numerico') {
+        const entrada: Record<string, string | string[]> = {
+          ...(entradaFaixa(valoresFiltros, chave, 'min', 'max') ?? {}),
+          ...(entradaValores(valoresFiltros, chave) ?? {}),
+        };
+        if (Object.keys(entrada).length) {
+          filtros[chave] = entrada;
+        }
+      } else {
+        const entrada = entradaValores(valoresFiltros, chave);
+        if (entrada) {
+          filtros[chave] = entrada;
         }
       }
     }

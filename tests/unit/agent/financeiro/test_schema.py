@@ -1,6 +1,13 @@
 import pytest
 
-from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, inferir_tipo_filtro
+from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ColunaView, inferir_tipo_filtro
+
+
+def _coluna(nome: str, tipo_filtro: str | None = None) -> ColunaView:
+    """Monta uma `ColunaView` mínima só pra exercitar `inferir_tipo_filtro`
+    — descrição não importa pra esses testes."""
+    return ColunaView(nome, "descrição de teste", tipo_filtro=tipo_filtro)
+
 
 # Conjunto de colunas REAIS de cada view, extraído direto do SELECT de
 # db/views/financeiro_science.sql (fonte da verdade do banco) — não do que
@@ -246,8 +253,8 @@ def test_relacionamentos_so_usam_colunas_reais():
 
 
 def test_prefixo_data_vira_periodo_data():
-    assert inferir_tipo_filtro("data_emissao") == "periodo-data"
-    assert inferir_tipo_filtro("data_vencimento") == "periodo-data"
+    assert inferir_tipo_filtro(_coluna("data_emissao")) == "periodo-data"
+    assert inferir_tipo_filtro(_coluna("data_vencimento")) == "periodo-data"
 
 
 @pytest.mark.parametrize(
@@ -255,15 +262,30 @@ def test_prefixo_data_vira_periodo_data():
     ["valor_original", "quantidade_pedida", "saldo_aberto", "preco_unitario", "preço_venda", "custo"],
 )
 def test_palavras_numericas_viram_numero(nome_coluna):
-    assert inferir_tipo_filtro(nome_coluna) == "numero"
+    assert inferir_tipo_filtro(_coluna(nome_coluna)) == "numero"
 
 
 def test_resto_vira_texto():
-    assert inferir_tipo_filtro("cliente_nome") == "texto"
-    assert inferir_tipo_filtro("fornecedor_codigo") == "texto"
+    assert inferir_tipo_filtro(_coluna("cliente_nome")) == "texto"
+    assert inferir_tipo_filtro(_coluna("fornecedor_codigo")) == "texto"
 
 
 def test_prefixo_data_tem_prioridade_sobre_palavra_numerica():
     # Coluna hipotética que começa com "data_" mas também contém "valor" —
     # a checagem de prefixo vem primeiro na função, então "periodo-data" ganha.
-    assert inferir_tipo_filtro("data_valor_limite") == "periodo-data"
+    assert inferir_tipo_filtro(_coluna("data_valor_limite")) == "periodo-data"
+
+
+def test_tipo_filtro_declarado_sobrescreve_heuristica():
+    # "nota" não bate em nenhuma palavra numérica nem prefixo "data_" — sem
+    # override cairia em "texto"; com `tipo_filtro` declarado, usa esse valor.
+    assert inferir_tipo_filtro(_coluna("nota", tipo_filtro="texto-numerico")) == "texto-numerico"
+
+
+def test_colunas_nota_das_views_vwia_declaram_texto_numerico():
+    # As duas colunas "nota" reais (vwia_notas_compra, vwia_devolucoes_compra)
+    # precisam do override pra oferecer filtro de faixa na tela, não só lista.
+    colunas_nota = [coluna for view in VIEWS_DISPONIVEIS for coluna in view.colunas if coluna.nome == "nota"]
+    assert colunas_nota, "esperava encontrar pelo menos uma coluna 'nota' nas views VWIA_*"
+    for coluna in colunas_nota:
+        assert inferir_tipo_filtro(coluna) == "texto-numerico"

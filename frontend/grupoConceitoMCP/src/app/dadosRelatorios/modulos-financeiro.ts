@@ -1,4 +1,11 @@
-export type TipoFiltro = 'texto' | 'select' | 'periodo-data' | 'numero';
+/** "texto-numerico" nunca é produzido pelas rotinas fixas deste arquivo —
+ * só existe pra `CampoFiltro` aceitar as colunas do construtor de
+ * relatório ("Criar Relatório") que têm esse tipo (ver `TipoFiltroColuna`
+ * em `views-financeiras.ts`). `campo-filtro-dinamico` não tem um `@case`
+ * pra esse valor de propósito: quem usa esse tipo (`tabela-detalhe.html`)
+ * intercepta antes de delegar pro componente, do mesmo jeito que já faz
+ * com 'texto'. */
+export type TipoFiltro = 'texto' | 'select' | 'periodo-data' | 'numero' | 'texto-numerico';
 
 export interface OpcaoFiltro {
   valor: string;

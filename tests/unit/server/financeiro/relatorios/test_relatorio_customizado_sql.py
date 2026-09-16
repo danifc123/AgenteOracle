@@ -6,9 +6,12 @@ tocam banco não entram aqui, cobertos via integração em
 
 import pytest
 
+from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import (
     RelatorioCustomizadoInvalido,
+    _montar_sql,
     _resolver_caminho_join,
+    suporta_lista_opcoes,
     validar_coluna,
 )
 
@@ -51,3 +54,77 @@ class TestResolverCaminhoJoin:
     def test_sem_relacionamento_declarado_levanta_erro(self):
         with pytest.raises(RelatorioCustomizadoInvalido):
             _resolver_caminho_join(["vw_titulos_pagar", "vw_clientes"])
+
+
+class TestSuportaListaOpcoes:
+    def test_coluna_texto_suporta(self):
+        assert suporta_lista_opcoes("vw_clientes", "nome") is True
+
+    def test_coluna_texto_numerico_suporta(self):
+        # "nota" tem `tipo_filtro="texto-numerico"` declarado (ver schema.py)
+        # justamente pra também oferecer o modo lista, além da faixa.
+        assert suporta_lista_opcoes("vwia_notas_compra", "nota") is True
+
+    def test_coluna_numero_nao_suporta(self):
+        assert suporta_lista_opcoes("vw_titulos_pagar", "valor_original") is False
+
+    def test_coluna_periodo_data_nao_suporta(self):
+        assert suporta_lista_opcoes("vw_titulos_pagar", "data_vencimento") is False
+
+
+class TestMontarSqlFiltroTextoNumerico:
+    """A coluna "nota" (`tipo_filtro="texto-numerico"` em schema.py) aceita
+    tanto o filtro de lista exata (`valores`, igual ao tipo "texto") quanto
+    o de faixa (`min`/`max`, reaproveitando `_comum.numero_coluna`/
+    `numero_bind`) — os dois, cada um só entrando na cláusula WHERE se
+    vier preenchido. `_montar_sql` é lógica pura (só monta string de SQL +
+    binds), não precisa de conexão de banco."""
+
+    _COLUNAS_POR_VIEW = {"vwia_notas_compra": ["nota"]}
+    _FILIAIS = ["0101"]
+    _COLUNA_SQL = 'v0."nota"'  # raiz única -> alias "v0" (ver _montar_sql)
+
+    def test_so_valores_gera_clausula_de_lista(self):
+        sql, binds = _montar_sql(
+            self._COLUNAS_POR_VIEW,
+            self._FILIAIS,
+            {"vwia_notas_compra.nota": {"valores": ["000000002", "000000499"]}},
+            0,
+        )
+        assert f"{_comum.texto_coluna(self._COLUNA_SQL)} IN (:filtro_1, :filtro_2)" in sql
+        assert binds["filtro_1"] == "000000002"
+        assert binds["filtro_2"] == "000000499"
+        # não deve ter montado a cláusula de faixa também
+        assert _comum.numero_coluna(self._COLUNA_SQL) not in sql
+
+    def test_so_faixa_gera_clausula_numerica(self):
+        sql, binds = _montar_sql(
+            self._COLUNAS_POR_VIEW,
+            self._FILIAIS,
+            {"vwia_notas_compra.nota": {"min": "2", "max": "499"}},
+            0,
+        )
+        coluna_numerica = _comum.numero_coluna(self._COLUNA_SQL)
+        assert f"{coluna_numerica} >= {_comum.numero_bind('filtro_1')}" in sql
+        assert f"{coluna_numerica} <= {_comum.numero_bind('filtro_2')}" in sql
+        assert binds["filtro_1"] == "2"
+        assert binds["filtro_2"] == "499"
+        # não deve ter montado a cláusula de lista da coluna "nota" também
+        # (a cláusula de filial também usa "IN", então checa especificamente
+        # o padrão que a lista de "nota" geraria).
+        assert f"{_comum.texto_coluna(self._COLUNA_SQL)} IN" not in sql
+
+    def test_lista_e_faixa_juntas_geram_as_duas_clausulas(self):
+        sql, binds = _montar_sql(
+            self._COLUNAS_POR_VIEW,
+            self._FILIAIS,
+            {"vwia_notas_compra.nota": {"valores": ["000000002"], "min": "2", "max": "499"}},
+            0,
+        )
+        # Faixa é processada antes da lista em `_montar_sql`, então os binds
+        # da faixa saem primeiro (filtro_1/filtro_2) e o da lista depois.
+        coluna_numerica = _comum.numero_coluna(self._COLUNA_SQL)
+        assert f"{coluna_numerica} >= {_comum.numero_bind('filtro_1')}" in sql
+        assert f"{coluna_numerica} <= {_comum.numero_bind('filtro_2')}" in sql
+        assert f"{_comum.texto_coluna(self._COLUNA_SQL)} IN (:filtro_3)" in sql
+        assert binds["filtro_3"] == "000000002"

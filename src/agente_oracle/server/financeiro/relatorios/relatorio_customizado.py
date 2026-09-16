@@ -21,8 +21,9 @@ from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import (
     RelatorioCustomizadoInvalido,
-    buscar_opcoes_coluna,
+    buscar_opcoes_colunas,
     buscar_relatorio_customizado,
+    suporta_lista_opcoes,
     validar_coluna,
 )
 
@@ -163,27 +164,43 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/relatorio/opcoes-coluna", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_opcoes_coluna_route(request: Request, usuario: dict) -> JSONResponse:
-        """Valores distintos de uma coluna do tipo "texto" (formato view.coluna) — usado pra popular o select multiplo do filtro dessa coluna."""
-        token = request.query_params.get("coluna", "").strip()
-        validado = validar_coluna(token)
-        if validado is None:
+    def listar_opcoes_coluna_route(request: Request, usuario: dict) -> JSONResponse:
+        """Valores distintos de uma ou mais colunas do tipo "texto"/
+        "texto-numerico" (formato "view.coluna,view.coluna,...") — usado
+        pra popular o select múltiplo do filtro dessas colunas na tela,
+        numa requisição só em vez de uma por coluna."""
+        colunas_bruto = request.query_params.get("colunas", "").strip()
+        if not colunas_bruto:
             return JSONResponse(
-                {"erro": "Informe uma coluna válida (formato view.coluna)."},
+                {"erro": "Informe ao menos uma coluna válida (formato view.coluna)."},
                 status_code=400,
                 headers=CORS_HEADERS,
             )
 
-        nome_view, nome_coluna = validado
-        if inferir_tipo_filtro(nome_coluna) != "texto":
-            return JSONResponse(
-                {"erro": "Essa coluna não tem filtro por lista de valores."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
+        colunas_validas: list[tuple[str, str]] = []
+        for token in colunas_bruto.split(","):
+            validado = validar_coluna(token.strip())
+            if validado is None:
+                return JSONResponse(
+                    {"erro": "Informe apenas colunas válidas (formato view.coluna)."},
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+            nome_view, nome_coluna = validado
+            if not suporta_lista_opcoes(nome_view, nome_coluna):
+                return JSONResponse(
+                    {"erro": f"A coluna '{nome_view}.{nome_coluna}' não tem filtro por lista de valores."},
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+            colunas_validas.append((nome_view, nome_coluna))
 
-        valores = buscar_opcoes_coluna(nome_view, nome_coluna)
-        return JSONResponse([{"valor": valor, "rotulo": valor} for valor in valores], headers=CORS_HEADERS)
+        valores_por_coluna = buscar_opcoes_colunas(colunas_validas)
+        payload = {
+            chave: [{"valor": valor, "rotulo": valor} for valor in valores]
+            for chave, valores in valores_por_coluna.items()
+        }
+        return JSONResponse(payload, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/relatorio/views", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
@@ -207,7 +224,7 @@ def registrar(mcp) -> None:
                     {
                         "nome": coluna.nome,
                         "descricao": coluna.descricao,
-                        "tipo": inferir_tipo_filtro(coluna.nome),
+                        "tipo": inferir_tipo_filtro(coluna),
                     }
                     for coluna in view.colunas
                     if coluna.nome != "filial"

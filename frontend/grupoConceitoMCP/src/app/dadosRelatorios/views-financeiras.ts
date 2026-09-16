@@ -3,9 +3,15 @@
  * e usado pela tela "Criar Relatório" pra listar tabelas/colunas disponíveis
  * e resolver quais podem ser combinadas num mesmo relatório. */
 
-/** Decidido sempre pelo backend (`inferir_tipo_filtro`) a partir do nome da
- * coluna — o front só usa isso pra escolher o widget de filtro certo. */
-export type TipoFiltroColuna = 'texto' | 'numero' | 'periodo-data';
+/** Decidido sempre pelo backend (`inferir_tipo_filtro`) — por padrão a
+ * partir do nome da coluna, ou por override explícito (`ColunaView.tipo_filtro`
+ * em schema.py) pra colunas onde a heurística por nome erraria. O front só
+ * usa isso pra escolher o widget de filtro certo. "texto-numerico" (ex:
+ * "nota") oferece os dois modos — lista de valores exatos E faixa
+ * numérica, com um alternador na tela — porque a coluna é um código de
+ * texto (zero-padded) mas o caso de uso mais comum é filtrar por
+ * intervalo, não só valores avulsos. */
+export type TipoFiltroColuna = 'texto' | 'numero' | 'periodo-data' | 'texto-numerico';
 
 export interface ColunaView {
   nome: string;

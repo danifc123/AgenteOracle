@@ -23,10 +23,18 @@ PREFIXO_TOOL: str = "financeiro_"
 
 @dataclass(frozen=True)
 class ColunaView:
-    """Uma coluna de uma view financeira, com descrição curta pra IA entender o que ela guarda."""
+    """Uma coluna de uma view financeira, com descrição curta pra IA entender o que ela guarda.
+
+    `tipo_filtro` é opcional e só existe pra sobrescrever a heurística de
+    `inferir_tipo_filtro()` (baseada no nome) quando ela erra pra uma coluna
+    específica — ex: "nota" é um código de texto zero-padded ("000000002"),
+    mas o usuário quer poder filtrar por faixa numérica também, então essa
+    coluna declara `tipo_filtro="texto-numerico"` em vez de cair no "texto"
+    genérico (lista de valores exatos) que o nome sozinho sugeriria."""
 
     nome: str
     descricao: str
+    tipo_filtro: str | None = None
 
 
 @dataclass(frozen=True)
@@ -394,7 +402,11 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         colunas=(
             ColunaView("filial", "código da filial"),
             ColunaView("data_emissao", "data de emissão desta nota"),
-            ColunaView("nota", "número desta nota fiscal"),
+            ColunaView(
+                "nota",
+                "número desta nota fiscal",
+                tipo_filtro="texto-numerico",
+            ),
             ColunaView("serie", "série desta nota fiscal"),
             ColunaView("natureza_codigo", "código da natureza financeira"),
             ColunaView("natureza_descricao", "descrição da natureza financeira"),
@@ -437,7 +449,11 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("numero_nota_origem", "número da nota de compra original"),
             ColunaView("serie_origem", "série da nota de compra original"),
             ColunaView("data_emissao", "data de emissão desta devolução"),
-            ColunaView("nota", "número desta nota fiscal de devolução"),
+            ColunaView(
+                "nota",
+                "número desta nota fiscal de devolução",
+                tipo_filtro="texto-numerico",
+            ),
             ColunaView("serie", "série desta nota fiscal de devolução"),
             ColunaView("natureza_codigo", "código da natureza financeira"),
             ColunaView("natureza_descricao", "descrição da natureza financeira"),
@@ -555,16 +571,20 @@ NOMES_VIEWS_PERMITIDAS: frozenset[str] = frozenset(view.nome.upper() for view in
 _PALAVRAS_NUMERICAS = ("valor", "quantidade", "saldo", "preco", "preço", "custo")
 
 
-def inferir_tipo_filtro(nome_coluna: str) -> str:
-    """Infere o tipo de filtro mais provável pra uma coluna a partir do nome —
-    usado tanto pra escolher o widget certo na tela "Criar Relatório" quanto
-    pra montar a cláusula certa no backend (`relatorio_customizado.py`).
-    Convenção simples e previsível, não uma análise real de tipo de dado:
-    colunas "data_*" viram filtro de período, colunas com palavras que
-    indicam valor numérico viram filtro de faixa (min/máx), o resto vira
-    filtro de texto (contém)."""
-    if nome_coluna.startswith("data_"):
+def inferir_tipo_filtro(coluna: ColunaView) -> str:
+    """Tipo de filtro pra uma coluna — usado tanto pra escolher o widget
+    certo na tela "Criar Relatório" quanto pra montar a cláusula certa no
+    backend (`relatorio_customizado_sql.py::_montar_sql`).
+
+    Usa `coluna.tipo_filtro` quando declarado explicitamente (ver docstring
+    de `ColunaView`) — só cai na heurística por nome quando não há
+    override: colunas "data_*" viram filtro de período, colunas com
+    palavras que indicam valor numérico viram filtro de faixa (min/máx), o
+    resto vira filtro de texto (lista de valores exatos)."""
+    if coluna.tipo_filtro is not None:
+        return coluna.tipo_filtro
+    if coluna.nome.startswith("data_"):
         return "periodo-data"
-    if any(palavra in nome_coluna for palavra in _PALAVRAS_NUMERICAS):
+    if any(palavra in coluna.nome for palavra in _PALAVRAS_NUMERICAS):
         return "numero"
     return "texto"

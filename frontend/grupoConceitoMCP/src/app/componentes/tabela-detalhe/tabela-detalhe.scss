@@ -139,6 +139,49 @@ h2 {
   }
 }
 
+.campo-texto-numerico {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo-alternador {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.campo-alternador-opcao {
+  padding: 4px 10px;
+  border: none;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    color: var(--color-text);
+  }
+
+  & + & {
+    border-left: 1px solid var(--color-border);
+  }
+}
+
+.campo-alternador-opcao--ativa {
+  background: var(--color-primary);
+  color: #fff;
+
+  &:hover {
+    color: #fff;
+  }
+}
+
 .detalhe-rodape {
   flex-shrink: 0;
   display: flex;

@@ -12,6 +12,12 @@ const views: ViewFinanceira[] = [
       { nome: 'data_cadastro', descricao: '', tipo: 'periodo-data' },
     ],
   },
+  {
+    nome: 'vwia_notas_compra',
+    descricao: '',
+    relacionamentos: [],
+    colunas: [{ nome: 'nota', descricao: '', tipo: 'texto-numerico' }],
+  },
 ];
 
 describe('filtrosPorColuna', () => {
@@ -45,5 +51,40 @@ describe('filtrosPorColuna', () => {
   it('coluna sem valor preenchido não entra no resultado', () => {
     const resultado = filtrosPorColuna(views, { vw_clientes: ['nome', 'saldo'] }, {});
     expect(resultado).toEqual({});
+  });
+
+  it('coluna texto-numerico: modo lista usa "valores", igual ao tipo texto', () => {
+    const resultado = filtrosPorColuna(
+      views,
+      { vwia_notas_compra: ['nota'] },
+      { 'vwia_notas_compra.nota': '000000002,000000499' },
+    );
+    expect(resultado).toEqual({
+      'vwia_notas_compra.nota': { valores: ['000000002', '000000499'] },
+    });
+  });
+
+  it('coluna texto-numerico: modo faixa usa min/max, igual ao tipo numero', () => {
+    const resultado = filtrosPorColuna(
+      views,
+      { vwia_notas_compra: ['nota'] },
+      { 'vwia_notas_compra.nota_ini': '2', 'vwia_notas_compra.nota_fim': '499' },
+    );
+    expect(resultado).toEqual({ 'vwia_notas_compra.nota': { min: '2', max: '499' } });
+  });
+
+  it('coluna texto-numerico: manda os dois filtros juntos se os dois estiverem preenchidos', () => {
+    const resultado = filtrosPorColuna(
+      views,
+      { vwia_notas_compra: ['nota'] },
+      {
+        'vwia_notas_compra.nota': '000000002',
+        'vwia_notas_compra.nota_ini': '2',
+        'vwia_notas_compra.nota_fim': '499',
+      },
+    );
+    expect(resultado).toEqual({
+      'vwia_notas_compra.nota': { valores: ['000000002'], min: '2', max: '499' },
+    });
   });
 });

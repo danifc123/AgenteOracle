@@ -41,6 +41,12 @@ export class TabelaDetalhe {
 
   protected readonly expandido = signal(false);
 
+  /** Colunas do tipo "texto-numerico" (ex: "nota") oferecem dois modos de
+   * filtro — lista de valores exatos ou faixa numérica — alternáveis na
+   * tela; este set guarda só as chaves atualmente em modo "faixa" (padrão
+   * é lista, igual ao tipo "texto" comum). */
+  private readonly colunasEmModoFaixa = signal<ReadonlySet<string>>(new Set());
+
   protected readonly totalColunas = computed(() =>
     Object.values(this.colunasSelecionadas()).reduce((total, colunas) => total + colunas.length, 0),
   );
@@ -104,6 +110,10 @@ export class TabelaDetalhe {
     this.expandido.set(false);
   }
 
+  protected emModoFaixa(chave: string): boolean {
+    return this.colunasEmModoFaixa().has(chave);
+  }
+
   protected opcoesDaColuna(chave: string): OpcaoSelectBusca[] {
     return this.opcoesColunas()[chave] ?? [];
   }
@@ -111,6 +121,18 @@ export class TabelaDetalhe {
   protected salvar(): void {
     this.fecharExpandido();
     this.salvarLayout.emit();
+  }
+
+  protected definirModoFiltro(chave: string, faixa: boolean): void {
+    this.colunasEmModoFaixa.update((atual) => {
+      const novo = new Set(atual);
+      if (faixa) {
+        novo.add(chave);
+      } else {
+        novo.delete(chave);
+      }
+      return novo;
+    });
   }
 
   protected valorFiltro(chave: string): string {

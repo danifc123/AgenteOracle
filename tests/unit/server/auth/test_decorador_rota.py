@@ -114,3 +114,28 @@ class TestDispatchSincronoVsAssincrono:
         assert cliente.get("/a").status_code == 200
         assert cliente.get("/s").status_code == 200
         assert threads["sync"] != threads["async"]
+
+
+class TestExigirRodaEmThread:
+    def test_exigir_roda_em_thread_diferente_do_event_loop(self):
+        # `exigir` (ex: exigir_usuario) consulta Postgres pra checar se o
+        # usuário está ativo/desbloqueado — síncrono, sempre — e roda ANTES
+        # de decidir se a rota em si é thread-offloaded. Sem essa thread
+        # aqui, toda rota protegida travava o event loop por essa query,
+        # mesmo já convertida pra `def`.
+        threads: dict[str, int] = {}
+
+        def exigir_capturando_thread(request: Request) -> dict:
+            threads["exigir"] = threading.get_ident()
+            return {"sub": "1", "usuario": "teste"}
+
+        async def handler(request, usuario):
+            # `async def` roda direto no event loop — serve de referência
+            # pra thread do event loop nesse teste.
+            threads["handler"] = threading.get_ident()
+            return JSONResponse({"ok": True})
+
+        resposta = _app_com_rota(handler, exigir=exigir_capturando_thread).get("/rota-teste")
+
+        assert resposta.status_code == 200
+        assert threads["exigir"] != threads["handler"]

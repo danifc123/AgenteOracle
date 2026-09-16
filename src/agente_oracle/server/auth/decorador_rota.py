@@ -54,7 +54,12 @@ def rota_protegida(
             if request.method == "OPTIONS":
                 return resposta_preflight(metodos)
 
-            usuario_ou_erro = exigir(request)
+            # `exigir` é sempre síncrona (nenhuma variante em dependencia.py/
+            # _comum.py::exigir_filiais_liberadas faz I/O assíncrono) e roda
+            # ANTES de decidir se a rota em si é thread-offloaded — sem essa
+            # thread aqui, toda rota protegida travava o event loop por essa
+            # query, convertida ou não.
+            usuario_ou_erro = await to_thread.run_sync(exigir, request)
             if isinstance(usuario_ou_erro, JSONResponse):
                 return usuario_ou_erro
 

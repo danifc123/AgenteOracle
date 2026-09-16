@@ -194,16 +194,25 @@ def _montar_sql(
         tipo = inferir_tipo_filtro(coluna_declarada)
 
         if tipo == "periodo-data":
-            # `coluna_sql` já é DATE de verdade na view (não texto "YYYYMMDD" cru
-            # do Protheus, como nos relatórios fixos) — só o bind, que chega da
-            # tela como "YYYY-MM-DD" (`<input type="date">`), precisa converter.
+            # A maioria das colunas "data_*" já é DATE de verdade na view (não
+            # texto "YYYYMMDD" cru do Protheus, como nos relatórios fixos) —
+            # só o bind, que chega da tela como "YYYY-MM-DD" (`<input
+            # type="date">`), precisa converter. Só as colunas ainda
+            # guardadas como texto formatado (`formato_data_texto` declarado
+            # em schema.py, ex: várias datas das views VWIA_*) precisam do
+            # `TO_DATE` no lado da coluna também.
+            coluna_data = (
+                coluna_sql
+                if coluna_declarada.formato_data_texto is None
+                else f"TO_DATE({coluna_sql}, '{coluna_declarada.formato_data_texto}')"
+            )
             for extremo, operador in (("ini", ">="), ("fim", "<=")):
                 if not filtro.get(extremo):
                     continue
                 contador_filtro += 1
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
-                condicoes_where.append(f"{coluna_sql} {operador} TO_DATE(:{bind}, 'YYYY-MM-DD')")
+                condicoes_where.append(f"{coluna_data} {operador} TO_DATE(:{bind}, 'YYYY-MM-DD')")
             continue
 
         # "texto-numerico" (ex: coluna "nota") aceita os dois filtros ao

@@ -289,3 +289,52 @@ def test_colunas_nota_das_views_vwia_declaram_texto_numerico():
     assert colunas_nota, "esperava encontrar pelo menos uma coluna 'nota' nas views VWIA_*"
     for coluna in colunas_nota:
         assert inferir_tipo_filtro(coluna) == "texto-numerico"
+
+
+# Colunas "data_*" das views VWIA_* que são texto formatado "DD/MM/YYYY" na
+# view real (TO_CHAR(..., 'DD/MM/YYYY') em db/views/financeiro_science.sql),
+# não DATE de verdade — precisam de `formato_data_texto` declarado, senão o
+# filtro de período monta `TO_DATE(:bind, ...)` comparado direto contra
+# texto, que falha ou dá resultado errado contra o Oracle real.
+_COLUNAS_DATA_TEXTO_ESPERADAS = {
+    ("vwia_notas_compra", "data_emissao"),
+    ("vwia_notas_compra", "data_emissao_original"),
+    ("vwia_notas_compra", "data_vencimento_original"),
+    ("vwia_devolucoes_compra", "data_emissao_origem_compra"),
+    ("vwia_devolucoes_compra", "data_emissao"),
+    ("vwia_devolucoes_compra", "data_emissao_original"),
+    ("vwia_devolucoes_compra", "data_vencimento_original"),
+    ("vwia_baixas_pagar", "data_baixa"),
+}
+
+
+def test_colunas_data_texto_das_views_vwia_declaram_formato():
+    encontradas = {
+        (view.nome, coluna.nome)
+        for view in VIEWS_DISPONIVEIS
+        for coluna in view.colunas
+        if coluna.formato_data_texto is not None
+    }
+    assert encontradas == _COLUNAS_DATA_TEXTO_ESPERADAS
+
+
+def test_colunas_data_texto_continuam_tipo_periodo_data():
+    # `formato_data_texto` muda só como o SQL do filtro é montado
+    # (relatorio_customizado_sql.py) — o tipo de filtro/widget na tela
+    # continua "periodo-data", igual qualquer outra coluna "data_*".
+    for view in VIEWS_DISPONIVEIS:
+        for coluna in view.colunas:
+            if coluna.formato_data_texto is not None:
+                assert inferir_tipo_filtro(coluna) == "periodo-data", f"{view.nome}.{coluna.nome}"
+
+
+def test_colunas_data_sem_override_nao_declaram_formato_texto():
+    # As demais colunas "data_*" (STAGE, DATE de verdade) não devem ganhar
+    # `formato_data_texto` por engano.
+    for view in VIEWS_DISPONIVEIS:
+        for coluna in view.colunas:
+            if (
+                coluna.nome.startswith("data_")
+                and (view.nome, coluna.nome) not in _COLUNAS_DATA_TEXTO_ESPERADAS
+            ):
+                assert coluna.formato_data_texto is None, f"{view.nome}.{coluna.nome}"

@@ -20,6 +20,12 @@ from dataclasses import dataclass
 # MCP, o agente do Financeiro continua só vendo e só podendo chamar as dele.
 PREFIXO_TOOL: str = "financeiro_"
 
+# Máscara usada por `ColunaView.formato_data_texto` nas colunas de data das
+# views VWIA_* que guardam o valor como texto (`TO_CHAR(..., 'DD/MM/YYYY')`
+# em db/views/financeiro_science.sql), não como DATE de verdade — mesma
+# máscara em todas elas, daí a constante em vez de repetir a string solta.
+_FORMATO_DATA_BR = "DD/MM/YYYY"
+
 
 @dataclass(frozen=True)
 class ColunaView:
@@ -30,11 +36,24 @@ class ColunaView:
     específica — ex: "nota" é um código de texto zero-padded ("000000002"),
     mas o usuário quer poder filtrar por faixa numérica também, então essa
     coluna declara `tipo_filtro="texto-numerico"` em vez de cair no "texto"
-    genérico (lista de valores exatos) que o nome sozinho sugeriria."""
+    genérico (lista de valores exatos) que o nome sozinho sugeriria.
+
+    `formato_data_texto` é opcional e só existe pras colunas "data_*" que,
+    apesar do nome, NÃO são DATE de verdade na view — várias colunas das
+    views VWIA_* (`db/views/financeiro_science.sql`) guardam a data já
+    formatada como texto (`TO_CHAR(..., 'DD/MM/YYYY')`), herdado do
+    Protheus cru. `_montar_sql` (`relatorio_customizado_sql.py`) usa esse
+    valor como máscara pra fazer `TO_DATE(coluna, formato_data_texto)`
+    antes de comparar no filtro de período — sem isso, comparar o texto
+    direto com uma DATE depende da conversão implícita do Oracle (formato
+    da sessão, não necessariamente "DD/MM/YYYY"), o que falha ou dá
+    resultado errado. `None` (padrão) = coluna é DATE de verdade, sem
+    cast nenhum, comportamento inalterado pra todas as outras views."""
 
     nome: str
     descricao: str
     tipo_filtro: str | None = None
+    formato_data_texto: str | None = None
 
 
 @dataclass(frozen=True)
@@ -401,7 +420,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         descricao="Nota de entrada (compra) até o título a pagar — sem dado de baixa (ver vwia_baixas_pagar).",
         colunas=(
             ColunaView("filial", "código da filial"),
-            ColunaView("data_emissao", "data de emissão desta nota"),
+            ColunaView("data_emissao", "data de emissão desta nota", formato_data_texto=_FORMATO_DATA_BR),
             ColunaView(
                 "nota",
                 "número desta nota fiscal",
@@ -419,8 +438,16 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("doc_financeiro", "número da duplicata gerada"),
             ColunaView("numero_titulo", "número do título a pagar"),
             ColunaView("parcela_titulo", "número da parcela do título"),
-            ColunaView("data_emissao_original", "data de emissão do título a pagar"),
-            ColunaView("data_vencimento_original", "data de vencimento do título a pagar"),
+            ColunaView(
+                "data_emissao_original",
+                "data de emissão do título a pagar",
+                formato_data_texto=_FORMATO_DATA_BR,
+            ),
+            ColunaView(
+                "data_vencimento_original",
+                "data de vencimento do título a pagar",
+                formato_data_texto=_FORMATO_DATA_BR,
+            ),
             ColunaView("valor_original_titulo", "valor original do título, já convertido pra moeda corrente"),
             ColunaView("valor_bruto_nf", "valor bruto da nota fiscal"),
             ColunaView("moeda_titulo", "moeda do título, formato 'codigo-nome' (ex: '1-REAL')"),
@@ -444,11 +471,15 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
         colunas=(
             ColunaView("filial", "código da filial"),
             ColunaView(
-                "data_emissao_origem_compra", "data de emissão da compra original que está sendo devolvida"
+                "data_emissao_origem_compra",
+                "data de emissão da compra original que está sendo devolvida",
+                formato_data_texto=_FORMATO_DATA_BR,
             ),
             ColunaView("numero_nota_origem", "número da nota de compra original"),
             ColunaView("serie_origem", "série da nota de compra original"),
-            ColunaView("data_emissao", "data de emissão desta devolução"),
+            ColunaView(
+                "data_emissao", "data de emissão desta devolução", formato_data_texto=_FORMATO_DATA_BR
+            ),
             ColunaView(
                 "nota",
                 "número desta nota fiscal de devolução",
@@ -464,8 +495,14 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("doc_financeiro", "número da duplicata gerada"),
             ColunaView("numero_titulo", "número do título gerado pela devolução"),
             ColunaView("parcela_titulo", "número da parcela do título"),
-            ColunaView("data_emissao_original", "data de emissão do título"),
-            ColunaView("data_vencimento_original", "data de vencimento do título"),
+            ColunaView(
+                "data_emissao_original", "data de emissão do título", formato_data_texto=_FORMATO_DATA_BR
+            ),
+            ColunaView(
+                "data_vencimento_original",
+                "data de vencimento do título",
+                formato_data_texto=_FORMATO_DATA_BR,
+            ),
             ColunaView("valor_original_titulo", "valor original do título, já convertido pra moeda corrente"),
             ColunaView("valor_bruto_nf", "valor bruto da nota fiscal de devolução"),
             ColunaView("moeda_titulo", "moeda do título, formato 'codigo-nome' (ex: '1-REAL')"),
@@ -503,7 +540,11 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ),
             ColunaView("tipo_doc_baixa", "código do tipo de documento da baixa (ex: 'CH', 'TR', 'DC')"),
             ColunaView("desc_tipo_doc_baixa", "descrição por extenso do tipo de documento da baixa"),
-            ColunaView("data_baixa", "data em que o título foi efetivamente pago"),
+            ColunaView(
+                "data_baixa",
+                "data em que o título foi efetivamente pago",
+                formato_data_texto=_FORMATO_DATA_BR,
+            ),
             ColunaView("taxa_data_baixa", "taxa de câmbio na data da baixa"),
             ColunaView("valor_baixado_moeda", "valor baixado (pago) na moeda original do título"),
             ColunaView("valor_baixado_reais", "valor baixado (pago) em reais"),

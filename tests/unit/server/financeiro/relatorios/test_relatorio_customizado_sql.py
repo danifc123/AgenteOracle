@@ -128,3 +128,35 @@ class TestMontarSqlFiltroTextoNumerico:
         assert f"{coluna_numerica} <= {_comum.numero_bind('filtro_2')}" in sql
         assert f"{_comum.texto_coluna(self._COLUNA_SQL)} IN (:filtro_3)" in sql
         assert binds["filtro_3"] == "000000002"
+
+
+class TestMontarSqlFiltroPeriodoData:
+    """Colunas "data_*" comuns (STAGE, DATE de verdade) comparam a coluna
+    direto; colunas com `formato_data_texto` declarado (ex:
+    vwia_baixas_pagar.data_baixa — texto "DD/MM/YYYY" na view real, não
+    DATE) precisam do `TO_DATE(coluna, formato)` também do lado da coluna,
+    senão comparar texto com DATE depende da conversão implícita do
+    Oracle (formato da sessão, não necessariamente "DD/MM/YYYY")."""
+
+    def test_coluna_date_real_nao_decora_a_coluna_com_to_date(self):
+        sql, binds = _montar_sql(
+            {"vw_titulos_pagar": ["data_vencimento"]},
+            ["0101"],
+            {"vw_titulos_pagar.data_vencimento": {"ini": "2026-01-01", "fim": "2026-01-31"}},
+            0,
+        )
+        assert 'v0."data_vencimento" >= TO_DATE(:filtro_1' in sql
+        assert 'v0."data_vencimento" <= TO_DATE(:filtro_2' in sql
+        assert "TO_DATE(v0." not in sql
+        assert binds["filtro_1"] == "2026-01-01"
+        assert binds["filtro_2"] == "2026-01-31"
+
+    def test_coluna_data_texto_decora_a_coluna_com_to_date_da_mascara_declarada(self):
+        sql, _binds = _montar_sql(
+            {"vwia_baixas_pagar": ["data_baixa"]},
+            ["0101"],
+            {"vwia_baixas_pagar.data_baixa": {"ini": "2026-01-01", "fim": "2026-01-31"}},
+            0,
+        )
+        assert "TO_DATE(v0.\"data_baixa\", 'DD/MM/YYYY') >= TO_DATE(:filtro_1" in sql
+        assert "TO_DATE(v0.\"data_baixa\", 'DD/MM/YYYY') <= TO_DATE(:filtro_2" in sql

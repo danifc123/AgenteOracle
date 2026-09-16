@@ -101,6 +101,21 @@ export interface ErroAnalise {
   vista: boolean;
 }
 
+/** Mensagens trocadas via `BroadcastChannel` entre abas do MESMO navegador
+ * (mesma origem) — cada aba carrega sua própria instância de `AnaliseCurriculo`
+ * (serviço `providedIn: 'root'` é singleton só DENTRO de uma aba, nunca entre
+ * abas), então sem isso "Analisando currículo..." só aparecia na aba que
+ * clicou em analisar (achado testando com o usuário: 2 abas logadas na
+ * mesma conta, só uma mostrava o popup). Não sincroniza entre navegadores
+ * ou dispositivos diferentes — só abas do mesmo navegador no mesmo
+ * computador, que é o caso de uso real reportado. */
+type MensagemAnaliseCurriculo =
+  | { tipo: 'iniciada'; id: string; nomeArquivo: string }
+  | { tipo: 'concluida'; analiseId: string; candidato: Candidato & { situacao: SituacaoAnalise } }
+  | { tipo: 'falhou'; analiseId: string; mensagem: string };
+
+const CANAL_ANALISE_CURRICULO = 'agente-oracle-analise-curriculo';
+
 export const ROTULOS_STATUS: Record<StatusCandidato, string> = {
   ativo: 'Ativo',
   contratado: 'Contratado',
@@ -127,11 +142,20 @@ export const ROTULOS_STATUS: Record<StatusCandidato, string> = {
  * múltipla vira uma chamada independente (`iniciarAnalise` uma vez por
  * arquivo), então currículos de um mesmo lote podem terminar em momentos
  * diferentes, cada um com seu próprio toast.
+ *
+ * "Global" tem um limite: este serviço (`providedIn: 'root'`) é singleton
+ * só DENTRO de uma aba — cada aba do navegador roda sua própria instância
+ * da aplicação Angular, com sua própria memória. Sem o `BroadcastChannel`
+ * (`criarCanal`), o popup "Analisando..." só aparecia na aba que clicou em
+ * analisar, mesmo logado na mesma conta em outra aba ao lado (achado
+ * testando com o usuário). O canal sincroniza só abas do MESMO navegador
+ * no mesmo computador — não entre navegadores/dispositivos diferentes.
  */
 @Injectable({ providedIn: 'root' })
 export class AnaliseCurriculo {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly canal = this.criarCanal();
 
   readonly candidatos = signal<Candidato[]>([]);
   readonly emAndamento = signal<AnaliseEmAndamento[]>([]);
@@ -191,7 +215,8 @@ export class AnaliseCurriculo {
 
   iniciarAnalise(arquivo: File): void {
     const id = `analise-${Date.now()}-${Math.round(Math.random() * 1000)}`;
-    this.emAndamento.update((atual) => [...atual, { id, nomeArquivo: arquivo.name }]);
+    this.aplicarInicio(id, arquivo.name);
+    this.canal?.postMessage({ tipo: 'iniciada', id, nomeArquivo: arquivo.name } satisfies MensagemAnaliseCurriculo);
 
     const formData = new FormData();
     formData.append('arquivo', arquivo);
@@ -204,9 +229,43 @@ export class AnaliseCurriculo {
       });
   }
 
-  /** concluirAnalise e falharAnalise só são usadas por iniciarAnalise,
-   * logo depois dela (nessa ordem — sucesso e falha do mesmo POST). */
-  private concluirAnalise(analiseId: string, candidato: Candidato & { situacao: SituacaoAnalise }): void {
+  /** Cria o canal de sincronização entre abas do mesmo navegador (ver
+   * docstring de `MensagemAnaliseCurriculo`) — `null` num navegador sem
+   * suporte a `BroadcastChannel` (raro hoje em dia), degradando de volta
+   * pro comportamento antigo (só a aba que analisou mostra o popup) em vez
+   * de quebrar o serviço inteiro. */
+  private criarCanal(): BroadcastChannel | null {
+    if (typeof BroadcastChannel === 'undefined') {
+      return null;
+    }
+    const canal = new BroadcastChannel(CANAL_ANALISE_CURRICULO);
+    canal.onmessage = (evento: MessageEvent<MensagemAnaliseCurriculo>) => {
+      const mensagem = evento.data;
+      switch (mensagem.tipo) {
+        case 'iniciada':
+          this.aplicarInicio(mensagem.id, mensagem.nomeArquivo);
+          break;
+        case 'concluida':
+          this.aplicarConclusao(mensagem.analiseId, mensagem.candidato);
+          break;
+        case 'falhou':
+          this.aplicarFalha(mensagem.analiseId, mensagem.mensagem);
+          break;
+      }
+    };
+    return canal;
+  }
+
+  private aplicarInicio(id: string, nomeArquivo: string): void {
+    this.emAndamento.update((atual) => [...atual, { id, nomeArquivo }]);
+  }
+
+  /** aplicarConclusao e aplicarFalha atualizam o estado local — chamadas
+   * tanto pela aba que fez a análise de verdade (concluirAnalise/
+   * falharAnalise, logo abaixo, que além disso avisam as outras abas) quanto
+   * pelas abas que só receberam o aviso via `criarCanal` (sem re-postar,
+   * senão viraria eco infinito entre as abas). */
+  private aplicarConclusao(analiseId: string, candidato: Candidato & { situacao: SituacaoAnalise }): void {
     this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
     // Backend faz upsert (`criar_candidato`): currículo repetido volta com o
     // MESMO id de um candidato que já está nesta lista, em vez de um id novo.
@@ -226,12 +285,22 @@ export class AnaliseCurriculo {
     ]);
   }
 
-  private falharAnalise(analiseId: string, erro: HttpErrorResponse): void {
+  private aplicarFalha(analiseId: string, mensagem: string): void {
     this.emAndamento.update((atual) => atual.filter((item) => item.id !== analiseId));
-    this.erros.update((atual) => [
-      ...atual,
-      { id: `erro-${analiseId}`, mensagem: mensagemErro(erro, 'Não foi possível analisar o currículo.'), vista: false },
-    ]);
+    this.erros.update((atual) => [...atual, { id: `erro-${analiseId}`, mensagem, vista: false }]);
+  }
+
+  /** concluirAnalise e falharAnalise só são usadas por iniciarAnalise,
+   * logo depois dela (nessa ordem — sucesso e falha do mesmo POST). */
+  private concluirAnalise(analiseId: string, candidato: Candidato & { situacao: SituacaoAnalise }): void {
+    this.aplicarConclusao(analiseId, candidato);
+    this.canal?.postMessage({ tipo: 'concluida', analiseId, candidato } satisfies MensagemAnaliseCurriculo);
+  }
+
+  private falharAnalise(analiseId: string, erro: HttpErrorResponse): void {
+    const mensagem = mensagemErro(erro, 'Não foi possível analisar o currículo.');
+    this.aplicarFalha(analiseId, mensagem);
+    this.canal?.postMessage({ tipo: 'falhou', analiseId, mensagem } satisfies MensagemAnaliseCurriculo);
   }
 
   marcarComoVista(notificacaoId: string): void {

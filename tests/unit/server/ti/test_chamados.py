@@ -8,6 +8,7 @@ from agente_oracle.agent.ti import roteamento_chamado
 from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
+    _saude_por_area,
     _texto_para_ia,
     processar_chamado_novo,
     verificar_chamados_aguardando_resposta,
@@ -16,6 +17,7 @@ from agente_oracle.server.ti.chamados import (
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import Chamado, Followup
+from agente_oracle.tools.ti.tecnicos import Tecnico
 
 # `classificar_categoria` compara contra as ~211 categorias reais — pesado
 # e não-determinístico de mais pra um teste unitário. Substitui por uma
@@ -617,3 +619,60 @@ class TestProcessarChamadoNovoLimpaHtml:
         assert "<style>" not in mensagem_usuario
         assert "<p>" not in mensagem_usuario
         assert "Sistema lento desde ontem de manhã, no financeiro." in mensagem_usuario
+
+
+class TestSaudePorArea:
+    def test_conta_tecnico_por_area(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra"),
+            Tecnico(nome="Carlos", identificador="2", area="infra"),
+            Tecnico(nome="Suellen", identificador="3", area="sistemas"),
+        )
+
+        resultado = _saude_por_area(tecnicos, cargas={})
+
+        assert resultado == [
+            {
+                "area": "infra",
+                "rotulo": "Infraestrutura",
+                "quantidade": 2,
+                "tecnicos": [
+                    {"nome": "Denner", "chamados_abertos": 0},
+                    {"nome": "Carlos", "chamados_abertos": 0},
+                ],
+            },
+            {
+                "area": "sistemas",
+                "rotulo": "Sistemas",
+                "quantidade": 1,
+                "tecnicos": [{"nome": "Suellen", "chamados_abertos": 0}],
+            },
+            {"area": "processos", "rotulo": "Processos", "quantidade": 0, "tecnicos": []},
+        ]
+
+    def test_roster_vazio_devolve_todas_as_areas_zeradas(self):
+        # O bug real que motivou este painel: `listar_tecnicos_ti()` sem
+        # nenhum usuário com `tecnico_glpi_id` preenchido devolve roster
+        # vazio, e `escolher_tecnico` estoura `ValueError` (min() de lista
+        # vazia) na primeira vez que precisa atribuir um chamado — este
+        # painel existe pra pegar isso ANTES, mostrando as 3 áreas zeradas.
+        resultado = _saude_por_area((), cargas={})
+
+        assert [item["quantidade"] for item in resultado] == [0, 0, 0]
+
+    def test_carga_vem_do_dict_de_carga_atual_do_glpi(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra"),)
+
+        resultado = _saude_por_area(tecnicos, cargas={"1": 9})
+
+        assert resultado[0]["tecnicos"] == [{"nome": "Denner", "chamados_abertos": 9}]
+
+    def test_tecnico_sem_entrada_em_cargas_conta_zero(self):
+        # `carga_atual_por_tecnico` só lista quem tem chamado em
+        # `fila_atendimento` no momento — técnico sem nenhum não aparece no
+        # dict, e isso não pode virar KeyError aqui.
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra"),)
+
+        resultado = _saude_por_area(tecnicos, cargas={})
+
+        assert resultado[0]["tecnicos"] == [{"nome": "Denner", "chamados_abertos": 0}]

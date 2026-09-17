@@ -166,3 +166,10 @@ table {
   font-size: 13px;
   color: var(--color-text-muted);
 }
+
+// Painel só-desenvolvedor (`sessao.ehDesenvolvedor()`) — componente próprio,
+// ver `componentes/saude-roster/`.
+.saude-roster-topo {
+  display: block;
+  margin-bottom: 16px;
+}

@@ -7,8 +7,10 @@ import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteu
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
+import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { Sessao } from '../../../../servicos/sessao';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -53,14 +55,22 @@ interface TecnicoNome {
  * o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
-  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader],
+  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader, SaudeRoster],
   templateUrl: './chamados.html',
   styleUrl: './chamados.scss',
 })
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
+  protected readonly sessao = inject(Sessao);
   private readonly ITENS_POR_PAGINA = 10;
+
+  // Painel de diagnóstico só-desenvolvedor (`/api/ti/tecnicos/saude`,
+  // restrito a `exigir_desenvolvedor` no backend) — mostra técnico
+  // cadastrado por área, pra pegar área com zero técnicos (causa real de um
+  // 500 em `escolher_tecnico`, `tools/ti/tecnicos.py`) antes de alguém
+  // tropeçar nisso usando a tela de verdade.
+  protected readonly saudeAreas = signal<SaudeArea[]>([]);
 
   protected readonly chamados = signal<Chamado[]>([]);
   protected readonly carregando = signal(true);
@@ -89,6 +99,9 @@ export class ChamadosTi {
     this.carregarChamados();
     this.carregarTecnicos();
     this.configuracoesTi.carregar();
+    if (this.sessao.ehDesenvolvedor()) {
+      this.carregarSaudeAreas();
+    }
   }
 
   protected alternarUsarIa(): void {
@@ -129,6 +142,13 @@ export class ChamadosTi {
         );
       },
       error: () => this.nomesTecnicos.set({}),
+    });
+  }
+
+  private carregarSaudeAreas(): void {
+    this.http.get<SaudeArea[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos/saude`).subscribe({
+      next: (areas) => this.saudeAreas.set(areas),
+      error: () => this.saudeAreas.set([]),
     });
   }
 

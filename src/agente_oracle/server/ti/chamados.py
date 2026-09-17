@@ -72,12 +72,12 @@ from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
 from agente_oracle.config import settings
 from agente_oracle.db.connection import DatabaseError
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_modulo_ti
+from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ti import categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
-from agente_oracle.tools.ti.tecnicos import escolher_tecnico, todos_os_tecnicos
+from agente_oracle.tools.ti.tecnicos import Tecnico, escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -91,6 +91,15 @@ _INTERVALO_POLLER_SEGUNDOS = 300
 # Só entra em jogo em `_escalar_para_tecnico`, quando o chamado nem tem
 # categoria pra derivar a área de outro jeito.
 _AREA_PADRAO_ESCALONAMENTO: AreaChamado = "processos"
+
+# Rótulo pra exibição no painel de saúde do roster (`tecnicos_saude_route`,
+# só-desenvolvedor) — não existe em nenhum outro lugar do backend hoje,
+# área sempre aparece como badge/texto solto no frontend.
+_ROTULOS_AREA: dict[AreaChamado, str] = {
+    "infra": "Infraestrutura",
+    "sistemas": "Sistemas",
+    "processos": "Processos",
+}
 
 
 @dataclass(frozen=True)
@@ -109,6 +118,29 @@ def _precisa_atencao(chamado: Chamado) -> bool:
     (sem dono, parado esperando o solicitante) — os "perdidos", que é o
     valor real desta auditoria."""
     return chamado.status != "fila_atendimento"
+
+
+def _saude_por_area(tecnicos: tuple[Tecnico, ...], cargas: dict[str, int]) -> list[dict]:
+    """Conta técnico cadastrado por área e monta o roster (nome + carga
+    atual no GLPI) de cada uma — extraída de `tecnicos_saude_route` só pra
+    ser testável sem precisar montar request/auth/GLPI (mesmo espírito de
+    `_chamado_para_json`, `_precisa_atencao` etc. logo abaixo). `cargas` é o
+    mesmo dict de `ClienteGLPI.carga_atual_por_tecnico` — técnico sem
+    entrada nele (nenhum chamado em `fila_atendimento` no momento) conta
+    como 0, não erro."""
+    return [
+        {
+            "area": area,
+            "rotulo": rotulo,
+            "quantidade": sum(1 for tecnico in tecnicos if tecnico.area == area),
+            "tecnicos": [
+                {"nome": tecnico.nome, "chamados_abertos": cargas.get(tecnico.identificador, 0)}
+                for tecnico in tecnicos
+                if tecnico.area == area
+            ],
+        }
+        for area, rotulo in _ROTULOS_AREA.items()
+    ]
 
 
 def _chamado_para_json(chamado: Chamado) -> dict:
@@ -484,6 +516,20 @@ def registrar(mcp) -> None:
             ],
             headers=CORS_HEADERS,
         )
+
+    @mcp.custom_route("/api/ti/tecnicos/saude", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_desenvolvedor)
+    async def tecnicos_saude_route(request: Request, usuario: dict) -> Response:
+        """Diagnóstico só-desenvolvedor: quantos técnicos existem cadastrados
+        por área (e o roster de cada uma, com carga atual no GLPI) — pra
+        pegar área com zero técnicos (escolher_tecnico estoura `ValueError`
+        nesse caso, ver `tools/ti/tecnicos.py`) antes de alguém tropeçar num
+        500 usando a tela de verdade. `todos_os_tecnicos` (Postgres, síncrona)
+        roda em thread separada; `carga_atual_por_tecnico` (GLPI) continua
+        `await` genuíno."""
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+        return JSONResponse(_saude_por_area(tecnicos, cargas), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/chamados/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)

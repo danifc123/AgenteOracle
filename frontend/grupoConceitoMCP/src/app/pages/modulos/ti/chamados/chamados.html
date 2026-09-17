@@ -11,6 +11,10 @@
   </label>
 </div>
 
+@if (sessao.ehDesenvolvedor() && saudeAreas().length > 0) {
+  <app-saude-roster class="saude-roster-topo" [areas]="saudeAreas()" />
+}
+
 @if (erro()) {
   <p class="erro">{{ erro() }}</p>
 }

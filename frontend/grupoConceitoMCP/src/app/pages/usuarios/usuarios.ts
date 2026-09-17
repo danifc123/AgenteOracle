@@ -45,7 +45,7 @@ const PAPEIS_FINANCEIRO = ['financeiro', 'financeiro_admin'];
  * Controla quando mostrar o campo de vínculo com técnico do GLPI (nem todo
  * login de TI é de alguém que atende chamado, por isso o campo continua
  * opcional mesmo aparecendo). */
-const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'desenvolvedor'];
+const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'ti_sistemas', 'ti_processos', 'desenvolvedor'];
 
 @Component({
   selector: 'app-usuarios',

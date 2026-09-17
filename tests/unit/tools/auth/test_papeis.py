@@ -2,6 +2,7 @@ from agente_oracle.tools.auth.papeis import (
     MODULOS_CONHECIDOS,
     eh_administrador,
     modulos_liberados,
+    papel_da_area,
     pode_atribuir_papel,
     sigla_modulo,
     sigla_usuario,
@@ -92,3 +93,17 @@ class TestPodeAtribuirPapel:
 
     def test_papel_alvo_inexistente_nao_pode_ser_atribuido(self):
         assert pode_atribuir_papel(["desenvolvedor"], "papel_que_nao_existe") is False
+
+
+class TestPapelDaArea:
+    def test_infra_resolve_pro_papel_infraestrutura(self):
+        assert papel_da_area("infra").slug == "ti_infraestrutura"
+
+    def test_sistemas_resolve_pro_papel_sistemas(self):
+        assert papel_da_area("sistemas").slug == "ti_sistemas"
+
+    def test_processos_resolve_pro_papel_processos(self):
+        assert papel_da_area("processos").slug == "ti_processos"
+
+    def test_area_desconhecida_devolve_none(self):
+        assert papel_da_area("area_que_nao_existe") is None

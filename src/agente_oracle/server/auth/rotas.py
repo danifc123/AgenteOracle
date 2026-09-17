@@ -410,6 +410,26 @@ def registrar(mcp) -> None:
                     headers=CORS_HEADERS,
                 )
 
+            # Papel escolhido na tela e área descoberta no GLPI são
+            # independentes por padrão — sem essa checagem, dá pra cadastrar
+            # um técnico de "sistemas" com papel "Infraestrutura de TI" sem
+            # ninguém perceber (aconteceu de verdade: usuário "Carlos Teste",
+            # área real "sistemas", papel escolhido "ti_infraestrutura").
+            # `ti_admin` fica isento — acesso geral de TI, não amarrado a
+            # uma área específica.
+            if "ti_admin" not in papeis_pedidos:
+                papel_area = papeis.papel_da_area(area_ti)
+                if papel_area is not None and papel_area.slug not in papeis_pedidos:
+                    return JSONResponse(
+                        {
+                            "erro": f'Este técnico pertence à área "{papel_area.rotulo}" no GLPI — '
+                            f'selecione o papel "{papel_area.rotulo}" (ou "Administrador de TI") '
+                            "pra continuar."
+                        },
+                        status_code=400,
+                        headers=CORS_HEADERS,
+                    )
+
         return await to_thread.run_sync(
             _criar_usuario_e_responder,
             usuario_logado,

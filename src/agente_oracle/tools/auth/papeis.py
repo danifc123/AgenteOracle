@@ -35,6 +35,11 @@ class Papel:
     modulos: tuple[str, ...] = ()
     administrador: bool = False
     acesso_total: bool = False
+    # Área do GLPI (`tools/ti/glpi.py::AreaChamado` — "infra"/"sistemas"/
+    # "processos") que este papel corresponde, só pros 3 papéis de área de
+    # TI. Tipo `str` solto, não `AreaChamado`, de propósito: evita acoplar
+    # `tools/auth` a `tools/ti` só por causa de um type hint.
+    area_ti: str | None = None
 
 
 # NOTA DE SEGURANÇA (revisão de 2026): `desenvolvedor` concentra bastante
@@ -68,7 +73,9 @@ PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="rh_admin", rotulo="Administrador do RH", modulos=("rh",), administrador=True),
     Papel(slug="rh", rotulo="Time do RH", modulos=("rh",)),
     Papel(slug="ti_admin", rotulo="Administrador de TI", modulos=("ti",), administrador=True),
-    Papel(slug="ti_infraestrutura", rotulo="Infraestrutura de TI", modulos=("ti",)),
+    Papel(slug="ti_infraestrutura", rotulo="Infraestrutura de TI", modulos=("ti",), area_ti="infra"),
+    Papel(slug="ti_sistemas", rotulo="Sistemas de TI", modulos=("ti",), area_ti="sistemas"),
+    Papel(slug="ti_processos", rotulo="Processos de TI", modulos=("ti",), area_ti="processos"),
 )
 
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}
@@ -108,6 +115,14 @@ def pode_atribuir_papel(papeis_de_quem_cria: list[str], papel_alvo: str) -> bool
     if not alvo.acesso_total:
         return True
     return any(papel.acesso_total for papel in _papeis_validos(papeis_de_quem_cria))
+
+
+def papel_da_area(area_ti: str) -> Papel | None:
+    """Papel de TI que corresponde a uma área do GLPI (`tools/ti/glpi.py::
+    AreaChamado`) — usado por `usuarios_route` pra exigir que quem tem
+    técnico vinculado também tenha o papel certo da área descoberta, não
+    um papel de outra área ou nenhum papel de área específica."""
+    return next((papel for papel in PAPEIS_DISPONIVEIS if papel.area_ti == area_ti), None)
 
 
 def sigla_modulo(modulo: str) -> str:

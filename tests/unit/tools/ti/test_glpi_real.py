@@ -63,6 +63,19 @@ class _GlpiApiFake:
         self.usuarios_technician: list[dict] = [
             {"id": 7, "firstname": "Pablo", "realname": "Godoi", "title": {"name": "Analista de Infra"}}
         ]
+        # Usuários por id (ver `buscar_email_do_tecnico`) — formato
+        # `emails[]` confirmado ao vivo contra a instância real, inclusive o
+        # `is_default` decidindo qual item é o e-mail "oficial" da pessoa.
+        self.usuarios_por_id: dict[int, dict] = {
+            7: {
+                "id": 7,
+                "emails": [
+                    {"id": 1, "email": "pablo.antigo@grupoconceito.com", "is_default": 0},
+                    {"id": 2, "email": "pablo.godoi@grupoconceito.com", "is_default": 1},
+                ],
+            },
+            8: {"id": 8, "emails": []},
+        }
         # Grupos por usuário (ver `buscar_area_do_tecnico`) — formato
         # confirmado ao vivo contra `Group_User` da API Legada.
         self.grupos_por_usuario: dict[int, list[dict]] = {
@@ -141,9 +154,14 @@ class _GlpiApiFake:
             conteudo, content_type = self.documentos[documento_id]
             return httpx.Response(200, content=conteudo, headers={"content-type": content_type})
         if caminho == "/api.php/v2.3/Administration/User" and metodo == "GET":
-            if request.url.params.get("filter") != "default_profile.id==6":
-                return httpx.Response(200, json=[])
-            return httpx.Response(200, json=self.usuarios_technician)
+            filtro = request.url.params.get("filter")
+            if filtro == "default_profile.id==6":
+                return httpx.Response(200, json=self.usuarios_technician)
+            if filtro and filtro.startswith("id=="):
+                usuario_id = int(filtro.removeprefix("id=="))
+                usuario = self.usuarios_por_id.get(usuario_id)
+                return httpx.Response(200, json=[usuario] if usuario else [])
+            return httpx.Response(200, json=[])
         if caminho.startswith("/legacy/User/") and caminho.endswith("/Group_User") and metodo == "GET":
             usuario_id = int(caminho.removeprefix("/legacy/User/").removesuffix("/Group_User"))
             return httpx.Response(200, json=self.grupos_por_usuario.get(usuario_id, []))
@@ -619,3 +637,22 @@ class TestBuscarAreaDoTecnico:
         cliente = _cliente_fake(_GlpiApiFake(), com_api_legada=True)
 
         assert await cliente.buscar_area_do_tecnico("999") is None
+
+
+class TestBuscarEmailDoTecnico:
+    async def test_devolve_o_email_marcado_como_padrao(self):
+        # Pablo (fake) tem 2 e-mails — só o `is_default: 1` deve voltar,
+        # não o primeiro da lista.
+        cliente = _cliente_fake(_GlpiApiFake())
+
+        assert await cliente.buscar_email_do_tecnico("7") == "pablo.godoi@grupoconceito.com"
+
+    async def test_usuario_sem_email_nenhum_devolve_none(self):
+        cliente = _cliente_fake(_GlpiApiFake())
+
+        assert await cliente.buscar_email_do_tecnico("8") is None
+
+    async def test_usuario_inexistente_devolve_none(self):
+        cliente = _cliente_fake(_GlpiApiFake())
+
+        assert await cliente.buscar_email_do_tecnico("999") is None

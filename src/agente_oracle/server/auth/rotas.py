@@ -182,10 +182,17 @@ def _criar_usuario_e_responder(
     papeis_pedidos: list[str],
     tecnico_glpi_id: str | None,
     area_ti: str | None,
+    email: str | None,
 ) -> Response:
     try:
         usuario_criado = criar_usuario(
-            usuario, senha, nome, papeis_pedidos, tecnico_glpi_id=tecnico_glpi_id, area_ti=area_ti
+            usuario,
+            senha,
+            nome,
+            papeis_pedidos,
+            tecnico_glpi_id=tecnico_glpi_id,
+            area_ti=area_ti,
+            email=email,
         )
     except UsuarioJaExiste as erro:
         return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
@@ -368,6 +375,7 @@ def registrar(mcp) -> None:
         # de checar isso.
         tecnico_glpi_id_bruto = corpo.get("tecnico_glpi_id") or None
         tecnico_glpi_id = str(tecnico_glpi_id_bruto).strip() if tecnico_glpi_id_bruto else None
+        email = str(corpo.get("email", "")).strip()
 
         if not usuario or not senha or not nome or not papeis_pedidos:
             return JSONResponse(
@@ -392,19 +400,51 @@ def registrar(mcp) -> None:
                 headers=CORS_HEADERS,
             )
 
+        # Papel de TI (qualquer um, `ti_admin` incluso) exige vínculo com um
+        # técnico real do GLPI — sem isso, alguém de outro departamento
+        # (qualquer administrador de módulo pode cadastrar usuário, não só
+        # TI) conseguiria criar um login de TI sem nenhum registro
+        # correspondente no GLPI, pulando toda validação abaixo.
+        papeis_ti_selecionados = set(papeis_pedidos) & papeis.PAPEIS_TI_EXIGEM_TECNICO_GLPI
+        if papeis_ti_selecionados and tecnico_glpi_id is None:
+            return JSONResponse(
+                {"erro": "Papel de TI exige um técnico do GLPI vinculado."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
         area_ti = None
         if tecnico_glpi_id is not None:
             # Área não é escolhida na mão — vem do grupo técnico manual da
             # pessoa no GLPI (ver `ClienteGLPIReal.buscar_area_do_tecnico`).
-            # Campo opcional pra QUALQUER papel (não só os de TI, não
-            # obrigatório nem pros de TI) — nem todo login do módulo TI é
-            # de alguém que atende chamado.
             area_ti = await criar_cliente(settings).buscar_area_do_tecnico(tecnico_glpi_id)
             if area_ti is None:
                 return JSONResponse(
                     {
                         "erro": "Não foi possível determinar a área desse técnico no GLPI — "
                         "confira se ele tem um grupo técnico específico atribuído."
+                    },
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+
+            # E-mail confirma que quem está sendo vinculado é de fato a
+            # pessoa que quem cadastra pensa que é — a lista de técnicos
+            # (`/api/ti/tecnicos-glpi`) é só nome, e nome sozinho não
+            # distingue duas pessoas parecidas (ex: dois "Carlos").
+            if not email:
+                return JSONResponse(
+                    {"erro": "Informe o e-mail dessa pessoa pra confirmar que é o técnico certo do GLPI."},
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+
+            email_glpi = await criar_cliente(settings).buscar_email_do_tecnico(tecnico_glpi_id)
+            if email_glpi is None or email_glpi.strip().lower() != email.lower():
+                return JSONResponse(
+                    {
+                        "erro": "O e-mail informado não bate com o e-mail desse técnico no GLPI — "
+                        "confira se escolheu a pessoa certa na lista."
                     },
                     status_code=400,
                     headers=CORS_HEADERS,
@@ -439,4 +479,5 @@ def registrar(mcp) -> None:
             papeis_pedidos,
             tecnico_glpi_id,
             area_ti,
+            email or None,
         )

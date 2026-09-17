@@ -81,6 +81,7 @@ export class Usuarios {
   formSenha = signal('');
   formPapeis = signal<string[]>([]);
   formTecnicoGlpiId = signal<string | null>(null);
+  formEmail = signal('');
 
   tecnicosGlpiDisponiveis = signal<TecnicoGlpi[]>([]);
 
@@ -116,9 +117,12 @@ export class Usuarios {
       }),
     );
 
-  /** Só aparece pra papel de TI — não é obrigatório mesmo aparecendo, nem
-   * todo login do módulo é de alguém que atende chamado. Mesmo padrão de
-   * `usuarioTemFinanceiro`. */
+  /** Só aparece pra papel de TI — e, diferente de antes, agora é
+   * obrigatório (junto com o e-mail) sempre que aparece: papel de TI sem
+   * técnico do GLPI vinculado é rejeitado pelo backend (`usuarios_route`),
+   * pra ninguém de outro módulo conseguir criar um login de TI sem
+   * registro correspondente no GLPI. Mesmo padrão de `usuarioTemFinanceiro`
+   * pra decidir quando mostrar. */
   protected readonly mostrarCampoTecnico = computed(() =>
     this.formPapeis().some((papel) => PAPEIS_TI.includes(papel)),
   );
@@ -188,6 +192,7 @@ export class Usuarios {
     this.formSenha.set('');
     this.formPapeis.set([]);
     this.formTecnicoGlpiId.set(null);
+    this.formEmail.set('');
     this.erroForm.set(null);
     this.dialogAberto.set(true);
     this.carregarTecnicosGlpiDisponiveis();
@@ -281,6 +286,14 @@ export class Usuarios {
       return;
     }
 
+    // Campo visível (papel de TI selecionado) = campo obrigatório — a regra
+    // de QUAL papel exige o quê mora só no backend (`usuarios_route`), aqui
+    // só evita a viagem ao servidor pra um erro óbvio.
+    if (this.mostrarCampoTecnico() && (!this.formTecnicoGlpiId() || !this.formEmail().trim())) {
+      this.erroForm.set('Papel de TI exige técnico do GLPI vinculado e o e-mail dessa pessoa.');
+      return;
+    }
+
     this.criando.set(true);
     this.erroForm.set(null);
 
@@ -291,6 +304,7 @@ export class Usuarios {
         senha: this.formSenha(),
         papeis: this.formPapeis(),
         tecnico_glpi_id: this.formTecnicoGlpiId(),
+        email: this.formEmail().trim() || null,
       })
       .subscribe({
         next: () => {

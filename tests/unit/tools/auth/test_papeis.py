@@ -1,5 +1,6 @@
 from agente_oracle.tools.auth.papeis import (
     MODULOS_CONHECIDOS,
+    PAPEIS_TI_EXIGEM_TECNICO_GLPI,
     eh_administrador,
     modulos_liberados,
     papel_da_area,
@@ -107,3 +108,16 @@ class TestPapelDaArea:
 
     def test_area_desconhecida_devolve_none(self):
         assert papel_da_area("area_que_nao_existe") is None
+
+
+class TestPapeisTiExigemTecnicoGlpi:
+    def test_contem_exatamente_os_4_papeis_de_ti(self):
+        # Guarda contra alguém adicionar um papel de TI novo e esquecer de
+        # incluir aqui — sem isso, o novo papel escaparia da exigência de
+        # vínculo com técnico do GLPI (`usuarios_route`).
+        assert {
+            "ti_admin",
+            "ti_infraestrutura",
+            "ti_sistemas",
+            "ti_processos",
+        } == PAPEIS_TI_EXIGEM_TECNICO_GLPI

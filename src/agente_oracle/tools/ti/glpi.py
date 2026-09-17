@@ -141,6 +141,8 @@ class ClienteGLPI(Protocol):
 
     async def buscar_area_do_tecnico(self, usuario_id: str) -> AreaChamado | None: ...
 
+    async def buscar_email_do_tecnico(self, usuario_id: str) -> str | None: ...
+
 
 # Códigos confirmados contra o schema `status` da instância real (campo
 # `status.id` do Ticket, enum documentado no Swagger): 1=Novo, 10=Aprovação,
@@ -563,6 +565,25 @@ class ClienteGLPIReal:
             if area is not None:
                 return area
         return None
+
+    async def buscar_email_do_tecnico(self, usuario_id: str) -> str | None:
+        """E-mail real do técnico no GLPI (`emails[]`, item com `is_default:
+        1`) — confirmado ao vivo contra a instância real. Usado por
+        `usuarios_route` pra confirmar que quem está sendo vinculado no
+        cadastro é de fato a mesma pessoa que quem cadastra pensa que é
+        (evita clicar no nome errado numa lista com gente parecida). Ao
+        contrário de `buscar_area_do_tecnico`, não depende da API Legada —
+        `emails` já vem no payload da v2.3."""
+        resposta = await self._requisicao(
+            "GET", "/api.php/v2.3/Administration/User", params={"filter": f"id=={usuario_id}"}
+        )
+        resposta.raise_for_status()
+        itens = resposta.json()
+        if not itens:
+            return None
+        emails = itens[0].get("emails") or []
+        padrao = next((item["email"] for item in emails if item.get("is_default")), None)
+        return padrao or (emails[0]["email"] if emails else None)
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None:
         # `area` não tem onde ir no payload de TeamMember — se a instância

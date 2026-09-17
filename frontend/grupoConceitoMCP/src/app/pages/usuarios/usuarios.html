@@ -107,11 +107,28 @@
 
     @if (mostrarCampoTecnico()) {
       <app-select-busca
-        rotulo="Técnico do GLPI (opcional)"
-        placeholder="Nenhum — este login não atende chamado"
+        rotulo="Técnico do GLPI"
+        placeholder="Selecione o técnico"
         [opcoes]="opcoesTecnicosGlpi()"
         [(valor)]="formTecnicoGlpiId"
       />
+
+      <label class="campo">
+        <span>E-mail corporativo dessa pessoa</span>
+        <input
+          type="email"
+          [value]="formEmail()"
+          (input)="formEmail.set($any($event.target).value)"
+          autocomplete="off"
+          placeholder="nome.sobrenome@grupoconceito.com"
+        />
+      </label>
+
+      <p class="dialog-filiais-instrucao">
+        Papel de TI exige um técnico do GLPI vinculado — o e-mail confirma que é a pessoa certa
+        (confere com o e-mail real dela no GLPI). Sem isso, este usuário não vai poder receber
+        chamado atribuído automaticamente pela Auditoria de Chamados.
+      </p>
     }
 
     <label class="campo">

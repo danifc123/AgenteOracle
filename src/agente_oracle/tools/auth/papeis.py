@@ -78,6 +78,18 @@ PAPEIS_DISPONIVEIS: tuple[Papel, ...] = (
     Papel(slug="ti_processos", rotulo="Processos de TI", modulos=("ti",), area_ti="processos"),
 )
 
+# Papéis de TI que passam a exigir vínculo com um técnico real do GLPI
+# (`tecnico_glpi_id`) — fecha a brecha de alguém de outro departamento
+# (qualquer administrador de módulo pode cadastrar usuário, não só TI)
+# conseguir criar um login de TI sem nenhum registro correspondente no
+# GLPI. `desenvolvedor` fica de fora de propósito: é acesso de engenharia/
+# acesso total, não um papel "do departamento de TI" no sentido de
+# atendimento de chamado — `modulos=("ti",)` nele é só porque `acesso_total`
+# já libera todo módulo, não uma afirmação de que é um papel de área de TI.
+PAPEIS_TI_EXIGEM_TECNICO_GLPI: frozenset[str] = frozenset(
+    {"ti_admin", "ti_infraestrutura", "ti_sistemas", "ti_processos"}
+)
+
 _PAPEIS_POR_SLUG: dict[str, Papel] = {papel.slug: papel for papel in PAPEIS_DISPONIVEIS}
 
 

@@ -5,16 +5,18 @@
       <span class="saude-fonte">Fonte: GLPI · painel de diagnóstico</span>
     </div>
     @if (vazias() > 0) {
-      <span class="selo selo--atencao">
+      <app-selo
+        tom="atencao"
+        [texto]="vazias() + ' de ' + total() + ' ' + plural(vazias(), 'área sem técnico', 'áreas sem técnico')"
+      >
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
           <path d="M12 9v4" /><path d="M12 17h.01" />
         </svg>
-        {{ vazias() }} de {{ total() }} {{ plural(vazias(), 'área sem técnico', 'áreas sem técnico') }}
-      </span>
+      </app-selo>
     } @else {
-      <span class="selo selo--ok">Todas as áreas cobertas</span>
+      <app-selo tom="ok" texto="Todas as áreas cobertas" />
     }
   </header>
 
@@ -61,9 +63,9 @@
             }
           </span>
           @if (item.quantidade === 0) {
-            <span class="selo selo--atencao">Sem técnico</span>
+            <app-selo tom="atencao" texto="Sem técnico" />
           } @else {
-            <span class="selo selo--ok">Ativa</span>
+            <app-selo tom="ok" texto="Ativa" />
           }
         </div>
 

@@ -1,4 +1,5 @@
 import { Component, computed, inject, input } from '@angular/core';
+import { Selo } from '../selo/selo';
 import { Sessao } from '../../servicos/sessao';
 
 export interface TecnicoCarga {
@@ -37,7 +38,7 @@ export interface SaudeArea {
  * sem quebrar. */
 @Component({
   selector: 'app-saude-roster',
-  imports: [],
+  imports: [Selo],
   templateUrl: './saude-roster.html',
   styleUrl: './saude-roster.scss',
 })

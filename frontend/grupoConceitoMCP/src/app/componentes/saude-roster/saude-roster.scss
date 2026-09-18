@@ -37,28 +37,6 @@
   color: var(--color-text-muted);
 }
 
-.selo {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-// Mesmo tom de atenção já usado em `.aviso-ia` e `.badge-situacao--aguardando`.
-.selo--atencao {
-  background: rgba(232, 135, 30, 0.12);
-  color: #b5620a;
-}
-
-.selo--ok {
-  background: rgba(27, 67, 50, 0.1);
-  color: var(--color-primary);
-}
-
 .saude-cobertura {
   display: flex;
   flex-direction: column;

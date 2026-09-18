@@ -77,7 +77,7 @@ from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ti import categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
-from agente_oracle.tools.ti.tecnicos import Tecnico, escolher_tecnico, todos_os_tecnicos
+from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico, escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -526,11 +526,11 @@ def registrar(mcp) -> None:
     async def tecnicos_saude_route(request: Request, usuario: dict) -> Response:
         """Diagnóstico só-desenvolvedor: quantos técnicos existem cadastrados
         por área (e o roster de cada uma, com carga atual no GLPI) — pra
-        pegar área com zero técnicos (escolher_tecnico estoura `ValueError`
-        nesse caso, ver `tools/ti/tecnicos.py`) antes de alguém tropeçar num
-        500 usando a tela de verdade. `todos_os_tecnicos` (Postgres, síncrona)
-        roda em thread separada; `carga_atual_por_tecnico` (GLPI) continua
-        `await` genuíno."""
+        pegar área com zero técnicos (`escolher_tecnico` levanta
+        `SemTecnicoNaArea` nesse caso, ver `tools/ti/tecnicos.py`) antes de
+        alguém tropeçar nisso usando a tela de verdade. `todos_os_tecnicos`
+        (Postgres, síncrona) roda em thread separada; `carga_atual_por_tecnico`
+        (GLPI) continua `await` genuíno."""
         tecnicos = await to_thread.run_sync(todos_os_tecnicos)
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         return JSONResponse(_saude_por_area(tecnicos, cargas), headers=CORS_HEADERS)
@@ -588,16 +588,27 @@ def registrar(mcp) -> None:
 
         registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
         inicio = time.monotonic()
-        resultado = await processar_chamado_novo(
-            _cliente,
-            ollama_client,
-            settings.ollama_model,
-            chamado,
-            cargas,
-            usar_ia,
-            ja_foi_avaliado_insuficiente=registro_anterior is not None
-            and not registro_anterior.avaliacao_suficiente,
-        )
+        try:
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                settings.ollama_model,
+                chamado,
+                cargas,
+                usar_ia,
+                ja_foi_avaliado_insuficiente=registro_anterior is not None
+                and not registro_anterior.avaliacao_suficiente,
+            )
+        except SemTecnicoNaArea as erro:
+            rotulo_area = _ROTULOS_AREA.get(erro.area, erro.area)
+            return JSONResponse(
+                {
+                    "erro": f'Nenhum técnico cadastrado pra área "{rotulo_area}" — cadastre um técnico '
+                    "dessa área em Usuários antes de verificar este chamado de novo."
+                },
+                status_code=422,
+                headers=CORS_HEADERS,
+            )
         duracao_ms = round((time.monotonic() - inicio) * 1000)
         await to_thread.run_sync(
             uso_ia_chamados.registrar,

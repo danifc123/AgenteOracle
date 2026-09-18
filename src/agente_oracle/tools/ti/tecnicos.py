@@ -13,6 +13,18 @@ from agente_oracle.tools.auth.usuarios import listar_tecnicos_ti
 from agente_oracle.tools.ti.glpi import AreaChamado
 
 
+class SemTecnicoNaArea(Exception):
+    """Levantada por `escolher_tecnico` quando a área pedida não tem
+    nenhum técnico cadastrado — sem isso, `min()` estourava `ValueError`
+    cru (visto ao vivo: 500 sem mensagem útil em `chamado_verificar_route`).
+    Quem chama decide como comunicar (rota HTTP devolve erro claro; o
+    poller em background já isola falha por chamado e só loga)."""
+
+    def __init__(self, area: AreaChamado):
+        self.area = area
+        super().__init__(f'Nenhum técnico cadastrado pra área "{area}".')
+
+
 @dataclass(frozen=True)
 class Tecnico:
     nome: str
@@ -54,8 +66,15 @@ def escolher_tecnico(area: AreaChamado, cargas: dict[str, int]) -> Tecnico:
     """Escolhe o de menor carga dentro da área; empate resolvido pela
     ordem do roster (`listar_tecnicos_ti` ordena por quem cadastrou
     primeiro — determinístico, sem aleatoriedade) — `min()` já devolve o
-    primeiro em caso de empate de chave."""
-    return min(tecnicos_da_area(area), key=lambda tecnico: cargas.get(tecnico.identificador, 0))
+    primeiro em caso de empate de chave. Levanta `SemTecnicoNaArea` (em vez
+    de deixar `min()` estourar `ValueError` cru) quando a área não tem
+    ninguém cadastrado — mais raro agora que técnico é obrigatório pra
+    papel de TI, mas ainda possível (ex: único técnico de uma área foi
+    apagado)."""
+    tecnicos = tecnicos_da_area(area)
+    if not tecnicos:
+        raise SemTecnicoNaArea(area)
+    return min(tecnicos, key=lambda tecnico: cargas.get(tecnico.identificador, 0))
 
 
 def tecnicos_da_area(area: AreaChamado) -> tuple[Tecnico, ...]:

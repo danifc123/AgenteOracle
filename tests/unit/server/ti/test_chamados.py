@@ -17,7 +17,7 @@ from agente_oracle.server.ti.chamados import (
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import Chamado, Followup
-from agente_oracle.tools.ti.tecnicos import Tecnico
+from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico
 
 # `classificar_categoria` compara contra as ~211 categorias reais — pesado
 # e não-determinístico de mais pra um teste unitário. Substitui por uma
@@ -276,6 +276,23 @@ class TestProcessarChamadoNovo:
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert resultado.avaliacao_suficiente is True
         assert resultado.precisou_embedding is True
+
+    async def test_chamado_suficiente_sem_tecnico_na_area_levanta_sem_tecnico_na_area(self, monkeypatch):
+        # Antes disso, `escolher_tecnico` estourava `ValueError` cru — sem
+        # try/except em `chamado_verificar_route`, virava 500 sem mensagem
+        # útil (visto ao vivo). Sobrescreve a fixture `_roster_de_tecnicos_
+        # para_teste` (que sempre tem alguém em "infra") só pra este teste.
+        monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: [])
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=1)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        with pytest.raises(SemTecnicoNaArea) as excinfo:
+            await processar_chamado_novo(
+                cliente, ollama, "modelo-teste", _chamado(categoria_id=1), cargas, True
+            )
+
+        assert excinfo.value.area == "infra"
 
     async def test_chamado_suficiente_com_ia_atribuida_desatribui_antes_do_tecnico_real(self, monkeypatch):
         # Reavaliação depois de resposta nova (`verificar_chamados_

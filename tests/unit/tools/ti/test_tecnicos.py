@@ -1,5 +1,7 @@
+import pytest
+
 from agente_oracle.tools.ti import tecnicos as mod
-from agente_oracle.tools.ti.tecnicos import escolher_tecnico, tecnicos_da_area
+from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, escolher_tecnico, tecnicos_da_area
 
 
 def _linha(nome: str, tecnico_glpi_id: str, area_ti: str) -> dict:
@@ -61,3 +63,15 @@ class TestEscolherTecnico:
         _com_roster(monkeypatch)
         tecnico = escolher_tecnico("infra", {})
         assert tecnico.identificador == "infra1"
+
+    def test_area_sem_ninguem_levanta_sem_tecnico_na_area(self, monkeypatch):
+        # Antes disso, `min()` de uma lista vazia estourava `ValueError` cru
+        # — virava 500 sem mensagem útil em `chamado_verificar_route`. Mais
+        # raro agora que técnico é obrigatório pra papel de TI, mas ainda
+        # possível (ex: único técnico de uma área foi apagado).
+        _com_roster(monkeypatch, [_linha("Infra 1", "infra1", "infra")])
+
+        with pytest.raises(SemTecnicoNaArea) as excinfo:
+            escolher_tecnico("processos", {})
+
+        assert excinfo.value.area == "processos"

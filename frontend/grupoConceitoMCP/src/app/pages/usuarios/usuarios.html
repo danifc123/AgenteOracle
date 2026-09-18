@@ -50,11 +50,11 @@
             <td>{{ rotuloPapeis(usuario.papeis) }}</td>
             <td>
               @if (usuario.bloqueado) {
-                <span class="badge-bloqueado">Bloqueado</span>
+                <app-selo tom="erro" texto="Bloqueado" />
               } @else if (usuario.ativo) {
-                <span class="badge-ativo">Ativo</span>
+                <app-selo tom="ok" texto="Ativo" />
               } @else {
-                <span class="badge-inativo">Inativo</span>
+                <app-selo tom="neutro" texto="Inativo" />
               }
             </td>
             <td class="acoes">

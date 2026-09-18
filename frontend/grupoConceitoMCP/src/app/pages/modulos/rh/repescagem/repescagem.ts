@@ -4,6 +4,7 @@ import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/deta
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
+import { Selo } from '../../../../componentes/selo/selo';
 import { AnaliseCurriculo, Candidato, ROTULOS_SENIORIDADE } from '../../../../servicos/analise-curriculo';
 import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos';
 
@@ -30,7 +31,7 @@ type ModoRepescagem = 'lista' | 'busca';
  */
 @Component({
   selector: 'app-repescagem',
-  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader],
+  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, Selo],
   templateUrl: './repescagem.html',
   styleUrl: './repescagem.scss',
 })

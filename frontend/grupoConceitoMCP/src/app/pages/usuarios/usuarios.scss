@@ -73,35 +73,6 @@
   }
 }
 
-.badge-ativo {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #1f7a4a;
-  background: rgba(31, 122, 74, 0.12);
-}
-
-.badge-inativo {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  background: var(--color-bg);
-}
-
-.badge-bloqueado {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #9a2f2f;
-  background: rgba(154, 47, 47, 0.12);
-}
 
 
 .form-usuario {

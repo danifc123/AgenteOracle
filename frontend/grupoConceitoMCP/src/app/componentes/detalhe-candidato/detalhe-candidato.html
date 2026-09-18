@@ -2,12 +2,12 @@
   <p class="resumo-completo">{{ resumo() }}</p>
 
   <div class="linha-meta-badges">
-    <span class="badge-meta">{{ rotuloSenioridade(perfilEstruturado().nivel_senioridade) }}</span>
-    @if (perfilEstruturado().area_atuacao_principal) {
-      <span class="badge-meta">{{ perfilEstruturado().area_atuacao_principal }}</span>
+    <app-selo tom="neutro" [texto]="rotuloSenioridade(perfilEstruturado().nivel_senioridade)" />
+    @if (perfilEstruturado().area_atuacao_principal; as area) {
+      <app-selo tom="neutro" [texto]="area" />
     }
-    @if (perfilEstruturado().anos_experiencia_total) {
-      <span class="badge-meta">{{ perfilEstruturado().anos_experiencia_total }} anos de experiência</span>
+    @if (perfilEstruturado().anos_experiencia_total; as anos) {
+      <app-selo tom="neutro" [texto]="anos + ' anos de experiência'" />
     }
   </div>
 

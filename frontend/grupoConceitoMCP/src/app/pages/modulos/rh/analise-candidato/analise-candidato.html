@@ -101,9 +101,9 @@
               <span class="similaridade">{{ percentual(resultado.similaridade) }} de similaridade</span>
             </div>
             <div class="linha-meta-badges">
-              <span class="badge-meta">{{ rotuloSenioridade(resultado) }}</span>
-              @if (resultado.area_atuacao_principal) {
-                <span class="badge-meta">{{ resultado.area_atuacao_principal }}</span>
+              <app-selo tom="neutro" [texto]="rotuloSenioridade(resultado)" />
+              @if (resultado.area_atuacao_principal; as area) {
+                <app-selo tom="neutro" [texto]="area" />
               }
             </div>
             <p class="justificativa">{{ resultado.justificativa }}</p>

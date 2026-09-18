@@ -5,6 +5,7 @@ import { MCP_API_BASE_URL } from '../../../app-config';
 import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
+import { Selo } from '../../../componentes/selo/selo';
 import { Auditoria } from '../../../servicos/auditoria';
 import {
   compararValores,
@@ -27,7 +28,7 @@ export interface AchadoHistorico {
 
 @Component({
   selector: 'app-auditoria-historico',
-  imports: [DatePipe, EstadoVazio, IconeOrdenacao, ModuloHeader],
+  imports: [DatePipe, EstadoVazio, IconeOrdenacao, ModuloHeader, Selo],
   templateUrl: './auditoria-historico.html',
   styleUrl: './auditoria-historico.scss',
 })

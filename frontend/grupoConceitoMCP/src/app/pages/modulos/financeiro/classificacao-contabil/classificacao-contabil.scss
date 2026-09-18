@@ -79,24 +79,6 @@
   flex-wrap: wrap;
 }
 
-.badge-confianca {
-  display: inline-flex;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.badge-confianca--alta {
-  background: rgba(47, 158, 88, 0.15);
-  color: #2f9e58;
-}
-
-.badge-confianca--media {
-  background: rgba(232, 135, 30, 0.15);
-  color: #e8871e;
-}
-
 .valor-sugestao {
   margin-left: auto;
   font-weight: 600;

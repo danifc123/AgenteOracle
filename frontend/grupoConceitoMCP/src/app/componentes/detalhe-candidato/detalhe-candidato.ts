@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { Selo } from '../selo/selo';
 import { PerfilEstruturado } from '../../servicos/analise-curriculo';
 import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-candidato';
 
@@ -10,7 +11,7 @@ import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-
  * `<app-dialog>` que envolve ele. */
 @Component({
   selector: 'app-detalhe-candidato',
-  imports: [],
+  imports: [Selo],
   templateUrl: './detalhe-candidato.html',
   styleUrl: './detalhe-candidato.scss',
 })

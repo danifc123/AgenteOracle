@@ -51,9 +51,9 @@
               <td>
                 @if (chamado.status === 'aguardando_usuario') {
                   @if (tecnicoEscalado(chamado); as tecnico) {
-                    <span class="badge-situacao badge-situacao--escalado">Com {{ tecnico }}</span>
+                    <app-selo tom="ok" [texto]="'Com ' + tecnico" />
                   } @else {
-                    <span class="badge-situacao badge-situacao--aguardando">Aguardando resposta</span>
+                    <app-selo tom="atencao" texto="Aguardando resposta" />
                   }
                 }
               </td>
@@ -93,14 +93,14 @@
   @if (chamadoAberto(); as chamado) {
     <div class="detalhe-chamado">
       <div class="linha-meta-badges">
-        <span class="badge-meta">{{ chamado.categoria }}</span>
-        <span class="badge-meta">{{ chamado.solicitante }}</span>
-        <span class="badge-meta">{{ chamado.criado_em | date: 'dd/MM/yyyy HH:mm' }}</span>
+        <app-selo tom="neutro" [texto]="chamado.categoria" />
+        <app-selo tom="neutro" [texto]="chamado.solicitante" />
+        <app-selo tom="neutro" [texto]="(chamado.criado_em | date: 'dd/MM/yyyy HH:mm') ?? ''" />
         @if (chamado.status === 'aguardando_usuario') {
           @if (tecnicoEscalado(chamado); as tecnico) {
-            <span class="badge-situacao badge-situacao--escalado">Com {{ tecnico }}</span>
+            <app-selo tom="ok" [texto]="'Com ' + tecnico" />
           } @else {
-            <span class="badge-situacao badge-situacao--aguardando">Aguardando resposta</span>
+            <app-selo tom="atencao" texto="Aguardando resposta" />
           }
         }
       </div>

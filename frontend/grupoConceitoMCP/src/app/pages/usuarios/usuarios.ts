@@ -8,6 +8,7 @@ import { EstadoVazio } from '../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
+import { Selo } from '../../componentes/selo/selo';
 import { SoDev } from '../../diretivas/so-dev';
 import { SoModulo } from '../../diretivas/so-modulo';
 import { mensagemErro } from '../../servicos/mensagens-erro';
@@ -59,6 +60,7 @@ const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'ti_sistemas', 'ti_processos
     IconeOrdenacao,
     ModuloHeader,
     SelectBusca,
+    Selo,
     SoDev,
     SoModulo,
   ],

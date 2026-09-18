@@ -93,7 +93,7 @@
             <td>{{ relatorio.criado_em | date: 'dd/MM/yyyy HH:mm' }}</td>
             <td>
               @if (relatorio.fixado) {
-                <span class="badge-fixado">Fixado</span>
+                <app-selo tom="atencao" texto="Fixado" />
               } @else {
                 <span class="expira-em"
                   >até {{ relatorio.expira_em | date: 'dd/MM/yyyy HH:mm' }}</span

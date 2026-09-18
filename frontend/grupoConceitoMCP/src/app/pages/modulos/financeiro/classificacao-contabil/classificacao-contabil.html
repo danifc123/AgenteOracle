@@ -93,12 +93,10 @@
         @for (sugestao of sugestoesFiltradas(); track sugestao.documento + sugestao.linha) {
           <div class="cartao-sugestao">
             <div class="cartao-sugestao-cabecalho">
-              <span
-                class="badge-confianca"
-                [class]="classeConfianca(sugestao.confianca_percentual)"
-              >
-                {{ sugestao.confianca_percentual }}% de confiança
-              </span>
+              <app-selo
+                [tom]="tomConfianca(sugestao.confianca_percentual)"
+                [texto]="sugestao.confianca_percentual + '% de confiança'"
+              />
               <span class="valor-sugestao">{{ formatarValor(sugestao.valor) }}</span>
             </div>
             <p class="historico-sugestao">{{ sugestao.historico }}</p>

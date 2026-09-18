@@ -5,6 +5,7 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { SeletorArquivoCurriculo } from '../../../../componentes/seletor-arquivo-curriculo/seletor-arquivo-curriculo';
+import { Selo } from '../../../../componentes/selo/selo';
 import {
   AnaliseCurriculo,
   Candidato,
@@ -39,7 +40,7 @@ type ModoAnaliseCandidato = 'lista' | 'busca';
  */
 @Component({
   selector: 'app-analise-candidato',
-  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, SeletorArquivoCurriculo],
+  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, SeletorArquivoCurriculo, Selo],
   templateUrl: './analise-candidato.html',
   styleUrl: './analise-candidato.scss',
 })

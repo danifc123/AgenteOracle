@@ -8,6 +8,7 @@ import { Dialog } from '../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
+import { Selo } from '../../../componentes/selo/selo';
 import { baixarBlob } from '../../../servicos/download-arquivo';
 import { formatarSql } from '../../../servicos/formatar-sql';
 import {
@@ -30,7 +31,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe, Botao, ConfirmacaoDialog, Dialog, EstadoVazio, IconeOrdenacao, ModuloHeader],
+  imports: [DatePipe, Botao, ConfirmacaoDialog, Dialog, EstadoVazio, IconeOrdenacao, ModuloHeader, Selo],
   templateUrl: './historico.html',
   styleUrl: './historico.scss',
 })

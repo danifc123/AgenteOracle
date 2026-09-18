@@ -7,6 +7,7 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
+import { Selo } from '../../../../componentes/selo/selo';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
 
 interface Filial {
@@ -46,7 +47,7 @@ const ROTULOS_TIPO: Record<TipoAchadoDespesa, string> = {
  * nunca decide sozinha o que é suspeito, só julga candidato já real. */
 @Component({
   selector: 'app-despesas-suspeitas',
-  imports: [Botao, DecimalPipe, Dialog, EstadoVazio, ModuloHeader, SelectBusca],
+  imports: [Botao, DecimalPipe, Dialog, EstadoVazio, ModuloHeader, SelectBusca, Selo],
   templateUrl: './despesas-suspeitas.html',
   styleUrl: './despesas-suspeitas.scss',
 })
@@ -160,5 +161,9 @@ export class DespesasSuspeitas {
 
   protected rotuloTipo(tipo: TipoAchadoDespesa): string {
     return ROTULOS_TIPO[tipo];
+  }
+
+  protected tomTipo(tipo: TipoAchadoDespesa): 'atencao' | 'neutro' {
+    return tipo === 'anomalia_valor' ? 'atencao' : 'neutro';
   }
 }

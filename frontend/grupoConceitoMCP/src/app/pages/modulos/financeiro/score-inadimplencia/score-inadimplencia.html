@@ -56,7 +56,7 @@
         @for (item of scores(); track item.cliente_codigo) {
           <div class="cartao-score">
             <div class="cartao-score-cabecalho">
-              <span class="badge-score" [class]="classeScore(item.score)">{{ item.score }}</span>
+              <app-selo [tom]="tomScore(item.score)" [texto]="item.score + ''" />
               <span class="nome-cliente">{{ item.cliente_nome }}</span>
               @if (item.clima) {
                 <span class="municipio-cliente"

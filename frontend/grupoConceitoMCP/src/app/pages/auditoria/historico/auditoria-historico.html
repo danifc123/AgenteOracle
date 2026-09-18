@@ -23,7 +23,6 @@
       />
       <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
-    <h2>Nenhuma auditoria registrada ainda</h2>
     <p>
       Use o sino no topo da tela pra rodar a auditoria de dados — os achados encontrados aparecem
       aqui automaticamente.
@@ -83,9 +82,9 @@
             @if (ehDesenvolvedor()) {
               <td>
                 @if (achado.ativo) {
-                  <span class="badge-ativo">Ativo</span>
+                  <app-selo tom="ok" texto="Ativo" />
                 } @else {
-                  <span class="badge-desativado">Desativado</span>
+                  <app-selo tom="neutro" texto="Desativado" />
                 }
               </td>
               <td>

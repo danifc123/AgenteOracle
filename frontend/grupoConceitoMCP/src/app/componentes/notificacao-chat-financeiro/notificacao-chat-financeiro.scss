@@ -47,14 +47,14 @@
   height: 24px;
   border-radius: 50%;
   background: rgba(47, 158, 88, 0.14);
-  color: #2f9e58;
+  color: var(--color-primary-light);
   font-size: 13px;
   font-weight: 700;
 }
 
 .toast--erro .toast-icone {
   background: rgba(154, 47, 47, 0.14);
-  color: #9a2f2f;
+  color: var(--color-error);
 }
 
 .toast-texto {

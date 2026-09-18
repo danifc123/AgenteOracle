@@ -48,7 +48,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   font-size: 14px;
   font-weight: 600;
   padding: 10px 18px;
@@ -81,7 +81,7 @@
 }
 
 .botao--perigo {
-  color: #9a2f2f;
+  color: var(--color-error);
 }
 
 .botao--icone {
@@ -105,7 +105,7 @@
   }
 
   &.botao--pressionado {
-    color: #8a6d1a;
+    color: var(--color-warning);
   }
 }
 
@@ -125,7 +125,7 @@
 
   &:hover:not(:disabled) {
     background: var(--color-primary);
-    color: #fff;
+    color: var(--text-on-brand);
   }
 }
 
@@ -133,7 +133,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
   font-size: 14px;
   padding: 0 20px;

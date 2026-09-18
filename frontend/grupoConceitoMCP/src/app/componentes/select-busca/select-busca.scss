@@ -66,7 +66,7 @@
   width: 20px;
   height: 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: none;
   color: var(--color-text-muted);
   cursor: pointer;
@@ -149,7 +149,7 @@
   width: 14px;
   height: 14px;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   transition:
     background 0.15s ease,
     border-color 0.15s ease;

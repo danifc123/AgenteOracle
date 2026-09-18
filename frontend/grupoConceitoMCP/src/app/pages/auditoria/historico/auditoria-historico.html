@@ -7,7 +7,7 @@
 @if (carregando()) {
   <p class="carregando">Carregando...</p>
 } @else if (achados().length === 0) {
-  <div class="empty-state">
+  <app-estado-vazio titulo="Nenhuma auditoria registrada ainda" variante="simples">
     <svg
       viewBox="0 0 24 24"
       width="42"
@@ -28,7 +28,7 @@
       Use o sino no topo da tela pra rodar a auditoria de dados — os achados encontrados aparecem
       aqui automaticamente.
     </p>
-  </div>
+  </app-estado-vazio>
 } @else {
   <div class="table-wrapper">
     <table class="tabela-historico">

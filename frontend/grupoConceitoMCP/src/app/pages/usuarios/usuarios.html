@@ -11,10 +11,9 @@
 @if (carregando()) {
   <p class="carregando">Carregando usuários...</p>
 } @else if (usuarios().length === 0) {
-  <div class="empty-state">
-    <h2>Nenhum usuário cadastrado</h2>
+  <app-estado-vazio titulo="Nenhum usuário cadastrado" variante="simples">
     <p>Use o botão "Novo usuário" pra cadastrar o primeiro.</p>
-  </div>
+  </app-estado-vazio>
 } @else {
   <div class="table-wrapper">
     <table class="tabela-usuarios">

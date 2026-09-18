@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
+import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { Auditoria } from '../../../servicos/auditoria';
@@ -26,7 +27,7 @@ export interface AchadoHistorico {
 
 @Component({
   selector: 'app-auditoria-historico',
-  imports: [DatePipe, IconeOrdenacao, ModuloHeader],
+  imports: [DatePipe, EstadoVazio, IconeOrdenacao, ModuloHeader],
   templateUrl: './auditoria-historico.html',
   styleUrl: './auditoria-historico.scss',
 })

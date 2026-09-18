@@ -4,6 +4,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
 import { Dialog } from '../../../componentes/dialog/dialog';
+import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { baixarBlob } from '../../../servicos/download-arquivo';
@@ -28,7 +29,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe, Botao, Dialog, IconeOrdenacao, ModuloHeader],
+  imports: [DatePipe, Botao, Dialog, EstadoVazio, IconeOrdenacao, ModuloHeader],
   templateUrl: './historico.html',
   styleUrl: './historico.scss',
 })

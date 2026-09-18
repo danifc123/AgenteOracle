@@ -4,6 +4,7 @@ import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { ConfirmacaoDialog } from '../../componentes/confirmacao-dialog/confirmacao-dialog';
 import { Dialog } from '../../componentes/dialog/dialog';
+import { EstadoVazio } from '../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
@@ -50,7 +51,17 @@ const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'ti_sistemas', 'ti_processos
 
 @Component({
   selector: 'app-usuarios',
-  imports: [Botao, ConfirmacaoDialog, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca, SoDev, SoModulo],
+  imports: [
+    Botao,
+    ConfirmacaoDialog,
+    Dialog,
+    EstadoVazio,
+    IconeOrdenacao,
+    ModuloHeader,
+    SelectBusca,
+    SoDev,
+    SoModulo,
+  ],
   templateUrl: './usuarios.html',
   styleUrl: './usuarios.scss',
 })

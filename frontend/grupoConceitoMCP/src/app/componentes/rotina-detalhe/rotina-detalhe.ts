@@ -1,5 +1,5 @@
 import { Component, inject, input, model, output } from '@angular/core';
-import { CampoFiltro, RotinaFinanceira } from '../../dadosRelatorios/modulos-financeiro';
+import { CampoFiltro, RotinaFinanceira } from '../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { CoresCategoria } from '../../servicos/cores-categoria/cores-categoria';
 import { Botao } from '../botao/botao';
 import { CampoFiltroDinamico } from '../campo-filtro-dinamico/campo-filtro-dinamico';

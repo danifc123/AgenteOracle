@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../app-config';
-import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts';
+import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
 import { CoresCategoria } from '../../servicos/cores-categoria/cores-categoria';
 import { iniciais } from '../../servicos/iniciais/iniciais';
 import { mensagemErro } from '../../servicos/mensagens-erro/mensagens-erro';

@@ -21,7 +21,7 @@ import {
   CampoFiltro,
   MODULOS_FINANCEIRO,
   RotinaFinanceira,
-} from '../../../dadosRelatorios/modulos-financeiro';
+} from '../../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { CoresCategoria } from '../../../servicos/cores-categoria/cores-categoria';
 import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo/download-arquivo';
 

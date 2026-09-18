@@ -1,7 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, effect, input, model, output, signal } from '@angular/core';
-import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro';
-import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras';
+import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
+import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras/views-financeiras';
 import { AlternadorListaFaixa } from '../alternador-lista-faixa/alternador-lista-faixa';
 import { Botao } from '../botao/botao';
 import { CampoFiltroDinamico } from '../campo-filtro-dinamico/campo-filtro-dinamico';

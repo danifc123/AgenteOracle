@@ -2,7 +2,7 @@
  * reais assim que existir a consulta SQL desse módulo (ver `estoque.ts`).
  * Mesmo formato de `views-financeiras.ts`, reaproveitado aqui. */
 
-import { ViewFinanceira } from './views-financeiras';
+import { ViewFinanceira } from '../views-financeiras/views-financeiras';
 
 export const MOCK_VIEWS_ESTOQUE: ViewFinanceira[] = [
   {

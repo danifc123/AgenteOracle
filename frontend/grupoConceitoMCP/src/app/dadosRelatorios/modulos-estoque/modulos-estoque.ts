@@ -4,7 +4,7 @@
  * então a tela mostra o mesmo placeholder "relatório ainda não disponível"
  * já usado no Financeiro pra rotinas sem backend. */
 
-import { RotinaFinanceira } from './modulos-financeiro';
+import { RotinaFinanceira } from '../modulos-financeiro/modulos-financeiro';
 
 export const ROTINAS_ESTOQUE: RotinaFinanceira[] = [
   {

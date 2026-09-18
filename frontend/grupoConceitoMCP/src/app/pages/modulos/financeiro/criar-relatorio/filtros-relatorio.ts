@@ -1,4 +1,4 @@
-import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras/views-financeiras';
 
 type ColunasSelecionadas = Record<string, string[]>;
 type ValoresFiltros = Record<string, string>;

@@ -1,4 +1,4 @@
-import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras/views-financeiras';
 import { filtrosPorColuna } from './filtros-relatorio';
 
 const views: ViewFinanceira[] = [

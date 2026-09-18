@@ -1,5 +1,5 @@
 import { Component, inject, input, output } from '@angular/core';
-import { RotinaFinanceira } from '../../dadosRelatorios/modulos-financeiro';
+import { RotinaFinanceira } from '../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { CoresCategoria } from '../../servicos/cores-categoria/cores-categoria';
 
 @Component({

@@ -9,8 +9,8 @@ import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-bu
 import { TabelaDetalhe } from '../../../../componentes/tabela-detalhe/tabela-detalhe';
 import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
-import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
-import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
+import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
+import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras/views-financeiras';
 import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo/download-arquivo';
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { filtrosPorColuna } from './filtros-relatorio';

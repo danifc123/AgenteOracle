@@ -10,8 +10,8 @@ import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-heade
 import { RotinaDetalhe } from '../../../../componentes/rotina-detalhe/rotina-detalhe';
 import { RotinaItem } from '../../../../componentes/rotina-item/rotina-item';
 import { OpcaoSelectBusca } from '../../../../componentes/select-busca/select-busca';
-import { CampoFiltro, RotinaFinanceira } from '../../../../dadosRelatorios/modulos-financeiro';
-import { ROTINAS_ESTOQUE } from '../../../../dadosRelatorios/modulos-estoque';
+import { CampoFiltro, RotinaFinanceira } from '../../../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
+import { ROTINAS_ESTOQUE } from '../../../../dadosRelatorios/modulos-estoque/modulos-estoque';
 import { CoresCategoria } from '../../../../servicos/cores-categoria/cores-categoria';
 
 const LIMITE_FIXADOS = 3;

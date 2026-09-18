@@ -1,5 +1,5 @@
 import { Directive, TemplateRef, ViewContainerRef, effect, inject } from '@angular/core';
-import { Sessao } from '../servicos/sessao';
+import { Sessao } from '../../servicos/sessao/sessao';
 
 /** Estrutural — só renderiza o conteúdo pra quem tem algum papel
  * administrador (`sessao.administrador()`, verdadeiro pra qualquer papel

@@ -1,5 +1,5 @@
 import { Directive, TemplateRef, ViewContainerRef, effect, inject, input } from '@angular/core';
-import { Sessao } from '../servicos/sessao';
+import { Sessao } from '../../servicos/sessao/sessao';
 
 /** Estrutural — só renderiza o conteúdo pra quem tem acesso ao módulo
  * informado (`sessao.modulos().includes(modulo)`). Mesmo espírito de

@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Sessao } from '../servicos/sessao';
+import { Sessao } from '../../servicos/sessao/sessao';
 import { SoDev } from './so-dev';
 
 @Component({

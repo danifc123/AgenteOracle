@@ -163,3 +163,12 @@
     }}</app-botao>
   </div>
 </app-dialog>
+
+<app-confirmacao-dialog
+  [aberto]="!!relatorioParaApagar()"
+  titulo="Apagar relatório"
+  [mensagem]="mensagemConfirmacaoApagar()"
+  [confirmando]="!!apagandoId()"
+  (confirmar)="confirmarApagarRelatorio()"
+  (cancelar)="cancelarApagarRelatorio()"
+/>

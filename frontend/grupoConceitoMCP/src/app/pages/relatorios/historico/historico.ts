@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
 import { Botao } from '../../../componentes/botao/botao';
+import { ConfirmacaoDialog } from '../../../componentes/confirmacao-dialog/confirmacao-dialog';
 import { Dialog } from '../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
@@ -29,7 +30,7 @@ export interface RelatorioHistorico {
 
 @Component({
   selector: 'app-historico',
-  imports: [DatePipe, Botao, Dialog, EstadoVazio, IconeOrdenacao, ModuloHeader],
+  imports: [DatePipe, Botao, ConfirmacaoDialog, Dialog, EstadoVazio, IconeOrdenacao, ModuloHeader],
   templateUrl: './historico.html',
   styleUrl: './historico.scss',
 })
@@ -42,9 +43,17 @@ export class Historico {
   baixandoId = signal<string | null>(null);
   apagandoId = signal<string | null>(null);
   fixandoId = signal<string | null>(null);
+  relatorioParaApagar = signal<RelatorioHistorico | null>(null);
 
   relatorioSelecionado = signal<RelatorioHistorico | null>(null);
   copiado = signal(false);
+
+  protected readonly mensagemConfirmacaoApagar = computed(() => {
+    const relatorio = this.relatorioParaApagar();
+    return relatorio
+      ? `Apagar o relatório "${relatorio.titulo}"? Essa ação não pode ser desfeita.`
+      : '';
+  });
 
   sqlFormatado = computed(() => {
     const relatorio = this.relatorioSelecionado();
@@ -129,6 +138,21 @@ export class Historico {
     if (this.apagandoId()) {
       return;
     }
+    this.relatorioParaApagar.set(relatorio);
+  }
+
+  cancelarApagarRelatorio(): void {
+    if (this.apagandoId()) {
+      return;
+    }
+    this.relatorioParaApagar.set(null);
+  }
+
+  confirmarApagarRelatorio(): void {
+    const relatorio = this.relatorioParaApagar();
+    if (!relatorio || this.apagandoId()) {
+      return;
+    }
 
     this.apagandoId.set(relatorio.id);
     this.erro.set(null);
@@ -137,6 +161,7 @@ export class Historico {
       next: () => {
         this.relatorios.update((atual) => atual.filter((item) => item.id !== relatorio.id));
         this.apagandoId.set(null);
+        this.relatorioParaApagar.set(null);
       },
       error: () => {
         this.erro.set('Não foi possível apagar o relatório.');

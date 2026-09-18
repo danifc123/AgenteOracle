@@ -1,10 +1,6 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { ChatFinanceiro, ErroChat, NotificacaoChat } from '../../servicos/chat-financeiro';
-
-/** Duração que um toast fica visível antes de sumir sozinho — a notificação
- * em si continua existindo no serviço (não vista) até o usuário interagir,
- * só o cartão flutuante que some (ver docstring da classe, abaixo). */
-const DURACAO_TOAST_MS = 8000;
+import { GerenciadorToasts } from '../../servicos/gerenciador-toasts';
 
 /** Popup (canto inferior direito) avisando quando o agente termina de
  * responder — mesmo papel de `NotificacaoAnaliseCurriculo` pro RH, aqui pro
@@ -22,44 +18,24 @@ const DURACAO_TOAST_MS = 8000;
 export class NotificacaoChatFinanceiro {
   protected readonly chat = inject(ChatFinanceiro);
 
-  private readonly idsJaMostrados = new Set<string>();
-  protected readonly idsToastsVisiveis = signal<string[]>([]);
+  private readonly toasts = new GerenciadorToasts();
+  protected readonly idsToastsVisiveis = this.toasts.idsVisiveis;
 
   constructor() {
     effect(() => {
-      for (const notificacao of this.chat.notificacoes()) {
-        if (notificacao.vista || this.idsJaMostrados.has(notificacao.id)) {
-          continue;
-        }
-        this.idsJaMostrados.add(notificacao.id);
-        this.idsToastsVisiveis.update((atual) => [...atual, notificacao.id]);
-        setTimeout(() => this.removerToast(notificacao.id), DURACAO_TOAST_MS);
-      }
-      for (const erro of this.chat.erros()) {
-        if (erro.vista || this.idsJaMostrados.has(erro.id)) {
-          continue;
-        }
-        this.idsJaMostrados.add(erro.id);
-        this.idsToastsVisiveis.update((atual) => [...atual, erro.id]);
-        setTimeout(() => this.removerToast(erro.id), DURACAO_TOAST_MS);
-      }
+      this.toasts.processar(this.chat.notificacoes());
+      this.toasts.processar(this.chat.erros());
     });
-  }
-
-  // removerToast é usada por descartar, descartarErro E verConversa —
-  // compartilhada, fica antes das três.
-  private removerToast(notificacaoId: string): void {
-    this.idsToastsVisiveis.update((atual) => atual.filter((item) => item !== notificacaoId));
   }
 
   protected descartar(notificacaoId: string): void {
     this.chat.marcarComoVista(notificacaoId);
-    this.removerToast(notificacaoId);
+    this.toasts.remover(notificacaoId);
   }
 
   protected descartarErro(erroId: string): void {
     this.chat.marcarErroComoVisto(erroId);
-    this.removerToast(erroId);
+    this.toasts.remover(erroId);
   }
 
   protected erroPorId(erroId: string): ErroChat | null {
@@ -71,7 +47,7 @@ export class NotificacaoChatFinanceiro {
   }
 
   protected verConversa(notificacaoId: string): void {
-    this.removerToast(notificacaoId);
+    this.toasts.remover(notificacaoId);
     this.chat.abrirConversa(notificacaoId);
   }
 }

@@ -119,6 +119,7 @@ export class Sessao {
 
   readonly autenticado = () => this._dados() !== null;
   readonly token = () => this._dados()?.token ?? null;
+  readonly usuario = () => this._dados()?.usuario ?? '';
   readonly nome = () => this._dados()?.nome ?? '';
   readonly foto = () => this._dados()?.foto ?? null;
   readonly papeis = () => this._dados()?.papeis ?? [];

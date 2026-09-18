@@ -220,6 +220,21 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  // Transparente por padrão — só ganha cor quando é a própria linha do
+  // usuário logado (`.tecnico--voce`), pra não competir visualmente com o
+  // resto do roster.
+  border-left: 3px solid transparent;
+}
+
+// A própria linha do usuário logado (`ehVoce()`, comparado por login, não
+// por nome) — laranja de destaque (`--color-accent`), diferente do verde
+// usado pro resto do roster, pra saltar aos olhos sem precisar ler nome
+// por nome quantos chamados a pessoa logada tem.
+.tecnico--voce {
+  background: rgba(232, 135, 30, 0.08);
+  border-left-color: var(--color-accent);
 }
 
 .tecnico-inicial {
@@ -233,6 +248,11 @@
   color: var(--color-primary);
   font-size: 11px;
   font-weight: 600;
+
+  .tecnico--voce & {
+    background: rgba(232, 135, 30, 0.16);
+    color: var(--color-accent-dark);
+  }
 }
 
 .tecnico-dados {
@@ -244,11 +264,26 @@
 }
 
 .tecnico-nome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
   font-size: 12.5px;
   color: var(--color-text);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tecnico-selo-voce {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 // Carga relativa ao técnico mais carregado do roster — serve pra ver
@@ -265,10 +300,23 @@
     border-radius: 999px;
     background: var(--color-primary);
   }
+
+  .tecnico--voce & {
+    background: rgba(232, 135, 30, 0.14);
+
+    i {
+      background: var(--color-accent);
+    }
+  }
 }
 
 .tecnico-carga {
   flex: 0 0 auto;
   font-size: 11.5px;
   color: var(--color-text-muted);
+
+  .tecnico--voce & {
+    color: var(--color-accent-dark);
+    font-weight: 600;
+  }
 }

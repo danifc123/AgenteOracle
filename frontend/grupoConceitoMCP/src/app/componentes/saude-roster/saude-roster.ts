@@ -1,7 +1,12 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
+import { Sessao } from '../../servicos/sessao';
 
 export interface TecnicoCarga {
   nome: string;
+  /** Login do AgenteOracle (não do GLPI) — usado só pra destacar "esse
+   * técnico é o usuário logado" no roster (mais confiável que comparar por
+   * `nome`, que pode se repetir entre pessoas diferentes). */
+  usuario: string;
   /** Chamados abertos atribuídos a este técnico (GLPI). */
   chamados_abertos: number;
 }
@@ -37,6 +42,8 @@ export interface SaudeArea {
   styleUrl: './saude-roster.scss',
 })
 export class SaudeRoster {
+  private readonly sessao = inject(Sessao);
+
   areas = input.required<SaudeArea[]>();
 
   protected readonly total = computed(() => this.areas().length);
@@ -72,5 +79,12 @@ export class SaudeRoster {
 
   protected plural(quantidade: number, singular: string, plural: string): string {
     return quantidade === 1 ? singular : plural;
+  }
+
+  /** Destaca a própria linha do usuário logado no roster — comparação por
+   * login (`tecnico.usuario`), não por `nome` (dois cadastros diferentes já
+   * apareceram com o mesmo nome "Daniel Faria" no sistema). */
+  protected ehVoce(tecnico: TecnicoCarga): boolean {
+    return !!this.sessao.usuario() && tecnico.usuario === this.sessao.usuario();
   }
 }

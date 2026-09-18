@@ -87,11 +87,16 @@
             </p>
           } @else if (item.tecnicos?.length) {
             <ul class="lista-tecnicos">
-              @for (tecnico of item.tecnicos; track tecnico.nome) {
-                <li class="tecnico">
+              @for (tecnico of item.tecnicos; track tecnico.usuario) {
+                <li class="tecnico" [class.tecnico--voce]="ehVoce(tecnico)">
                   <span class="tecnico-inicial">{{ iniciais(tecnico.nome) }}</span>
                   <span class="tecnico-dados">
-                    <span class="tecnico-nome">{{ tecnico.nome }}</span>
+                    <span class="tecnico-nome">
+                      {{ tecnico.nome }}
+                      @if (ehVoce(tecnico)) {
+                        <span class="tecnico-selo-voce">Você</span>
+                      }
+                    </span>
                     <span class="tecnico-carga-barra"><i [style.width]="larguraCarga(tecnico)"></i></span>
                   </span>
                   <span class="tecnico-carga">{{ tecnico.chamados_abertos }} abertos</span>

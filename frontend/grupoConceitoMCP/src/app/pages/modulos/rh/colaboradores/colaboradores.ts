@@ -3,7 +3,7 @@ import { Botao } from '../../../../componentes/botao/botao';
 import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import { AnaliseCurriculo, Candidato } from '../../../../servicos/analise-curriculo';
+import { AnaliseCurriculo, Candidato } from '../../../../servicos/analise-curriculo/analise-curriculo';
 
 const LIMITE_RESUMO_TRUNCADO = 140;
 

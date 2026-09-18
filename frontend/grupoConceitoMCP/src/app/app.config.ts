@@ -3,8 +3,8 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
-import { authInterceptor } from './servicos/auth.interceptor';
-import { toastInterceptor } from './servicos/toast.interceptor';
+import { authInterceptor } from './servicos/auth.interceptor/auth.interceptor';
+import { toastInterceptor } from './servicos/toast.interceptor/toast.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [

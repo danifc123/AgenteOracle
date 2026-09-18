@@ -1,5 +1,5 @@
 import { Component, computed, input, output, signal } from '@angular/core';
-import { formatarTamanhoArquivo } from '../../servicos/formatar-tamanho-arquivo';
+import { formatarTamanhoArquivo } from '../../servicos/formatar-tamanho-arquivo/formatar-tamanho-arquivo';
 
 export type CorSeletorArquivo = 'verde' | 'laranja';
 

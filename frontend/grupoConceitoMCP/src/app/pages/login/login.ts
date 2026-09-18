@@ -3,7 +3,7 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
-import { DadosSessao, Sessao } from '../../servicos/sessao';
+import { DadosSessao, Sessao } from '../../servicos/sessao/sessao';
 
 @Component({
   selector: 'app-login',

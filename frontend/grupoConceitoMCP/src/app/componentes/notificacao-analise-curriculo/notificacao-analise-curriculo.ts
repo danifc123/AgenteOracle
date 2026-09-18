@@ -1,6 +1,6 @@
 import { Component, effect, inject } from '@angular/core';
-import { AnaliseCurriculo, ErroAnalise, NotificacaoAnalise } from '../../servicos/analise-curriculo';
-import { GerenciadorToasts } from '../../servicos/gerenciador-toasts';
+import { AnaliseCurriculo, ErroAnalise, NotificacaoAnalise } from '../../servicos/analise-curriculo/analise-curriculo';
+import { GerenciadorToasts } from '../../servicos/gerenciador-toasts/gerenciador-toasts';
 
 /** Sino fixo do layout (mesmo papel de `NotificacaoAuditoria`), mas com um
  * comportamento a mais: além de ficar disponível pra consulta, um novo

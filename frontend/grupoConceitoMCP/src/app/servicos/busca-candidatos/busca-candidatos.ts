@@ -1,8 +1,8 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { MCP_API_BASE_URL } from '../app-config';
-import { mensagemErro } from './mensagens-erro';
-import { NivelSenioridade, PerfilEstruturado, StatusCandidato } from './analise-curriculo';
+import { MCP_API_BASE_URL } from '../../app-config';
+import { mensagemErro } from '../mensagens-erro/mensagens-erro';
+import { NivelSenioridade, PerfilEstruturado, StatusCandidato } from '../analise-curriculo/analise-curriculo';
 
 export interface ResultadoBusca {
   candidato_id: number;

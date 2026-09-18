@@ -12,7 +12,7 @@ import { RotinaItem } from '../../../../componentes/rotina-item/rotina-item';
 import { OpcaoSelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { CampoFiltro, RotinaFinanceira } from '../../../../dadosRelatorios/modulos-financeiro';
 import { ROTINAS_ESTOQUE } from '../../../../dadosRelatorios/modulos-estoque';
-import { CoresCategoria } from '../../../../servicos/cores-categoria';
+import { CoresCategoria } from '../../../../servicos/cores-categoria/cores-categoria';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';

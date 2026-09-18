@@ -1,7 +1,7 @@
 import { Component, inject, input } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
-import { Sessao } from '../../servicos/sessao';
+import { Sessao } from '../../servicos/sessao/sessao';
 
 export interface AtalhoModulo {
   titulo: string;

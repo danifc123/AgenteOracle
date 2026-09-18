@@ -9,10 +9,10 @@ import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenaca
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
 import { Selo } from '../../componentes/selo/selo';
-import { SoDev } from '../../diretivas/so-dev';
-import { SoModulo } from '../../diretivas/so-modulo';
-import { mensagemErro } from '../../servicos/mensagens-erro';
-import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
+import { SoDev } from '../../diretivas/so-dev/so-dev';
+import { SoModulo } from '../../diretivas/so-modulo/so-modulo';
+import { mensagemErro } from '../../servicos/mensagens-erro/mensagens-erro';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela/ordenacao-tabela';
 
 interface Usuario {
   id: number;

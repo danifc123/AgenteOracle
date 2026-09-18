@@ -1,6 +1,6 @@
 import { Component, computed, input, signal } from '@angular/core';
 import { IconeOrdenacao } from '../icone-ordenacao/icone-ordenacao';
-import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela/ordenacao-tabela';
 
 @Component({
   selector: 'app-visualizador-excel',

@@ -9,10 +9,10 @@ import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
 import { Selo } from '../../../../componentes/selo/selo';
-import { SoDev } from '../../../../diretivas/so-dev';
-import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
-import { Sessao } from '../../../../servicos/sessao';
+import { SoDev } from '../../../../diretivas/so-dev/so-dev';
+import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { Sessao } from '../../../../servicos/sessao/sessao';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 

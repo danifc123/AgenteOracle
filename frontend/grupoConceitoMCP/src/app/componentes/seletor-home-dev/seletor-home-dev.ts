@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
-import { SoDev } from '../../diretivas/so-dev';
-import { HomeSelecionada } from '../../servicos/home-selecionada';
-import { Sessao, rotuloModulo } from '../../servicos/sessao';
+import { SoDev } from '../../diretivas/so-dev/so-dev';
+import { HomeSelecionada } from '../../servicos/home-selecionada/home-selecionada';
+import { Sessao, rotuloModulo } from '../../servicos/sessao/sessao';
 
 /** Select fixo no canto superior direito, ao lado do sino de auditoria —
  * só aparece pra desenvolvedor (único papel que hoje pode ter mais de um

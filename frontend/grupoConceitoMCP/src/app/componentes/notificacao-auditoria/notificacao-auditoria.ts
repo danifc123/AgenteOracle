@@ -1,5 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { Auditoria } from '../../servicos/auditoria';
+import { Auditoria } from '../../servicos/auditoria/auditoria';
 
 /** Sino único, fixo no canto superior direito do layout — só abre o painel
  * (`auditoria.abrir()`), nunca busca nada sozinho. Qual departamento é

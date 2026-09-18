@@ -6,8 +6,8 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { Selo } from '../../../../componentes/selo/selo';
-import { AnaliseCurriculo, Candidato, ROTULOS_SENIORIDADE } from '../../../../servicos/analise-curriculo';
-import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos';
+import { AnaliseCurriculo, Candidato, ROTULOS_SENIORIDADE } from '../../../../servicos/analise-curriculo/analise-curriculo';
+import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos/busca-candidatos';
 
 const LIMITE_RESUMO_TRUNCADO = 140;
 

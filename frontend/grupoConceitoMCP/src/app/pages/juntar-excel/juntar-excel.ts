@@ -4,7 +4,7 @@ import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { SeletorArquivoExcel } from '../../componentes/seletor-arquivo-excel/seletor-arquivo-excel';
-import { baixarBlob, extrairNomeArquivo } from '../../servicos/download-arquivo';
+import { baixarBlob, extrairNomeArquivo } from '../../servicos/download-arquivo/download-arquivo';
 
 type TipoAnaliseColunas = 'identicas' | 'parcial' | 'nenhuma';
 

@@ -1,6 +1,6 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { Selo } from '../selo/selo';
-import { Sessao } from '../../servicos/sessao';
+import { Sessao } from '../../servicos/sessao/sessao';
 
 export interface TecnicoCarga {
   nome: string;

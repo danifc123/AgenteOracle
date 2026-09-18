@@ -26,8 +26,8 @@ import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-histor
 import { JuntarExcel } from './pages/juntar-excel/juntar-excel';
 import { Historico } from './pages/relatorios/historico/historico';
 import { Usuarios } from './pages/usuarios/usuarios';
-import { adminGuard } from './servicos/admin.guard';
-import { authGuard } from './servicos/auth.guard';
+import { adminGuard } from './servicos/admin.guard/admin.guard';
+import { authGuard } from './servicos/auth.guard/auth.guard';
 
 export const routes: Routes = [
   { path: 'login', component: Login },

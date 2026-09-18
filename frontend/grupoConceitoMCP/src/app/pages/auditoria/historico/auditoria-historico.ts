@@ -6,13 +6,13 @@ import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { Selo } from '../../../componentes/selo/selo';
-import { Auditoria } from '../../../servicos/auditoria';
+import { Auditoria } from '../../../servicos/auditoria/auditoria';
 import {
   compararValores,
   DirecaoOrdenacao,
   proximaDirecao,
-} from '../../../servicos/ordenacao-tabela';
-import { Sessao } from '../../../servicos/sessao';
+} from '../../../servicos/ordenacao-tabela/ordenacao-tabela';
+import { Sessao } from '../../../servicos/sessao/sessao';
 
 export interface AchadoHistorico {
   execucao_id: string;

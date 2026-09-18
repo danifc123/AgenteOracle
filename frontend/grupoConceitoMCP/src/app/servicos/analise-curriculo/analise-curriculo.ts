@@ -1,9 +1,9 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { MCP_API_BASE_URL } from '../app-config';
-import { baixarBlob, extrairNomeArquivo } from './download-arquivo';
-import { mensagemErro } from './mensagens-erro';
+import { MCP_API_BASE_URL } from '../../app-config';
+import { baixarBlob, extrairNomeArquivo } from '../download-arquivo/download-arquivo';
+import { mensagemErro } from '../mensagens-erro/mensagens-erro';
 
 export type StatusCandidato = 'ativo' | 'contratado' | 'descartado';
 

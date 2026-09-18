@@ -6,8 +6,8 @@ import { Botao } from '../../../../componentes/botao/botao';
 import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { Selo } from '../../../../componentes/selo/selo';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
-import { Sessao } from '../../../../servicos/sessao';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { Sessao } from '../../../../servicos/sessao/sessao';
 
 export interface AchadoSeguranca {
   usuario: string;

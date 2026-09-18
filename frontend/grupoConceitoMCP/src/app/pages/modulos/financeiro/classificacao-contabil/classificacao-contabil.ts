@@ -8,8 +8,8 @@ import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
-import { Toasts } from '../../../../servicos/toasts';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { Toasts } from '../../../../servicos/toasts/toasts';
 
 interface Filial {
   codigo: string;

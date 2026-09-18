@@ -13,8 +13,8 @@ import {
   ROTULOS_SENIORIDADE,
   ROTULOS_STATUS,
   StatusCandidato,
-} from '../../../../servicos/analise-curriculo';
-import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos';
+} from '../../../../servicos/analise-curriculo/analise-curriculo';
+import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos/busca-candidatos';
 
 const LIMITE_RESUMO_TRUNCADO = 140;
 

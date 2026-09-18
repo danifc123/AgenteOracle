@@ -1,6 +1,6 @@
 import { Component, effect, inject } from '@angular/core';
-import { ChatFinanceiro, ErroChat, NotificacaoChat } from '../../servicos/chat-financeiro';
-import { GerenciadorToasts } from '../../servicos/gerenciador-toasts';
+import { ChatFinanceiro, ErroChat, NotificacaoChat } from '../../servicos/chat-financeiro/chat-financeiro';
+import { GerenciadorToasts } from '../../servicos/gerenciador-toasts/gerenciador-toasts';
 
 /** Popup (canto inferior direito) avisando quando o agente termina de
  * responder — mesmo papel de `NotificacaoAnaliseCurriculo` pro RH, aqui pro

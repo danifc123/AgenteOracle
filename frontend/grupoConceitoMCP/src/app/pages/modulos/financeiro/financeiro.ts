@@ -22,8 +22,8 @@ import {
   MODULOS_FINANCEIRO,
   RotinaFinanceira,
 } from '../../../dadosRelatorios/modulos-financeiro';
-import { CoresCategoria } from '../../../servicos/cores-categoria';
-import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo';
+import { CoresCategoria } from '../../../servicos/cores-categoria/cores-categoria';
+import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo/download-arquivo';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';

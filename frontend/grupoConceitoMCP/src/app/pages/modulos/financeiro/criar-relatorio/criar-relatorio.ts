@@ -11,10 +11,10 @@ import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
 import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
 import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
-import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo/download-arquivo';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { filtrosPorColuna } from './filtros-relatorio';
-import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views';
+import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views/relacionamento-views';
 
 interface Filial {
   codigo: string;

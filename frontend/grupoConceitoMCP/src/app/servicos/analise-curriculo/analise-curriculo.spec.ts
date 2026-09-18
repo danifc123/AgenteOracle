@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { MCP_API_BASE_URL } from '../app-config';
+import { MCP_API_BASE_URL } from '../../app-config';
 import { AnaliseCurriculo, Candidato, SituacaoAnalise } from './analise-curriculo';
 
 const CANAL = 'agente-oracle-analise-curriculo';

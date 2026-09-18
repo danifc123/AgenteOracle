@@ -6,8 +6,8 @@ import {
 } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { catchError, tap, throwError } from 'rxjs';
-import { mensagemErro } from './mensagens-erro';
-import { Toasts } from './toasts';
+import { mensagemErro } from '../mensagens-erro/mensagens-erro';
+import { Toasts } from '../toasts/toasts';
 
 /** Mensagem de sucesso customizada pra essa requisição — sem isso, POST/PUT/
  * PATCH/DELETE bem-sucedidos usam a mensagem genérica abaixo. Útil quando a

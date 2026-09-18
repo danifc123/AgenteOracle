@@ -1,5 +1,5 @@
 import { Component, input } from '@angular/core';
-import { DirecaoOrdenacao } from '../../servicos/ordenacao-tabela';
+import { DirecaoOrdenacao } from '../../servicos/ordenacao-tabela/ordenacao-tabela';
 
 @Component({
   selector: 'app-icone-ordenacao',

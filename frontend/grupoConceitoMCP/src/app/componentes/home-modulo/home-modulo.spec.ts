@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Sessao } from '../../servicos/sessao';
+import { Sessao } from '../../servicos/sessao/sessao';
 import { AtalhoModulo, HomeModulo } from './home-modulo';
 
 describe('HomeModulo', () => {

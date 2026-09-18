@@ -1,7 +1,7 @@
 import { Component, input } from '@angular/core';
 import { Selo } from '../selo/selo';
-import { PerfilEstruturado } from '../../servicos/analise-curriculo';
-import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-candidato';
+import { PerfilEstruturado } from '../../servicos/analise-curriculo/analise-curriculo';
+import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-candidato/rotulos-candidato';
 
 /** Corpo do dialog de detalhe de candidato — usado tanto em "Análise de
  * Candidato" (`Candidato`) quanto em "Selecionar Candidato"

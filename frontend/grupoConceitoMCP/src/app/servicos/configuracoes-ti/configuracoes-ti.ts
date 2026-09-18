@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { MCP_API_BASE_URL } from '../app-config';
+import { MCP_API_BASE_URL } from '../../app-config';
 
 interface ConfiguracoesTiResposta {
   usar_ia_avaliacao_chamado: boolean;

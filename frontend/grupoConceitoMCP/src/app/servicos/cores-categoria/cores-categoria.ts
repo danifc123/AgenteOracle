@@ -1,9 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
-import { MCP_API_BASE_URL } from '../app-config';
-import { CategoriaCor } from '../dadosRelatorios/categoria-cor';
-import { COR_CATEGORIA_PADRAO, MODULOS_FINANCEIRO } from '../dadosRelatorios/modulos-financeiro';
-import { Sessao } from './sessao';
+import { MCP_API_BASE_URL } from '../../app-config';
+import { CategoriaCor } from '../../dadosRelatorios/categoria-cor';
+import { COR_CATEGORIA_PADRAO, MODULOS_FINANCEIRO } from '../../dadosRelatorios/modulos-financeiro';
+import { Sessao } from '../sessao/sessao';
 
 export interface CategoriaCorExibicao {
   categoria: string;

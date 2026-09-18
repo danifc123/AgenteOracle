@@ -9,13 +9,13 @@ import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { Selo } from '../../../componentes/selo/selo';
-import { baixarBlob } from '../../../servicos/download-arquivo';
-import { formatarSql } from '../../../servicos/formatar-sql';
+import { baixarBlob } from '../../../servicos/download-arquivo/download-arquivo';
+import { formatarSql } from '../../../servicos/formatar-sql/formatar-sql';
 import {
   compararValores,
   DirecaoOrdenacao,
   proximaDirecao,
-} from '../../../servicos/ordenacao-tabela';
+} from '../../../servicos/ordenacao-tabela/ordenacao-tabela';
 
 export interface RelatorioHistorico {
   id: string;

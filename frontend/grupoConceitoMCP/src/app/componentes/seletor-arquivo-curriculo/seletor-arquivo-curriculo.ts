@@ -1,5 +1,5 @@
 import { Component, output, signal } from '@angular/core';
-import { formatarTamanhoArquivo } from '../../servicos/formatar-tamanho-arquivo';
+import { formatarTamanhoArquivo } from '../../servicos/formatar-tamanho-arquivo/formatar-tamanho-arquivo';
 
 // ".doc" (formato binário antigo do Word) fica de fora — não existe
 // biblioteca pura Python confiável pra extrair texto dele no backend

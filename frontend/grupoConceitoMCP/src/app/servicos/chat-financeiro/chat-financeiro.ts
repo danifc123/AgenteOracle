@@ -1,10 +1,10 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { MCP_API_BASE_URL } from '../app-config';
-import { ConsultaUsada, MensagemChat } from '../pages/modulos/financeiro/chat/mensagens/chat-mensagens';
-import { baixarBlob, extrairNomeArquivo } from './download-arquivo';
-import { mensagemErro } from './mensagens-erro';
+import { MCP_API_BASE_URL } from '../../app-config';
+import { ConsultaUsada, MensagemChat } from '../../pages/modulos/financeiro/chat/mensagens/chat-mensagens';
+import { baixarBlob, extrairNomeArquivo } from '../download-arquivo/download-arquivo';
+import { mensagemErro } from '../mensagens-erro/mensagens-erro';
 
 interface RespostaChat {
   resposta: string;

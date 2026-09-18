@@ -624,9 +624,9 @@ class TestProcessarChamadoNovoLimpaHtml:
 class TestSaudePorArea:
     def test_conta_tecnico_por_area(self):
         tecnicos = (
-            Tecnico(nome="Denner", identificador="1", area="infra"),
-            Tecnico(nome="Carlos", identificador="2", area="infra"),
-            Tecnico(nome="Suellen", identificador="3", area="sistemas"),
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Carlos", identificador="2", area="infra", usuario="carlos"),
+            Tecnico(nome="Suellen", identificador="3", area="sistemas", usuario="suellen"),
         )
 
         resultado = _saude_por_area(tecnicos, cargas={})
@@ -637,15 +637,15 @@ class TestSaudePorArea:
                 "rotulo": "Infraestrutura",
                 "quantidade": 2,
                 "tecnicos": [
-                    {"nome": "Denner", "chamados_abertos": 0},
-                    {"nome": "Carlos", "chamados_abertos": 0},
+                    {"nome": "Denner", "usuario": "denner", "chamados_abertos": 0},
+                    {"nome": "Carlos", "usuario": "carlos", "chamados_abertos": 0},
                 ],
             },
             {
                 "area": "sistemas",
                 "rotulo": "Sistemas",
                 "quantidade": 1,
-                "tecnicos": [{"nome": "Suellen", "chamados_abertos": 0}],
+                "tecnicos": [{"nome": "Suellen", "usuario": "suellen", "chamados_abertos": 0}],
             },
             {"area": "processos", "rotulo": "Processos", "quantidade": 0, "tecnicos": []},
         ]
@@ -661,18 +661,18 @@ class TestSaudePorArea:
         assert [item["quantidade"] for item in resultado] == [0, 0, 0]
 
     def test_carga_vem_do_dict_de_carga_atual_do_glpi(self):
-        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra"),)
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
 
         resultado = _saude_por_area(tecnicos, cargas={"1": 9})
 
-        assert resultado[0]["tecnicos"] == [{"nome": "Denner", "chamados_abertos": 9}]
+        assert resultado[0]["tecnicos"] == [{"nome": "Denner", "usuario": "denner", "chamados_abertos": 9}]
 
     def test_tecnico_sem_entrada_em_cargas_conta_zero(self):
         # `carga_atual_por_tecnico` só lista quem tem chamado em
         # `fila_atendimento` no momento — técnico sem nenhum não aparece no
         # dict, e isso não pode virar KeyError aqui.
-        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra"),)
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
 
         resultado = _saude_por_area(tecnicos, cargas={})
 
-        assert resultado[0]["tecnicos"] == [{"nome": "Denner", "chamados_abertos": 0}]
+        assert resultado[0]["tecnicos"] == [{"nome": "Denner", "usuario": "denner", "chamados_abertos": 0}]

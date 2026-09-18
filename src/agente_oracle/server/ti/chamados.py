@@ -134,7 +134,11 @@ def _saude_por_area(tecnicos: tuple[Tecnico, ...], cargas: dict[str, int]) -> li
             "rotulo": rotulo,
             "quantidade": sum(1 for tecnico in tecnicos if tecnico.area == area),
             "tecnicos": [
-                {"nome": tecnico.nome, "chamados_abertos": cargas.get(tecnico.identificador, 0)}
+                {
+                    "nome": tecnico.nome,
+                    "usuario": tecnico.usuario,
+                    "chamados_abertos": cargas.get(tecnico.identificador, 0),
+                }
                 for tecnico in tecnicos
                 if tecnico.area == area
             ],

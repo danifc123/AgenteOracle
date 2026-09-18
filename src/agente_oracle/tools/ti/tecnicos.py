@@ -21,6 +21,11 @@ class Tecnico:
     # `ClienteGLPIReal.atribuir` em tools/ti/glpi.py.
     identificador: str
     area: AreaChamado
+    # Login do AgenteOracle (não do GLPI) — usado só pra identificar "esse
+    # técnico é o usuário logado" no painel de saúde do roster (mais
+    # confiável que comparar por `nome`, que pode se repetir entre pessoas
+    # diferentes — já vimos dois cadastros de "Daniel Faria" no sistema).
+    usuario: str
 
 
 def todos_os_tecnicos() -> tuple[Tecnico, ...]:
@@ -35,7 +40,12 @@ def todos_os_tecnicos() -> tuple[Tecnico, ...]:
     na subida do servidor (`from ... import TECNICOS` congelaria o valor
     pra sempre, sem nunca ver técnico cadastrado depois)."""
     return tuple(
-        Tecnico(nome=linha["nome"], identificador=linha["tecnico_glpi_id"], area=linha["area_ti"])
+        Tecnico(
+            nome=linha["nome"],
+            identificador=linha["tecnico_glpi_id"],
+            area=linha["area_ti"],
+            usuario=linha["usuario"],
+        )
         for linha in listar_tecnicos_ti()
     )
 

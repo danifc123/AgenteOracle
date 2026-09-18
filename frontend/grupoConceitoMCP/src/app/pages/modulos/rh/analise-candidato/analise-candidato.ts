@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
@@ -40,7 +41,16 @@ type ModoAnaliseCandidato = 'lista' | 'busca';
  */
 @Component({
   selector: 'app-analise-candidato',
-  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, SeletorArquivoCurriculo, Selo],
+  imports: [
+    Botao,
+    CartaoResultado,
+    DetalheCandidato,
+    Dialog,
+    EstadoVazio,
+    ModuloHeader,
+    SeletorArquivoCurriculo,
+    Selo,
+  ],
   templateUrl: './analise-candidato.html',
   styleUrl: './analise-candidato.scss',
 })

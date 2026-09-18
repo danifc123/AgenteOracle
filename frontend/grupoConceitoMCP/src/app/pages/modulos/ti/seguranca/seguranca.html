@@ -24,7 +24,7 @@
     <h2>Achados desta análise</h2>
     <div class="lista-achados">
       @for (achado of achados(); track chaveAchado(achado)) {
-        <div class="cartao-achado" [class.cartao-achado--invasao]="achado.tipo === 'tentativa_invasao'">
+        <app-cartao-resultado [destaque]="achado.tipo === 'tentativa_invasao'">
           <div class="cartao-achado-cabecalho">
             <app-selo tom="neutro" [texto]="rotuloTipo(achado.tipo)" />
             <span class="badge-sistema" [class.badge-sistema--protheus]="achado.sistema === 'protheus'">
@@ -42,7 +42,7 @@
           >
             Dispensar
           </app-botao>
-        </div>
+        </app-cartao-resultado>
       }
     </div>
   </section>

@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
@@ -31,7 +32,7 @@ type ModoRepescagem = 'lista' | 'busca';
  */
 @Component({
   selector: 'app-repescagem',
-  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, Selo],
+  imports: [Botao, CartaoResultado, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, Selo],
   templateUrl: './repescagem.html',
   styleUrl: './repescagem.scss',
 })

@@ -94,7 +94,7 @@
     } @else if (!busca.carregando() && busca.resultados().length) {
       <div class="lista-resultados">
         @for (resultado of busca.resultados(); track resultado.candidato_id) {
-          <div class="cartao-resultado">
+          <app-cartao-resultado>
             <div class="cartao-resultado-cabecalho">
               <span class="posicao">#{{ resultado.posicao }}</span>
               <h3>{{ resultado.nome }}</h3>
@@ -114,7 +114,7 @@
                 Baixar currículo
               </app-botao>
             </div>
-          </div>
+          </app-cartao-resultado>
         }
       </div>
     } @else if (!busca.carregando() && buscaFeita()) {

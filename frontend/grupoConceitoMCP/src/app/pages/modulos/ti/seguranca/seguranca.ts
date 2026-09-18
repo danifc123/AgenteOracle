@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { Selo } from '../../../../componentes/selo/selo';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
@@ -44,7 +45,7 @@ const ROTULOS_SISTEMA: Record<AchadoSeguranca['sistema'], string> = {
  */
 @Component({
   selector: 'app-seguranca-ti',
-  imports: [Botao, DatePipe, ModuloHeader, Selo],
+  imports: [Botao, CartaoResultado, DatePipe, ModuloHeader, Selo],
   templateUrl: './seguranca.html',
   styleUrl: './seguranca.scss',
 })

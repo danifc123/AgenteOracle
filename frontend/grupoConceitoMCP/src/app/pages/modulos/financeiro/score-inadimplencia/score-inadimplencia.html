@@ -54,7 +54,7 @@
     } @else {
       <div class="lista-scores">
         @for (item of scores(); track item.cliente_codigo) {
-          <div class="cartao-score">
+          <app-cartao-resultado>
             <div class="cartao-score-cabecalho">
               <app-selo [tom]="tomScore(item.score)" [texto]="item.score + ''" />
               <span class="nome-cliente">{{ item.cliente_nome }}</span>
@@ -125,7 +125,7 @@
                 }
               }
             </div>
-          </div>
+          </app-cartao-resultado>
         }
       </div>
     }

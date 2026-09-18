@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
@@ -90,7 +91,7 @@ const ROTULOS_TENDENCIA: Record<ComportamentoPagamento['tendencia'], string> = {
  * nunca é encontrado. Campos separados eliminam essa adivinhação. */
 @Component({
   selector: 'app-score-inadimplencia',
-  imports: [Botao, Dialog, EstadoVazio, FormsModule, ModuloHeader, SelectBusca, Selo],
+  imports: [Botao, CartaoResultado, Dialog, EstadoVazio, FormsModule, ModuloHeader, SelectBusca, Selo],
   templateUrl: './score-inadimplencia.html',
   styleUrl: './score-inadimplencia.scss',
 })

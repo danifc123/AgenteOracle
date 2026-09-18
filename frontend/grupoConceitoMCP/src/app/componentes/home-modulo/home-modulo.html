@@ -1,0 +1,51 @@
+<section class="hero">
+  <div class="hero-text">
+    <p class="eyebrow">{{ eyebrow() }}</p>
+    <h1>{{ titulo() }}</h1>
+    <p class="subtitle">{{ subtitulo() }}</p>
+  </div>
+
+  <div class="hero-media">
+    <ng-content select="[hero-media]" />
+  </div>
+</section>
+
+<section class="atalhos">
+  @for (atalho of atalhos(); track atalho.titulo) {
+    @if (ehVisivel(atalho)) {
+      @if (atalho.rota) {
+        <a class="atalho" [routerLink]="atalho.rota">
+          <span class="atalho-icone">
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              [innerHTML]="iconeSeguro(atalho.iconeSvg)"
+            ></svg>
+          </span>
+          <h2>{{ atalho.titulo }}</h2>
+          <p>{{ atalho.texto }}</p>
+        </a>
+      } @else {
+        <a class="atalho" [href]="atalho.href" target="_blank" rel="noopener">
+          <span class="atalho-icone">
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              [innerHTML]="iconeSeguro(atalho.iconeSvg)"
+            ></svg>
+          </span>
+          <h2>{{ atalho.titulo }}</h2>
+          <p>{{ atalho.texto }}</p>
+        </a>
+      }
+    }
+  }
+</section>

@@ -1,22 +1,7 @@
-import { Component, inject } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { RouterLink } from '@angular/router';
-import { Sessao } from '../../../../servicos/sessao';
+import { Component } from '@angular/core';
+import { AtalhoModulo, HomeModulo } from '../../../../componentes/home-modulo/home-modulo';
 
-interface Atalho {
-  titulo: string;
-  texto: string;
-  /** Conteúdo interno do `<svg>` (paths/rects/circles), como HTML puro —
-   * confiável porque vem só deste arquivo estático, nunca de dado externo. */
-  iconeSvg: string;
-  /** Um dos dois deve ser informado: `rota` pra navegação interna
-   * (`routerLink`), `href` pra link externo (abre em nova aba). */
-  rota?: string;
-  href?: string;
-  somenteAdmin?: boolean;
-}
-
-const ATALHOS: Atalho[] = [
+const ATALHOS: AtalhoModulo[] = [
   {
     titulo: 'Módulos financeiros',
     texto: 'Relatórios financeiros específicos do Grupo Conceito.',
@@ -59,21 +44,15 @@ const ATALHOS: Atalho[] = [
 /** Home do time Financeiro — mostrada em `/` pra quem tem o módulo
  * Financeiro liberado (prioridade sobre os outros módulos em
  * `home-roteador.ts`), e pra desenvolvedor quando troca pro Financeiro no
- * seletor do layout. Mesmo padrão de `pages/modulos/rh/home/rh-home.ts` e
- * `pages/modulos/ti/home/ti-home.ts` (hero + atalhos) — esta é a original
- * de onde o padrão veio, com foto ilustrativa própria do time. */
+ * seletor do layout. Casca (hero + atalhos) compartilhada com RH e TI via
+ * `app-home-modulo` — esta é a original de onde o padrão veio, com foto
+ * ilustrativa própria do time e um aviso extra sobre a Área de Trabalho. */
 @Component({
   selector: 'app-financeiro-home',
-  imports: [RouterLink],
+  imports: [HomeModulo],
   templateUrl: './financeiro-home.html',
   styleUrl: './financeiro-home.scss',
 })
 export class FinanceiroHome {
-  protected readonly sessao = inject(Sessao);
   protected readonly atalhos = ATALHOS;
-  private readonly sanitizer = inject(DomSanitizer);
-
-  protected iconeSeguro(svg: string): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(svg);
-  }
 }

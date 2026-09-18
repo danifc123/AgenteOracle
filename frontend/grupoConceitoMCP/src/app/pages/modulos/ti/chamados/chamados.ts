@@ -8,6 +8,7 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
+import { SoDev } from '../../../../diretivas/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti';
 import { mensagemErro } from '../../../../servicos/mensagens-erro';
 import { Sessao } from '../../../../servicos/sessao';
@@ -55,7 +56,7 @@ interface TecnicoNome {
  * o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
-  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader, SaudeRoster],
+  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader, SaudeRoster, SoDev],
   templateUrl: './chamados.html',
   styleUrl: './chamados.scss',
 })

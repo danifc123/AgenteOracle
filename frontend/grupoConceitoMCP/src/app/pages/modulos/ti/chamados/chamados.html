@@ -11,9 +11,11 @@
   </label>
 </div>
 
-@if (sessao.ehDesenvolvedor() && saudeAreas().length > 0) {
-  <app-saude-roster class="saude-roster-topo" [areas]="saudeAreas()" />
-}
+<ng-container *appSoDev>
+  @if (saudeAreas().length > 0) {
+    <app-saude-roster class="saude-roster-topo" [areas]="saudeAreas()" />
+  }
+</ng-container>
 
 @if (erro()) {
   <p class="erro">{{ erro() }}</p>

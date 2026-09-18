@@ -1,6 +1,8 @@
 import { Component, ViewChild, inject, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { SoAdmin } from '../../diretivas/so-admin';
+import { SoModulo } from '../../diretivas/so-modulo';
 import { AnaliseCurriculo } from '../../servicos/analise-curriculo';
 import { iniciais } from '../../servicos/iniciais';
 import { Sessao } from '../../servicos/sessao';
@@ -11,7 +13,7 @@ const CHAVE_COLAPSADO = 'sidebar:colapsado';
 
 @Component({
   selector: 'app-sidebar',
-  imports: [RouterLink, RouterLinkActive, ConfiguracoesUsuario],
+  imports: [RouterLink, RouterLinkActive, ConfiguracoesUsuario, SoAdmin, SoModulo],
   templateUrl: './sidebar.html',
   styleUrl: './sidebar.scss',
 })

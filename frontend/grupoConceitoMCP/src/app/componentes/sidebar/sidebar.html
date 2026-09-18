@@ -80,75 +80,73 @@
     </a>
 
     @for (grupo of grupos; track grupo.chave) {
-      @if (sessao.modulos().includes(grupo.chave)) {
-        <div class="nav-group">
-          <button
-            type="button"
-            class="nav-link nav-parent"
-            [class.aberto]="grupoAberto() === grupo.chave"
-            [title]="colapsado() ? grupo.rotulo : null"
-            (click)="toggleGrupo(grupo.chave)"
-          >
-            <span class="nav-icon">
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                [innerHTML]="iconeSeguro(grupo.iconeSvg)"
-              ></svg>
-            </span>
-            <span class="nav-label">{{ grupo.rotulo }}</span>
-            @if (
-              grupo.chave === 'rh' &&
-              (analiseCurriculo.notificacoesNaoVistas().length > 0 ||
-                analiseCurriculo.errosNaoVistos().length > 0)
-            ) {
-              <span class="bolinha-nav" aria-hidden="true"></span>
-            }
+      <div class="nav-group" *appSoModulo="grupo.chave">
+        <button
+          type="button"
+          class="nav-link nav-parent"
+          [class.aberto]="grupoAberto() === grupo.chave"
+          [title]="colapsado() ? grupo.rotulo : null"
+          (click)="toggleGrupo(grupo.chave)"
+        >
+          <span class="nav-icon">
             <svg
-              class="chevron"
-              [class.rotated]="grupoAberto() === grupo.chave"
               viewBox="0 0 24 24"
-              width="16"
-              height="16"
+              width="20"
+              height="20"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-          </button>
+              stroke-width="1.8"
+              [innerHTML]="iconeSeguro(grupo.iconeSvg)"
+            ></svg>
+          </span>
+          <span class="nav-label">{{ grupo.rotulo }}</span>
+          @if (
+            grupo.chave === 'rh' &&
+            (analiseCurriculo.notificacoesNaoVistas().length > 0 ||
+              analiseCurriculo.errosNaoVistos().length > 0)
+          ) {
+            <span class="bolinha-nav" aria-hidden="true"></span>
+          }
+          <svg
+            class="chevron"
+            [class.rotated]="grupoAberto() === grupo.chave"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
 
-          <div class="nav-submenu" [class.aberto]="grupoAberto() === grupo.chave">
-            @for (item of grupo.itens; track item.rota) {
-              <a
-                class="nav-sublink"
-                [routerLink]="item.rota"
-                routerLinkActive="active"
-                [routerLinkActiveOptions]="{ exact: !!item.exato }"
-                [title]="colapsado() ? item.rotulo : null"
-                (click)="closeSidebar()"
-              >
-                <span class="nav-icon">
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    [innerHTML]="iconeSeguro(item.iconeSvg)"
-                  ></svg>
-                </span>
-                <span class="nav-label">{{ item.rotulo }}</span>
-              </a>
-            }
-          </div>
+        <div class="nav-submenu" [class.aberto]="grupoAberto() === grupo.chave">
+          @for (item of grupo.itens; track item.rota) {
+            <a
+              class="nav-sublink"
+              [routerLink]="item.rota"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: !!item.exato }"
+              [title]="colapsado() ? item.rotulo : null"
+              (click)="closeSidebar()"
+            >
+              <span class="nav-icon">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  [innerHTML]="iconeSeguro(item.iconeSvg)"
+                ></svg>
+              </span>
+              <span class="nav-label">{{ item.rotulo }}</span>
+            </a>
+          }
         </div>
-      }
+      </div>
     }
 
     <a
@@ -174,34 +172,33 @@
       <span class="nav-label">Histórico de relatórios</span>
     </a>
 
-    @if (sessao.administrador()) {
-      <a
-        class="nav-link"
-        routerLink="/usuarios"
-        routerLinkActive="active"
-        [title]="colapsado() ? 'Usuários' : null"
-        (click)="navegarParaFora()"
-      >
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            width="20"
-            height="20"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-          >
-            <circle cx="9" cy="8" r="3.2" />
-            <path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" />
-            <path
-              d="M16 9.5a2.7 2.7 0 1 0 0-5.4M18.5 19c0-2.4-1.7-4.4-4-5"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <span class="nav-label">Usuários</span>
-      </a>
-    }
+    <a
+      class="nav-link"
+      routerLink="/usuarios"
+      routerLinkActive="active"
+      [title]="colapsado() ? 'Usuários' : null"
+      (click)="navegarParaFora()"
+      *appSoAdmin
+    >
+      <span class="nav-icon">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+        >
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" />
+          <path
+            d="M16 9.5a2.7 2.7 0 1 0 0-5.4M18.5 19c0-2.4-1.7-4.4-4-5"
+            stroke-linecap="round"
+          />
+        </svg>
+      </span>
+      <span class="nav-label">Usuários</span>
+    </a>
 
     <a
       class="nav-link"

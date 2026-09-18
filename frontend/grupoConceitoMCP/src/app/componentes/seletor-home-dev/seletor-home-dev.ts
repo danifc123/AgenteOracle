@@ -1,4 +1,5 @@
 import { Component, inject } from '@angular/core';
+import { SoDev } from '../../diretivas/so-dev';
 import { HomeSelecionada } from '../../servicos/home-selecionada';
 import { Sessao, rotuloModulo } from '../../servicos/sessao';
 
@@ -9,7 +10,7 @@ import { Sessao, rotuloModulo } from '../../servicos/sessao';
  * de outro departamento. */
 @Component({
   selector: 'app-seletor-home-dev',
-  imports: [],
+  imports: [SoDev],
   templateUrl: './seletor-home-dev.html',
   styleUrl: './seletor-home-dev.scss',
 })

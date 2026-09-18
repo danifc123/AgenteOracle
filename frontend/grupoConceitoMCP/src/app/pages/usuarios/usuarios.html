@@ -59,20 +59,24 @@
               }
             </td>
             <td class="acoes">
-              @if (sessao.modulos().includes('financeiro') && usuarioTemFinanceiro(usuario)) {
-                <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
-                  Gerenciar filiais
-                </app-botao>
-              }
-              @if (usuario.bloqueado && sessao.ehDesenvolvedor()) {
-                <app-botao
-                  variant="contorno"
-                  [loading]="desbloqueandoId() === usuario.id"
-                  loadingText="Desbloqueando..."
-                  (clicked)="desbloquearUsuario(usuario)"
-                >
-                  Desbloquear
-                </app-botao>
+              <ng-container *appSoModulo="'financeiro'">
+                @if (usuarioTemFinanceiro(usuario)) {
+                  <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
+                    Gerenciar filiais
+                  </app-botao>
+                }
+              </ng-container>
+              @if (usuario.bloqueado) {
+                <ng-container *appSoDev>
+                  <app-botao
+                    variant="contorno"
+                    [loading]="desbloqueandoId() === usuario.id"
+                    loadingText="Desbloqueando..."
+                    (clicked)="desbloquearUsuario(usuario)"
+                  >
+                    Desbloquear
+                  </app-botao>
+                </ng-container>
               }
               <app-botao
                 variant="perigo"

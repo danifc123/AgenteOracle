@@ -7,9 +7,10 @@ import { Dialog } from '../../componentes/dialog/dialog';
 import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
+import { SoDev } from '../../diretivas/so-dev';
+import { SoModulo } from '../../diretivas/so-modulo';
 import { mensagemErro } from '../../servicos/mensagens-erro';
 import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
-import { Sessao } from '../../servicos/sessao';
 
 interface Usuario {
   id: number;
@@ -49,13 +50,12 @@ const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'ti_sistemas', 'ti_processos
 
 @Component({
   selector: 'app-usuarios',
-  imports: [Botao, ConfirmacaoDialog, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca],
+  imports: [Botao, ConfirmacaoDialog, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca, SoDev, SoModulo],
   templateUrl: './usuarios.html',
   styleUrl: './usuarios.scss',
 })
 export class Usuarios {
   private readonly http = inject(HttpClient);
-  protected readonly sessao = inject(Sessao);
 
   usuarios = signal<Usuario[]>([]);
   papeisDisponiveis = signal<Papel[]>([]);

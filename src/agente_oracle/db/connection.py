@@ -98,9 +98,7 @@ def eh_erro_coluna_invalida(erro: Exception) -> bool:
 
 
 def eh_erro_tabela_inexistente(erro: Exception) -> bool:
-    """Detecta, de forma independente do banco, se o erro é uma referência a
-    uma tabela/view que não existe (ORA-00942 no Oracle, sqlstate 42P01 no
-    Postgres) — no Oracle a mensagem nem diz QUAL objeto faltou."""
+    """Detecta, de forma independente do banco, tabela/view inexistente (ORA-00942 / sqlstate 42P01)."""
     if isinstance(erro, psycopg.Error):
         return getattr(erro, "sqlstate", None) == "42P01"
     return "ORA-00942" in str(erro)

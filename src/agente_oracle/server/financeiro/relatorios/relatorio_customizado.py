@@ -69,10 +69,7 @@ def _gerar_xlsx_relatorio_customizado(colunas: list[str], linhas: list[list]) ->
 
 
 def _opcoes_da_coluna(chave: str, valores: list[str]) -> list[dict[str, str]]:
-    """`valor` é sempre o cru (é o que volta no filtro); `rotulo` é o texto
-    legível. Quando algum valor ganhou rótulo, a lista sai ordenada por ele —
-    a ordem do banco (pelo código cru) não faz sentido pra quem lê "CIF",
-    "FOB"..."""
+    """`valor` é o cru (volta no filtro), `rotulo` o legível; ordena por rótulo quando algum valor tem rótulo."""
     nome_view, _, nome_coluna = chave.partition(".")
     opcoes = [{"valor": valor, "rotulo": rotular_opcao(nome_view, nome_coluna, valor)} for valor in valores]
     if any(opcao["valor"] != opcao["rotulo"] for opcao in opcoes):

@@ -51,15 +51,8 @@ class ColunaView:
     resultado errado. `None` (padrão) = coluna é DATE de verdade, sem
     cast nenhum, comportamento inalterado pra todas as outras views.
 
-    `rotulos` é opcional e traduz um valor "codificado" do banco (`'R'`,
-    `1`, `'-1'`) pro texto que o usuário entende ("Recebimento", "Sim", "Não
-    informado") — pares (valor cru, rótulo). Só vale na APRESENTAÇÃO do
-    "Criar Relatório" (tabela, lista de opções do filtro e Excel, ver
-    `relatorio_customizado_sql.py`): o banco continua com o valor cru, o
-    filtro continua enviando o valor cru, e tudo que consome a view direto
-    (relatórios fixos, previsão, IA do chat, prompts) segue vendo o valor
-    cru — por isso NÃO se troca o valor dentro do `CREATE VIEW`. Valor sem
-    rótulo cadastrado aparece como veio (`rotulo_de`)."""
+    `rotulos` (valor cru → texto legível) vale só na apresentação do "Criar Relatório":
+    o banco, os filtros e quem consome a view seguem com o valor cru."""
 
     nome: str
     descricao: str
@@ -68,16 +61,12 @@ class ColunaView:
     rotulos: tuple[tuple[str, str], ...] = ()
 
     def rotulo_de(self, valor) -> str:
-        """Rótulo do valor cru, ou o próprio valor como texto quando não há
-        rótulo cadastrado. Compara pela forma normalizada (`_chave_rotulo`):
-        `1`, `1.0` e `Decimal('1')` batem todos com a chave `'1'`."""
+        """Rótulo do valor cru, ou o próprio valor quando não há rótulo."""
         return dict(self.rotulos).get(_chave_rotulo(valor), str(valor))
 
 
 def _chave_rotulo(valor) -> str:
-    """Forma comparável de um valor cru: número inteiro (int/float/Decimal)
-    vira o texto do inteiro (`1.0` -> `'1'`, como o Oracle devolve `NUMBER`),
-    o resto vira texto sem espaço nas pontas."""
+    """Forma comparável do valor: inteiro vira texto (`1.0` → `'1'`), o resto sem espaços."""
     if isinstance(valor, int | float | Decimal) and not isinstance(valor, bool):
         try:
             if valor == int(valor):
@@ -131,10 +120,8 @@ class ViewFinanceira:
     fonte: str = "stage"
 
 
-# Tabelas de rótulo (`ColunaView.rotulos`) — só STAGE. `-1` é o placeholder de
-# nulo que a etapa "replace null" do Pentaho grava (ver memória
-# `stage_pentaho_replace_null`), não um código real. Siglas do Protheus que
-# ninguém confirmou o significado ficam FORA de propósito: aparecem como vêm.
+# Rótulos do STAGE (`ColunaView.rotulos`). `-1` é o placeholder de nulo do Pentaho.
+# Siglas sem significado confirmado ficam de fora: aparecem como vêm.
 _ROTULOS_SIM_NAO = (("1", "Sim"), ("0", "Não"))
 _ROTULOS_RECEBIMENTO_PAGAMENTO = (("R", "Recebimento"), ("P", "Pagamento"))
 _ROTULOS_TIPO_PESSOA = (("F", "Pessoa física"), ("J", "Pessoa jurídica"), ("INDEFINIDO", "Não informado"))

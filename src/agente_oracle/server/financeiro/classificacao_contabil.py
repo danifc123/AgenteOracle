@@ -1,6 +1,6 @@
 """Rota da Classificação Contábil — lógica de agrupamento/sugestão mora em
 `agent/financeiro/classificacao_contabil.py`; este módulo só busca a
-janela de `vw_lancamentos_contabeis` e monta a resposta HTTP, mesmo
+janela de `vwia_lancamentos_contabeis` e monta a resposta HTTP, mesmo
 espírito de `server/financeiro/despesas_suspeitas.py` (roda sob demanda,
 nunca em background). Também soma as revisões locais confirmadas
 (`classificacao_revisoes.precedentes_confirmados`) no dicionário de
@@ -37,7 +37,7 @@ def _buscar_lancamentos(filiais: list[str], desde: date) -> list[LancamentoConta
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         SELECT documento, linha, conta, conta_descricao, historico, valor, data_movimentacao
-        FROM vw_lancamentos_contabeis
+        FROM vwia_lancamentos_contabeis
         WHERE filial IN {clausula_filial}
           AND data_movimentacao >= :desde
     """

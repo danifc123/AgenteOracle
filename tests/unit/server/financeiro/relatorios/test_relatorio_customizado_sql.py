@@ -18,7 +18,7 @@ from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import
 
 class TestValidarColuna:
     def test_coluna_existente(self):
-        assert validar_coluna("vw_clientes.codigo") == ("vw_clientes", "codigo")
+        assert validar_coluna("vwia_clientes.codigo") == ("vwia_clientes", "codigo")
 
     def test_sem_ponto_e_invalido(self):
         assert validar_coluna("codigo") is None
@@ -27,38 +27,38 @@ class TestValidarColuna:
         assert validar_coluna("vw_nao_existe.codigo") is None
 
     def test_coluna_inexistente_na_view(self):
-        assert validar_coluna("vw_clientes.coluna_que_nao_existe") is None
+        assert validar_coluna("vwia_clientes.coluna_que_nao_existe") is None
 
 
 class TestResolverCaminhoJoin:
     def test_view_unica_nao_precisa_de_join(self):
-        assert _resolver_caminho_join(["vw_clientes"]) == []
+        assert _resolver_caminho_join(["vwia_clientes"]) == []
 
     def test_relacionamento_direto(self):
-        arestas = _resolver_caminho_join(["vw_titulos_receber", "vw_clientes"])
-        assert arestas == [("vw_titulos_receber", "vw_clientes", ("cliente_codigo",), ("codigo",))]
+        arestas = _resolver_caminho_join(["vwia_titulos_receber", "vwia_clientes"])
+        assert arestas == [("vwia_titulos_receber", "vwia_clientes", ("cliente_codigo",), ("codigo",))]
 
     def test_relacionamento_no_sentido_inverso_da_declaracao(self):
-        # `vw_clientes` não declara relacionamento nenhum (é sempre o lado
+        # `vwia_clientes` não declara relacionamento nenhum (é sempre o lado
         # "destino") — o grafo precisa funcionar nos dois sentidos.
-        arestas = _resolver_caminho_join(["vw_clientes", "vw_titulos_receber"])
-        assert arestas == [("vw_clientes", "vw_titulos_receber", ("codigo",), ("cliente_codigo",))]
+        arestas = _resolver_caminho_join(["vwia_clientes", "vwia_titulos_receber"])
+        assert arestas == [("vwia_clientes", "vwia_titulos_receber", ("codigo",), ("cliente_codigo",))]
 
     def test_caminho_indireto_por_view_intermediaria(self):
-        # vw_titulos_pagar -> vw_fornecedores não tem caminho declarado até
-        # vw_clientes, mas vw_faturamento conecta clientes e pedidos.
-        arestas = _resolver_caminho_join(["vw_faturamento", "vw_pedidos_venda", "vw_clientes"])
+        # vwia_titulos_pagar -> vwia_fornecedores não tem caminho declarado até
+        # vwia_clientes, mas vwia_faturamento conecta clientes e pedidos.
+        arestas = _resolver_caminho_join(["vwia_faturamento", "vwia_pedidos_venda", "vwia_clientes"])
         views_nas_arestas = {view for _, view, _, _ in arestas}
-        assert views_nas_arestas == {"vw_pedidos_venda", "vw_clientes"}
+        assert views_nas_arestas == {"vwia_pedidos_venda", "vwia_clientes"}
 
     def test_sem_relacionamento_declarado_levanta_erro(self):
         with pytest.raises(RelatorioCustomizadoInvalido):
-            _resolver_caminho_join(["vw_titulos_pagar", "vw_clientes"])
+            _resolver_caminho_join(["vwia_titulos_pagar", "vwia_clientes"])
 
 
 class TestSuportaListaOpcoes:
     def test_coluna_texto_suporta(self):
-        assert suporta_lista_opcoes("vw_clientes", "nome") is True
+        assert suporta_lista_opcoes("vwia_clientes", "nome") is True
 
     def test_coluna_texto_numerico_suporta(self):
         # "nota" tem `tipo_filtro="texto-numerico"` declarado (ver schema.py)
@@ -66,10 +66,10 @@ class TestSuportaListaOpcoes:
         assert suporta_lista_opcoes("vwia_notas_compra", "nota") is True
 
     def test_coluna_numero_nao_suporta(self):
-        assert suporta_lista_opcoes("vw_titulos_pagar", "valor_original") is False
+        assert suporta_lista_opcoes("vwia_titulos_pagar", "valor_original") is False
 
     def test_coluna_periodo_data_nao_suporta(self):
-        assert suporta_lista_opcoes("vw_titulos_pagar", "data_vencimento") is False
+        assert suporta_lista_opcoes("vwia_titulos_pagar", "data_vencimento") is False
 
 
 class TestMontarSqlFiltroTextoNumerico:
@@ -140,9 +140,9 @@ class TestMontarSqlFiltroPeriodoData:
 
     def test_coluna_date_real_nao_decora_a_coluna_com_to_date(self):
         sql, binds = _montar_sql(
-            {"vw_titulos_pagar": ["data_vencimento"]},
+            {"vwia_titulos_pagar": ["data_vencimento"]},
             ["0101"],
-            {"vw_titulos_pagar.data_vencimento": {"ini": "2026-01-01", "fim": "2026-01-31"}},
+            {"vwia_titulos_pagar.data_vencimento": {"ini": "2026-01-01", "fim": "2026-01-31"}},
             0,
         )
         assert 'v0."data_vencimento" >= TO_DATE(:filtro_1' in sql

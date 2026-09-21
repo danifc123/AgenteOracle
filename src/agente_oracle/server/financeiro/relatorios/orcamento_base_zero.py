@@ -45,7 +45,7 @@ _QUERY = """
         natureza_descricao,
         TO_CHAR(data_emissao, 'YYYY-MM') AS mes,
         SUM(valor_original) AS total
-    FROM vw_titulos_pagar
+    FROM vwia_titulos_pagar
     WHERE filial IN __FILIAL_IN__
       AND TO_CHAR(data_emissao, 'YYYY-MM') >= :mes_inicio
     GROUP BY natureza_codigo, natureza_descricao, TO_CHAR(data_emissao, 'YYYY-MM')

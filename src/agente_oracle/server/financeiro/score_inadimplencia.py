@@ -45,7 +45,7 @@ def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloReceberLiq
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         SELECT cliente_codigo, cliente_nome, data_vencimento, data_baixa
-        FROM vw_titulos_receber
+        FROM vwia_titulos_receber
         WHERE filial IN {clausula_filial}
           AND data_baixa IS NOT NULL
           AND data_baixa >= :desde
@@ -74,7 +74,7 @@ def _buscar_municipios(clientes_codigos: list[str]) -> dict[str, tuple[str, str]
     clausula_cliente, binds_cliente = clausula_in("cliente", clientes_codigos)
     sql = f"""
         SELECT codigo, municipio_nome, estado
-        FROM vw_clientes
+        FROM vwia_clientes
         WHERE codigo IN {clausula_cliente}
     """
     with get_connection() as connection:
@@ -92,7 +92,7 @@ def _buscar_safras(clientes_codigos: list[str]) -> list[SafraCliente]:
     clausula_cliente, binds_cliente = clausula_in("cliente", clientes_codigos)
     sql = f"""
         SELECT cliente_codigo, cultura, safra_codigo, safra_descricao, safra_inicio, safra_fim, data_compra
-        FROM vw_safra_cliente
+        FROM vwia_safra_cliente
         WHERE cliente_codigo IN {clausula_cliente}
     """
     with get_connection() as connection:
@@ -135,7 +135,7 @@ def _buscar_abertos(
     fim = hoje + timedelta(days=horizonte_dias)
     sql = f"""
         SELECT cliente_codigo, cliente_nome, numero, parcela, data_vencimento, saldo_aberto
-        FROM vw_titulos_receber
+        FROM vwia_titulos_receber
         WHERE filial IN {clausula_filial}
           AND cliente_codigo IN {clausula_cliente}
           AND data_baixa IS NULL
@@ -324,11 +324,11 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/score-inadimplencia", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def score_inadimplencia_route(request: Request, usuario: dict) -> Response:
-        """Comportamento de pagamento (`vw_titulos_receber`, últimos
+        """Comportamento de pagamento (`vwia_titulos_receber`, últimos
         `_DIAS_HISTORICO` dias) + clima regional na janela real da safra
         relevante do cliente (Open-Meteo — localização cadastrada
         manualmente pro cliente, se houver e tiver resolvido; senão o
-        centro do município via `vw_clientes`) — indicador composto por
+        centro do município via `vwia_clientes`) — indicador composto por
         regra, sem IA (ver docstring de `agent/financeiro/
         score_inadimplencia.py`). Só devolve cliente com algum indício de
         risco (score > 0, ver `_apenas_com_risco`) — cliente 100% em dia

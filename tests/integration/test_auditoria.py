@@ -22,7 +22,7 @@ pytestmark = pytest.mark.integration
 def _requer_views_curadas():
     if not views_curadas_disponiveis():
         pytest.skip(
-            "Views curadas (vw_titulos_pagar etc.) não existem no banco de negócio/RAG "
+            "Views curadas (vwia_titulos_pagar etc.) não existem no banco de negócio/RAG "
             "configurado — rode db/views/financeiro_science.sql (Oracle) ou confira o Postgres de teste."
         )
 
@@ -183,7 +183,7 @@ def test_dispensar_modulo_fora_do_acesso_e_bloqueado(mcp_app, token_teste):
 def test_dispensar_modulo_valido_e_aceito(mcp_app, token_teste):
     resposta = mcp_app.post(
         "/api/auditoria/dispensar",
-        json={"modulo": "financeiro", "view": "vw_clientes", "campo": "filial", "valor": "1908745"},
+        json={"modulo": "financeiro", "view": "vwia_clientes", "campo": "filial", "valor": "1908745"},
         headers=_auth(token_teste),
     )
     assert resposta.status_code == 200
@@ -194,9 +194,9 @@ def test_dispensar_e_idempotente(usuario_teste):
     """Chamar `dispensar` duas vezes com o mesmo achado não deve gerar erro —
     a constraint única na tabela já cobre isso via `ON CONFLICT DO NOTHING`."""
     usuario_id = str(usuario_teste["id"])
-    dispensados.dispensar(usuario_id, "financeiro", "vw_clientes", "filial", "1908745")
-    dispensados.dispensar(usuario_id, "financeiro", "vw_clientes", "filial", "1908745")
-    assert ("financeiro", "vw_clientes", "filial", "1908745") in dispensados.listar_dispensados(usuario_id)
+    dispensados.dispensar(usuario_id, "financeiro", "vwia_clientes", "filial", "1908745")
+    dispensados.dispensar(usuario_id, "financeiro", "vwia_clientes", "filial", "1908745")
+    assert ("financeiro", "vwia_clientes", "filial", "1908745") in dispensados.listar_dispensados(usuario_id)
 
 
 def test_dispensados_sozinho_nao_esconde_do_get(mcp_app, token_teste, usuario_teste):
@@ -322,7 +322,7 @@ def test_auditoria_historico_lista_achados_ja_salvos(mcp_app, token_teste, usuar
         [
             Achado(
                 modulo="financeiro",
-                view="vw_clientes",
+                view="vwia_clientes",
                 campo="filial",
                 valor="1908745",
                 descricao="achado de teste",
@@ -607,7 +607,7 @@ def test_historico_ativo_route_sem_papel_desenvolvedor_e_bloqueado(mcp_app, toke
         "/api/auditoria/historico/ativo",
         json={
             "modulo": "financeiro",
-            "view": "vw_clientes",
+            "view": "vwia_clientes",
             "campo": "filial",
             "valor": "1908745",
             "ativo": False,

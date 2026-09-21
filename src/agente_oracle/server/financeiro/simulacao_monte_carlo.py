@@ -78,8 +78,8 @@ def registrar(mcp) -> None:
             )
 
         meses_historico = _janela_meses_historico(_MESES_HISTORICO)
-        receber_por_mes = _buscar_titulos_mensal("vw_titulos_receber", filiais, meses_historico[0])
-        pagar_por_mes = _buscar_titulos_mensal("vw_titulos_pagar", filiais, meses_historico[0])
+        receber_por_mes = _buscar_titulos_mensal("vwia_titulos_receber", filiais, meses_historico[0])
+        pagar_por_mes = _buscar_titulos_mensal("vwia_titulos_pagar", filiais, meses_historico[0])
         serie_historica = [
             receber_por_mes.get(mes, 0.0) - pagar_por_mes.get(mes, 0.0) for mes in meses_historico
         ]

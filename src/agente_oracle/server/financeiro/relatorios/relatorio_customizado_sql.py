@@ -111,7 +111,7 @@ def buscar_relatorio_customizado(
 
     # Pede uma linha a mais que o necessário (ver `_montar_sql`) só pra saber
     # se existe próxima página sem precisar de um `COUNT(*)` — que seria caro
-    # nas views com CTE pesada (ex: `vw_baixas_pagar`) pelo mesmo motivo que
+    # nas views com CTE pesada (ex: `vwia_baixas_pagar`) pelo mesmo motivo que
     # a consulta principal já é.
     tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
     return colunas, linhas[:LIMITE_MAXIMO_LINHAS], tem_mais_paginas

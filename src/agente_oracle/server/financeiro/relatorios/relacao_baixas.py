@@ -55,7 +55,7 @@ Datas em `MOVIMENTACAOFINANCEIRA`/`CONTARECEBER`/`CONTAPAGAR` já são
 ATENÇÃO charset: comparações envolvendo colunas `NVARCHAR2` (`MOTIVOBAIXA`,
 `BENEFICIARIO`) contra literal solto (`''`, `'DSD'`) dão `ORA-12704`
 (character set mismatch) — usar literal nacional (`N''`, `N'DSD'`). Mesmo
-problema documentado em `financeiro_science.sql` (`vw_movimento_bancario`).
+problema documentado em `financeiro_science.sql` (`vwia_movimento_bancario`).
 
 Filtros opcionais usam `:bind IS NULL OR :bind = ''` (não `:bind = ''`
 puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`. Contra Postgres

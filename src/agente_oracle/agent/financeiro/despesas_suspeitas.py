@@ -3,7 +3,7 @@ projeto: um passo determinístico acha CANDIDATOS reais (nunca a IA
 "procurando" sozinha), e a IA só julga/descreve o que já foi encontrado.
 Diferente de `agent/auditoria/analise.py` (que compara VALOR de um campo
 contra a distribuição do próprio campo), aqui o candidato é um GRUPO de
-linhas de `vw_titulos_pagar` — não cabe no formato `PerfilCampo`/`Achado`
+linhas de `vwia_titulos_pagar` — não cabe no formato `PerfilCampo`/`Achado`
 genérico, por isso este módulo tem o formato próprio (mesmo espírito de
 `agent/ti/deteccao_seguranca.py`, que também não força o achado genérico).
 
@@ -136,7 +136,7 @@ def buscar_titulos_pagar(filiais: list[str], dias: int) -> list[TituloPagar]:
     sql = f"""
         SELECT fornecedor_codigo, fornecedor_nome, prefixo, numero, parcela,
                natureza_codigo, natureza_descricao, valor_original, data_emissao
-        FROM vw_titulos_pagar
+        FROM vwia_titulos_pagar
         WHERE filial IN {clausula_filial}
           AND data_emissao >= :desde
     """

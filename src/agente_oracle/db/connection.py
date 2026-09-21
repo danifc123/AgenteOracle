@@ -33,13 +33,13 @@ Protheus transacional (tabelas cruas, antes do ETL achatar tudo) — por isso
 essas views leem direto do Protheus HML, não do STAGE. O preço é que o
 Protheus é o banco "vivo" (maior, sem o pré-processamento do ETL), exige
 mais cuidado de consulta (ver o achado de performance documentado no topo
-da seção VWIA_* de `db/views/financeiro_science.sql`).
+da seção do Protheus HML de `db/views/financeiro_science.sql`).
 
 Caminho pra ter essa granularidade no STAGE também, se um dia fizer sentido:
 pedir pro time de dados reconstruir o ETL pra capturar isso — projeto à
 parte, não algo que se resolve só mexendo nas views daqui.
 
-IMPORTANTE — por que ter `vw_titulos_receber` (e as outras 6 views curadas
+IMPORTANTE — por que ter `vwia_titulos_receber` (e as outras 6 views curadas
 do Financeiro) em DOIS bancos ao mesmo tempo NÃO causa consulta indo pro
 lugar errado: `get_connection` decide o POOL (Oracle ou Postgres) uma vez,
 ANTES de qualquer SQL ser executado — é uma decisão por `DB_BACKEND`
@@ -51,9 +51,9 @@ repetido é só rótulo (mesma tabela mental, propositalmente com o mesmo
 nome pra facilitar o desenvolvedor), não um vínculo real entre os bancos.
 
 ATUALIZAÇÃO (2026-08): as 7 views fictícias de teste que existiam no
-Postgres (`vw_titulos_pagar`, `vw_titulos_receber`, `vw_clientes`,
-`vw_fornecedores`, `vw_faturamento`, `vw_lancamentos_contabeis`,
-`vw_safra_cliente` — espelho de teste, sintaxe Postgres própria, nunca
+Postgres (`vwia_titulos_pagar`, `vwia_titulos_receber`, `vwia_clientes`,
+`vwia_fornecedores`, `vwia_faturamento`, `vwia_lancamentos_contabeis`,
+`vwia_safra_cliente` — espelho de teste, sintaxe Postgres própria, nunca
 versionado neste repo) foram apagadas. Enquanto a VPN/credencial do Oracle
 real não estava disponível, elas serviam pra desenvolver sem depender
 disso; agora que o fluxo de trabalho já usa Oracle (STAGE) e Protheus HML

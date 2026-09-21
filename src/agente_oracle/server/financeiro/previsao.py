@@ -7,8 +7,8 @@ nunca depender de o LLM estar no ar.
 
 Toda a SQL agrupa por mês/calcula prazo de um jeito portável entre Oracle e
 Postgres — `TO_CHAR(coluna, 'YYYY-MM')` pras colunas DATE de verdade
-(`data_vencimento`/`data_emissao` em vw_titulos_receber/vw_titulos_pagar/
-vw_faturamento — as três já são DATE/TIMESTAMP de verdade, confirmado
+(`data_vencimento`/`data_emissao` em vwia_titulos_receber/vwia_titulos_pagar/
+vwia_faturamento — as três já são DATE/TIMESTAMP de verdade, confirmado
 direto no catálogo do Oracle: `STAGE.NOTASAIDA.DATAEMISSAO` é
 `TIMESTAMP(6) WITH LOCAL TIME ZONE`, não texto) — nunca `FILTER (WHERE
 ...)` nem casts `::tipo`, que são exclusivos do Postgres (ver aviso em
@@ -98,7 +98,7 @@ def _buscar_faturamento_mensal(filiais: list[str], mes_inicio: str) -> dict[str,
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         SELECT TO_CHAR(data_emissao, 'YYYY-MM') AS mes, SUM(valor_total) AS total
-        FROM vw_faturamento
+        FROM vwia_faturamento
         WHERE filial IN {clausula_filial}
           AND TO_CHAR(data_emissao, 'YYYY-MM') >= :mes_inicio
         GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
@@ -111,12 +111,12 @@ def _buscar_faturamento_mensal(filiais: list[str], mes_inicio: str) -> dict[str,
 
 
 def _buscar_titulos_pagar_mensal(filiais: list[str], mes_inicio: str) -> dict[str, float]:
-    # Diferente de vw_faturamento, `data_emissao` aqui já é DATE de verdade
+    # Diferente de vwia_faturamento, `data_emissao` aqui já é DATE de verdade
     # (confirmado contra o Postgres de teste) — TO_CHAR direto funciona.
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         SELECT TO_CHAR(data_emissao, 'YYYY-MM') AS mes, SUM(valor_original) AS total
-        FROM vw_titulos_pagar
+        FROM vwia_titulos_pagar
         WHERE filial IN {clausula_filial}
           AND TO_CHAR(data_emissao, 'YYYY-MM') >= :mes_inicio
         GROUP BY TO_CHAR(data_emissao, 'YYYY-MM')
@@ -159,7 +159,7 @@ def _grupos_prazo_pagamento(filiais: list[str]) -> list[tuple[float, float]]:
         SELECT
             SUM(valor_original) AS valor_total,
             SUM(valor_original * (data_vencimento - data_emissao)) / NULLIF(SUM(valor_original), 0) AS prazo_medio_dias
-        FROM vw_titulos_pagar
+        FROM vwia_titulos_pagar
         WHERE filial IN {clausula_filial}
         GROUP BY fornecedor_codigo
         HAVING SUM(valor_original) > 0
@@ -173,8 +173,8 @@ def _grupos_prazo_pagamento(filiais: list[str]) -> list[tuple[float, float]]:
 
 def _grupos_prazo_recebimento(filiais: list[str]) -> list[tuple[float, float]]:
     """(valor_total, prazo_medio_dias) por cliente — prazo entre a emissão da
-    nota fiscal (vw_faturamento) e o vencimento do título que ela gerou
-    (vw_titulos_receber, tipo='NF'), usando o relacionamento declarado em
+    nota fiscal (vwia_faturamento) e o vencimento do título que ela gerou
+    (vwia_titulos_receber, tipo='NF'), usando o relacionamento declarado em
     `agent/financeiro/schema.py`, ponderado por `valor_original` de cada
     título (não por contagem de título). `data_emissao` já é DATE de
     verdade nas duas views (confirmado direto no STAGE:
@@ -184,13 +184,13 @@ def _grupos_prazo_recebimento(filiais: list[str]) -> list[tuple[float, float]]:
     sql = f"""
         WITH notas AS (
             SELECT DISTINCT filial, nota_fiscal, serie, cliente_codigo, data_emissao
-            FROM vw_faturamento
+            FROM vwia_faturamento
             WHERE filial IN {clausula_filial}
         )
         SELECT
             SUM(t.valor_original) AS valor_total,
             SUM(t.valor_original * (t.data_vencimento - n.data_emissao)) / NULLIF(SUM(t.valor_original), 0) AS prazo_medio_dias
-        FROM vw_titulos_receber t
+        FROM vwia_titulos_receber t
         JOIN notas n
           ON t.filial = n.filial
          AND t.numero = n.nota_fiscal
@@ -299,16 +299,16 @@ def registrar(mcp) -> None:
             data_corte = hoje + timedelta(days=_DIAS_CORTE_PERIODO)
 
             bucket_receber = await to_thread.run_sync(
-                _buscar_bucket_mensal, "vw_titulos_receber", "saldo_aberto", filiais, hoje, meses_janela[-1]
+                _buscar_bucket_mensal, "vwia_titulos_receber", "saldo_aberto", filiais, hoje, meses_janela[-1]
             )
             bucket_pagar = await to_thread.run_sync(
-                _buscar_bucket_mensal, "vw_titulos_pagar", "saldo_aberto", filiais, hoje, meses_janela[-1]
+                _buscar_bucket_mensal, "vwia_titulos_pagar", "saldo_aberto", filiais, hoje, meses_janela[-1]
             )
             receber_no_periodo, receber_fora_periodo = await to_thread.run_sync(
-                _buscar_corte_periodo, "vw_titulos_receber", filiais, data_corte
+                _buscar_corte_periodo, "vwia_titulos_receber", filiais, data_corte
             )
             pagar_no_periodo, pagar_fora_periodo = await to_thread.run_sync(
-                _buscar_corte_periodo, "vw_titulos_pagar", filiais, data_corte
+                _buscar_corte_periodo, "vwia_titulos_pagar", filiais, data_corte
             )
             yield _linha_ndjson({"tipo": "etapa", "id": "titulos_abertos"})
 

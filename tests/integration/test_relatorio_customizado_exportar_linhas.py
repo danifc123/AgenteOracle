@@ -2,7 +2,7 @@
 .xlsx a partir das linhas que a TELA manda no corpo (já carregadas via
 "Carregar mais"), sem reconsultar o banco. Por isso, ao contrário de
 `test_relatorio_customizado.py`, não depende das views curadas
-(`vw_titulos_pagar` etc.) existirem no banco de negócio/RAG — não faz
+(`vwia_titulos_pagar` etc.) existirem no banco de negócio/RAG — não faz
 nenhuma consulta lá, só monta a planilha a partir do que recebe."""
 
 import pytest

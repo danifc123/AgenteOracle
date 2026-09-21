@@ -16,7 +16,7 @@ _URL = "/api/financeiro/relatorio/exportar"
 def _requer_views_curadas():
     if not views_curadas_disponiveis():
         pytest.skip(
-            "Views curadas (vw_titulos_pagar etc.) não existem no banco de negócio/RAG "
+            "Views curadas (vwia_titulos_pagar etc.) não existem no banco de negócio/RAG "
             "configurado — rode db/views/financeiro_science.sql (Oracle) ou confira o Postgres de teste."
         )
 
@@ -28,7 +28,7 @@ def _auth(token: str) -> dict[str, str]:
 def test_sql_valido_devolve_xlsx(mcp_app, token_teste):
     resposta = mcp_app.post(
         _URL,
-        json={"sql": "SELECT filial, valor_original FROM vw_titulos_pagar"},
+        json={"sql": "SELECT filial, valor_original FROM vwia_titulos_pagar"},
         headers=_auth(token_teste),
     )
     assert resposta.status_code == 200
@@ -44,7 +44,7 @@ def test_juncao_por_virgula_continua_bloqueada(mcp_app, token_teste):
     tabela do banco (ex: `usuarios`, com hash de senha) via a segunda."""
     resposta = mcp_app.post(
         _URL,
-        json={"sql": "SELECT u.usuario, u.senha_hash FROM vw_titulos_pagar t, usuarios u"},
+        json={"sql": "SELECT u.usuario, u.senha_hash FROM vwia_titulos_pagar t, usuarios u"},
         headers=_auth(token_teste),
     )
     assert resposta.status_code == 400
@@ -57,5 +57,5 @@ def test_tabela_fora_do_escopo_e_bloqueada(mcp_app, token_teste):
 
 
 def test_sem_token_e_nao_autorizado(mcp_app):
-    resposta = mcp_app.post(_URL, json={"sql": "SELECT * FROM vw_titulos_pagar"})
+    resposta = mcp_app.post(_URL, json={"sql": "SELECT * FROM vwia_titulos_pagar"})
     assert resposta.status_code == 401

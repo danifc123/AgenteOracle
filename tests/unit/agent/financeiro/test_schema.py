@@ -17,7 +17,7 @@ def _coluna(nome: str, tipo_filtro: str | None = None) -> ColunaView:
 # tes_codigo, veiculo — nenhum desses existe no STAGE). Atualizar aqui junto
 # se um dia uma coluna nova for adicionada de verdade à view no banco.
 _COLUNAS_REAIS_POR_VIEW = {
-    "vw_titulos_pagar": {
+    "vwia_titulos_pagar": {
         "filial",
         "prefixo",
         "numero",
@@ -36,7 +36,7 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor_juros",
         "data_baixa",
     },
-    "vw_titulos_receber": {
+    "vwia_titulos_receber": {
         "filial",
         "prefixo",
         "numero",
@@ -55,9 +55,9 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor_juros",
         "data_baixa",
     },
-    "vw_fornecedores": {"codigo", "nome", "nome_reduzido", "cnpj_cpf", "tipo_pessoa", "estado"},
-    "vw_clientes": {"codigo", "nome", "nome_reduzido", "cnpj_cpf", "tipo_pessoa", "estado", "municipio_nome"},
-    "vw_pedidos_venda": {
+    "vwia_fornecedores": {"codigo", "nome", "nome_reduzido", "cnpj_cpf", "tipo_pessoa", "estado"},
+    "vwia_clientes": {"codigo", "nome", "nome_reduzido", "cnpj_cpf", "tipo_pessoa", "estado", "municipio_nome"},
+    "vwia_pedidos_venda": {
         "filial",
         "numero_pedido",
         "item",
@@ -78,7 +78,7 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor_total",
         "status_pedido",
     },
-    "vw_faturamento": {
+    "vwia_faturamento": {
         "filial",
         "nota_fiscal",
         "serie",
@@ -107,7 +107,7 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor_total",
         "custo",
     },
-    "vw_movimento_bancario": {
+    "vwia_movimento_bancario": {
         "filial",
         "banco_codigo",
         "banco_nome",
@@ -120,7 +120,7 @@ _COLUNAS_REAIS_POR_VIEW = {
         "tipo_documento",
         "conciliado",
     },
-    "vw_lancamentos_contabeis": {
+    "vwia_lancamentos_contabeis": {
         "filial",
         "documento",
         "linha",
@@ -132,7 +132,7 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor",
         "data_movimentacao",
     },
-    "vw_safra_cliente": {
+    "vwia_safra_cliente": {
         "cliente_codigo",
         "cultura",
         "safra_codigo",

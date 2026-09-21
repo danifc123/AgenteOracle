@@ -1,31 +1,28 @@
-"""Flags de configuração do módulo TI controláveis pelo próprio time (sem
-precisar mexer em `.env`/reiniciar o servidor) — mesmo padrão de tabela
-própria auto-criada de `tools/ti/uso_ia_chamados.py`/
-`tools/financeiro/categoria_cores.py`.
+"""Configurações do módulo TI editáveis sem reiniciar o servidor (`ti_configuracoes`).
 
-Formato chave/valor (não uma coluna fixa por flag) pra dar pra guardar uma
-segunda configuração de TI no futuro sem precisar de migração nova — cada
-linha usa `valor` (flag booleana) OU `valor_numerico` (número), nunca os dois.
+Cada linha guarda `valor` (flag), `valor_numerico` (número) e/ou `valor_data` (quando mudou).
+"""
 
-Duas configurações hoje:
-- `usar_ia_avaliacao_chamado` — desliga a chamada ao Ollama em
-  `agent/ti/qualidade_chamado.py::avaliar_chamado` (ver docstring de lá),
-  decisão do time de TI, não uma reação automática a falha (isso já existe
-  independente desta flag).
-- `percentual_amostragem_chamados` — que parcela (0 a 100) dos chamados novos
-  a Auditoria analisa; ver `tools/ti/amostragem_chamados.py`. Sem linha
-  configurada, o padrão é 100 (todos), ou seja, comportamento de sempre."""
-
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from agente_oracle.db.connection import get_postgres_connection
 
 _tabela_garantida = False
 
+_CHAVE_LER_CHAMADOS_ANTIGOS = "ler_chamados_antigos"
 _CHAVE_PERCENTUAL_AMOSTRAGEM_CHAMADOS = "percentual_amostragem_chamados"
 _CHAVE_USAR_IA_AVALIACAO_CHAMADO = "usar_ia_avaliacao_chamado"
 
 PERCENTUAL_AMOSTRAGEM_PADRAO = Decimal(100)
+
+
+def _buscar_percentual(cursor) -> tuple | None:
+    cursor.execute(
+        "SELECT valor_numerico, valor_data FROM ti_configuracoes WHERE chave = :chave",
+        chave=_CHAVE_PERCENTUAL_AMOSTRAGEM_CHAMADOS,
+    )
+    return cursor.fetchone()
 
 
 def _garantir_tabela(cursor) -> None:
@@ -38,73 +35,94 @@ def _garantir_tabela(cursor) -> None:
             valor BOOLEAN NOT NULL
         )
     """)
-    # A tabela já existe em produção só com `valor BOOLEAN NOT NULL` — os dois
-    # ALTER abaixo são idempotentes e adaptam ela pra guardar também número.
     cursor.execute("ALTER TABLE ti_configuracoes ADD COLUMN IF NOT EXISTS valor_numerico NUMERIC(6, 3)")
+    cursor.execute("ALTER TABLE ti_configuracoes ADD COLUMN IF NOT EXISTS valor_data TIMESTAMPTZ")
     cursor.execute("ALTER TABLE ti_configuracoes ALTER COLUMN valor DROP NOT NULL")
     _tabela_garantida = True
 
 
-def usar_ia_avaliacao_chamado() -> bool:
-    """Sem linha configurada ainda, o padrão é `True` (IA ligada) — a
-    flag é um jeito de desligar, não uma exigência de configurar antes de
-    usar."""
+def _gravar_booleano(chave: str, valor: bool) -> None:
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
         cursor.execute(
-            "SELECT valor FROM ti_configuracoes WHERE chave = :chave", chave=_CHAVE_USAR_IA_AVALIACAO_CHAMADO
-        )
-        linha = cursor.fetchone()
-    return bool(linha[0]) if linha else True
-
-
-def definir_usar_ia_avaliacao_chamado(valor: bool) -> None:
-    with get_postgres_connection() as connection:
-        cursor = connection.cursor()
-        _garantir_tabela(cursor)
-        cursor.execute(
-            "UPDATE ti_configuracoes SET valor = :valor WHERE chave = :chave",
-            valor=valor,
-            chave=_CHAVE_USAR_IA_AVALIACAO_CHAMADO,
+            "UPDATE ti_configuracoes SET valor = :valor WHERE chave = :chave", valor=valor, chave=chave
         )
         if cursor.rowcount == 0:
             cursor.execute(
                 "INSERT INTO ti_configuracoes (chave, valor) VALUES (:chave, :valor)",
-                chave=_CHAVE_USAR_IA_AVALIACAO_CHAMADO,
+                chave=chave,
                 valor=valor,
             )
+
+
+def _ler_booleano(chave: str, padrao: bool) -> bool:
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute("SELECT valor FROM ti_configuracoes WHERE chave = :chave", chave=chave)
+        linha = cursor.fetchone()
+    return bool(linha[0]) if linha and linha[0] is not None else padrao
+
+
+def definir_ler_chamados_antigos(valor: bool) -> None:
+    _gravar_booleano(_CHAVE_LER_CHAMADOS_ANTIGOS, valor)
 
 
 def definir_percentual_amostragem_chamados(valor: Decimal) -> None:
-    """`valor` já validado pela camada de rota (0 a 100, até 3 casas
-    decimais) — ver `server/ti/configuracoes.py`."""
+    """Só uma mudança de verdade move a data de referência; regravar o mesmo valor não."""
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
+        linha = _buscar_percentual(cursor)
+        em_vigor = linha[0] if linha and linha[0] is not None else PERCENTUAL_AMOSTRAGEM_PADRAO
+        alterado_em = datetime.now(UTC) if valor != em_vigor else None
+        _gravar_percentual(cursor, valor, alterado_em, existe=linha is not None)
+
+
+def _gravar_percentual(cursor, valor: Decimal, alterado_em: datetime | None, existe: bool) -> None:
+    """Insere a linha se não existe; atualiza só quando o percentual mudou de verdade."""
+    if not existe:
         cursor.execute(
-            "UPDATE ti_configuracoes SET valor_numerico = :valor WHERE chave = :chave",
-            valor=valor,
+            "INSERT INTO ti_configuracoes (chave, valor_numerico, valor_data) VALUES (:chave, :valor, :quando)",
             chave=_CHAVE_PERCENTUAL_AMOSTRAGEM_CHAMADOS,
+            valor=valor,
+            quando=alterado_em,
         )
-        if cursor.rowcount == 0:
-            cursor.execute(
-                "INSERT INTO ti_configuracoes (chave, valor_numerico) VALUES (:chave, :valor)",
-                chave=_CHAVE_PERCENTUAL_AMOSTRAGEM_CHAMADOS,
-                valor=valor,
-            )
+    elif alterado_em is not None:
+        cursor.execute(
+            "UPDATE ti_configuracoes SET valor_numerico = :valor, valor_data = :quando WHERE chave = :chave",
+            chave=_CHAVE_PERCENTUAL_AMOSTRAGEM_CHAMADOS,
+            valor=valor,
+            quando=alterado_em,
+        )
+
+
+def definir_usar_ia_avaliacao_chamado(valor: bool) -> None:
+    _gravar_booleano(_CHAVE_USAR_IA_AVALIACAO_CHAMADO, valor)
+
+
+def ler_chamados_antigos() -> bool:
+    return _ler_booleano(_CHAVE_LER_CHAMADOS_ANTIGOS, padrao=False)
+
+
+def percentual_alterado_em() -> datetime | None:
+    """Quando o percentual mudou pela última vez; `None` se nunca (nenhum chamado é antigo)."""
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        linha = _buscar_percentual(cursor)
+    return linha[1] if linha else None
 
 
 def percentual_amostragem_chamados() -> Decimal:
-    """Sem linha configurada ainda, o padrão é 100 (todos os chamados
-    novos são analisados) — mesmo espírito de `usar_ia_avaliacao_chamado`: a
-    configuração é um jeito de reduzir, não uma exigência antes de usar."""
+    """Padrão 100 (todos os chamados novos são analisados)."""
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
         _garantir_tabela(cursor)
-        cursor.execute(
-            "SELECT valor_numerico FROM ti_configuracoes WHERE chave = :chave",
-            chave=_CHAVE_PERCENTUAL_AMOSTRAGEM_CHAMADOS,
-        )
-        linha = cursor.fetchone()
+        linha = _buscar_percentual(cursor)
     return linha[0] if linha and linha[0] is not None else PERCENTUAL_AMOSTRAGEM_PADRAO
+
+
+def usar_ia_avaliacao_chamado() -> bool:
+    return _ler_booleano(_CHAVE_USAR_IA_AVALIACAO_CHAMADO, padrao=True)

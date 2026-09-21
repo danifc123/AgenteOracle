@@ -53,11 +53,10 @@ def _roster_de_tecnicos_para_teste(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _amostragem_liberada_por_padrao(monkeypatch):
-    # Sem isso a decisão de amostragem tentaria ler `ti_configuracoes`/
-    # `ti_amostragem_chamados` do Postgres — e, falhando (fail closed, ver
-    # `chamado_entra_na_amostra`), nenhum chamado seria processado. Os testes
-    # de amostragem em si sobrescrevem isto.
-    monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", lambda _id: True)
+    # Sem isso a amostragem leria o Postgres e, falhando, nenhum chamado seria processado.
+    monkeypatch.setattr(
+        chamados_module.amostragem_chamados, "deve_analisar", lambda _id, _criado_em=None: True
+    )
 
 
 def _chamado(
@@ -523,7 +522,9 @@ class TestVerificarChamadosPendentes:
         cliente = _ClienteGLPIFake([_chamado(id_=1, categoria_id=999), _chamado(id_=2, categoria_id=999)])
         monkeypatch.setattr(chamados_module, "_cliente", cliente)
         monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
-        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", lambda id_: id_ == 1)
+        monkeypatch.setattr(
+            chamados_module.amostragem_chamados, "deve_analisar", lambda id_, _criado_em=None: id_ == 1
+        )
         monkeypatch.setattr(
             chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
         )
@@ -547,7 +548,7 @@ class TestVerificarChamadosPendentes:
             chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
         )
 
-        def _amostragem_proibida(_id):
+        def _amostragem_proibida(_id, _criado_em=None):
             raise AssertionError("chamado já avaliado não deveria passar pela amostragem")
 
         monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _amostragem_proibida)
@@ -564,7 +565,7 @@ class TestVerificarChamadosPendentes:
         monkeypatch.setattr(chamados_module, "_cliente", cliente)
         monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
 
-        def _banco_fora(_id):
+        def _banco_fora(_id, _criado_em=None):
             raise psycopg.OperationalError("Postgres fora do ar")
 
         monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _banco_fora)
@@ -580,7 +581,9 @@ class TestVerificarChamadosPendentes:
 
 class TestChamadoEntraNaAmostra:
     def test_devolve_a_decisao_da_amostragem(self, monkeypatch):
-        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", lambda id_: id_ == 7)
+        monkeypatch.setattr(
+            chamados_module.amostragem_chamados, "deve_analisar", lambda id_, _criado_em=None: id_ == 7
+        )
 
         assert chamado_entra_na_amostra(7) is True
         assert chamado_entra_na_amostra(8) is False
@@ -588,7 +591,7 @@ class TestChamadoEntraNaAmostra:
     def test_falha_do_banco_falha_pro_lado_fechado(self, monkeypatch):
         # Cair pro lado aberto analisaria todo mundo justamente quando não
         # dá pra saber se o chamado estava fora da amostra.
-        def _banco_fora(_id):
+        def _banco_fora(_id, _criado_em=None):
             raise psycopg.OperationalError("Postgres fora do ar")
 
         monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _banco_fora)

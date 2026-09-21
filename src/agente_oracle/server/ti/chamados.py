@@ -47,7 +47,9 @@ poller/`/verificar` em lote (`verificar_chamados_pendentes`) e webhook. Quem
 já foi avaliado alguma vez segue o ciclo normal sem passar por ela, e o
 botão "Verificar" de UM chamado (`chamado_verificar_route`) ignora a
 amostra, porque é uma ação explícita de quem está na tela. Chamado fora da
-amostra fica intocado no GLPI e some da tela (`_chamados_da_tela`).
+amostra fica intocado no GLPI e some da tela (`_chamados_da_tela`) — até ser
+avaliado. Numa mudança de percentual, a flag "Ler chamados antigos" decide o
+que acontece com o chamado criado antes dela (ver `amostragem_chamados.py`).
 
 `_texto_para_ia` limpa o HTML da descrição antes de mandar pra IA — um
 chamado aberto por e-mail pode chegar como um e-mail HTML inteiro
@@ -69,6 +71,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime
 
 from anyio import to_thread
 from bs4 import BeautifulSoup
@@ -310,15 +313,17 @@ def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa |
         return None
 
 
-def chamado_entra_na_amostra(chamado_id: int) -> bool:
+def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None) -> bool:
     """Envolve `amostragem_chamados.deve_analisar` só nos pontos de chamada.
+    `criado_em` (data de criação no GLPI) deixa a amostragem separar chamado
+    antigo de novo; o webhook não passa (só dispara pra chamado recém-criado).
     Ao contrário de `_ultima_avaliacao_segura`, falha pro lado FECHADO: com
     Postgres fora do ar, o chamado NÃO é analisado nesta rodada (segue `novo`
     e o poller tenta de novo na próxima) — cair pro lado aberto analisaria
     todo mundo justamente quando não dá pra saber se ele estava fora da amostra,
     furando o controle que essa funcionalidade existe pra garantir."""
     try:
-        return amostragem_chamados.deve_analisar(chamado_id)
+        return amostragem_chamados.deve_analisar(chamado_id, criado_em)
     except DatabaseError:
         _logger.exception("Falha decidindo a amostragem do chamado %s", chamado_id)
         return False
@@ -395,7 +400,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
         try:
             registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
             if registro_anterior is None and not await to_thread.run_sync(
-                chamado_entra_na_amostra, chamado.id
+                chamado_entra_na_amostra, chamado.id, chamado.criado_em
             ):
                 continue
             resultado = await processar_chamado_novo(

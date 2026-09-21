@@ -370,6 +370,8 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "status calculado do item: AGUARDANDO LIBERACAO, LIBERADO, BLOQUEADO POR REGRA, "
                 "BLOQUEADO POR VERBA, CANCELADO, FATURADO PARCIAL ou FATURADO TOTAL",
             ),
+            ColunaView("natureza_descricao", "descrição da natureza financeira do pedido"),
+            ColunaView("grupo_produto_descricao", "descrição do grupo do produto"),
         ),
         relacionamentos=(
             RelacionamentoView(
@@ -427,6 +429,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("valor_unitario", "valor unitário de venda do item"),
             ColunaView("valor_total", "valor total do item (quantidade x valor unitário)"),
             ColunaView("custo", "custo do item na data do faturamento"),
+            ColunaView("grupo_produto_descricao", "descrição do grupo do produto"),
         ),
         relacionamentos=(
             RelacionamentoView(

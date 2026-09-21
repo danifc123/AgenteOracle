@@ -87,6 +87,8 @@ _COLUNAS_REAIS_POR_VIEW = {
         "preco_unitario",
         "valor_total",
         "status_pedido",
+        "natureza_descricao",
+        "grupo_produto_descricao",
     },
     "vwia_faturamento": {
         "filial",
@@ -116,6 +118,7 @@ _COLUNAS_REAIS_POR_VIEW = {
         "valor_unitario",
         "valor_total",
         "custo",
+        "grupo_produto_descricao",
     },
     "vwia_movimento_bancario": {
         "filial",

@@ -8,6 +8,7 @@ import psycopg
 import pytest
 
 from agente_oracle.server.financeiro.relatorios import _comum, relatorio_customizado_sql
+from agente_oracle.server.financeiro.relatorios.relatorio_customizado import _opcoes_da_coluna
 from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import (
     RelatorioCustomizadoInvalido,
     ViewIndisponivel,
@@ -241,3 +242,60 @@ class TestBuscarOpcoesColunaViewInexistente:
 
         with pytest.raises(ViewIndisponivel, match="vwia_clientes"):
             relatorio_customizado_sql.buscar_opcoes_coluna("vwia_clientes", "nome")
+
+
+class TestRotularLinhas:
+    def test_troca_so_as_colunas_que_declaram_rotulos(self):
+        colunas = ["vwia_movimento_bancario.valor", "vwia_movimento_bancario.recebimento_pagamento"]
+        linhas = [(100.0, "R"), (50.0, "P")]
+
+        resultado = relatorio_customizado_sql._rotular_linhas(colunas, linhas)
+
+        assert resultado == [(100.0, "Recebimento"), (50.0, "Pagamento")]
+
+    def test_valor_nulo_continua_nulo_e_codigo_desconhecido_passa_como_veio(self):
+        colunas = ["vwia_titulos_pagar.tipo"]
+
+        resultado = relatorio_customizado_sql._rotular_linhas(colunas, [(None,), ("EMP",), ("NF",)])
+
+        assert resultado == [(None,), ("EMP",), ("Nota fiscal",)]
+
+    def test_numero_da_coluna_conciliado_vira_sim_ou_nao(self):
+        colunas = ["vwia_movimento_bancario.conciliado"]
+
+        resultado = relatorio_customizado_sql._rotular_linhas(colunas, [(1,), (0,)])
+
+        assert resultado == [("Sim",), ("Não",)]
+
+    def test_sem_nenhuma_coluna_rotulada_devolve_as_mesmas_linhas(self):
+        linhas = [("a",), ("b",)]
+
+        assert relatorio_customizado_sql._rotular_linhas(["vwia_clientes.nome"], linhas) is linhas
+
+    def test_cabecalho_fora_do_registro_e_ignorado(self):
+        assert relatorio_customizado_sql._rotular_linhas(["algo_que_nao_existe"], [("x",)]) == [("x",)]
+
+
+class TestRotularOpcao:
+    def test_devolve_o_rotulo_do_valor_cru(self):
+        assert relatorio_customizado_sql.rotular_opcao("vwia_faturamento", "tipo_frete", "F") == "FOB"
+
+    def test_coluna_sem_rotulos_devolve_o_proprio_valor(self):
+        assert relatorio_customizado_sql.rotular_opcao("vwia_clientes", "nome", "MARIA") == "MARIA"
+
+
+class TestOpcoesDaColuna:
+    def test_valor_fica_cru_e_rotulo_legivel_ordenado_pelo_rotulo(self):
+        opcoes = _opcoes_da_coluna("vwia_faturamento.tipo_frete", ["C", "D", "F", "S"])
+
+        assert opcoes == [
+            {"valor": "C", "rotulo": "CIF"},
+            {"valor": "F", "rotulo": "FOB"},
+            {"valor": "D", "rotulo": "Por conta do destinatário"},
+            {"valor": "S", "rotulo": "Sem frete"},
+        ]
+
+    def test_coluna_sem_rotulos_mantem_ordem_e_rotulo_igual_ao_valor(self):
+        opcoes = _opcoes_da_coluna("vwia_clientes.nome", ["ZE", "ANA"])
+
+        assert opcoes == [{"valor": "ZE", "rotulo": "ZE"}, {"valor": "ANA", "rotulo": "ANA"}]

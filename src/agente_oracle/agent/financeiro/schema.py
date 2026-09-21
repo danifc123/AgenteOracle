@@ -12,6 +12,7 @@ TOTVS) — enquanto isso, tanto o prompt quanto a validação tratam como
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 # Prefixo das tools MCP deste módulo (ex: "financeiro_executar_consulta_financeira").
 # Usado tanto no registro das tools (server/financeiro/ia.py) quanto na hora de
@@ -48,12 +49,42 @@ class ColunaView:
     direto com uma DATE depende da conversão implícita do Oracle (formato
     da sessão, não necessariamente "DD/MM/YYYY"), o que falha ou dá
     resultado errado. `None` (padrão) = coluna é DATE de verdade, sem
-    cast nenhum, comportamento inalterado pra todas as outras views."""
+    cast nenhum, comportamento inalterado pra todas as outras views.
+
+    `rotulos` é opcional e traduz um valor "codificado" do banco (`'R'`,
+    `1`, `'-1'`) pro texto que o usuário entende ("Recebimento", "Sim", "Não
+    informado") — pares (valor cru, rótulo). Só vale na APRESENTAÇÃO do
+    "Criar Relatório" (tabela, lista de opções do filtro e Excel, ver
+    `relatorio_customizado_sql.py`): o banco continua com o valor cru, o
+    filtro continua enviando o valor cru, e tudo que consome a view direto
+    (relatórios fixos, previsão, IA do chat, prompts) segue vendo o valor
+    cru — por isso NÃO se troca o valor dentro do `CREATE VIEW`. Valor sem
+    rótulo cadastrado aparece como veio (`rotulo_de`)."""
 
     nome: str
     descricao: str
     tipo_filtro: str | None = None
     formato_data_texto: str | None = None
+    rotulos: tuple[tuple[str, str], ...] = ()
+
+    def rotulo_de(self, valor) -> str:
+        """Rótulo do valor cru, ou o próprio valor como texto quando não há
+        rótulo cadastrado. Compara pela forma normalizada (`_chave_rotulo`):
+        `1`, `1.0` e `Decimal('1')` batem todos com a chave `'1'`."""
+        return dict(self.rotulos).get(_chave_rotulo(valor), str(valor))
+
+
+def _chave_rotulo(valor) -> str:
+    """Forma comparável de um valor cru: número inteiro (int/float/Decimal)
+    vira o texto do inteiro (`1.0` -> `'1'`, como o Oracle devolve `NUMBER`),
+    o resto vira texto sem espaço nas pontas."""
+    if isinstance(valor, int | float | Decimal) and not isinstance(valor, bool):
+        try:
+            if valor == int(valor):
+                return str(int(valor))
+        except (ArithmeticError, ValueError):
+            pass
+    return str(valor).strip()
 
 
 @dataclass(frozen=True)
@@ -100,6 +131,79 @@ class ViewFinanceira:
     fonte: str = "stage"
 
 
+# Tabelas de rótulo (`ColunaView.rotulos`) — só STAGE. `-1` é o placeholder de
+# nulo que a etapa "replace null" do Pentaho grava (ver memória
+# `stage_pentaho_replace_null`), não um código real. Siglas do Protheus que
+# ninguém confirmou o significado ficam FORA de propósito: aparecem como vêm.
+_ROTULOS_SIM_NAO = (("1", "Sim"), ("0", "Não"))
+_ROTULOS_RECEBIMENTO_PAGAMENTO = (("R", "Recebimento"), ("P", "Pagamento"))
+_ROTULOS_TIPO_PESSOA = (("F", "Pessoa física"), ("J", "Pessoa jurídica"), ("INDEFINIDO", "Não informado"))
+_ROTULOS_TIPO_FRETE = (
+    ("C", "CIF"),
+    ("F", "FOB"),
+    ("T", "Por conta de terceiros"),
+    ("R", "Por conta do remetente"),
+    ("D", "Por conta do destinatário"),
+    ("S", "Sem frete"),
+    ("-1", "Não informado"),
+)
+# Mesma lista de moedas já decodificada em `vwia_notas_compra` (Protheus).
+_ROTULOS_MOEDA = (
+    ("1", "Real"),
+    ("2", "Dólar"),
+    ("3", "UFIR"),
+    ("4", "Euro"),
+    ("5", "Iene"),
+    ("6", "Soja"),
+    ("7", "Milho"),
+    ("8", "Sorgo"),
+)
+# Mesma redação de `DESCRICAO_TIPO_DOC` em `vwia_baixas_pagar`; "DH" (Dinheiro)
+# não está lá e ainda precisa de confirmação.
+_ROTULOS_TIPO_DOCUMENTO_BANCARIO = (
+    ("VL", "Baixa com movimento bancário"),
+    ("TR", "Transferência"),
+    ("DH", "Dinheiro"),
+    ("PA", "Pagamento antecipado"),
+    ("TE", "Transferência estornada"),
+    ("RA", "Recebimento antecipado"),
+    ("ES", "Estorno"),
+    ("AP", "Aplicação financeira"),
+    ("-1", "Não informado"),
+)
+_ROTULOS_SEM_SAFRA = (("-1", "Sem safra"),)
+_ROTULOS_SEM_CONTA = (("-1", "Sem conta definida"),)
+_ROTULOS_SEM_CENTRO_CUSTO = (("-1", "Sem centro de custo"),)
+# Padrão TOTVS. Ficam de fora (sem confirmação): EMP, FD, FD-, FU-, FOL, IMA,
+# SEN, FUN, INP, CSS, DDI, TXA, NP, NDI, DH.
+_ROTULOS_TIPO_TITULO = (
+    ("NF", "Nota fiscal"),
+    ("TX", "Taxa"),
+    ("PA", "Pagamento antecipado"),
+    ("RA", "Recebimento antecipado"),
+    ("NDF", "Nota de débito de fornecedor"),
+    ("NCC", "Nota de crédito de cliente"),
+    ("NCF", "Nota de crédito de fornecedor"),
+    ("CH", "Cheque"),
+    ("DP", "Duplicata"),
+    ("FT", "Fatura"),
+    ("BOL", "Boleto"),
+    ("RC", "Recibo"),
+    ("PR", "Provisório"),
+    ("CR", "Cartão de crédito"),
+    ("ISS", "ISS"),
+    ("INS", "INSS"),
+    ("IRF", "IRRF"),
+    ("PIS", "PIS"),
+    ("COF", "COFINS"),
+    ("CSL", "CSLL"),
+    ("IR-", "IRRF (abatimento)"),
+    ("PI-", "PIS (abatimento)"),
+    ("CS-", "CSLL (abatimento)"),
+    ("CF-", "COFINS (abatimento)"),
+    ("AB-", "Abatimento"),
+)
+
 VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
     ViewFinanceira(
         nome="vwia_titulos_pagar",
@@ -109,7 +213,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("prefixo", "prefixo do documento"),
             ColunaView("numero", "número do título"),
             ColunaView("parcela", "número da parcela"),
-            ColunaView("tipo", "tipo do título (ex: NF)"),
+            ColunaView("tipo", "tipo do título (ex: NF)", rotulos=_ROTULOS_TIPO_TITULO),
             ColunaView("fornecedor_codigo", "código do fornecedor"),
             ColunaView("fornecedor_nome", "nome do fornecedor"),
             ColunaView("natureza_codigo", "código da natureza financeira"),
@@ -152,7 +256,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("prefixo", "prefixo do documento"),
             ColunaView("numero", "número do título"),
             ColunaView("parcela", "número da parcela"),
-            ColunaView("tipo", "tipo do título (ex: NF, NP)"),
+            ColunaView("tipo", "tipo do título (ex: NF, NP)", rotulos=_ROTULOS_TIPO_TITULO),
             ColunaView("cliente_codigo", "código do cliente"),
             ColunaView("cliente_nome", "nome do cliente"),
             ColunaView("natureza_codigo", "código da natureza financeira"),
@@ -199,7 +303,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("nome", "razão social / nome completo"),
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
             ColunaView("cnpj_cpf", "CNPJ ou CPF"),
-            ColunaView("tipo_pessoa", "F = pessoa física, J = pessoa jurídica"),
+            ColunaView("tipo_pessoa", "F = pessoa física, J = pessoa jurídica", rotulos=_ROTULOS_TIPO_PESSOA),
             ColunaView(
                 "estado",
                 "sigla de 2 letras do estado (UF), ex: 'MT', 'SP', 'MG' — nunca o nome "
@@ -221,7 +325,7 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("nome", "razão social / nome completo"),
             ColunaView("nome_reduzido", "nome reduzido/fantasia"),
             ColunaView("cnpj_cpf", "CNPJ ou CPF"),
-            ColunaView("tipo_pessoa", "F = pessoa física, J = pessoa jurídica"),
+            ColunaView("tipo_pessoa", "F = pessoa física, J = pessoa jurídica", rotulos=_ROTULOS_TIPO_PESSOA),
             ColunaView(
                 "estado",
                 "sigla de 2 letras do estado (UF), ex: 'MT', 'SP', 'MG' — nunca o nome "
@@ -246,9 +350,9 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("cliente_nome", "razão social / nome completo do cliente"),
             ColunaView("data_emissao", "data de emissão do pedido"),
             ColunaView("tipo_pedido", "tipo do pedido de venda"),
-            ColunaView("codigo_safra", "código da safra vinculada ao pedido"),
+            ColunaView("codigo_safra", "código da safra vinculada ao pedido", rotulos=_ROTULOS_SEM_SAFRA),
             ColunaView("natureza_codigo", "código da natureza financeira do pedido"),
-            ColunaView("moeda", "código da moeda do pedido"),
+            ColunaView("moeda", "código da moeda do pedido", rotulos=_ROTULOS_MOEDA),
             ColunaView("produto_codigo", "código do produto"),
             ColunaView("produto_descricao", "descrição do produto"),
             ColunaView("grupo_produto_codigo", "código do grupo do produto"),
@@ -308,11 +412,15 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("chave_nfe", "chave de acesso da NF-e"),
             ColunaView("vendedor_codigo", "código do vendedor"),
             ColunaView("vendedor_nome", "nome do vendedor"),
-            ColunaView("tipo_frete", "código do tipo de frete (CIF/FOB/etc.)"),
+            ColunaView("tipo_frete", "código do tipo de frete (CIF/FOB/etc.)", rotulos=_ROTULOS_TIPO_FRETE),
             ColunaView("produto_codigo", "código do produto"),
             ColunaView("produto_descricao", "descrição do produto"),
             ColunaView("grupo_produto_codigo", "código do grupo do produto"),
-            ColunaView("codigo_safra", "código da safra vinculada ao pedido de origem"),
+            ColunaView(
+                "codigo_safra",
+                "código da safra vinculada ao pedido de origem",
+                rotulos=_ROTULOS_SEM_SAFRA,
+            ),
             ColunaView("natureza_codigo", "código da natureza financeira do pedido de origem"),
             ColunaView("natureza_descricao", "descrição da natureza financeira"),
             ColunaView("quantidade", "quantidade faturada no item"),
@@ -355,13 +463,22 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("conta", "número da conta"),
             ColunaView("data_disponivel", "data em que o valor ficou disponível na conta"),
             ColunaView("historico", "descrição/histórico do lançamento"),
-            ColunaView("recebimento_pagamento", "R = recebimento, P = pagamento"),
+            ColunaView(
+                "recebimento_pagamento",
+                "R = recebimento, P = pagamento",
+                rotulos=_ROTULOS_RECEBIMENTO_PAGAMENTO,
+            ),
             ColunaView("valor", "valor do lançamento"),
-            ColunaView("tipo_documento", "tipo do documento (ex: RB recebimento, PG pagamento)"),
+            ColunaView(
+                "tipo_documento",
+                "tipo do documento (ex: RB recebimento, PG pagamento)",
+                rotulos=_ROTULOS_TIPO_DOCUMENTO_BANCARIO,
+            ),
             ColunaView(
                 "conciliado",
                 "1 se o lançamento já foi conciliado com o extrato do banco, 0 se não — "
                 "não é um tipo booleano de verdade (Oracle SQL não tem), é numérico",
+                rotulos=_ROTULOS_SIM_NAO,
             ),
         ),
     ),
@@ -376,15 +493,18 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
                 "conta",
                 "código da conta contábil (plano de contas) — '-1' significa que o "
                 "lançamento NÃO tem conta definida ainda",
+                rotulos=_ROTULOS_SEM_CONTA,
             ),
             ColunaView("conta_descricao", "descrição da conta contábil, NULL quando conta = '-1'"),
             ColunaView(
                 "centro_custo_debito",
                 "centro de custo do lado devedor do lançamento — '-1' quando não definido",
+                rotulos=_ROTULOS_SEM_CENTRO_CUSTO,
             ),
             ColunaView(
                 "centro_custo_credito",
                 "centro de custo do lado credor do lançamento — '-1' quando não definido",
+                rotulos=_ROTULOS_SEM_CENTRO_CUSTO,
             ),
             ColunaView("historico", "descrição livre do lançamento"),
             ColunaView("valor", "valor do lançamento"),

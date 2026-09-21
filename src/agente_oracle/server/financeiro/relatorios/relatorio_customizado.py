@@ -25,6 +25,7 @@ from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import
     ViewIndisponivel,
     buscar_opcoes_colunas,
     buscar_relatorio_customizado,
+    rotular_opcao,
     suporta_lista_opcoes,
     validar_coluna,
 )
@@ -65,6 +66,18 @@ def _gerar_xlsx_relatorio_customizado(colunas: list[str], linhas: list[list]) ->
             **CORS_HEADERS,
         },
     )
+
+
+def _opcoes_da_coluna(chave: str, valores: list[str]) -> list[dict[str, str]]:
+    """`valor` é sempre o cru (é o que volta no filtro); `rotulo` é o texto
+    legível. Quando algum valor ganhou rótulo, a lista sai ordenada por ele —
+    a ordem do banco (pelo código cru) não faz sentido pra quem lê "CIF",
+    "FOB"..."""
+    nome_view, _, nome_coluna = chave.partition(".")
+    opcoes = [{"valor": valor, "rotulo": rotular_opcao(nome_view, nome_coluna, valor)} for valor in valores]
+    if any(opcao["valor"] != opcao["rotulo"] for opcao in opcoes):
+        opcoes.sort(key=lambda opcao: opcao["rotulo"].casefold())
+    return opcoes
 
 
 def _parametros_da_query(
@@ -228,10 +241,7 @@ def registrar(mcp) -> None:
             valores_por_coluna = buscar_opcoes_colunas(colunas_validas)
         except ViewIndisponivel as erro:
             return JSONResponse({"erro": str(erro)}, status_code=503, headers=CORS_HEADERS)
-        payload = {
-            chave: [{"valor": valor, "rotulo": valor} for valor in valores]
-            for chave, valores in valores_por_coluna.items()
-        }
+        payload = {chave: _opcoes_da_coluna(chave, valores) for chave, valores in valores_por_coluna.items()}
         return JSONResponse(payload, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/relatorio/views", methods=["GET", "OPTIONS"])

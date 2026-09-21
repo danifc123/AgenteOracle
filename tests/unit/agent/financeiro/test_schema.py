@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ColunaView, inferir_tipo_filtro
@@ -56,7 +58,15 @@ _COLUNAS_REAIS_POR_VIEW = {
         "data_baixa",
     },
     "vwia_fornecedores": {"codigo", "nome", "nome_reduzido", "cnpj_cpf", "tipo_pessoa", "estado"},
-    "vwia_clientes": {"codigo", "nome", "nome_reduzido", "cnpj_cpf", "tipo_pessoa", "estado", "municipio_nome"},
+    "vwia_clientes": {
+        "codigo",
+        "nome",
+        "nome_reduzido",
+        "cnpj_cpf",
+        "tipo_pessoa",
+        "estado",
+        "municipio_nome",
+    },
     "vwia_pedidos_venda": {
         "filial",
         "numero_pedido",
@@ -338,3 +348,74 @@ def test_colunas_data_sem_override_nao_declaram_formato_texto():
                 and (view.nome, coluna.nome) not in _COLUNAS_DATA_TEXTO_ESPERADAS
             ):
                 assert coluna.formato_data_texto is None, f"{view.nome}.{coluna.nome}"
+
+
+def _coluna_da_view(nome_view: str, nome_coluna: str) -> ColunaView:
+    view = next(item for item in VIEWS_DISPONIVEIS if item.nome == nome_view)
+    return next(coluna for coluna in view.colunas if coluna.nome == nome_coluna)
+
+
+class TestRotuloDe:
+    _COLUNA = ColunaView("conciliado", "teste", rotulos=(("1", "Sim"), ("0", "Não")))
+
+    def test_valor_com_rotulo_devolve_o_rotulo(self):
+        assert self._COLUNA.rotulo_de("1") == "Sim"
+
+    @pytest.mark.parametrize("valor", [1, 1.0, Decimal("1"), Decimal("1.0"), " 1 "])
+    def test_numero_inteiro_em_qualquer_forma_bate_com_a_mesma_chave(self, valor):
+        # O Oracle devolve NUMBER como int, Decimal ou float conforme o driver.
+        assert self._COLUNA.rotulo_de(valor) == "Sim"
+
+    def test_valor_sem_rotulo_aparece_como_veio(self):
+        assert self._COLUNA.rotulo_de("EMP") == "EMP"
+
+    def test_numero_nao_inteiro_sem_rotulo_nao_quebra(self):
+        assert self._COLUNA.rotulo_de(1.5) == "1.5"
+
+    @pytest.mark.parametrize("valor", [float("nan"), float("inf"), Decimal("NaN")])
+    def test_numero_nao_finito_nao_levanta_erro(self, valor):
+        assert self._COLUNA.rotulo_de(valor) == str(valor)
+
+    def test_coluna_sem_rotulos_devolve_o_valor_como_texto(self):
+        assert ColunaView("qualquer", "teste").rotulo_de("X") == "X"
+
+
+class TestRotulosDasViewsDoStage:
+    def test_nenhuma_coluna_repete_chave_de_rotulo(self):
+        for view in VIEWS_DISPONIVEIS:
+            for coluna in view.colunas:
+                chaves = [chave for chave, _rotulo in coluna.rotulos]
+                assert len(chaves) == len(set(chaves)), f"{view.nome}.{coluna.nome}"
+
+    def test_so_views_do_stage_declaram_rotulos(self):
+        # Escopo combinado: Protheus fica de fora por enquanto.
+        for view in VIEWS_DISPONIVEIS:
+            if view.fonte != "stage":
+                assert all(not coluna.rotulos for coluna in view.colunas), view.nome
+
+    @pytest.mark.parametrize(
+        ("nome_view", "nome_coluna", "valor_cru", "rotulo_esperado"),
+        [
+            ("vwia_movimento_bancario", "recebimento_pagamento", "R", "Recebimento"),
+            ("vwia_movimento_bancario", "recebimento_pagamento", "P", "Pagamento"),
+            ("vwia_movimento_bancario", "conciliado", 1, "Sim"),
+            ("vwia_movimento_bancario", "conciliado", 0, "Não"),
+            ("vwia_faturamento", "tipo_frete", "C", "CIF"),
+            ("vwia_faturamento", "tipo_frete", "-1", "Não informado"),
+            ("vwia_faturamento", "codigo_safra", "-1", "Sem safra"),
+            ("vwia_clientes", "tipo_pessoa", "F", "Pessoa física"),
+            ("vwia_fornecedores", "tipo_pessoa", "INDEFINIDO", "Não informado"),
+            ("vwia_pedidos_venda", "moeda", "2", "Dólar"),
+            ("vwia_titulos_pagar", "tipo", "NF", "Nota fiscal"),
+            ("vwia_titulos_receber", "tipo", "IR-", "IRRF (abatimento)"),
+            ("vwia_lancamentos_contabeis", "conta", "-1", "Sem conta definida"),
+        ],
+    )
+    def test_rotulo_cadastrado(self, nome_view, nome_coluna, valor_cru, rotulo_esperado):
+        assert _coluna_da_view(nome_view, nome_coluna).rotulo_de(valor_cru) == rotulo_esperado
+
+    @pytest.mark.parametrize("sigla", ["EMP", "FD", "FD-", "FU-", "FOL", "IMA", "SEN", "FUN", "INP"])
+    def test_sigla_de_titulo_sem_significado_confirmado_continua_como_veio(self, sigla):
+        # Não inventar: essas siglas parecem da empresa e ninguém confirmou o significado.
+        assert _coluna_da_view("vwia_titulos_pagar", "tipo").rotulo_de(sigla) == sigla
+

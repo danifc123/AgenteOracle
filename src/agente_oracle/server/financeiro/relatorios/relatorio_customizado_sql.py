@@ -83,6 +83,12 @@ def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
         raise
 
 
+def rotular_opcao(nome_view: str, nome_coluna: str, valor: str) -> str:
+    """Rótulo legível de UM valor cru da lista de opções do filtro (o
+    `valor` continua sendo o cru — é ele que volta da tela no filtro)."""
+    return _coluna_view(nome_view, nome_coluna).rotulo_de(valor)
+
+
 def suporta_lista_opcoes(nome_view: str, nome_coluna: str) -> bool:
     """A coluna (já validada) tem filtro por lista de valores exatos —
     "texto" ou "texto-numerico" — e por isso pode alimentar
@@ -130,7 +136,30 @@ def buscar_relatorio_customizado(
     # nas views com CTE pesada (ex: `vwia_baixas_pagar`) pelo mesmo motivo que
     # a consulta principal já é.
     tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
-    return colunas, linhas[:LIMITE_MAXIMO_LINHAS], tem_mais_paginas
+    return colunas, _rotular_linhas(colunas, linhas[:LIMITE_MAXIMO_LINHAS]), tem_mais_paginas
+
+
+def _rotular_linhas(colunas: list[str], linhas: list[tuple]) -> list[tuple]:
+    """Troca o valor cru das colunas que declaram `rotulos` (`schema.py`) pelo
+    rótulo legível ("R" -> "Recebimento"). Só apresentação: `None` continua
+    `None` (célula vazia), coluna sem rótulo passa intacta, e o banco/filtros
+    seguem com o valor cru. `colunas` são os cabeçalhos "view.coluna" que
+    `_montar_sql` dá a cada coluna do SELECT."""
+    rotuladores: dict[int, ColunaView] = {}
+    for indice, cabecalho in enumerate(colunas):
+        validado = validar_coluna(cabecalho)
+        if validado is not None and (coluna := _coluna_view(*validado)).rotulos:
+            rotuladores[indice] = coluna
+    if not rotuladores:
+        return linhas
+
+    return [
+        tuple(
+            rotuladores[indice].rotulo_de(valor) if indice in rotuladores and valor is not None else valor
+            for indice, valor in enumerate(linha)
+        )
+        for linha in linhas
+    ]
 
 
 def _fonte_comum(views_selecionadas: list[str]) -> str:

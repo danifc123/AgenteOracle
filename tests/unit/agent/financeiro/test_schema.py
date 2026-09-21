@@ -419,3 +419,10 @@ class TestRotulosDasViewsDoStage:
         # Não inventar: essas siglas parecem da empresa e ninguém confirmou o significado.
         assert _coluna_da_view("vwia_titulos_pagar", "tipo").rotulo_de(sigla) == sigla
 
+
+class TestDatasDeSafra:
+    @pytest.mark.parametrize("nome_coluna", ["safra_inicio", "safra_fim"])
+    def test_datas_de_safra_viram_filtro_de_periodo(self, nome_coluna):
+        # São DATE de verdade, mas o nome não começa com "data_" — sem o
+        # override a heurística as tratava como lista de texto.
+        assert inferir_tipo_filtro(_coluna_da_view("vwia_safra_cliente", nome_coluna)) == "periodo-data"

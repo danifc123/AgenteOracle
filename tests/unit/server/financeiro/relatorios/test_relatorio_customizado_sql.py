@@ -284,6 +284,20 @@ class TestRotularOpcao:
         assert relatorio_customizado_sql.rotular_opcao("vwia_clientes", "nome", "MARIA") == "MARIA"
 
 
+class TestFiltroDePeriodoDeSafra:
+    def test_safra_inicio_gera_filtro_de_periodo_com_identificador_do_stage(self):
+        sql, binds = _montar_sql(
+            {"vwia_safra_cliente": ["safra_inicio"]},
+            ["0101"],
+            {"vwia_safra_cliente.safra_inicio": {"ini": "2024-01-01", "fim": "2024-12-31"}},
+            0,
+        )
+
+        assert 'v0."SAFRA_INICIO" >= TO_DATE(:filtro_1' in sql
+        assert 'v0."SAFRA_INICIO" <= TO_DATE(:filtro_2' in sql
+        assert binds["filtro_1"] == "2024-01-01"
+
+
 class TestOpcoesDaColuna:
     def test_valor_fica_cru_e_rotulo_legivel_ordenado_pelo_rotulo(self):
         opcoes = _opcoes_da_coluna("vwia_faturamento.tipo_frete", ["C", "D", "F", "S"])

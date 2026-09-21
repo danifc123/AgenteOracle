@@ -522,8 +522,8 @@ VIEWS_DISPONIVEIS: tuple[ViewFinanceira, ...] = (
             ColunaView("cultura", "cultura do produto comprado (ex: SOJA, MILHO, ALGODAO)"),
             ColunaView("safra_codigo", "código da safra (ex: '2025/2026')"),
             ColunaView("safra_descricao", "descrição da safra (ex: 'SAFRA 25/26')"),
-            ColunaView("safra_inicio", "data de início da janela da safra"),
-            ColunaView("safra_fim", "data de fim da janela da safra"),
+            ColunaView("safra_inicio", "data de início da janela da safra", tipo_filtro="periodo-data"),
+            ColunaView("safra_fim", "data de fim da janela da safra", tipo_filtro="periodo-data"),
             ColunaView("data_compra", "data de emissão da nota fiscal dessa compra"),
         ),
         relacionamentos=(

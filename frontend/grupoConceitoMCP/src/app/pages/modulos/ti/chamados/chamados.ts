@@ -48,6 +48,12 @@ interface TecnicoNome {
  * "Verificar" por linha força uma reavaliação na hora, sem esperar o
  * poller.
  *
+ * O campo "Analisar X% dos chamados novos" controla a subida gradual pra
+ * produção: só essa parcela dos chamados novos entra na triagem (conta
+ * acumulada, sempre arredondando pra baixo — ver
+ * `tools/ti/amostragem_chamados.py`); os que ficam de fora não são
+ * alterados no GLPI e não aparecem nesta tela.
+ *
  * Sem botão de "reportar ao usuário" de propósito: o Followup que a IA
  * posta ao marcar `aguardando_usuario` já dispara a notificação nativa
  * do GLPI pro solicitante (mecanismo padrão dele pra mensagem em
@@ -82,6 +88,7 @@ export class ChamadosTi {
   protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly usarIa = this.configuracoesTi.usarIaAvaliacaoChamado;
+  protected readonly percentualAmostragem = this.configuracoesTi.percentualAmostragemChamados;
   // Nome pro badge "Com {técnico}" — vem do roster de verdade
   // (`/api/ti/tecnicos`, backend por `tools/ti/tecnicos.py`), não mais
   // fixo aqui — um técnico novo cadastrado aparece certo sem precisar
@@ -111,6 +118,27 @@ export class ChamadosTi {
     this.configuracoesTi.usarIaAvaliacaoChamado.set(novoValor);
     this.configuracoesTi.definirUsarIa(novoValor).subscribe({
       error: () => this.configuracoesTi.usarIaAvaliacaoChamado.set(!novoValor),
+    });
+  }
+
+  // Valor inválido (vazio, fora de 0–100, mais de 3 casas — o backend também
+  // recusa) volta o campo pro que estava salvo em vez de guardar um estado
+  // que a tela mostraria mas o servidor nunca aceitou.
+  protected alterarPercentualAmostragem(evento: Event): void {
+    const campo = evento.target as HTMLInputElement;
+    const anterior = this.percentualAmostragem();
+    const novo = Number(campo.value);
+    if (campo.value.trim() === '' || !Number.isFinite(novo) || novo < 0 || novo > 100) {
+      campo.value = String(anterior);
+      return;
+    }
+
+    this.configuracoesTi.percentualAmostragemChamados.set(novo);
+    this.configuracoesTi.definirPercentualAmostragem(novo).subscribe({
+      error: () => {
+        this.configuracoesTi.percentualAmostragemChamados.set(anterior);
+        campo.value = String(anterior);
+      },
     });
   }
 

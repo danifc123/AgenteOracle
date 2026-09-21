@@ -9,6 +9,25 @@
     <input type="checkbox" [checked]="usarIa()" (change)="alternarUsarIa()" />
     Usar IA na avaliação de chamados
   </label>
+
+  <div class="amostragem">
+    <label class="campo-amostragem">
+      Analisar
+      <input
+        type="number"
+        min="0"
+        max="100"
+        step="any"
+        [value]="percentualAmostragem()"
+        (change)="alterarPercentualAmostragem($event)"
+      />
+      % dos chamados novos
+    </label>
+    <p class="dica-amostragem">
+      Ex.: 20 = 2 de cada 10 chamados novos. Sempre arredonda pra baixo, e os que ficam de fora não
+      aparecem aqui nem são alterados no GLPI.
+    </p>
+  </div>
 </div>
 
 <ng-container *appSoDev>

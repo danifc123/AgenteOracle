@@ -40,16 +40,8 @@ real visto em produção: o mesmo chamado recebendo a mesma pergunta
 genérica repetida em dias diferentes, porque ninguém tinha memória do
 que já tinha sido perguntado antes.
 
-Amostragem (`tools/ti/amostragem_chamados.py`): só uma parcela dos chamados
-novos entra na triagem, conforme `percentual_amostragem_chamados` (padrão
-100 = todos). `chamado_entra_na_amostra` decide na porta de entrada —
-poller/`/verificar` em lote (`verificar_chamados_pendentes`) e webhook. Quem
-já foi avaliado alguma vez segue o ciclo normal sem passar por ela, e o
-botão "Verificar" de UM chamado (`chamado_verificar_route`) ignora a
-amostra, porque é uma ação explícita de quem está na tela. Chamado fora da
-amostra fica intocado no GLPI e some da tela (`_chamados_da_tela`) — até ser
-avaliado. Numa mudança de percentual, a flag "Ler chamados antigos" decide o
-que acontece com o chamado criado antes dela (ver `amostragem_chamados.py`).
+Amostragem (`tools/ti/amostragem_chamados.py`): só parte dos chamados novos é triada; o botão
+"Verificar" de UM chamado ignora a amostra.
 
 `_texto_para_ia` limpa o HTML da descrição antes de mandar pra IA — um
 chamado aberto por e-mail pode chegar como um e-mail HTML inteiro
@@ -123,6 +115,44 @@ class ResultadoProcessamento:
     precisou_embedding: bool | None
 
 
+def _chamado_para_json(chamado: Chamado) -> dict:
+    return {
+        "id": chamado.id,
+        "titulo": chamado.titulo,
+        "descricao": chamado.descricao,
+        "categoria": chamado.categoria,
+        "status": chamado.status,
+        "solicitante": chamado.solicitante,
+        "email": chamado.email,
+        "avaliacao_mensagem": chamado.avaliacao_mensagem,
+        "criado_em": chamado.criado_em.isoformat(),
+        "area": chamado.area,
+        "tecnico_atribuido": chamado.tecnico_atribuido,
+    }
+
+
+def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa | None:
+    """Envolve `uso_ia_chamados.ultima_avaliacao` (que de propósito não
+    engole erro — ver docstring dela) só nos pontos de chamada: uma falha
+    real de Postgres aqui não deveria travar a triagem do chamado em si
+    (que não depende de Postgres pra mais nada) — cai no caminho mais
+    conservador (trata como primeira vez, pergunta de novo em vez de
+    escalar), o mesmo comportamento de antes desta função existir."""
+    try:
+        return uso_ia_chamados.ultima_avaliacao(chamado_id)
+    except DatabaseError:
+        _logger.exception("Falha consultando última avaliação do chamado %s", chamado_id)
+        return None
+
+
+def _chamados_da_tela(chamados: list[Chamado], fora_da_amostra: set[int]) -> list[dict]:
+    return [
+        _chamado_para_json(chamado)
+        for chamado in chamados
+        if _precisa_atencao(chamado) and chamado.id not in fora_da_amostra
+    ]
+
+
 def _precisa_atencao(chamado: Chamado) -> bool:
     """`fila_atendimento` já tem técnico e área definidos — vira ticket
     normal do GLPI, e a partir daí quem acompanha é o GLPI, não esta tela.
@@ -159,48 +189,50 @@ def _saude_por_area(tecnicos: tuple[Tecnico, ...], cargas: dict[str, int]) -> li
     ]
 
 
-def _chamado_para_json(chamado: Chamado) -> dict:
-    return {
-        "id": chamado.id,
-        "titulo": chamado.titulo,
-        "descricao": chamado.descricao,
-        "categoria": chamado.categoria,
-        "status": chamado.status,
-        "solicitante": chamado.solicitante,
-        "email": chamado.email,
-        "avaliacao_mensagem": chamado.avaliacao_mensagem,
-        "criado_em": chamado.criado_em.isoformat(),
-        "area": chamado.area,
-        "tecnico_atribuido": chamado.tecnico_atribuido,
-    }
+def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None) -> bool:
+    """Decide a amostragem; se o banco falhar, não analisa (a próxima rodada tenta de novo)."""
+    try:
+        return amostragem_chamados.deve_analisar(chamado_id, criado_em)
+    except DatabaseError:
+        _logger.exception("Falha decidindo a amostragem do chamado %s", chamado_id)
+        return False
 
 
-def _chamados_da_tela(chamados: list[Chamado], fora_da_amostra: set[int]) -> list[dict]:
-    return [
-        _chamado_para_json(chamado)
-        for chamado in chamados
-        if _precisa_atencao(chamado) and chamado.id not in fora_da_amostra
-    ]
+async def iniciar_poller_verificar_chamados() -> None:
+    """Substitui o clique manual em "Verificar Chamados Novos" — roda pra
+    sempre em background, a cada `_INTERVALO_POLLER_SEGUNDOS`, enquanto o
+    servidor estiver de pé. Única exceção deste projeto à convenção
+    "roda sob demanda, nunca em background" (ver `seguranca.py`,
+    `auditoria/rotas.py` etc.): sem isso, um chamado novo só seria
+    triado quando alguém abrisse a tela e clicasse (ou via webhook, que
+    ainda não foi ativado/testado contra a instância real — ver TODO em
+    `server/ti/webhook_glpi.py`).
 
+    Duas pernas por rodada, isoladas uma da outra (falha numa não impede a
+    outra de rodar): `verificar_chamados_pendentes` cobre chamado `novo`;
+    `verificar_chamados_aguardando_resposta` cobre `aguardando_usuario`,
+    mas só reavalia quando detecta resposta nova — nunca reprocessa um
+    chamado parado sem que nada tenha mudado (gastaria IA à toa; sem
+    resposta nova, é o próprio GLPI que resolve sozinho em 3 dias).
 
-def _texto_para_ia(html: str) -> str:
-    """GLPI guarda a descrição em HTML — às vezes rich text simples, às
-    vezes um e-mail inteiro (cabeçalho, rodapé, tabela de estilo), quando
-    o chamado chega por e-mail. Confirmado ao vivo: um chamado real
-    chegou com um bloco gigante de HTML de notificação (links "Accept/
-    Decline", rodapé "Automaticamente gerado por GLPI", 7 blocos de
-    "Acompanhamento" vazios) em volta de uma frase só de conteúdo real —
-    e a mesma descrição dava resultado diferente em avaliações separadas
-    da IA, provavelmente por causa do volume de marcação sendo
-    interpretado junto com o texto. Tira as tags e extrai só o texto —
-    não separa boilerplate de conteúdo real (isso exigiria regra própria
-    pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
-    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
-    si não muda, a tela continua renderizando o HTML original."""
-    sopa = BeautifulSoup(html, "html.parser")
-    for tag_indesejada in sopa(["style", "script"]):
-        tag_indesejada.decompose()
-    return sopa.get_text(separator=" ", strip=True)
+    Nunca deixa uma falha de uma rodada (rede instável, Ollama fora do
+    ar) derrubar o loop inteiro — loga e tenta de novo na próxima volta.
+    Só roda se o GLPI estiver configurado (mesmo espírito de
+    `criar_cliente()`: TI opcional não deveria travar nada pros outros
+    times); iniciado em `server/app.py::criar_app()`."""
+    if not settings.glpi_base_url:
+        return
+    while True:
+        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        try:
+            await verificar_chamados_pendentes(usar_ia)
+        except Exception:
+            _logger.exception("Falha no poller de verificação de chamados novos")
+        try:
+            await verificar_chamados_aguardando_resposta(usar_ia)
+        except Exception:
+            _logger.exception("Falha no poller de verificação de respostas novas")
+        await asyncio.sleep(_INTERVALO_POLLER_SEGUNDOS)
 
 
 async def processar_chamado_novo(
@@ -299,36 +331,6 @@ async def processar_chamado_novo(
     )
 
 
-def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa | None:
-    """Envolve `uso_ia_chamados.ultima_avaliacao` (que de propósito não
-    engole erro — ver docstring dela) só nos pontos de chamada: uma falha
-    real de Postgres aqui não deveria travar a triagem do chamado em si
-    (que não depende de Postgres pra mais nada) — cai no caminho mais
-    conservador (trata como primeira vez, pergunta de novo em vez de
-    escalar), o mesmo comportamento de antes desta função existir."""
-    try:
-        return uso_ia_chamados.ultima_avaliacao(chamado_id)
-    except DatabaseError:
-        _logger.exception("Falha consultando última avaliação do chamado %s", chamado_id)
-        return None
-
-
-def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None) -> bool:
-    """Envolve `amostragem_chamados.deve_analisar` só nos pontos de chamada.
-    `criado_em` (data de criação no GLPI) deixa a amostragem separar chamado
-    antigo de novo; o webhook não passa (só dispara pra chamado recém-criado).
-    Ao contrário de `_ultima_avaliacao_segura`, falha pro lado FECHADO: com
-    Postgres fora do ar, o chamado NÃO é analisado nesta rodada (segue `novo`
-    e o poller tenta de novo na próxima) — cair pro lado aberto analisaria
-    todo mundo justamente quando não dá pra saber se ele estava fora da amostra,
-    furando o controle que essa funcionalidade existe pra garantir."""
-    try:
-        return amostragem_chamados.deve_analisar(chamado_id, criado_em)
-    except DatabaseError:
-        _logger.exception("Falha decidindo a amostragem do chamado %s", chamado_id)
-        return False
-
-
 async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int]) -> None:
     """Chamado que segue sem informação suficiente numa segunda (ou
     enésima) avaliação não ganha outra pergunta automática — em vez
@@ -356,186 +358,24 @@ async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: 
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
 
 
-async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
-    """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
-    também devolve `aguardando_usuario` (é o que a tela mostra), mas
-    reprocessar esses é trabalho de `verificar_chamados_aguardando_resposta`,
-    que só reavalia quando detecta resposta nova (ver docstring dela). O
-    GLPI também resolve sozinho depois de 3 dias sem resposta
-    (`PendingReason`, ver docstring do módulo). `cargas` é buscado uma
-    vez só no início do lote — cada chamado processado no meio do loop
-    já conta pro próximo, então o lote inteiro se equilibra entre si.
-
-    Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
-    real de volume/duração pra decidir se a IA nessa etapa está pesando
-    (nunca em dinheiro por chamada, Ollama é local — ver docstring de
-    `tools/ti/uso_ia_chamados.py`). Chamada tanto pela rota manual
-    quanto pelo poller em background (`iniciar_poller_verificar_chamados`).
-
-    Chamado `novo` que nunca foi avaliado só é processado se entrar na
-    amostra (`chamado_entra_na_amostra`); quem já tem avaliação registrada
-    (ex: ficou "meio processado" numa rodada anterior) segue direto.
-
-    Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
-    filtrar por status) — é o que alimenta a tela, mesmo os chamados que
-    este loop pulou de propósito.
-
-    Falha isolada num chamado (rede, um erro de validação do GLPI etc.)
-    não pode travar o lote inteiro — sem isolar por chamado, um problema
-    num único chamado (ex: já visto na prática — GLPI rejeitando
-    reatribuir o mesmo técnico) interrompe o `for` no meio, e todo
-    chamado que viria depois dele na lista nunca chega a ser processado
-    NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
-    ponto. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres, síncronos)
-    rodam em thread separada a cada chamada; o resto do fluxo (GLPI/
-    Ollama) continua `await` genuíno."""
-    ollama_client = AsyncClient(host=settings.ollama_host)
-    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
-    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
-
-    for chamado in await _cliente.listar():
-        if chamado.status != "novo":
-            continue
-        inicio = time.monotonic()
-        try:
-            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
-            if registro_anterior is None and not await to_thread.run_sync(
-                chamado_entra_na_amostra, chamado.id, chamado.criado_em
-            ):
-                continue
-            resultado = await processar_chamado_novo(
-                _cliente,
-                ollama_client,
-                settings.ollama_model,
-                chamado,
-                cargas,
-                usar_ia,
-                ja_foi_avaliado_insuficiente=registro_anterior is not None
-                and not registro_anterior.avaliacao_suficiente,
-            )
-        except Exception:
-            _logger.exception("Falha processando o chamado %s", chamado.id)
-            continue
-        duracao_ms = round((time.monotonic() - inicio) * 1000)
-        await to_thread.run_sync(
-            uso_ia_chamados.registrar,
-            chamado.id,
-            resultado.avaliacao_suficiente,
-            resultado.precisou_embedding,
-            duracao_ms,
-        )
-
-    return await _cliente.listar()
-
-
-async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
-    """Segunda perna do poller: chamado `novo` é coberto por
-    `verificar_chamados_pendentes`, chamado `aguardando_usuario` é coberto
-    aqui — só reavalia quando detecta uma resposta NOVA (Followup mais
-    recente que a última avaliação registrada, escrito por alguém que não
-    seja a nossa própria conta de serviço), pra não gastar IA (nem uma
-    chamada de rede) à toa a cada rodada num chamado que ninguém tocou.
-
-    Sem log de "última avaliação" (`uso_ia_chamados.ultima_avaliacao`), não
-    dá pra saber se há resposta nova nem qual o histórico — chamado nessa
-    situação é pulado (não deveria acontecer, `aguardando_usuario` só
-    existe depois de pelo menos 1 avaliação, mas mais vale pular do que
-    assumir errado).
-
-    Reaproveita `processar_chamado_novo` passando uma cópia do chamado com
-    a(s) resposta(s) nova(s) anexada(s) à descrição (`dataclasses.replace`)
-    — mantém a avaliação da IA olhando o texto completo (pergunta original
-    + resposta), sem precisar mudar a assinatura de `avaliar_chamado`.
-    Ainda insuficiente escala pro técnico humano (nunca é a "primeira vez"
-    aqui, `aguardando_usuario` já implica que já houve 1 avaliação
-    insuficiente antes). `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
-    síncronos) rodam em thread separada a cada chamada; o resto do fluxo
-    (GLPI/Ollama) continua `await` genuíno."""
-    ollama_client = AsyncClient(host=settings.ollama_host)
-    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
-    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
-
-    for chamado in await _cliente.listar():
-        if chamado.status != "aguardando_usuario":
-            continue
-        try:
-            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
-            if registro_anterior is None:
-                continue
-            followups = await _cliente.buscar_followups(chamado.id)
-            respostas_novas = [
-                followup
-                for followup in followups
-                if followup.autor_nome != settings.glpi_username
-                and followup.criado_em > registro_anterior.criado_em
-            ]
-            if not respostas_novas:
-                continue
-
-            chamado_com_resposta = replace(
-                chamado,
-                descricao=chamado.descricao
-                + "\n\n"
-                + "\n".join(followup.conteudo for followup in respostas_novas),
-            )
-            inicio = time.monotonic()
-            resultado = await processar_chamado_novo(
-                _cliente,
-                ollama_client,
-                settings.ollama_model,
-                chamado_com_resposta,
-                cargas,
-                usar_ia,
-                ja_foi_avaliado_insuficiente=True,
-            )
-        except Exception:
-            _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
-            continue
-        duracao_ms = round((time.monotonic() - inicio) * 1000)
-        await to_thread.run_sync(
-            uso_ia_chamados.registrar,
-            chamado.id,
-            resultado.avaliacao_suficiente,
-            resultado.precisou_embedding,
-            duracao_ms,
-        )
-
-
-async def iniciar_poller_verificar_chamados() -> None:
-    """Substitui o clique manual em "Verificar Chamados Novos" — roda pra
-    sempre em background, a cada `_INTERVALO_POLLER_SEGUNDOS`, enquanto o
-    servidor estiver de pé. Única exceção deste projeto à convenção
-    "roda sob demanda, nunca em background" (ver `seguranca.py`,
-    `auditoria/rotas.py` etc.): sem isso, um chamado novo só seria
-    triado quando alguém abrisse a tela e clicasse (ou via webhook, que
-    ainda não foi ativado/testado contra a instância real — ver TODO em
-    `server/ti/webhook_glpi.py`).
-
-    Duas pernas por rodada, isoladas uma da outra (falha numa não impede a
-    outra de rodar): `verificar_chamados_pendentes` cobre chamado `novo`;
-    `verificar_chamados_aguardando_resposta` cobre `aguardando_usuario`,
-    mas só reavalia quando detecta resposta nova — nunca reprocessa um
-    chamado parado sem que nada tenha mudado (gastaria IA à toa; sem
-    resposta nova, é o próprio GLPI que resolve sozinho em 3 dias).
-
-    Nunca deixa uma falha de uma rodada (rede instável, Ollama fora do
-    ar) derrubar o loop inteiro — loga e tenta de novo na próxima volta.
-    Só roda se o GLPI estiver configurado (mesmo espírito de
-    `criar_cliente()`: TI opcional não deveria travar nada pros outros
-    times); iniciado em `server/app.py::criar_app()`."""
-    if not settings.glpi_base_url:
-        return
-    while True:
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
-        try:
-            await verificar_chamados_pendentes(usar_ia)
-        except Exception:
-            _logger.exception("Falha no poller de verificação de chamados novos")
-        try:
-            await verificar_chamados_aguardando_resposta(usar_ia)
-        except Exception:
-            _logger.exception("Falha no poller de verificação de respostas novas")
-        await asyncio.sleep(_INTERVALO_POLLER_SEGUNDOS)
+def _texto_para_ia(html: str) -> str:
+    """GLPI guarda a descrição em HTML — às vezes rich text simples, às
+    vezes um e-mail inteiro (cabeçalho, rodapé, tabela de estilo), quando
+    o chamado chega por e-mail. Confirmado ao vivo: um chamado real
+    chegou com um bloco gigante de HTML de notificação (links "Accept/
+    Decline", rodapé "Automaticamente gerado por GLPI", 7 blocos de
+    "Acompanhamento" vazios) em volta de uma frase só de conteúdo real —
+    e a mesma descrição dava resultado diferente em avaliações separadas
+    da IA, provavelmente por causa do volume de marcação sendo
+    interpretado junto com o texto. Tira as tags e extrai só o texto —
+    não separa boilerplate de conteúdo real (isso exigiria regra própria
+    pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
+    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
+    si não muda, a tela continua renderizando o HTML original."""
+    sopa = BeautifulSoup(html, "html.parser")
+    for tag_indesejada in sopa(["style", "script"]):
+        tag_indesejada.decompose()
+    return sopa.get_text(separator=" ", strip=True)
 
 
 def registrar(mcp) -> None:
@@ -680,3 +520,146 @@ def registrar(mcp) -> None:
         if documento is None:
             return Response(status_code=404, headers=CORS_HEADERS)
         return Response(documento.conteudo, media_type=documento.content_type, headers=CORS_HEADERS)
+
+
+async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
+    """Segunda perna do poller: chamado `novo` é coberto por
+    `verificar_chamados_pendentes`, chamado `aguardando_usuario` é coberto
+    aqui — só reavalia quando detecta uma resposta NOVA (Followup mais
+    recente que a última avaliação registrada, escrito por alguém que não
+    seja a nossa própria conta de serviço), pra não gastar IA (nem uma
+    chamada de rede) à toa a cada rodada num chamado que ninguém tocou.
+
+    Sem log de "última avaliação" (`uso_ia_chamados.ultima_avaliacao`), não
+    dá pra saber se há resposta nova nem qual o histórico — chamado nessa
+    situação é pulado (não deveria acontecer, `aguardando_usuario` só
+    existe depois de pelo menos 1 avaliação, mas mais vale pular do que
+    assumir errado).
+
+    Reaproveita `processar_chamado_novo` passando uma cópia do chamado com
+    a(s) resposta(s) nova(s) anexada(s) à descrição (`dataclasses.replace`)
+    — mantém a avaliação da IA olhando o texto completo (pergunta original
+    + resposta), sem precisar mudar a assinatura de `avaliar_chamado`.
+    Ainda insuficiente escala pro técnico humano (nunca é a "primeira vez"
+    aqui, `aguardando_usuario` já implica que já houve 1 avaliação
+    insuficiente antes). `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
+    síncronos) rodam em thread separada a cada chamada; o resto do fluxo
+    (GLPI/Ollama) continua `await` genuíno."""
+    ollama_client = AsyncClient(host=settings.ollama_host)
+    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+
+    for chamado in await _cliente.listar():
+        if chamado.status != "aguardando_usuario":
+            continue
+        try:
+            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
+            if registro_anterior is None:
+                continue
+            followups = await _cliente.buscar_followups(chamado.id)
+            respostas_novas = [
+                followup
+                for followup in followups
+                if followup.autor_nome != settings.glpi_username
+                and followup.criado_em > registro_anterior.criado_em
+            ]
+            if not respostas_novas:
+                continue
+
+            chamado_com_resposta = replace(
+                chamado,
+                descricao=chamado.descricao
+                + "\n\n"
+                + "\n".join(followup.conteudo for followup in respostas_novas),
+            )
+            inicio = time.monotonic()
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                settings.ollama_model,
+                chamado_com_resposta,
+                cargas,
+                usar_ia,
+                ja_foi_avaliado_insuficiente=True,
+            )
+        except Exception:
+            _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
+            continue
+        duracao_ms = round((time.monotonic() - inicio) * 1000)
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
+        )
+
+
+async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
+    """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
+    também devolve `aguardando_usuario` (é o que a tela mostra), mas
+    reprocessar esses é trabalho de `verificar_chamados_aguardando_resposta`,
+    que só reavalia quando detecta resposta nova (ver docstring dela). O
+    GLPI também resolve sozinho depois de 3 dias sem resposta
+    (`PendingReason`, ver docstring do módulo). `cargas` é buscado uma
+    vez só no início do lote — cada chamado processado no meio do loop
+    já conta pro próximo, então o lote inteiro se equilibra entre si.
+
+    Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
+    real de volume/duração pra decidir se a IA nessa etapa está pesando
+    (nunca em dinheiro por chamada, Ollama é local — ver docstring de
+    `tools/ti/uso_ia_chamados.py`). Chamada tanto pela rota manual
+    quanto pelo poller em background (`iniciar_poller_verificar_chamados`).
+
+    Chamado sem avaliação só é processado se entrar na amostra (`chamado_entra_na_amostra`).
+
+    Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
+    filtrar por status) — é o que alimenta a tela, mesmo os chamados que
+    este loop pulou de propósito.
+
+    Falha isolada num chamado (rede, um erro de validação do GLPI etc.)
+    não pode travar o lote inteiro — sem isolar por chamado, um problema
+    num único chamado (ex: já visto na prática — GLPI rejeitando
+    reatribuir o mesmo técnico) interrompe o `for` no meio, e todo
+    chamado que viria depois dele na lista nunca chega a ser processado
+    NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
+    ponto. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres, síncronos)
+    rodam em thread separada a cada chamada; o resto do fluxo (GLPI/
+    Ollama) continua `await` genuíno."""
+    ollama_client = AsyncClient(host=settings.ollama_host)
+    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+
+    for chamado in await _cliente.listar():
+        if chamado.status != "novo":
+            continue
+        inicio = time.monotonic()
+        try:
+            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
+            if registro_anterior is None and not await to_thread.run_sync(
+                chamado_entra_na_amostra, chamado.id, chamado.criado_em
+            ):
+                continue
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                settings.ollama_model,
+                chamado,
+                cargas,
+                usar_ia,
+                ja_foi_avaliado_insuficiente=registro_anterior is not None
+                and not registro_anterior.avaliacao_suficiente,
+            )
+        except Exception:
+            _logger.exception("Falha processando o chamado %s", chamado.id)
+            continue
+        duracao_ms = round((time.monotonic() - inicio) * 1000)
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
+        )
+
+    return await _cliente.listar()

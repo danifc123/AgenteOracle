@@ -46,9 +46,7 @@ class RelatorioCustomizadoInvalido(Exception):
 
 
 class ViewIndisponivel(RelatorioCustomizadoInvalido):
-    """A view existe no registro (`schema.py`) mas não no banco que a conexão
-    enxerga — ex: ainda não criada, criada com outro nome ou em outro
-    schema. Não é erro da seleção do usuário, por isso as rotas devolvem 503."""
+    """A view está no registro mas não existe no banco conectado (as rotas devolvem 503)."""
 
 
 def _coluna_view(nome_view: str, nome_coluna: str) -> ColunaView:
@@ -57,6 +55,39 @@ def _coluna_view(nome_view: str, nome_coluna: str) -> ColunaView:
     pelos pontos que precisam chamar `inferir_tipo_filtro`."""
     view = _VIEWS_POR_NOME[nome_view]
     return next(coluna for coluna in view.colunas if coluna.nome == nome_coluna)
+
+
+def _fonte_comum(views_selecionadas: list[str]) -> str:
+    """Todas as views escolhidas precisam vir da mesma fonte: STAGE e
+    Protheus são instâncias Oracle separadas, sem `DB LINK` entre elas, então
+    não existe SQL único capaz de fazer JOIN entre uma view de cada lado.
+    Levanta `RelatorioCustomizadoInvalido` com uma mensagem específica pra
+    esse caso — sem essa checagem, a combinação ainda falharia lá na frente
+    (nenhuma view declara relacionamento pra uma view de outra fonte), mas
+    com o erro genérico de "sem caminho de JOIN" do BFS, que não deixa claro
+    o motivo real."""
+    fontes = {_VIEWS_POR_NOME[nome].fonte for nome in views_selecionadas}
+    if len(fontes) > 1:
+        raise RelatorioCustomizadoInvalido(
+            "Não é possível combinar views de fontes diferentes (STAGE e Protheus) no mesmo relatório."
+        )
+    return fontes.pop()
+
+
+def _identificador_coluna(fonte: str, coluna: str) -> str:
+    """Como citar a coluna: Protheus em minúsculo (alias entre aspas), STAGE em MAIÚSCULO (alias sem aspas)."""
+    return f'"{coluna}"' if fonte == "protheus" else f'"{coluna.upper()}"'
+
+
+def _levantar_se_view_inexistente(erro: Exception, views: list[str], fonte: str) -> None:
+    """Troca o ORA-00942 (que não diz qual objeto faltou) por `ViewIndisponivel` listando as views."""
+    if not eh_erro_tabela_inexistente(erro):
+        return
+    raise ViewIndisponivel(
+        f"Não encontrei no banco ({fonte}) alguma destas views: {', '.join(views)}. "
+        "Confira se foram criadas com exatamente esse nome, no schema do usuário conectado "
+        "(ver db/views/financeiro_science.sql)."
+    ) from erro
 
 
 def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
@@ -81,21 +112,6 @@ def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
     except DatabaseError as erro:
         _levantar_se_view_inexistente(erro, [nome_view], fonte)
         raise
-
-
-def rotular_opcao(nome_view: str, nome_coluna: str, valor: str) -> str:
-    """Rótulo legível de UM valor cru da lista de opções do filtro (o
-    `valor` continua sendo o cru — é ele que volta da tela no filtro)."""
-    return _coluna_view(nome_view, nome_coluna).rotulo_de(valor)
-
-
-def suporta_lista_opcoes(nome_view: str, nome_coluna: str) -> bool:
-    """A coluna (já validada) tem filtro por lista de valores exatos —
-    "texto" ou "texto-numerico" — e por isso pode alimentar
-    `buscar_opcoes_coluna`/`buscar_opcoes_colunas`? Usado por
-    `listar_opcoes_coluna_route` pra rejeitar colunas do tipo "numero"/
-    "periodo-data", que não têm esse modo de filtro."""
-    return inferir_tipo_filtro(_coluna_view(nome_view, nome_coluna)) in ("texto", "texto-numerico")
 
 
 def buscar_opcoes_colunas(colunas: list[tuple[str, str]]) -> dict[str, list[str]]:
@@ -137,68 +153,6 @@ def buscar_relatorio_customizado(
     # a consulta principal já é.
     tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
     return colunas, _rotular_linhas(colunas, linhas[:LIMITE_MAXIMO_LINHAS]), tem_mais_paginas
-
-
-def _rotular_linhas(colunas: list[str], linhas: list[tuple]) -> list[tuple]:
-    """Troca o valor cru das colunas que declaram `rotulos` (`schema.py`) pelo
-    rótulo legível ("R" -> "Recebimento"). Só apresentação: `None` continua
-    `None` (célula vazia), coluna sem rótulo passa intacta, e o banco/filtros
-    seguem com o valor cru. `colunas` são os cabeçalhos "view.coluna" que
-    `_montar_sql` dá a cada coluna do SELECT."""
-    rotuladores: dict[int, ColunaView] = {}
-    for indice, cabecalho in enumerate(colunas):
-        validado = validar_coluna(cabecalho)
-        if validado is not None and (coluna := _coluna_view(*validado)).rotulos:
-            rotuladores[indice] = coluna
-    if not rotuladores:
-        return linhas
-
-    return [
-        tuple(
-            rotuladores[indice].rotulo_de(valor) if indice in rotuladores and valor is not None else valor
-            for indice, valor in enumerate(linha)
-        )
-        for linha in linhas
-    ]
-
-
-def _fonte_comum(views_selecionadas: list[str]) -> str:
-    """Todas as views escolhidas precisam vir da mesma fonte: STAGE e
-    Protheus são instâncias Oracle separadas, sem `DB LINK` entre elas, então
-    não existe SQL único capaz de fazer JOIN entre uma view de cada lado.
-    Levanta `RelatorioCustomizadoInvalido` com uma mensagem específica pra
-    esse caso — sem essa checagem, a combinação ainda falharia lá na frente
-    (nenhuma view declara relacionamento pra uma view de outra fonte), mas
-    com o erro genérico de "sem caminho de JOIN" do BFS, que não deixa claro
-    o motivo real."""
-    fontes = {_VIEWS_POR_NOME[nome].fonte for nome in views_selecionadas}
-    if len(fontes) > 1:
-        raise RelatorioCustomizadoInvalido(
-            "Não é possível combinar views de fontes diferentes (STAGE e Protheus) no mesmo relatório."
-        )
-    return fontes.pop()
-
-
-def _identificador_coluna(fonte: str, coluna: str) -> str:
-    """Como citar a coluna no SQL, conforme o `CREATE VIEW` de cada fonte
-    (`db/views/financeiro_science.sql`): as `vwia_*` do Protheus declaram o
-    alias entre aspas e em minúsculo (`AS "filial"`), então só casam citadas
-    em minúsculo; as do STAGE declaram sem aspas (`AS filial`), e o
-    Oracle guarda o nome em MAIÚSCULO — citar `"filial"` ali dá ORA-00904."""
-    return f'"{coluna}"' if fonte == "protheus" else f'"{coluna.upper()}"'
-
-
-def _levantar_se_view_inexistente(erro: Exception, views: list[str], fonte: str) -> None:
-    """O ORA-00942 não diz QUAL objeto faltou — a mensagem daqui lista as
-    views envolvidas na consulta, pra quem for conferir no banco saber por
-    onde começar."""
-    if not eh_erro_tabela_inexistente(erro):
-        return
-    raise ViewIndisponivel(
-        f"Não encontrei no banco ({fonte}) alguma destas views: {', '.join(views)}. "
-        "Confira se foram criadas com exatamente esse nome, no schema do usuário conectado "
-        "(ver db/views/financeiro_science.sql)."
-    ) from erro
 
 
 def _montar_sql(
@@ -389,6 +343,39 @@ def _grafo_relacionamentos() -> dict[str, list[tuple[str, tuple[str, ...], tuple
             grafo[view.nome].append((rel.view_destino, rel.colunas_locais, rel.colunas_destino))
             grafo[rel.view_destino].append((view.nome, rel.colunas_destino, rel.colunas_locais))
     return grafo
+
+
+def _rotular_linhas(colunas: list[str], linhas: list[tuple]) -> list[tuple]:
+    """Troca o valor cru pelo rótulo nas colunas que declaram `rotulos`; `None` e as demais colunas passam intactos."""
+    rotuladores: dict[int, ColunaView] = {}
+    for indice, cabecalho in enumerate(colunas):
+        validado = validar_coluna(cabecalho)
+        if validado is not None and (coluna := _coluna_view(*validado)).rotulos:
+            rotuladores[indice] = coluna
+    if not rotuladores:
+        return linhas
+
+    return [
+        tuple(
+            rotuladores[indice].rotulo_de(valor) if indice in rotuladores and valor is not None else valor
+            for indice, valor in enumerate(linha)
+        )
+        for linha in linhas
+    ]
+
+
+def rotular_opcao(nome_view: str, nome_coluna: str, valor: str) -> str:
+    """Rótulo legível de um valor cru da lista de opções do filtro."""
+    return _coluna_view(nome_view, nome_coluna).rotulo_de(valor)
+
+
+def suporta_lista_opcoes(nome_view: str, nome_coluna: str) -> bool:
+    """A coluna (já validada) tem filtro por lista de valores exatos —
+    "texto" ou "texto-numerico" — e por isso pode alimentar
+    `buscar_opcoes_coluna`/`buscar_opcoes_colunas`? Usado por
+    `listar_opcoes_coluna_route` pra rejeitar colunas do tipo "numero"/
+    "periodo-data", que não têm esse modo de filtro."""
+    return inferir_tipo_filtro(_coluna_view(nome_view, nome_coluna)) in ("texto", "texto-numerico")
 
 
 def validar_coluna(token: str) -> tuple[str, str] | None:

@@ -168,9 +168,7 @@ class TestMontarSqlFiltroPeriodoData:
 
 
 class TestIdentificadorColuna:
-    """As views do STAGE declaram alias sem aspas — no Oracle o nome
-    real fica MAIÚSCULO; as do Protheus (`vwia_*`) declaram entre aspas em
-    minúsculo. Citar do jeito errado dá ORA-00904."""
+    """Citar a coluna do jeito errado dá ORA-00904 (STAGE em MAIÚSCULO, Protheus em minúsculo)."""
 
     def test_protheus_cita_em_minusculo(self):
         assert _identificador_coluna("protheus", "data_baixa") == '"data_baixa"'

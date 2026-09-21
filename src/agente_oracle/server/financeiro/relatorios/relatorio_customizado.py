@@ -22,6 +22,7 @@ from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import (
     RelatorioCustomizadoInvalido,
+    ViewIndisponivel,
     buscar_opcoes_colunas,
     buscar_relatorio_customizado,
     suporta_lista_opcoes,
@@ -178,6 +179,8 @@ def registrar(mcp) -> None:
 
         try:
             colunas, linhas, tem_mais_paginas = buscar_relatorio_customizado(*parametros)
+        except ViewIndisponivel as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=503, headers=CORS_HEADERS)
         except RelatorioCustomizadoInvalido as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
@@ -221,7 +224,10 @@ def registrar(mcp) -> None:
                 )
             colunas_validas.append((nome_view, nome_coluna))
 
-        valores_por_coluna = buscar_opcoes_colunas(colunas_validas)
+        try:
+            valores_por_coluna = buscar_opcoes_colunas(colunas_validas)
+        except ViewIndisponivel as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=503, headers=CORS_HEADERS)
         payload = {
             chave: [{"valor": valor, "rotulo": valor} for valor in valores]
             for chave, valores in valores_por_coluna.items()

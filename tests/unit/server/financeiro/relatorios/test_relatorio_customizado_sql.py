@@ -4,11 +4,15 @@ coluna, sem precisar de HTTP nem de banco (`_montar_sql`/`buscar_*` que
 tocam banco não entram aqui, cobertos via integração em
 `tests/integration/test_relatorio_customizado.py`)."""
 
+import psycopg
 import pytest
 
-from agente_oracle.server.financeiro.relatorios import _comum
+from agente_oracle.server.financeiro.relatorios import _comum, relatorio_customizado_sql
 from agente_oracle.server.financeiro.relatorios.relatorio_customizado_sql import (
     RelatorioCustomizadoInvalido,
+    ViewIndisponivel,
+    _identificador_coluna,
+    _levantar_se_view_inexistente,
     _montar_sql,
     _resolver_caminho_join,
     suporta_lista_opcoes,
@@ -145,8 +149,8 @@ class TestMontarSqlFiltroPeriodoData:
             {"vwia_titulos_pagar.data_vencimento": {"ini": "2026-01-01", "fim": "2026-01-31"}},
             0,
         )
-        assert 'v0."data_vencimento" >= TO_DATE(:filtro_1' in sql
-        assert 'v0."data_vencimento" <= TO_DATE(:filtro_2' in sql
+        assert 'v0."DATA_VENCIMENTO" >= TO_DATE(:filtro_1' in sql
+        assert 'v0."DATA_VENCIMENTO" <= TO_DATE(:filtro_2' in sql
         assert "TO_DATE(v0." not in sql
         assert binds["filtro_1"] == "2026-01-01"
         assert binds["filtro_2"] == "2026-01-31"
@@ -160,3 +164,80 @@ class TestMontarSqlFiltroPeriodoData:
         )
         assert "TO_DATE(v0.\"data_baixa\", 'DD/MM/YYYY') >= TO_DATE(:filtro_1" in sql
         assert "TO_DATE(v0.\"data_baixa\", 'DD/MM/YYYY') <= TO_DATE(:filtro_2" in sql
+
+
+class TestIdentificadorColuna:
+    """As views do STAGE declaram alias sem aspas — no Oracle o nome
+    real fica MAIÚSCULO; as do Protheus (`vwia_*`) declaram entre aspas em
+    minúsculo. Citar do jeito errado dá ORA-00904."""
+
+    def test_protheus_cita_em_minusculo(self):
+        assert _identificador_coluna("protheus", "data_baixa") == '"data_baixa"'
+
+    def test_stage_cita_em_maiusculo(self):
+        assert _identificador_coluna("stage", "data_baixa") == '"DATA_BAIXA"'
+
+
+class TestMontarSqlCitacaoPorFonte:
+    def test_view_do_stage_usa_colunas_em_maiusculo_no_select_join_e_filial(self):
+        sql, _binds = _montar_sql(
+            {"vwia_titulos_receber": ["numero"], "vwia_clientes": ["nome"]}, ["0101"], {}, 0
+        )
+        assert 'v0."NUMERO" AS "vwia_titulos_receber.numero"' in sql
+        assert 'v1."NOME" AS "vwia_clientes.nome"' in sql
+        assert 'v0."CLIENTE_CODIGO" = v1."CODIGO"' in sql
+        assert 'v0."FILIAL" IN' in sql
+        assert '"filial"' not in sql
+
+    def test_view_do_protheus_continua_em_minusculo(self):
+        sql, _binds = _montar_sql({"vwia_notas_compra": ["nota"]}, ["0101"], {}, 0)
+        assert 'v0."nota" AS "vwia_notas_compra.nota"' in sql
+        assert 'v0."filial" IN' in sql
+
+
+class TestLevantarSeViewInexistente:
+    def test_ora_00942_vira_view_indisponivel_com_os_nomes_das_views(self):
+        with pytest.raises(ViewIndisponivel, match="vwia_clientes, vwia_titulos_receber"):
+            _levantar_se_view_inexistente(
+                Exception("ORA-00942: table or view does not exist"),
+                ["vwia_clientes", "vwia_titulos_receber"],
+                "stage",
+            )
+
+    def test_view_indisponivel_continua_sendo_relatorio_customizado_invalido(self):
+        assert issubclass(ViewIndisponivel, RelatorioCustomizadoInvalido)
+
+    def test_outro_erro_de_banco_passa_sem_virar_view_indisponivel(self):
+        _levantar_se_view_inexistente(Exception("ORA-00904: invalid identifier"), ["vwia_clientes"], "stage")
+
+    def test_postgres_tabela_inexistente_tambem_e_reconhecida(self):
+        class _ErroPg(psycopg.errors.UndefinedTable):
+            pass
+
+        with pytest.raises(ViewIndisponivel):
+            _levantar_se_view_inexistente(_ErroPg("relation does not exist"), ["vwia_clientes"], "stage")
+
+
+class TestBuscarOpcoesColunaViewInexistente:
+    def test_view_ausente_no_banco_levanta_view_indisponivel_nao_erro_cru(self, monkeypatch):
+        class _CursorSemView:
+            def execute(self, _sql, **_binds):
+                raise psycopg.errors.UndefinedTable("relation does not exist")
+
+        class _Conexao:
+            def cursor(self):
+                return _CursorSemView()
+
+        class _Contexto:
+            def __enter__(self):
+                return _Conexao()
+
+            def __exit__(self, *_args):
+                return False
+
+        monkeypatch.setattr(
+            relatorio_customizado_sql, "get_connection_para_fonte", lambda _fonte: _Contexto()
+        )
+
+        with pytest.raises(ViewIndisponivel, match="vwia_clientes"):
+            relatorio_customizado_sql.buscar_opcoes_coluna("vwia_clientes", "nome")

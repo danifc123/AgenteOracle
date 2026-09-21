@@ -31,7 +31,7 @@ from agente_oracle.agent.financeiro.schema import (
     ViewFinanceira,
     inferir_tipo_filtro,
 )
-from agente_oracle.db.connection import get_connection_para_fonte
+from agente_oracle.db.connection import DatabaseError, eh_erro_tabela_inexistente, get_connection_para_fonte
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -43,6 +43,12 @@ _VIEWS_POR_NOME: dict[str, ViewFinanceira] = {view.nome: view for view in VIEWS_
 
 class RelatorioCustomizadoInvalido(Exception):
     """Levantada quando a seleção de colunas/filtros pedida pela tela não pode virar um SQL válido."""
+
+
+class ViewIndisponivel(RelatorioCustomizadoInvalido):
+    """A view existe no registro (`schema.py`) mas não no banco que a conexão
+    enxerga — ex: ainda não criada, criada com outro nome ou em outro
+    schema. Não é erro da seleção do usuário, por isso as rotas devolvem 503."""
 
 
 def _coluna_view(nome_view: str, nome_coluna: str) -> ColunaView:
@@ -59,16 +65,22 @@ def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
     dessa coluna na tela. `nome_view` e `nome_coluna` já vêm validados
     contra o registro (nunca texto cru do cliente), então é seguro
     interpolar direto no SQL."""
+    fonte = _VIEWS_POR_NOME[nome_view].fonte
+    coluna_sql = _identificador_coluna(fonte, nome_coluna)
     sql = (
-        f'SELECT DISTINCT "{nome_coluna}" FROM {nome_view} '
-        f'WHERE "{nome_coluna}" IS NOT NULL '
-        f'ORDER BY "{nome_coluna}" '
+        f"SELECT DISTINCT {coluna_sql} FROM {nome_view} "
+        f"WHERE {coluna_sql} IS NOT NULL "
+        f"ORDER BY {coluna_sql} "
         f"FETCH FIRST {LIMITE_OPCOES_COLUNA} ROWS ONLY"
     )
-    with get_connection_para_fonte(_VIEWS_POR_NOME[nome_view].fonte) as connection:
-        cursor = connection.cursor()
-        cursor.execute(sql)
-        return [str(linha[0]) for linha in cursor.fetchall()]
+    try:
+        with get_connection_para_fonte(fonte) as connection:
+            cursor = connection.cursor()
+            cursor.execute(sql)
+            return [str(linha[0]) for linha in cursor.fetchall()]
+    except DatabaseError as erro:
+        _levantar_se_view_inexistente(erro, [nome_view], fonte)
+        raise
 
 
 def suporta_lista_opcoes(nome_view: str, nome_coluna: str) -> bool:
@@ -103,11 +115,15 @@ def buscar_relatorio_customizado(
     offset = (pagina - 1) * LIMITE_MAXIMO_LINHAS
     sql, binds = _montar_sql(colunas_por_view, filiais, filtros, offset)
 
-    with get_connection_para_fonte(fonte) as connection:
-        cursor = connection.cursor()
-        cursor.execute(sql, **binds)
-        colunas = [descricao[0] for descricao in cursor.description]
-        linhas = cursor.fetchall()
+    try:
+        with get_connection_para_fonte(fonte) as connection:
+            cursor = connection.cursor()
+            cursor.execute(sql, **binds)
+            colunas = [descricao[0] for descricao in cursor.description]
+            linhas = cursor.fetchall()
+    except DatabaseError as erro:
+        _levantar_se_view_inexistente(erro, list(colunas_por_view), fonte)
+        raise
 
     # Pede uma linha a mais que o necessário (ver `_montar_sql`) só pra saber
     # se existe próxima página sem precisar de um `COUNT(*)` — que seria caro
@@ -134,6 +150,28 @@ def _fonte_comum(views_selecionadas: list[str]) -> str:
     return fontes.pop()
 
 
+def _identificador_coluna(fonte: str, coluna: str) -> str:
+    """Como citar a coluna no SQL, conforme o `CREATE VIEW` de cada fonte
+    (`db/views/financeiro_science.sql`): as `vwia_*` do Protheus declaram o
+    alias entre aspas e em minúsculo (`AS "filial"`), então só casam citadas
+    em minúsculo; as do STAGE declaram sem aspas (`AS filial`), e o
+    Oracle guarda o nome em MAIÚSCULO — citar `"filial"` ali dá ORA-00904."""
+    return f'"{coluna}"' if fonte == "protheus" else f'"{coluna.upper()}"'
+
+
+def _levantar_se_view_inexistente(erro: Exception, views: list[str], fonte: str) -> None:
+    """O ORA-00942 não diz QUAL objeto faltou — a mensagem daqui lista as
+    views envolvidas na consulta, pra quem for conferir no banco saber por
+    onde começar."""
+    if not eh_erro_tabela_inexistente(erro):
+        return
+    raise ViewIndisponivel(
+        f"Não encontrei no banco ({fonte}) alguma destas views: {', '.join(views)}. "
+        "Confira se foram criadas com exatamente esse nome, no schema do usuário conectado "
+        "(ver db/views/financeiro_science.sql)."
+    ) from erro
+
+
 def _montar_sql(
     colunas_por_view: dict[str, list[str]],
     filiais: list[str],
@@ -141,6 +179,7 @@ def _montar_sql(
     offset: int,
 ) -> tuple[str, dict[str, str | int]]:
     views_selecionadas = list(colunas_por_view.keys())
+    fonte = _fonte_comum(views_selecionadas)
     arestas = _resolver_caminho_join(views_selecionadas)
 
     raiz = views_selecionadas[0]
@@ -155,7 +194,7 @@ def _montar_sql(
         alias = alias_por_view[nome_view]
         for coluna in colunas:
             rotulo = f"{nome_view}.{coluna}"
-            partes_select.append(f'{alias}."{coluna}" AS "{rotulo}"')
+            partes_select.append(f'{alias}.{_identificador_coluna(fonte, coluna)} AS "{rotulo}"')
 
     sql = [f"SELECT {', '.join(partes_select)}", f"FROM {raiz} {alias_por_view[raiz]}"]
 
@@ -163,7 +202,8 @@ def _montar_sql(
         alias_pai = alias_por_view[view_pai]
         alias_filha = alias_por_view[view_filha]
         condicoes = " AND ".join(
-            f'{alias_pai}."{col_pai}" = {alias_filha}."{col_filha}"'
+            f"{alias_pai}.{_identificador_coluna(fonte, col_pai)} = "
+            f"{alias_filha}.{_identificador_coluna(fonte, col_filha)}"
             for col_pai, col_filha in zip(cols_pai, cols_filha, strict=True)
         )
         sql.append(f"LEFT JOIN {view_filha} {alias_filha} ON {condicoes}")
@@ -177,9 +217,10 @@ def _montar_sql(
         alias = alias_por_view[nome_view]
         marcadores, binds_filial = clausula_in(f"filial_{alias}", filiais)
         binds.update(binds_filial)
-        clausula = f'{alias}."filial" IN {marcadores}'
+        coluna_filial = f"{alias}.{_identificador_coluna(fonte, 'filial')}"
+        clausula = f"{coluna_filial} IN {marcadores}"
         if nome_view != raiz:
-            clausula = f'({clausula} OR {alias}."filial" IS NULL)'
+            clausula = f"({clausula} OR {coluna_filial} IS NULL)"
         condicoes_where.append(clausula)
 
     contador_filtro = 0
@@ -189,7 +230,7 @@ def _montar_sql(
             continue  # coluna de uma view que nem entrou no relatório atual
 
         alias = alias_por_view[nome_view]
-        coluna_sql = f'{alias}."{nome_coluna}"'
+        coluna_sql = f"{alias}.{_identificador_coluna(fonte, nome_coluna)}"
         coluna_declarada = _coluna_view(nome_view, nome_coluna)
         tipo = inferir_tipo_filtro(coluna_declarada)
 

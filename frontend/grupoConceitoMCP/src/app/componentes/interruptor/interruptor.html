@@ -1,0 +1,21 @@
+<button
+  type="button"
+  class="interruptor"
+  role="switch"
+  [attr.aria-checked]="marcado()"
+  [attr.aria-labelledby]="id + '-rotulo'"
+  [attr.aria-describedby]="descricao() ? id + '-descricao' : null"
+  [disabled]="desabilitado()"
+  (click)="alternar()"
+>
+  <span class="texto">
+    <span class="rotulo" [id]="id + '-rotulo'">{{ rotulo() }}</span>
+    @if (descricao()) {
+      <span class="descricao" [id]="id + '-descricao'">{{ descricao() }}</span>
+    }
+  </span>
+
+  <span class="trilho" [class.trilho--ligado]="marcado()" aria-hidden="true">
+    <span class="bolinha"></span>
+  </span>
+</button>

@@ -1,59 +1,9 @@
-.barra-acoes {
+/* Engrenagem e selo no slot `acoes`, alinhados ao título (longe do sino fixo do canto). */
+.acoes-config {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.toggle-usar-ia {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-
-  input {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--color-primary);
-    cursor: pointer;
-  }
-}
-
-.amostragem {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.campo-amostragem {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  color: var(--color-text-muted);
-
-  input {
-    width: 76px;
-    padding: 4px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-xs);
-    background: var(--color-surface);
-    color: var(--color-text);
-    font: inherit;
-    text-align: right;
-  }
-}
-
-.dica-amostragem {
-  margin: 0;
-  max-width: 340px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-  text-align: right;
+  align-self: flex-end;
+  gap: var(--space-3);
 }
 
 .erro {

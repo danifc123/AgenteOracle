@@ -4,6 +4,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteudo-chamado';
+import { ConfiguracoesChamados } from '../../../../componentes/configuracoes-chamados/configuracoes-chamados';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
@@ -48,11 +49,7 @@ interface TecnicoNome {
  * "Verificar" por linha força uma reavaliação na hora, sem esperar o
  * poller.
  *
- * O campo "Analisar X% dos chamados novos" controla a subida gradual pra
- * produção: só essa parcela dos chamados novos entra na triagem (conta
- * acumulada, sempre arredondando pra baixo — ver
- * `tools/ti/amostragem_chamados.py`); os que ficam de fora não são
- * alterados no GLPI e não aparecem nesta tela.
+ * A engrenagem no cabeçalho (só desenvolvedor) abre as configurações da Auditoria (`ConfiguracoesChamados`).
  *
  * Sem botão de "reportar ao usuário" de propósito: o Followup que a IA
  * posta ao marcar `aguardando_usuario` já dispara a notificação nativa
@@ -63,7 +60,18 @@ interface TecnicoNome {
  * o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
-  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader, SaudeRoster, Selo, SoDev],
+  imports: [
+    Botao,
+    ConfiguracoesChamados,
+    ConteudoChamado,
+    DatePipe,
+    Dialog,
+    EstadoVazio,
+    ModuloHeader,
+    SaudeRoster,
+    Selo,
+    SoDev,
+  ],
   templateUrl: './chamados.html',
   styleUrl: './chamados.scss',
 })
@@ -87,8 +95,16 @@ export class ChamadosTi {
   protected readonly verificandoId = signal<number | null>(null);
   protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
-  protected readonly usarIa = this.configuracoesTi.usarIaAvaliacaoChamado;
-  protected readonly percentualAmostragem = this.configuracoesTi.percentualAmostragemChamados;
+  protected readonly configuracoesAbertas = signal(false);
+  // Avisa de relance (só desenvolvedor) que há amostragem ativa.
+  protected readonly amostragemAtiva = computed(
+    () => this.configuracoesTi.percentualAmostragemChamados() < 100,
+  );
+  protected readonly percentualFormatado = computed(() =>
+    this.configuracoesTi
+      .percentualAmostragemChamados()
+      .toLocaleString('pt-BR', { maximumFractionDigits: 3 }),
+  );
   // Nome pro badge "Com {técnico}" — vem do roster de verdade
   // (`/api/ti/tecnicos`, backend por `tools/ti/tecnicos.py`), não mais
   // fixo aqui — um técnico novo cadastrado aparece certo sem precisar
@@ -107,49 +123,11 @@ export class ChamadosTi {
   constructor() {
     this.carregarChamados();
     this.carregarTecnicos();
-    this.configuracoesTi.carregar();
     if (this.sessao.ehDesenvolvedor()) {
+      // As configurações só aparecem (e só são editáveis) pra desenvolvedor.
+      this.configuracoesTi.carregar();
       this.carregarSaudeAreas();
     }
-  }
-
-  protected alternarUsarIa(): void {
-    const novoValor = !this.usarIa();
-    this.configuracoesTi.usarIaAvaliacaoChamado.set(novoValor);
-    this.configuracoesTi.definirUsarIa(novoValor).subscribe({
-      error: () => this.configuracoesTi.usarIaAvaliacaoChamado.set(!novoValor),
-    });
-  }
-
-  // Valor inválido (vazio, fora de 0–100, mais de 3 casas — o backend também
-  // recusa) volta o campo pro que estava salvo em vez de guardar um estado
-  // que a tela mostraria mas o servidor nunca aceitou.
-  protected alterarPercentualAmostragem(evento: Event): void {
-    const campo = evento.target as HTMLInputElement;
-    const anterior = this.percentualAmostragem();
-    const novo = Number(campo.value);
-    if (campo.value.trim() === '' || !Number.isFinite(novo) || novo < 0 || novo > 100) {
-      campo.value = String(anterior);
-      return;
-    }
-
-    this.configuracoesTi.percentualAmostragemChamados.set(novo);
-    this.configuracoesTi.definirPercentualAmostragem(novo).subscribe({
-      error: () => {
-        this.configuracoesTi.percentualAmostragemChamados.set(anterior);
-        campo.value = String(anterior);
-      },
-    });
-  }
-
-  protected abrirDetalhe(chamado: Chamado): void {
-    this.chamadoAberto.set(chamado);
-  }
-
-  // `null` = ainda só com a IA (aguardando resposta do solicitante); um
-  // nome = já escalado pra esse técnico.
-  protected tecnicoEscalado(chamado: Chamado): string | null {
-    return chamado.tecnico_atribuido ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null) : null;
   }
 
   private carregarChamados(): void {
@@ -164,6 +142,13 @@ export class ChamadosTi {
     });
   }
 
+  private carregarSaudeAreas(): void {
+    this.http.get<SaudeArea[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos/saude`).subscribe({
+      next: (areas) => this.saudeAreas.set(areas),
+      error: () => this.saudeAreas.set([]),
+    });
+  }
+
   private carregarTecnicos(): void {
     this.http.get<TecnicoNome[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos`).subscribe({
       next: (tecnicos) => {
@@ -175,11 +160,12 @@ export class ChamadosTi {
     });
   }
 
-  private carregarSaudeAreas(): void {
-    this.http.get<SaudeArea[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos/saude`).subscribe({
-      next: (areas) => this.saudeAreas.set(areas),
-      error: () => this.saudeAreas.set([]),
-    });
+  protected abrirDetalhe(chamado: Chamado): void {
+    this.chamadoAberto.set(chamado);
+  }
+
+  protected fecharDetalhe(): void {
+    this.chamadoAberto.set(null);
   }
 
   protected paginaAnterior(): void {
@@ -190,16 +176,12 @@ export class ChamadosTi {
     this.paginaAtual.update((atual) => Math.min(this.totalPaginas(), atual + 1));
   }
 
-  // Chamado removido da lista (foi pra fila) pode esvaziar a última
-  // página — sem isso, ficaria preso numa página vazia até recarregar.
-  private ajustarPaginaAtual(): void {
-    if (this.paginaAtual() > this.totalPaginas()) {
-      this.paginaAtual.set(this.totalPaginas());
-    }
-  }
-
-  protected fecharDetalhe(): void {
-    this.chamadoAberto.set(null);
+  // `null` = ainda só com a IA (aguardando resposta do solicitante); um
+  // nome = já escalado pra esse técnico.
+  protected tecnicoEscalado(chamado: Chamado): string | null {
+    return chamado.tecnico_atribuido
+      ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null)
+      : null;
   }
 
   protected verificarChamado(chamado: Chamado): void {
@@ -210,25 +192,37 @@ export class ChamadosTi {
     this.verificandoId.set(chamado.id);
     this.erro.set(null);
 
-    this.http.post<Chamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {}).subscribe({
-      next: (atualizado) => {
-        // "fila_atendimento" já foi entregue ao GLPI — some da lista, mesmo
-        // critério de `_precisa_atencao` no backend.
-        if (atualizado.status === 'fila_atendimento') {
-          this.chamados.update((atual) => atual.filter((item) => item.id !== atualizado.id));
-          this.ajustarPaginaAtual();
-        } else {
-          this.chamados.update((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
-        }
-        if (this.chamadoAberto()?.id === atualizado.id) {
-          this.chamadoAberto.set(atualizado.status === 'fila_atendimento' ? null : atualizado);
-        }
-        this.verificandoId.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erro.set(mensagemErro(erro, 'Não foi possível verificar este chamado.'));
-        this.verificandoId.set(null);
-      },
-    });
+    this.http
+      .post<Chamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {})
+      .subscribe({
+        next: (atualizado) => {
+          // "fila_atendimento" já foi entregue ao GLPI — some da lista, mesmo
+          // critério de `_precisa_atencao` no backend.
+          if (atualizado.status === 'fila_atendimento') {
+            this.chamados.update((atual) => atual.filter((item) => item.id !== atualizado.id));
+            this.ajustarPaginaAtual();
+          } else {
+            this.chamados.update((atual) =>
+              atual.map((item) => (item.id === atualizado.id ? atualizado : item)),
+            );
+          }
+          if (this.chamadoAberto()?.id === atualizado.id) {
+            this.chamadoAberto.set(atualizado.status === 'fila_atendimento' ? null : atualizado);
+          }
+          this.verificandoId.set(null);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erro.set(mensagemErro(erro, 'Não foi possível verificar este chamado.'));
+          this.verificandoId.set(null);
+        },
+      });
+  }
+
+  // Chamado removido da lista (foi pra fila) pode esvaziar a última
+  // página — sem isso, ficaria preso numa página vazia até recarregar.
+  private ajustarPaginaAtual(): void {
+    if (this.paginaAtual() > this.totalPaginas()) {
+      this.paginaAtual.set(this.totalPaginas());
+    }
   }
 }

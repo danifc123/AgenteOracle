@@ -40,6 +40,15 @@ real visto em produção: o mesmo chamado recebendo a mesma pergunta
 genérica repetida em dias diferentes, porque ninguém tinha memória do
 que já tinha sido perguntado antes.
 
+Amostragem (`tools/ti/amostragem_chamados.py`): só uma parcela dos chamados
+novos entra na triagem, conforme `percentual_amostragem_chamados` (padrão
+100 = todos). `chamado_entra_na_amostra` decide na porta de entrada —
+poller/`/verificar` em lote (`verificar_chamados_pendentes`) e webhook. Quem
+já foi avaliado alguma vez segue o ciclo normal sem passar por ela, e o
+botão "Verificar" de UM chamado (`chamado_verificar_route`) ignora a
+amostra, porque é uma ação explícita de quem está na tela. Chamado fora da
+amostra fica intocado no GLPI e some da tela (`_chamados_da_tela`).
+
 `_texto_para_ia` limpa o HTML da descrição antes de mandar pra IA — um
 chamado aberto por e-mail pode chegar como um e-mail HTML inteiro
 (cabeçalho, rodapé, tabela de estilo), e confirmamos ao vivo que isso
@@ -74,7 +83,7 @@ from agente_oracle.db.connection import DatabaseError
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.ti import categorias, uso_ia_chamados
+from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
 from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico, escolher_tecnico, todos_os_tecnicos
@@ -161,6 +170,14 @@ def _chamado_para_json(chamado: Chamado) -> dict:
         "area": chamado.area,
         "tecnico_atribuido": chamado.tecnico_atribuido,
     }
+
+
+def _chamados_da_tela(chamados: list[Chamado], fora_da_amostra: set[int]) -> list[dict]:
+    return [
+        _chamado_para_json(chamado)
+        for chamado in chamados
+        if _precisa_atencao(chamado) and chamado.id not in fora_da_amostra
+    ]
 
 
 def _texto_para_ia(html: str) -> str:
@@ -293,6 +310,20 @@ def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa |
         return None
 
 
+def chamado_entra_na_amostra(chamado_id: int) -> bool:
+    """Envolve `amostragem_chamados.deve_analisar` só nos pontos de chamada.
+    Ao contrário de `_ultima_avaliacao_segura`, falha pro lado FECHADO: com
+    Postgres fora do ar, o chamado NÃO é analisado nesta rodada (segue `novo`
+    e o poller tenta de novo na próxima) — cair pro lado aberto analisaria
+    todo mundo justamente quando não dá pra saber se ele estava fora da amostra,
+    furando o controle que essa funcionalidade existe pra garantir."""
+    try:
+        return amostragem_chamados.deve_analisar(chamado_id)
+    except DatabaseError:
+        _logger.exception("Falha decidindo a amostragem do chamado %s", chamado_id)
+        return False
+
+
 async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int]) -> None:
     """Chamado que segue sem informação suficiente numa segunda (ou
     enésima) avaliação não ganha outra pergunta automática — em vez
@@ -336,6 +367,10 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     `tools/ti/uso_ia_chamados.py`). Chamada tanto pela rota manual
     quanto pelo poller em background (`iniciar_poller_verificar_chamados`).
 
+    Chamado `novo` que nunca foi avaliado só é processado se entrar na
+    amostra (`chamado_entra_na_amostra`); quem já tem avaliação registrada
+    (ex: ficou "meio processado" numa rodada anterior) segue direto.
+
     Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
     filtrar por status) — é o que alimenta a tela, mesmo os chamados que
     este loop pulou de propósito.
@@ -359,6 +394,10 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
         inicio = time.monotonic()
         try:
             registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
+            if registro_anterior is None and not await to_thread.run_sync(
+                chamado_entra_na_amostra, chamado.id
+            ):
+                continue
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
@@ -499,12 +538,11 @@ def registrar(mcp) -> None:
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_route(request: Request, usuario: dict) -> Response:
         """Lista só os chamados que ainda precisam de atenção desta tela —
-        ver `_precisa_atencao`. `fila_atendimento` já foi entregue ao GLPI."""
+        ver `_precisa_atencao`. `fila_atendimento` já foi entregue ao GLPI.
+        Chamado fora da amostra também não aparece — ver `_chamados_da_tela`."""
         chamados = await _cliente.listar()
-        return JSONResponse(
-            [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
-            headers=CORS_HEADERS,
-        )
+        fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
+        return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/tecnicos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
@@ -546,10 +584,8 @@ def registrar(mcp) -> None:
         await verificar_chamados_pendentes(usar_ia)
         await verificar_chamados_aguardando_resposta(usar_ia)
         chamados = await _cliente.listar()
-        return JSONResponse(
-            [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
-            headers=CORS_HEADERS,
-        )
+        fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
+        return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/chamados/{id}/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)

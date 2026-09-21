@@ -31,6 +31,11 @@ GLPI reenvie o evento em caso de erro. Se falhar antes de
 `/api/ti/chamados/verificar` (polling manual) acaba pegando ele depois —
 rede de segurança automática, sem esforço extra.
 
+Amostragem: `glpi_webhook_route` só chama `processar_webhook` se o chamado
+entrar na amostra (`chamado_entra_na_amostra`, em `server/ti/chamados.py`) —
+mesmo motivo de `usar_ia`/`uso_ia_chamados`: a decisão usa Postgres, então
+fica na camada de rota e não dentro de `processar_webhook` (testável com fake).
+
 Sem tratamento de CORS/OPTIONS de propósito — o GLPI chama servidor-a-
 servidor, nunca por um navegador.
 
@@ -55,7 +60,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.config import settings
-from agente_oracle.server.ti.chamados import ResultadoProcessamento, processar_chamado_novo
+from agente_oracle.server.ti.chamados import (
+    ResultadoProcessamento,
+    chamado_entra_na_amostra,
+    processar_chamado_novo,
+)
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.glpi import ClienteGLPI, criar_cliente
@@ -127,6 +136,15 @@ def registrar(mcp) -> None:
             corpo = await request.json()
         except Exception:
             return JSONResponse({"erro": "Payload inválido."}, status_code=400)
+
+        # Fora da amostra: responde 200 sem processar (o GLPI não precisa
+        # saber) — o chamado segue `novo`, e o poller repete a mesma decisão
+        # já gravada por `chamado_entra_na_amostra`, nunca sorteia de novo.
+        chamado_id_amostragem = _chamado_id_do_payload(corpo)
+        if chamado_id_amostragem is not None and not await to_thread.run_sync(
+            chamado_entra_na_amostra, chamado_id_amostragem
+        ):
+            return JSONResponse({"ok": True, "amostrado": False}, status_code=200)
 
         ollama_client = AsyncClient(host=settings.ollama_host)
         usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)

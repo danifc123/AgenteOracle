@@ -2,14 +2,17 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime
 
+import psycopg
 import pytest
 
 from agente_oracle.agent.ti import roteamento_chamado
 from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
+    _chamados_da_tela,
     _saude_por_area,
     _texto_para_ia,
+    chamado_entra_na_amostra,
     processar_chamado_novo,
     verificar_chamados_aguardando_resposta,
     verificar_chamados_pendentes,
@@ -46,6 +49,15 @@ def _roster_de_tecnicos_para_teste(monkeypatch):
         {"usuario": "278", "nome": "Técnico Processos", "tecnico_glpi_id": "278", "area_ti": "processos"},
     ]
     monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+
+
+@pytest.fixture(autouse=True)
+def _amostragem_liberada_por_padrao(monkeypatch):
+    # Sem isso a decisão de amostragem tentaria ler `ti_configuracoes`/
+    # `ti_amostragem_chamados` do Postgres — e, falhando (fail closed, ver
+    # `chamado_entra_na_amostra`), nenhum chamado seria processado. Os testes
+    # de amostragem em si sobrescrevem isto.
+    monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", lambda _id: True)
 
 
 def _chamado(
@@ -506,6 +518,98 @@ class TestVerificarChamadosPendentes:
         assert cliente.avaliacoes == [(2, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {2}
         assert {chamado.id for chamado in resultado} == {1, 2}
+
+    async def test_so_processa_os_chamados_que_entram_na_amostra(self, monkeypatch):
+        cliente = _ClienteGLPIFake([_chamado(id_=1, categoria_id=999), _chamado(id_=2, categoria_id=999)])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
+        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", lambda id_: id_ == 1)
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        resultado = await verificar_chamados_pendentes(usar_ia=True)
+
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
+        # O chamado fora da amostra continua na listagem devolvida — quem
+        # esconde ele da tela é `_chamados_da_tela`, não este loop.
+        assert {chamado.id for chamado in resultado} == {1, 2}
+
+    async def test_chamado_ja_avaliado_antes_ignora_a_amostragem(self, monkeypatch):
+        # Ficou "meio processado" numa rodada anterior: já está no ciclo,
+        # a amostra não pode largar ele no meio do caminho.
+        cliente = _ClienteGLPIFake([_chamado(id_=1, categoria_id=999)])
+        registro_anterior = uso_ia_chamados.RegistroUsoIa(
+            avaliacao_suficiente=True, criado_em=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
+        )
+
+        def _amostragem_proibida(_id):
+            raise AssertionError("chamado já avaliado não deveria passar pela amostragem")
+
+        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _amostragem_proibida)
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await verificar_chamados_pendentes(usar_ia=True)
+
+        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
+
+    async def test_falha_no_banco_da_amostragem_nao_processa_nenhum_chamado(self, monkeypatch):
+        cliente = _ClienteGLPIFake([_chamado(id_=1, categoria_id=999)])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
+
+        def _banco_fora(_id):
+            raise psycopg.OperationalError("Postgres fora do ar")
+
+        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _banco_fora)
+        monkeypatch.setattr(
+            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await verificar_chamados_pendentes(usar_ia=True)
+
+        assert cliente.avaliacoes == []
+        assert cliente.atribuicoes == []
+
+
+class TestChamadoEntraNaAmostra:
+    def test_devolve_a_decisao_da_amostragem(self, monkeypatch):
+        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", lambda id_: id_ == 7)
+
+        assert chamado_entra_na_amostra(7) is True
+        assert chamado_entra_na_amostra(8) is False
+
+    def test_falha_do_banco_falha_pro_lado_fechado(self, monkeypatch):
+        # Cair pro lado aberto analisaria todo mundo justamente quando não
+        # dá pra saber se o chamado estava fora da amostra.
+        def _banco_fora(_id):
+            raise psycopg.OperationalError("Postgres fora do ar")
+
+        monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _banco_fora)
+
+        assert chamado_entra_na_amostra(7) is False
+
+
+class TestChamadosDaTela:
+    def test_esconde_chamado_fora_da_amostra(self):
+        chamados = [_chamado(id_=1), _chamado(id_=2), _chamado(id_=3)]
+
+        resultado = _chamados_da_tela(chamados, fora_da_amostra={2})
+
+        assert [chamado["id"] for chamado in resultado] == [1, 3]
+
+    def test_continua_escondendo_fila_de_atendimento(self):
+        na_fila = replace(_chamado(id_=1), status="fila_atendimento")
+
+        assert _chamados_da_tela([na_fila, _chamado(id_=2)], fora_da_amostra=set()) == [
+            chamados_module._chamado_para_json(_chamado(id_=2))
+        ]
 
 
 class TestVerificarChamadosAguardandoResposta:

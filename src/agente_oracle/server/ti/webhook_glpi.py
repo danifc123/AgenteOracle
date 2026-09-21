@@ -31,10 +31,7 @@ GLPI reenvie o evento em caso de erro. Se falhar antes de
 `/api/ti/chamados/verificar` (polling manual) acaba pegando ele depois —
 rede de segurança automática, sem esforço extra.
 
-Amostragem: `glpi_webhook_route` só chama `processar_webhook` se o chamado
-entrar na amostra (`chamado_entra_na_amostra`, em `server/ti/chamados.py`) —
-mesmo motivo de `usar_ia`/`uso_ia_chamados`: a decisão usa Postgres, então
-fica na camada de rota e não dentro de `processar_webhook` (testável com fake).
+Amostragem: a rota só chama `processar_webhook` se o chamado entrar na amostra (usa Postgres).
 
 Sem tratamento de CORS/OPTIONS de propósito — o GLPI chama servidor-a-
 servidor, nunca por um navegador.
@@ -79,13 +76,6 @@ _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
 
 
-def _autorizado(segredo_recebido: str, segredo_esperado: str) -> bool:
-    """`segredo_esperado` vazio (`GLPI_WEBHOOK_SECRET` não configurado)
-    nunca autoriza, mesmo sem nenhum header na requisição — ver docstring
-    do módulo pro motivo (`compare_digest("", "")` sozinho daria `True`)."""
-    return bool(segredo_esperado) and hmac.compare_digest(segredo_recebido, segredo_esperado)
-
-
 def _chamado_id_do_payload(corpo: dict) -> int | None:
     """TODO: confirmar o formato exato do payload do evento "Ticket
     created" — aceita algumas chaves plausíveis enquanto isso não é
@@ -95,6 +85,13 @@ def _chamado_id_do_payload(corpo: dict) -> int | None:
         return int(bruto) if bruto is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _autorizado(segredo_recebido: str, segredo_esperado: str) -> bool:
+    """`segredo_esperado` vazio (`GLPI_WEBHOOK_SECRET` não configurado)
+    nunca autoriza, mesmo sem nenhum header na requisição — ver docstring
+    do módulo pro motivo (`compare_digest("", "")` sozinho daria `True`)."""
+    return bool(segredo_esperado) and hmac.compare_digest(segredo_recebido, segredo_esperado)
 
 
 async def processar_webhook(
@@ -137,9 +134,7 @@ def registrar(mcp) -> None:
         except Exception:
             return JSONResponse({"erro": "Payload inválido."}, status_code=400)
 
-        # Fora da amostra: responde 200 sem processar (o GLPI não precisa
-        # saber) — o chamado segue `novo`, e o poller repete a mesma decisão
-        # já gravada por `chamado_entra_na_amostra`, nunca sorteia de novo.
+        # Fora da amostra: 200 sem processar; o poller repete a decisão já gravada.
         chamado_id_amostragem = _chamado_id_do_payload(corpo)
         if chamado_id_amostragem is not None and not await to_thread.run_sync(
             chamado_entra_na_amostra, chamado_id_amostragem

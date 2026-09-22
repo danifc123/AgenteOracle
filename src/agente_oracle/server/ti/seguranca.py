@@ -14,17 +14,17 @@ estava ativo de uma execução anterior — o achado novo, mais atual,
 prevalece)."""
 
 from anyio import to_thread
-from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.agent.ti import perfil_login
 from agente_oracle.agent.ti.deteccao_seguranca import AchadoSeguranca, detectar
-from agente_oracle.config import settings
+from agente_oracle.config import ollama_model_do_dominio, settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis
+from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido
 from agente_oracle.tools.ti import acessos_dados, historico_seguranca
 
 _DIAS_JANELA_ACESSO = 7
@@ -103,9 +103,12 @@ def registrar(mcp) -> None:
         )
         perfis_acesso = await to_thread.run_sync(acessos_dados.perfil_acessos, _DIAS_JANELA_ACESSO)
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
+        # `sanitizar=False`: `usuario`/`usuario_id` é o próprio objeto do
+        # achado de segurança — mascarar tornaria o achado inacionável (ver
+        # tools/ia/cliente_protegido.py e o plano de guardrails de IA).
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=False)
         achados_novos = await detectar(
-            ollama_client, settings.ollama_model, perfis_login, perfis_login_protheus, perfis_acesso
+            ollama_client, ollama_model_do_dominio(settings, "ti"), perfis_login, perfis_login_protheus, perfis_acesso
         )
 
         chaves_novas = {(achado.usuario, achado.sistema, achado.tipo) for achado in achados_novos}

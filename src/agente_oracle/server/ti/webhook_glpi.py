@@ -56,12 +56,13 @@ from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.config import settings
+from agente_oracle.config import ollama_model_do_dominio, settings
 from agente_oracle.server.ti.chamados import (
     ResultadoProcessamento,
     chamado_entra_na_amostra,
     processar_chamado_novo,
 )
+from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.glpi import ClienteGLPI, criar_cliente
@@ -141,11 +142,11 @@ def registrar(mcp) -> None:
         ):
             return JSONResponse({"ok": True, "amostrado": False}, status_code=200)
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
         usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
         inicio = time.monotonic()
         status_code, corpo_resposta, resultado = await processar_webhook(
-            corpo, _cliente, ollama_client, settings.ollama_model, usar_ia
+            corpo, _cliente, ollama_client, ollama_model_do_dominio(settings, "ti"), usar_ia
         )
         if resultado is not None:
             duracao_ms = round((time.monotonic() - inicio) * 1000)

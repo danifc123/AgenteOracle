@@ -523,7 +523,7 @@ class TestVerificarChamadosPendentes:
         cliente = _ClienteGLPIFake([chamado_novo, chamado_pendente])
         monkeypatch.setattr(chamados_module, "_cliente", cliente)
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         resultado = await verificar_chamados_pendentes(usar_ia=True)
@@ -553,7 +553,7 @@ class TestVerificarChamadosPendentes:
         cliente.atribuir = _atribuir_falha_no_primeiro
         monkeypatch.setattr(chamados_module, "_cliente", cliente)
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         resultado = await verificar_chamados_pendentes(usar_ia=True)
@@ -570,7 +570,7 @@ class TestVerificarChamadosPendentes:
             chamados_module.amostragem_chamados, "deve_analisar", lambda id_, _criado_em=None: id_ == 1
         )
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         resultado = await verificar_chamados_pendentes(usar_ia=True)
@@ -597,7 +597,7 @@ class TestVerificarChamadosPendentes:
 
         monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _amostragem_proibida)
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         await verificar_chamados_pendentes(usar_ia=True)
@@ -614,13 +614,43 @@ class TestVerificarChamadosPendentes:
 
         monkeypatch.setattr(chamados_module.amostragem_chamados, "deve_analisar", _banco_fora)
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         await verificar_chamados_pendentes(usar_ia=True)
 
         assert cliente.avaliacoes == []
         assert cliente.atribuicoes == []
+
+
+class TestClienteProtegidoDeVerdade:
+    """Diferente do resto da suíte (que troca `criar_cliente_protegido` por
+    um fake direto): aqui o `ClienteOllamaProtegido` de verdade roda —
+    confirma que o texto que chegaria no Ollama já sai saneado, sem editar
+    nenhuma linha de `agent/ti/qualidade_chamado.py`/`roteamento_chamado.py`.
+    Só o `AsyncClient` por baixo e a auditoria (Postgres) são fake, pra
+    continuar sem rede/banco real num teste unitário."""
+
+    async def test_descricao_com_cpf_chega_mascarada_no_ollama(self, monkeypatch):
+        from agente_oracle.tools.ia import auditoria_externa
+        from agente_oracle.tools.ia import cliente_protegido as cliente_protegido_module
+
+        cliente_ollama_fake = _OllamaClienteFake(suficiente=True)
+        monkeypatch.setattr(cliente_protegido_module, "AsyncClient", lambda **_kwargs: cliente_ollama_fake)
+        monkeypatch.setattr(auditoria_externa, "registrar", lambda *_args: None)
+        monkeypatch.setattr(auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+
+        chamado = _chamado(
+            categoria_id=999, descricao=_DESCRICAO_PADRAO_TESTE + " Meu CPF é 123.456.789-00."
+        )
+        cliente = _ClienteGLPIFake([chamado])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+
+        await verificar_chamados_pendentes(usar_ia=True)
+
+        conteudo_enviado = cliente_ollama_fake.chamadas_chat[0]["messages"][1]["content"]
+        assert "123.456.789-00" not in conteudo_enviado
+        assert "[CPF]" in conteudo_enviado
 
 
 class TestChamadoEntraNaAmostra:
@@ -679,7 +709,7 @@ class TestVerificarChamadosAguardandoResposta:
             chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
         )
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         await verificar_chamados_aguardando_resposta(usar_ia=True)
@@ -708,7 +738,7 @@ class TestVerificarChamadosAguardandoResposta:
             chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
         )
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         await verificar_chamados_aguardando_resposta(usar_ia=True)
@@ -725,7 +755,7 @@ class TestVerificarChamadosAguardandoResposta:
         monkeypatch.setattr(chamados_module, "_cliente", cliente)
         monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
         monkeypatch.setattr(
-            chamados_module, "AsyncClient", lambda **_kwargs: _OllamaClienteFake(suficiente=True)
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
         )
 
         await verificar_chamados_aguardando_resposta(usar_ia=True)

@@ -73,11 +73,12 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.agent.ti.qualidade_chamado import avaliar_chamado
 from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
-from agente_oracle.config import settings
+from agente_oracle.config import ollama_model_do_dominio, settings
 from agente_oracle.db.connection import DatabaseError
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido
 from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
@@ -465,7 +466,7 @@ def registrar(mcp) -> None:
                 headers=CORS_HEADERS,
             )
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
         tecnicos = await to_thread.run_sync(todos_os_tecnicos)
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
@@ -476,7 +477,7 @@ def registrar(mcp) -> None:
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
-                settings.ollama_model,
+                ollama_model_do_dominio(settings, "ti"),
                 chamado,
                 cargas,
                 usar_ia,
@@ -548,7 +549,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     insuficiente antes). `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
     síncronos) rodam em thread separada a cada chamada; o resto do fluxo
     (GLPI/Ollama) continua `await` genuíno."""
-    ollama_client = AsyncClient(host=settings.ollama_host)
+    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -579,7 +580,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
-                settings.ollama_model,
+                ollama_model_do_dominio(settings, "ti"),
                 chamado_com_resposta,
                 cargas,
                 usar_ia,
@@ -629,7 +630,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     ponto. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres, síncronos)
     rodam em thread separada a cada chamada; o resto do fluxo (GLPI/
     Ollama) continua `await` genuíno."""
-    ollama_client = AsyncClient(host=settings.ollama_host)
+    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -646,7 +647,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
-                settings.ollama_model,
+                ollama_model_do_dominio(settings, "ti"),
                 chamado,
                 cargas,
                 usar_ia,

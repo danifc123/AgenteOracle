@@ -2,6 +2,10 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Domínios que hoje chamam IA — usado pra host/modelo por domínio (ver
+# `ollama_host_do_dominio` abaixo) e pro client protegido de `tools/ia/`.
+DominioIA = Literal["ti", "financeiro", "rh", "auditoria"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -53,6 +57,23 @@ class Settings(BaseSettings):
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:7b"
     ollama_embedding_model: str = "nomic-embed-text"
+
+    # Override por domínio (`DominioIA`) — vazio usa o valor global acima
+    # (`ollama_host_do_dominio`/`ollama_model_do_dominio`/`ollama_api_key_do_dominio`
+    # resolvem isso). Aditivo: não preencher nada mantém o comportamento de
+    # sempre, um host global só.
+    ollama_host_ti: str = ""
+    ollama_model_ti: str = ""
+    ollama_api_key_ti: str = ""
+    ollama_host_financeiro: str = ""
+    ollama_model_financeiro: str = ""
+    ollama_api_key_financeiro: str = ""
+    ollama_host_rh: str = ""
+    ollama_model_rh: str = ""
+    ollama_api_key_rh: str = ""
+    ollama_host_auditoria: str = ""
+    ollama_model_auditoria: str = ""
+    ollama_api_key_auditoria: str = ""
 
     auth_secret_key: str = ""
     # 8h = uma jornada de trabalho — depois disso o token expira sozinho e o
@@ -112,6 +133,21 @@ class Settings(BaseSettings):
 settings = Settings()
 
 TAMANHO_MINIMO_AUTH_SECRET_KEY = 32
+
+
+def ollama_api_key_do_dominio(settings: Settings, dominio: DominioIA) -> str:
+    return getattr(settings, f"ollama_api_key_{dominio}")
+
+
+def ollama_host_do_dominio(settings: Settings, dominio: DominioIA) -> str:
+    """Host do domínio se configurado (`OLLAMA_HOST_TI` etc.), senão o host
+    global — aditivo, sem override nenhum todo domínio cai no `ollama_host`
+    de sempre."""
+    return getattr(settings, f"ollama_host_{dominio}") or settings.ollama_host
+
+
+def ollama_model_do_dominio(settings: Settings, dominio: DominioIA) -> str:
+    return getattr(settings, f"ollama_model_{dominio}") or settings.ollama_model
 
 
 def validar_auth_secret_key(settings: Settings) -> None:
@@ -175,6 +211,11 @@ def validar_glpi_configurado(settings: Settings) -> None:
 _MARCADORES_OLLAMA_HOST_LOCAL = ("127.0.0.1", "localhost", "::1")
 
 
+# TI de propósito fora dessa lista: confirmado no código que os agentes de TI
+# (`agent/ti/qualidade_chamado.py`, `roteamento_chamado.py`, `deteccao_seguranca.py`)
+# nunca leem dado do Oracle — só GLPI e Postgres próprio. É por isso que dá
+# pra liberar `OLLAMA_HOST_TI` remoto mesmo com `DB_BACKEND=oracle` sem
+# validar nada: não existe dado real da Conceito nesse caminho pra proteger.
 def validar_ollama_host_seguro(settings: Settings) -> None:
     """Falha rápido na inicialização se `DB_BACKEND=oracle` (dado real da
     Conceito) e `OLLAMA_HOST` apontar pra fora da própria máquina — protege

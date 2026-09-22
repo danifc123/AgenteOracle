@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     ollama_model_auditoria: str = ""
     ollama_api_key_auditoria: str = ""
 
+    # Só alerta (log), não bloqueia — sem volume real de uso em nuvem ainda
+    # pra calibrar um limite que trave sem risco de travar uso legítimo. Ver
+    # `tools/ia/cliente_protegido.py`.
+    teto_diario_ia_externa: int = 500
+
     auth_secret_key: str = ""
     # 8h = uma jornada de trabalho — depois disso o token expira sozinho e o
     # usuário precisa logar de novo, mesmo com a aba aberta o tempo todo.

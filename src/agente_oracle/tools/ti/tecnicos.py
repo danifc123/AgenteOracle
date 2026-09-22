@@ -5,8 +5,16 @@ lista os candidatos), e a área (infra/sistemas/processos) é descoberta
 sozinha a partir do grupo técnico manual da pessoa no GLPI
 (`ClienteGLPIReal.buscar_area_do_tecnico`) — ver `usuarios_route` em
 `server/auth/rotas.py`. `tools/auth/usuarios.py::listar_tecnicos_ti` é a
-fonte do dado; este módulo só traduz pra `Tecnico` e escolhe por carga."""
+fonte do dado; este módulo só traduz pra `Tecnico` e escolhe por carga.
 
+`escolher_tecnico` também dá prioridade a um técnico citado pelo nome no
+próprio texto do chamado (ex: "abrir pro Pablo") — sempre dentro da área
+já resolvida pela categoria, nunca decidindo área sozinho. Citação
+ambígua (nenhum nome bate, ou mais de um) cai no critério de sempre
+(menor carga), sem tentar adivinhar."""
+
+import re
+import unicodedata
 from dataclasses import dataclass
 
 from agente_oracle.tools.auth.usuarios import listar_tecnicos_ti
@@ -62,7 +70,7 @@ def todos_os_tecnicos() -> tuple[Tecnico, ...]:
     )
 
 
-def escolher_tecnico(area: AreaChamado, cargas: dict[str, int]) -> Tecnico:
+def escolher_tecnico(area: AreaChamado, cargas: dict[str, int], texto_chamado: str = "") -> Tecnico:
     """Escolhe o de menor carga dentro da área; empate resolvido pela
     ordem do roster (`listar_tecnicos_ti` ordena por quem cadastrou
     primeiro — determinístico, sem aleatoriedade) — `min()` já devolve o
@@ -70,12 +78,39 @@ def escolher_tecnico(area: AreaChamado, cargas: dict[str, int]) -> Tecnico:
     de deixar `min()` estourar `ValueError` cru) quando a área não tem
     ninguém cadastrado — mais raro agora que técnico é obrigatório pra
     papel de TI, mas ainda possível (ex: único técnico de uma área foi
-    apagado)."""
+    apagado).
+
+    `texto_chamado` (título + descrição, opcional) tem prioridade sobre a
+    carga quando cita um único técnico dessa área pelo nome — ver
+    `_tecnico_citado_por_nome`."""
     tecnicos = tecnicos_da_area(area)
     if not tecnicos:
         raise SemTecnicoNaArea(area)
+    citado = _tecnico_citado_por_nome(texto_chamado, tecnicos) if texto_chamado else None
+    if citado:
+        return citado
     return min(tecnicos, key=lambda tecnico: cargas.get(tecnico.identificador, 0))
 
 
 def tecnicos_da_area(area: AreaChamado) -> tuple[Tecnico, ...]:
     return tuple(tecnico for tecnico in todos_os_tecnicos() if tecnico.area == area)
+
+
+def _tecnico_citado_por_nome(texto: str, tecnicos: tuple[Tecnico, ...]) -> Tecnico | None:
+    """Compara o primeiro nome de cada técnico contra o texto — palavra
+    inteira, sem acento, sem diferenciar maiúscula/minúscula (pra "Pablo"
+    não casar com "Pablosistema" nem depender de como foi digitado). Mais
+    de um nome citado é ambíguo de propósito: melhor cair no critério de
+    carga do que arriscar escolher o técnico errado."""
+    texto_normalizado = _sem_acento(texto)
+    citados = [
+        tecnico
+        for tecnico in tecnicos
+        if re.search(rf"\b{re.escape(_sem_acento(tecnico.nome.split()[0]))}\b", texto_normalizado)
+    ]
+    return citados[0] if len(citados) == 1 else None
+
+
+def _sem_acento(texto: str) -> str:
+    decomposto = unicodedata.normalize("NFKD", texto)
+    return "".join(caractere for caractere in decomposto if not unicodedata.combining(caractere)).lower()

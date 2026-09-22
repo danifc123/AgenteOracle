@@ -381,6 +381,45 @@ class TestProcessarChamadoNovo:
         _chamado_id, _area, tecnico = cliente.atribuicoes[0]
         assert cargas[tecnico] == 1
 
+    async def test_chamado_citando_tecnico_por_nome_prioriza_sobre_a_carga(self, monkeypatch):
+        # Nome citado no chamado (ex: "abrir pro Pablo") vence a carga —
+        # mesmo Pablo estando mais sobrecarregado que o outro técnico da
+        # mesma área. Nunca muda a área: só reordena quem, dentro dela.
+        roster = [
+            {"usuario": "pablo", "nome": "Pablo Silva", "tecnico_glpi_id": "pablo", "area_ti": "infra"},
+            {"usuario": "denner", "nome": "Denner Souza", "tecnico_glpi_id": "denner", "area_ti": "infra"},
+        ]
+        monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+        chamado = _chamado(
+            categoria_id=999,
+            titulo="Abrir chamado pro Pablo",
+            descricao=_DESCRICAO_PADRAO_TESTE,
+        )
+        cliente = _ClienteGLPIFake([chamado])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"pablo": 5, "denner": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        _chamado_id, _area, tecnico = cliente.atribuicoes[0]
+        assert tecnico == "pablo"
+
+    async def test_chamado_sem_nome_citado_continua_escolhendo_por_carga(self, monkeypatch):
+        roster = [
+            {"usuario": "pablo", "nome": "Pablo Silva", "tecnico_glpi_id": "pablo", "area_ti": "infra"},
+            {"usuario": "denner", "nome": "Denner Souza", "tecnico_glpi_id": "denner", "area_ti": "infra"},
+        ]
+        monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"pablo": 5, "denner": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        _chamado_id, _area, tecnico = cliente.atribuicoes[0]
+        assert tecnico == "denner"
+
     async def test_usar_ia_false_nunca_chama_o_ollama_e_ainda_assim_classifica(self):
         # Descrição com 15+ palavras passa na regra de suficiência.
         # Categoria atual já conhecida (999 -> "infra") — com usar_ia=False

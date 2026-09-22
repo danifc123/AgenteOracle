@@ -279,8 +279,11 @@ async def processar_chamado_novo(
     Com ou sem categoria de partida, classifica a área, escolhe o técnico de menor carga
     NAQUELE momento (`cargas` é atualizado in-place — importante quando
     processando um lote: duas chamadas seguidas não caem sempre no mesmo
-    técnico só porque nenhum dos dois ainda foi salvo no GLPI), atribui e
-    libera pra fila. Se `chamado.tecnico_atribuido` já for exatamente
+    técnico só porque nenhum dos dois ainda foi salvo no GLPI) — a menos
+    que o título/descrição cite um único técnico dessa área pelo nome, que
+    aí ganha prioridade sobre a carga (`escolher_tecnico`, ver
+    `tools/ti/tecnicos.py`) —, atribui e libera pra fila. Se
+    `chamado.tecnico_atribuido` já for exatamente
     esse técnico, pula a atribuição — confirmado contra a instância
     real que o GLPI rejeita (`400 ERROR_INVALID_PARAMETER`) atribuir a
     MESMA pessoa com o mesmo papel duas vezes. Isso acontece quando um
@@ -320,7 +323,7 @@ async def processar_chamado_novo(
     if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
         await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
 
-    tecnico = escolher_tecnico(resultado_classificacao.area, cargas)
+    tecnico = escolher_tecnico(resultado_classificacao.area, cargas, f"{chamado.titulo}\n{descricao_limpa}")
     if chamado.tecnico_atribuido != tecnico.identificador:
         await cliente.atribuir(chamado.id, resultado_classificacao.area, tecnico.identificador)
     await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
@@ -351,7 +354,7 @@ async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: 
         await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
 
     area = categorias.AREA_POR_CATEGORIA_ID.get(chamado.categoria_id, _AREA_PADRAO_ESCALONAMENTO)
-    tecnico = escolher_tecnico(area, cargas)
+    tecnico = escolher_tecnico(area, cargas, f"{chamado.titulo}\n{chamado.descricao}")
     if chamado.tecnico_atribuido != tecnico.identificador:
         await cliente.atribuir(chamado.id, area, tecnico.identificador)
     await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)

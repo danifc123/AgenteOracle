@@ -75,3 +75,46 @@ class TestEscolherTecnico:
             escolher_tecnico("processos", {})
 
         assert excinfo.value.area == "processos"
+
+
+_ROSTER_NOMES = [
+    _linha("Pablo Silva", "pablo", "infra"),
+    _linha("Denner Souza", "denner", "infra"),
+    _linha("Suellen Lima", "suellen", "sistemas"),
+]
+
+
+class TestEscolherTecnicoComTextoChamado:
+    """`texto_chamado` dá prioridade a um técnico citado pelo nome, mas só
+    quando a citação é inequívoca — ver `_tecnico_citado_por_nome`."""
+
+    def test_cita_um_unico_tecnico_da_area_ignora_a_carga(self, monkeypatch):
+        _com_roster(monkeypatch, _ROSTER_NOMES)
+        tecnico = escolher_tecnico("infra", {"pablo": 5, "denner": 0}, "Abrir chamado pro Pablo, por favor")
+        assert tecnico.identificador == "pablo"
+
+    def test_nome_citado_fora_da_area_e_ignorado(self, monkeypatch):
+        _com_roster(monkeypatch, _ROSTER_NOMES)
+        tecnico = escolher_tecnico("infra", {"pablo": 5, "denner": 0}, "Chamado pra Suellen")
+        assert tecnico.identificador == "denner"
+
+    def test_dois_nomes_citados_cai_na_carga(self, monkeypatch):
+        _com_roster(monkeypatch, _ROSTER_NOMES)
+        tecnico = escolher_tecnico("infra", {"pablo": 5, "denner": 0}, "Pablo e Denner, vejam isso")
+        assert tecnico.identificador == "denner"
+
+    def test_nome_dentro_de_outra_palavra_nao_conta(self, monkeypatch):
+        _com_roster(monkeypatch, _ROSTER_NOMES)
+        tecnico = escolher_tecnico("infra", {"pablo": 5, "denner": 0}, "Erro no PabloSistema")
+        assert tecnico.identificador == "denner"
+
+    def test_texto_vazio_usa_so_a_carga(self, monkeypatch):
+        _com_roster(monkeypatch, _ROSTER_NOMES)
+        tecnico = escolher_tecnico("infra", {"pablo": 5, "denner": 0}, "")
+        assert tecnico.identificador == "denner"
+
+    def test_acento_e_maiuscula_nao_importam(self, monkeypatch):
+        roster = [_linha("José Ávila", "jose", "infra"), _linha("Denner Souza", "denner", "infra")]
+        _com_roster(monkeypatch, roster)
+        tecnico = escolher_tecnico("infra", {"jose": 5, "denner": 0}, "chamado pro JOSÉ, por favor")
+        assert tecnico.identificador == "jose"

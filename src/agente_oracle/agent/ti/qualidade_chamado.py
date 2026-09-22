@@ -13,7 +13,13 @@ mal formada, ou "insuficiente" sem pergunta de verdade) nunca trava o
 chamado nem deixa passar às cegas — cai em `_avaliar_por_regra`, uma
 contagem de palavras da descrição que nunca depende de rede. A IA
 continua sendo a primeira opção (julgamento semântico bate uma regra de
-tamanho), a regra é só o plano B pra quando ela não responde."""
+tamanho), a regra é só o plano B pra quando ela não responde.
+
+Descrição sem conteúdo real (ex: chamado de teste) também cai direto na
+regra, sem passar pela IA: com um modelo local pequeno e nada pra
+trabalhar, ela tende a inventar um tema plausível (já visto em produção)
+em vez de admitir que não tem base — a regra de palavras é mais segura
+nesse caso do que dar à IA algo vazio pra julgar."""
 
 from dataclasses import dataclass
 
@@ -22,6 +28,16 @@ from ollama import AsyncClient
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 
 _MINIMO_PALAVRAS_DESCRICAO = 15
+
+# Genérica de propósito — cobre chamado de qualquer categoria, não só
+# sistema/TI. Mesma mensagem tanto pra descrição sem conteúdo real quanto
+# pra falha do Ollama numa descrição igualmente curta (ver `avaliar_chamado`).
+_MENSAGEM_DESCRICAO_CURTA = (
+    "Pode detalhar melhor o que está acontecendo? Um chamado bem preenchido diz o que exatamente está "
+    'acontecendo (não só "não funciona" ou "está lento"), qual sistema ou equipamento é afetado, e desde '
+    'quando ou com que frequência. Exemplo: "Não consigo acessar o sistema de vendas desde ontem à '
+    'tarde — a tela fica carregando e nunca abre."'
+)
 
 _SCHEMA = {
     "type": "object",
@@ -42,7 +58,11 @@ _PROMPT_SISTEMA = (
     "curta e direta, baseada SÓ no que o título e a descrição DESSE chamado específico já dizem — "
     "nunca pergunte sobre algo que o chamado não menciona (ex: não pergunte sobre 'mensagem de erro' "
     "se o chamado não fala de erro nenhum) e nunca repita uma pergunta genérica tipo 'detalhe "
-    "melhor'. Se já tiver informação suficiente, marque `suficiente: true` e deixe `mensagem` vazia."
+    "melhor'. Nunca cite um sistema, aplicativo ou equipamento específico (ex: OneDrive, SAP, "
+    "Protheus, uma impressora) que não apareça literalmente no título ou na descrição — a categoria "
+    "pode sugerir um tipo de problema (ex: 'sincronização, acesso'), mas isso não é licença pra "
+    "adivinhar qual sistema é; nesse caso pergunte usando os termos genéricos da própria categoria. "
+    "Se já tiver informação suficiente, marque `suficiente: true` e deixe `mensagem` vazia."
 )
 
 
@@ -58,10 +78,7 @@ def _avaliar_por_regra(descricao: str) -> AvaliacaoChamado:
     nada de volta é o sinal mais barato que dá pra checar sem julgamento
     semântico nenhum."""
     if len(descricao.split()) < _MINIMO_PALAVRAS_DESCRICAO:
-        return AvaliacaoChamado(
-            suficiente=False,
-            mensagem="Pode detalhar melhor o que está acontecendo, qual sistema ou equipamento é afetado, e desde quando?",
-        )
+        return AvaliacaoChamado(suficiente=False, mensagem=_MENSAGEM_DESCRICAO_CURTA)
     return AvaliacaoChamado(suficiente=True, mensagem="")
 
 
@@ -72,8 +89,9 @@ async def avaliar_chamado(
     palavras. Com `usar_ia=True` (padrão), tenta o Ollama primeiro — toda
     vez que a resposta não for um julgamento confiável (erro na chamada,
     JSON mal formado, tipo errado, ou "insuficiente" sem pergunta) cai na
-    regra em vez de assumir `suficiente=True` às cegas."""
-    if not usar_ia:
+    regra em vez de assumir `suficiente=True` às cegas. Descrição sem
+    conteúdo real nem chega a ir pra IA — ver docstring do módulo."""
+    if not usar_ia or len(descricao.split()) < _MINIMO_PALAVRAS_DESCRICAO:
         return _avaliar_por_regra(descricao)
 
     try:

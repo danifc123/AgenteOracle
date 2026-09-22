@@ -35,6 +35,13 @@ def _avaliacao_json(suficiente: bool, mensagem: str = "") -> str:
     return json.dumps({"suficiente": suficiente, "mensagem": mensagem})
 
 
+class TestPromptSistema:
+    def test_prompt_proibe_citar_sistema_que_o_chamado_nao_menciona(self):
+        # Trava a instrução que corrige o caso visto em produção: a IA
+        # inventando "OneDrive/Sharepoint" a partir só do nome da categoria.
+        assert "não apareça literalmente no título ou na descrição" in mod._PROMPT_SISTEMA
+
+
 class TestAvaliarPorRegra:
     def test_descricao_com_15_palavras_ou_mais_e_suficiente(self):
         avaliacao = mod._avaliar_por_regra(_DESCRICAO_LONGA)
@@ -44,26 +51,44 @@ class TestAvaliarPorRegra:
     def test_descricao_com_menos_de_15_palavras_e_insuficiente(self):
         avaliacao = mod._avaliar_por_regra(_DESCRICAO_CURTA)
         assert avaliacao.suficiente is False
-        assert avaliacao.mensagem != ""
+        assert avaliacao.mensagem == mod._MENSAGEM_DESCRICAO_CURTA
+
+    def test_mensagem_fixa_ensina_o_que_e_um_chamado_bem_preenchido_com_exemplo(self):
+        # Trava o pedido do Daniel: a mensagem não só pergunta, ensina o
+        # que preencher e dá um exemplo, genérica pra qualquer categoria.
+        assert "Exemplo:" in mod._MENSAGEM_DESCRICAO_CURTA
 
 
 class TestAvaliarChamado:
     async def test_chamado_suficiente_nao_traz_mensagem(self):
         cliente = _OllamaClientFake(conteudo=_avaliacao_json(True))
 
-        avaliacao = await mod.avaliar_chamado(
-            cliente, "modelo-teste", "Título", "Descrição detalhada", "Sistemas"
-        )
+        avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Título", _DESCRICAO_LONGA, "Sistemas")
 
         assert avaliacao.suficiente is True
 
     async def test_chamado_insuficiente_traz_a_pergunta_da_ia(self):
         cliente = _OllamaClientFake(conteudo=_avaliacao_json(False, "Qual sistema está afetado?"))
 
-        avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Não funciona", _DESCRICAO_CURTA, "TI")
+        avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Não funciona", _DESCRICAO_LONGA, "TI")
 
         assert avaliacao.suficiente is False
         assert avaliacao.mensagem == "Qual sistema está afetado?"
+
+    async def test_descricao_sem_conteudo_real_nunca_chama_a_ia(self):
+        # Chamado de teste (ex: "blablabla") não dá pra IA julgar com segurança —
+        # já vimos em produção ela inventar um sistema plausível em vez de
+        # admitir que não tem base (ver docstring do módulo). Nesse caso a
+        # regra de palavras decide sozinha, sem nem tentar o Ollama.
+        cliente = _OllamaClientFake()
+        cliente.chat = _chat_nunca_chamado
+
+        avaliacao = await mod.avaliar_chamado(
+            cliente, "modelo-teste", "TesteTesteTestando", "blablabla", "Sincronização, acesso, etc."
+        )
+
+        assert avaliacao.suficiente is False
+        assert avaliacao.mensagem != ""
 
     async def test_insuficiente_sem_mensagem_cai_pra_regra(self):
         # IA respondeu, mas sem uma pergunta de verdade — não dá pra confiar

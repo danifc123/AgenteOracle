@@ -7,10 +7,10 @@ Existe pra responder "isso não tá saindo caro?" com número real em vez de
 estimativa — com Ollama local (`OLLAMA_HOST=127.0.0.1`, ver `config.py`),
 não tem custo em dinheiro por chamada, então o que importa medir é volume
 e tempo de processamento (carga na máquina), não uma fatura. `precisou_embedding`
-é o proxy de "chamado caro" (regra por palavra-chave não resolveu a área,
-precisou do fallback via `agent/ti/roteamento_chamado.py`) — se a maioria
-dos chamados precisar do fallback, vale revisar a lista de palavras-chave
-antes de qualquer outra coisa.
+é o proxy de "chamado caro" (categoria foi classificada por embedding, via
+`agent/ti/roteamento_chamado.py`, em vez de `usar_ia=False` manter a
+categoria atual sem gastar Ollama) — se o volume estiver alto, é aqui que
+mora o custo de processamento.
 
 Mesmo padrão de `tools/ti/acessos_dados.py`: tabela própria, criada
 sozinha (`CREATE TABLE IF NOT EXISTS`), e `registrar` nunca pode derrubar

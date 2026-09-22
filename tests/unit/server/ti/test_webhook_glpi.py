@@ -43,7 +43,7 @@ def _chamado(id_: int = 1, categoria_id: int | None = None) -> Chamado:
     return Chamado(
         id=id_,
         titulo="Computador não liga",
-        descricao="detalhe",
+        descricao="O computador do usuário apresenta o mesmo problema há alguns dias e precisa de atendimento técnico",
         categoria="Hardware",
         categoria_id=categoria_id,
         status="novo",

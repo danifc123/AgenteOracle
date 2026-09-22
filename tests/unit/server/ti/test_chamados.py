@@ -59,10 +59,15 @@ def _amostragem_liberada_por_padrao(monkeypatch):
     )
 
 
+_DESCRICAO_PADRAO_TESTE = (
+    "O computador do usuário apresenta o mesmo problema há alguns dias e precisa de atendimento técnico"
+)
+
+
 def _chamado(
     id_: int = 1,
     titulo: str = "Computador não liga",
-    descricao: str = "detalhe",
+    descricao: str = _DESCRICAO_PADRAO_TESTE,
     categoria: str = "Hardware",
     categoria_id: int | None = None,
     tecnico_atribuido: str | None = None,
@@ -729,7 +734,8 @@ class TestProcessarChamadoNovoLimpaHtml:
         # A mesma checagem, só que na ponta a ponta: `processar_chamado_novo`
         # não deveria vazar HTML pro prompt da IA.
         descricao_html = (
-            "<style>.x{color:red}</style><p>Sistema <b>lento</b> desde ontem de manhã, no financeiro.</p>"
+            "<style>.x{color:red}</style><p>Sistema <b>lento</b> desde ontem de manhã, no financeiro, "
+            "trava sempre que tento gerar o relatório de vendas do mês passado.</p>"
         )
         chamado = _chamado(descricao=descricao_html, categoria_id=999)
         cliente = _ClienteGLPIFake([chamado])
@@ -742,7 +748,7 @@ class TestProcessarChamadoNovoLimpaHtml:
         mensagem_usuario = ollama.chamadas_chat[0]["messages"][1]["content"]
         assert "<style>" not in mensagem_usuario
         assert "<p>" not in mensagem_usuario
-        assert "Sistema lento desde ontem de manhã, no financeiro." in mensagem_usuario
+        assert "Sistema lento desde ontem de manhã, no financeiro" in mensagem_usuario
 
 
 class TestSaudePorArea:

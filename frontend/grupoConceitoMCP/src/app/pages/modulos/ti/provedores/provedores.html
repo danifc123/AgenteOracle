@@ -1,0 +1,228 @@
+<app-modulo-header
+  breadcrumb="TI"
+  titulo="Provedores de IA"
+  descricao="Cadastro dos LLMs que TI e RH podem usar — ative qual está em uso agora. Visível só pra desenvolvedores."
+/>
+
+<div class="barra-acoes">
+  <app-botao variant="primaria" (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
+</div>
+
+@if (erro()) {
+  <p class="erro-carregamento">{{ erro() }}</p>
+}
+
+@if (carregando()) {
+  <p class="carregando">Carregando provedores...</p>
+} @else if (provedores().length === 0) {
+  <app-estado-vazio titulo="Nenhum provedor cadastrado" variante="simples">
+    <p>
+      Sem nada cadastrado, o sistema usa o Ollama padrão do <code>.env</code>. Use o botão "Novo
+      provedor" pra cadastrar o primeiro.
+    </p>
+  </app-estado-vazio>
+} @else {
+  <div class="table-wrapper">
+    <table class="tabela-provedores">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Tipo</th>
+          <th>Modelo</th>
+          <th class="num">Preço entrada /1k</th>
+          <th class="num">Preço saída /1k</th>
+          <th>Chave</th>
+          <th>Status</th>
+          <th><span class="sr-only">Ações</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (provedor of provedores(); track provedor.id) {
+          <tr>
+            <td>{{ provedor.nome }}</td>
+            <td>{{ rotuloTipoConexao(provedor.tipo_conexao) }}</td>
+            <td>{{ provedor.modelo }}</td>
+            <td class="num">{{ provedor.moeda }} {{ provedor.preco_entrada_por_1k }}</td>
+            <td class="num">{{ provedor.moeda }} {{ provedor.preco_saida_por_1k }}</td>
+            <td>
+              @if (provedor.api_key_configurada) {
+                <app-selo tom="ok" texto="Configurada" />
+              } @else {
+                <app-selo tom="neutro" texto="Sem chave" />
+              }
+            </td>
+            <td>
+              @if (provedor.ativo) {
+                <app-selo tom="ok" texto="Ativo" />
+              } @else {
+                <app-selo tom="neutro" texto="Inativo" />
+              }
+            </td>
+            <td class="acoes">
+              @if (!provedor.ativo) {
+                <app-botao
+                  variant="contorno"
+                  [loading]="ativandoId() === provedor.id"
+                  loadingText="Ativando..."
+                  (clicked)="ativar(provedor)"
+                >
+                  Ativar
+                </app-botao>
+              }
+              <app-botao variant="contorno" (clicked)="abrirDialogEditar(provedor)">Editar</app-botao>
+              <app-botao
+                variant="perigo"
+                [loading]="apagandoId() === provedor.id"
+                loadingText="Apagando..."
+                (clicked)="apagar(provedor)"
+              >
+                Apagar
+              </app-botao>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<app-dialog
+  [aberto]="dialogAberto()"
+  [titulo]="tituloDialog()"
+  [temRodape]="true"
+  (fechar)="fecharDialog()"
+>
+  <form class="form-provedor" (submit)="salvar(); $event.preventDefault()">
+    <label class="campo">
+      <span>Nome</span>
+      <input
+        type="text"
+        [value]="formNome()"
+        (input)="formNome.set($any($event.target).value)"
+        autocomplete="off"
+        placeholder="Ex: OCI Generative AI — gpt-oss-120b"
+      />
+    </label>
+
+    <app-select-busca
+      rotulo="Tipo de conexão"
+      placeholder="Escolha o tipo"
+      [opcoes]="opcoesTipoConexao"
+      [valor]="formTipoConexao()"
+      (valorChange)="formTipoConexao.set($any($event))"
+    />
+
+    <label class="campo">
+      <span>Endereço (URL base)</span>
+      <input
+        type="text"
+        [value]="formBaseUrl()"
+        (input)="formBaseUrl.set($any($event.target).value)"
+        autocomplete="off"
+        placeholder="http://127.0.0.1:11434"
+      />
+    </label>
+
+    <label class="campo">
+      <span>Modelo</span>
+      <input
+        type="text"
+        [value]="formModelo()"
+        (input)="formModelo.set($any($event.target).value)"
+        autocomplete="off"
+        placeholder="Ex: qwen2.5-coder:7b"
+      />
+    </label>
+
+    @if (ehOpenAiCompativel()) {
+      <app-select-busca
+        rotulo="Estilo de chamada"
+        placeholder="Escolha o estilo"
+        [opcoes]="opcoesEstiloApi"
+        [valor]="formEstiloApi()"
+        (valorChange)="formEstiloApi.set($any($event))"
+      />
+
+      <label class="campo">
+        <span>Projeto (opcional)</span>
+        <input
+          type="text"
+          [value]="formProjetoId()"
+          (input)="formProjetoId.set($any($event.target).value)"
+          autocomplete="off"
+          placeholder="ocid1.generativeaiproject.oc1..."
+        />
+      </label>
+    }
+
+    <label class="campo">
+      <span>Chave de API{{ editando() ? '' : ' (opcional)' }}</span>
+      <input
+        type="password"
+        [value]="formApiKey()"
+        (input)="formApiKey.set($any($event.target).value)"
+        autocomplete="new-password"
+        placeholder="••••••••"
+      />
+      @if (editando()) {
+        <span class="dica">Deixe em branco pra manter a chave atual.</span>
+      }
+    </label>
+
+    <div class="linha-precos">
+      <app-campo-numerico
+        rotulo="Preço entrada /1k tokens"
+        [valor]="formPrecoEntrada()"
+        [erro]="precoEntradaValido() === null ? 'Informe um número >= 0.' : null"
+        (valorChange)="formPrecoEntrada.set($event)"
+      />
+      <app-campo-numerico
+        rotulo="Preço saída /1k tokens"
+        [valor]="formPrecoSaida()"
+        [erro]="precoSaidaValido() === null ? 'Informe um número >= 0.' : null"
+        (valorChange)="formPrecoSaida.set($event)"
+      />
+    </div>
+
+    <label class="campo campo-moeda">
+      <span>Moeda</span>
+      <input
+        type="text"
+        [value]="formMoeda()"
+        (input)="formMoeda.set($any($event.target).value)"
+        autocomplete="off"
+        placeholder="R$"
+      />
+    </label>
+
+    <p class="dica">
+      Preço é opcional (0 = sem custo) — inclusive pra Ollama, que não tem custo real. Só alimenta a
+      estimativa de custo da tela de Tokens.
+    </p>
+
+    @if (erroForm()) {
+      <p class="erro">{{ erroForm() }}</p>
+    }
+  </form>
+
+  <div rodape class="rodape-form">
+    <app-botao variant="contorno" [disabled]="salvando()" (clicked)="fecharDialog()">Cancelar</app-botao>
+    <app-botao
+      variant="primaria"
+      [loading]="salvando()"
+      loadingText="Salvando..."
+      (clicked)="salvar()"
+    >
+      {{ editando() ? 'Salvar alterações' : 'Criar provedor' }}
+    </app-botao>
+  </div>
+</app-dialog>
+
+<app-confirmacao-dialog
+  [aberto]="!!provedorParaApagar()"
+  titulo="Apagar provedor"
+  [mensagem]="mensagemConfirmacaoApagar()"
+  [confirmando]="!!apagandoId()"
+  (confirmar)="confirmarApagar()"
+  (cancelar)="cancelarApagar()"
+/>

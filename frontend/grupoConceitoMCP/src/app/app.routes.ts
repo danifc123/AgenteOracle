@@ -21,6 +21,7 @@ import { RhHome } from './pages/modulos/rh/home/rh-home';
 import { ChamadosTi } from './pages/modulos/ti/chamados/chamados';
 import { SegurancaTi } from './pages/modulos/ti/seguranca/seguranca';
 import { TiHome } from './pages/modulos/ti/home/ti-home';
+import { ProvedoresLlm } from './pages/modulos/ti/provedores/provedores';
 import { Tokens } from './pages/modulos/ti/tokens/tokens';
 import { Login } from './pages/login/login';
 import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
@@ -61,6 +62,7 @@ export const routes: Routes = [
       { path: 'ti/seguranca', component: SegurancaTi },
       { path: 'ti/chamados', component: ChamadosTi },
       { path: 'ti/tokens', component: Tokens, canActivate: [devGuard] },
+      { path: 'ti/provedores', component: ProvedoresLlm, canActivate: [devGuard] },
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },

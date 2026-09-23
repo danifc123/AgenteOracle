@@ -158,6 +158,12 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         soDev: true,
         iconeSvg: `<circle cx="9" cy="15" r="5.5" /><circle cx="15" cy="9" r="5.5" />`,
       },
+      {
+        rota: '/ti/provedores',
+        rotulo: 'Provedores de IA',
+        soDev: true,
+        iconeSvg: `<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h10M7 13h6" stroke-linecap="round" /><circle cx="17" cy="16" r="1.3" />`,
+      },
     ],
   },
 ];

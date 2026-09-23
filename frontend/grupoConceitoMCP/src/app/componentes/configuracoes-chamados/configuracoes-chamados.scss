@@ -15,44 +15,6 @@
   border-top: 1px solid var(--border-default);
 }
 
-/* `app-interruptor`/`app-campo-numerico` já têm padding próprio — essa
- * classe é só pra linha com controle "cru" (select, input nativo), que
- * não se auto-espaça. */
-.linha-campo {
-  padding: var(--space-4);
-}
-
-.campo-texto-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.rotulo-texto {
-  font: var(--type-label);
-  color: var(--color-text);
-}
-
-.campo-texto {
-  flex-shrink: 0;
-  width: 220px;
-  height: var(--control-height-md);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  font: var(--type-body);
-  color: var(--color-text);
-  transition: var(--transition-control);
-
-  &:focus {
-    outline: none;
-    border-color: var(--border-focus);
-    box-shadow: var(--focus-ring);
-  }
-}
-
 .aviso {
   display: flex;
   align-items: flex-start;

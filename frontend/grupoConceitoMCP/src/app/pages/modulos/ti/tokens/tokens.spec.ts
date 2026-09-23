@@ -19,8 +19,6 @@ const CONFIGURACOES_RESPOSTA: ConfiguracoesTiResposta = {
   percentual_amostragem_chamados: 100,
   percentual_alterado_em: null,
   ler_chamados_antigos: false,
-  provedor_ia: 'ollama',
-  modelo_ia: '',
   teto_tokens_diario: 1000,
 };
 
@@ -133,22 +131,67 @@ describe('Tokens', () => {
     const usoIa = usoIaFalso({
       consumo: [
         {
-          provedor: 'oci_openai',
+          provedor: 'OCI Generative AI — gpt-oss-120b',
           modelo: 'openai.gpt-oss-120b',
           chamadas: 5,
           tokens_entrada: 134,
           tokens_saida: 96,
           tokens_raciocinio: 62,
           tokens_total: 230,
+          custo_estimado: null,
+          moeda: null,
         },
       ],
     });
     const { texto } = criar(configuracoesFalso(), usoIa);
 
-    expect(texto()).toContain('OCI Generative AI');
+    expect(texto()).toContain('OCI Generative AI — gpt-oss-120b');
     expect(texto()).toContain('134');
     expect(texto()).toContain('96');
     expect(texto()).toContain('62');
+  });
+
+  it('linha sem provedor cadastrado hoje mostra "—" no custo estimado', () => {
+    const usoIa = usoIaFalso({
+      consumo: [
+        {
+          provedor: 'Ollama (padrão)',
+          modelo: 'qwen2.5-coder:7b',
+          chamadas: 5,
+          tokens_entrada: 134,
+          tokens_saida: 96,
+          tokens_raciocinio: 0,
+          tokens_total: 230,
+          custo_estimado: null,
+          moeda: null,
+        },
+      ],
+    });
+    const { fixture } = criar(configuracoesFalso(), usoIa);
+
+    const linha = fixture.nativeElement.querySelector('.tabela-consumo tbody tr') as HTMLElement;
+    expect(linha.textContent).toContain('—');
+  });
+
+  it('linha que bate com um provedor cadastrado mostra o custo estimado', () => {
+    const usoIa = usoIaFalso({
+      consumo: [
+        {
+          provedor: 'OCI Generative AI — gpt-oss-120b',
+          modelo: 'openai.gpt-oss-120b',
+          chamadas: 5,
+          tokens_entrada: 1000,
+          tokens_saida: 1000,
+          tokens_raciocinio: 0,
+          tokens_total: 2000,
+          custo_estimado: 0.03,
+          moeda: 'R$',
+        },
+      ],
+    });
+    const { texto } = criar(configuracoesFalso(), usoIa);
+
+    expect(texto()).toContain('R$ 0,03');
   });
 
   it('mostra o donut de consumo por provedor quando há dado', () => {
@@ -162,6 +205,8 @@ describe('Tokens', () => {
           tokens_saida: 96,
           tokens_raciocinio: 62,
           tokens_total: 230,
+          custo_estimado: null,
+          moeda: null,
         },
       ],
     });
@@ -193,6 +238,8 @@ describe('Tokens', () => {
           tokens_saida: 150,
           tokens_raciocinio: 0,
           tokens_total: 450,
+          custo_estimado: null,
+          moeda: null,
         },
       ],
     });

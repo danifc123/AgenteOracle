@@ -162,17 +162,19 @@
               <th class="num">Tokens entrada</th>
               <th class="num">Tokens saída</th>
               <th class="num">Dos quais raciocínio</th>
+              <th class="num">Custo estimado</th>
             </tr>
           </thead>
           <tbody>
             @for (linha of consumo(); track linha.provedor + linha.modelo) {
               <tr>
-                <td>{{ rotuloProvedor(linha.provedor) }}</td>
+                <td>{{ linha.provedor }}</td>
                 <td>{{ linha.modelo || '(padrão do provedor)' }}</td>
                 <td class="num">{{ linha.chamadas }}</td>
                 <td class="num">{{ linha.tokens_entrada }}</td>
                 <td class="num">{{ linha.tokens_saida }}</td>
                 <td class="num">{{ linha.tokens_raciocinio || '—' }}</td>
+                <td class="num">{{ rotuloCusto(linha.custo_estimado, linha.moeda) }}</td>
               </tr>
             }
           </tbody>

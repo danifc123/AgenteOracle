@@ -14,8 +14,6 @@ const RESPOSTA: ConfiguracoesTiResposta = {
   percentual_amostragem_chamados: 20,
   percentual_alterado_em: null,
   ler_chamados_antigos: false,
-  provedor_ia: 'ollama',
-  modelo_ia: '',
   teto_tokens_diario: 0,
 };
 
@@ -25,8 +23,6 @@ function servicoFalso(salvar = vi.fn(() => of(RESPOSTA))) {
     percentualAmostragemChamados: signal(20),
     percentualAlteradoEm: signal<string | null>(null),
     lerChamadosAntigos: signal(false),
-    provedorIa: signal<'ollama' | 'oci_openai'>('ollama'),
-    modeloIa: signal(''),
     salvar,
   };
 }
@@ -63,18 +59,6 @@ function criar(servico = servicoFalso()) {
       const campo = el.querySelector('input') as HTMLInputElement;
       campo.value = texto;
       campo.dispatchEvent(new Event('input'));
-      fixture.detectChanges();
-    },
-    // `app-select-busca` não é um <select> nativo: abre o dropdown (índice
-    // 0 = Provedor; 1 = Modelo, só existe depois de escolher OCI) e clica
-    // na opção pelo texto exibido.
-    escolherNoSelect: (indice: number, rotuloOpcao: string) => {
-      const gatilhos = Array.from(el.querySelectorAll('button.gatilho')) as HTMLButtonElement[];
-      gatilhos[indice].click();
-      fixture.detectChanges();
-      const opcoes = Array.from(el.querySelectorAll('button.opcao')) as HTMLButtonElement[];
-      const opcao = opcoes.find((botao) => botao.textContent?.trim() === rotuloOpcao);
-      opcao?.click();
       fixture.detectChanges();
     },
     texto: () => el.textContent ?? '',
@@ -189,18 +173,6 @@ describe('ConfiguracoesChamados', () => {
     expect(campo().value).toBe('20');
   });
 
-  it('desligar "Usar IA na avaliação" esconde a seção de Provedor de IA', () => {
-    const { interruptores, fixture } = criar();
-
-    expect(fixture.nativeElement.querySelector('button.gatilho')).not.toBeNull();
-
-    interruptores()[0].click(); // desliga "Usar IA na avaliação"
-    fixture.detectChanges();
-
-    expect(interruptores()[0].getAttribute('aria-checked')).toBe('false');
-    expect(fixture.nativeElement.querySelector('button.gatilho')).toBeNull();
-  });
-
   it('mostra a data de referência quando ela existe', () => {
     const servico = servicoFalso();
     servico.percentualAlteradoEm.set('2026-09-21T14:41:00Z');
@@ -209,35 +181,4 @@ describe('ConfiguracoesChamados', () => {
     expect(texto()).toContain('Chamado antigo é o criado antes da última mudança do percentual (');
   });
 
-  it('trocar pra OCI Generative AI mostra o aviso de correção automática desativada', () => {
-    const { escolherNoSelect, texto } = criar();
-
-    escolherNoSelect(0, 'OCI Generative AI');
-
-    expect(texto()).toContain('Correção automática de categoria fica desativada nesse provedor');
-  });
-
-  it('salvar com o provedor e o modelo trocados envia só provedor_ia e modelo_ia', () => {
-    const { escolherNoSelect, botaoSalvar, servico } = criar();
-
-    escolherNoSelect(0, 'OCI Generative AI');
-    escolherNoSelect(1, 'GPT-OSS 120B');
-    botaoSalvar().click();
-
-    expect(servico.salvar).toHaveBeenCalledWith({
-      provedor_ia: 'oci_openai',
-      modelo_ia: 'openai.gpt-oss-120b',
-    });
-  });
-
-  it('voltar pro Ollama depois de escolher OCI esconde o select de modelo fixo', () => {
-    const { escolherNoSelect, fixture } = criar();
-
-    escolherNoSelect(0, 'OCI Generative AI');
-    escolherNoSelect(0, 'Ollama (local)');
-
-    // Só o select de Provedor deve sobrar — o de Modelo (fixo da OCI) some,
-    // volta a ser o campo de texto livre do Ollama.
-    expect(fixture.nativeElement.querySelectorAll('button.gatilho').length).toBe(1);
-  });
 });

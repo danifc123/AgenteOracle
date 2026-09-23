@@ -15,22 +15,14 @@ import {
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { UsoIa } from '../../../../servicos/uso-ia/uso-ia';
 
-const ROTULOS_PROVEDOR: Record<string, string> = {
-  ollama: 'Ollama (local)',
-  oci_openai: 'OCI Generative AI',
-};
+/** Cores reais do design system (ver `styles.scss`) — o nome do provedor
+ * agora é o nome cadastrado por quem usa (`/ti/provedores`), não um código
+ * fixo, então não dá mais pra fixar cor por provedor conhecido: roda por
+ * essa lista, sempre na mesma ordem em que os provedores aparecem. */
+const CORES_RESERVA = ['#1b4332', '#e8871e', '#2f9e58', '#5b6b62', '#c96f12'];
 
-/** Cores reais do design system (ver `styles.scss`), não paleta genérica —
- * provedor conhecido usa uma cor fixa (fica visualmente estável entre
- * carregamentos); provedor novo/desconhecido roda por essa lista. */
-const CORES_PROVEDOR: Record<string, string> = {
-  ollama: '#1b4332',
-  oci_openai: '#e8871e',
-};
-const CORES_RESERVA = ['#2f9e58', '#5b6b62', '#c96f12'];
-
-function corDoProvedor(codigo: string, indice: number): string {
-  return CORES_PROVEDOR[codigo] ?? CORES_RESERVA[indice % CORES_RESERVA.length];
+function corDoProvedor(indice: number): string {
+  return CORES_RESERVA[indice % CORES_RESERVA.length];
 }
 
 /** "dd/MM" — mais curto que a data ISO completa, cabe no eixo X do
@@ -39,6 +31,14 @@ function corDoProvedor(codigo: string, indice: number): string {
 function formatarDiaCurto(dataIso: string): string {
   const partes = dataIso.split('-');
   return partes.length === 3 ? `${partes[2]}/${partes[1]}` : dataIso;
+}
+
+/** `custo` é sempre o preço CADASTRADO HOJE (não congelado por chamada) —
+ * ver `server/ti/uso_ia.py::_custo_e_moeda` no backend. Até 4 casas: preço
+ * por 1k tokens costuma ser bem pequeno (ex: R$ 0,0100), 2 casas some o
+ * valor real. */
+function formatarCusto(custo: number, moeda: string): string {
+  return `${moeda} ${custo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 }
 
 /** MÓDULO TI — TELA "TOKENS" (2026-09, redesenhada a partir do feedback:
@@ -91,9 +91,9 @@ export class Tokens {
       porProvedor.set(linha.provedor, (porProvedor.get(linha.provedor) ?? 0) + linha.tokens_total);
     }
     return Array.from(porProvedor.entries()).map(([provedor, tokens], indice) => ({
-      nome: this.rotuloProvedor(provedor),
+      nome: provedor,
       valor: tokens,
-      cor: corDoProvedor(provedor, indice),
+      cor: corDoProvedor(indice),
     }));
   });
 
@@ -139,8 +139,8 @@ export class Tokens {
     effect(() => this.tetoTexto.set(String(this.configuracoes.tetoTokensDiario())));
   }
 
-  protected rotuloProvedor(codigo: string): string {
-    return ROTULOS_PROVEDOR[codigo] ?? codigo;
+  protected rotuloCusto(custo: number | null, moeda: string | null): string {
+    return custo !== null && moeda !== null ? formatarCusto(custo, moeda) : '—';
   }
 
   protected salvarTeto(): void {

@@ -9,8 +9,6 @@ const RESPOSTA: ConfiguracoesTiResposta = {
   percentual_amostragem_chamados: 20,
   percentual_alterado_em: '2026-09-21T14:41:00Z',
   ler_chamados_antigos: true,
-  provedor_ia: 'oci_openai',
-  modelo_ia: 'openai.gpt-oss-120b',
   teto_tokens_diario: 50000,
 };
 
@@ -48,21 +46,7 @@ describe('ConfiguracoesTi', () => {
     expect(servico.percentualAmostragemChamados()).toBe(20);
     expect(servico.percentualAlteradoEm()).toBe('2026-09-21T14:41:00Z');
     expect(servico.lerChamadosAntigos()).toBe(true);
-    expect(servico.provedorIa()).toBe('oci_openai');
-    expect(servico.modeloIa()).toBe('openai.gpt-oss-120b');
     expect(servico.tetoTokensDiario()).toBe(50000);
-  });
-
-  it('deveria enviar PATCH só com provedor_ia/modelo_ia quando só esses mudam', () => {
-    servico.salvar({ provedor_ia: 'oci_openai', modelo_ia: 'openai.gpt-oss-120b' }).subscribe();
-
-    const requisicao = http.expectOne((req) => req.url.endsWith('/api/ti/configuracoes'));
-    requisicao.flush(RESPOSTA);
-
-    expect(requisicao.request.body).toEqual({
-      provedor_ia: 'oci_openai',
-      modelo_ia: 'openai.gpt-oss-120b',
-    });
   });
 
   it('deveria manter os signals quando o servidor recusa a alteração', () => {

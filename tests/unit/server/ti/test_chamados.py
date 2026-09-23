@@ -17,6 +17,7 @@ from agente_oracle.server.ti.chamados import (
     verificar_chamados_aguardando_resposta,
     verificar_chamados_pendentes,
 )
+from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import Chamado, Followup
@@ -103,9 +104,10 @@ class _OllamaClienteFake:
     `embed(...)` (via `classificar_categoria`, sempre que `usar_ia=True` —
     não tem mais regra por palavra-chave que dispense o embedding)."""
 
-    def __init__(self, suficiente: bool = True, mensagem: str = ""):
+    def __init__(self, suficiente: bool = True, mensagem: str = "", levantar_no_embed: Exception | None = None):
         self._suficiente = suficiente
         self._mensagem = mensagem
+        self._levantar_no_embed = levantar_no_embed
         self.chamadas_chat: list[dict] = []
 
     async def chat(self, **kwargs):
@@ -113,6 +115,8 @@ class _OllamaClienteFake:
         return _RespostaChatFake(json.dumps({"suficiente": self._suficiente, "mensagem": self._mensagem}))
 
     async def embed(self, **_kwargs):
+        if self._levantar_no_embed:
+            raise self._levantar_no_embed
         return _EmbedRespostaFake([1.0, 0.0])
 
 
@@ -292,6 +296,23 @@ class TestProcessarChamadoNovo:
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert resultado.avaliacao_suficiente is True
         assert resultado.precisou_embedding is True
+        assert resultado.embedding_indisponivel is False
+
+    async def test_provedor_sem_embedding_marca_embedding_indisponivel_mas_nao_trava(self):
+        # Ex: provedor ativo é OCI Generative AI (sem suporte a embedding) —
+        # a triagem continua funcionando normal, só a correção de categoria
+        # cai pro fallback (mantém a categoria atual) e fica sinalizado.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True, levantar_no_embed=EmbeddingNaoSuportado("sem embedding"))
+        cargas = {"tecnico1": 0}
+
+        resultado = await processar_chamado_novo(
+            cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True
+        )
+
+        assert resultado.avaliacao_suficiente is True
+        assert resultado.embedding_indisponivel is True
+        assert cliente.categorias_atualizadas == []
 
     async def test_chamado_suficiente_sem_tecnico_na_area_levanta_sem_tecnico_na_area(self, monkeypatch):
         # Antes disso, `escolher_tecnico` estourava `ValueError` cru — sem

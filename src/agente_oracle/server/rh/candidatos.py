@@ -11,7 +11,6 @@ fica travado — mesmo espírito da chamada síncrona e longa que
 """
 
 from anyio import to_thread
-from ollama import AsyncClient
 from starlette.datastructures import UploadFile
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -21,6 +20,7 @@ from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_rh
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido, modelo_ia_ativo
 from agente_oracle.tools.rh import candidatos as candidatos_tools
 from agente_oracle.tools.rh.extracao_curriculo import ArquivoCurriculoInvalido
 from agente_oracle.tools.ti import acessos_dados
@@ -74,12 +74,12 @@ def registrar(mcp) -> None:
                 {"erro": "Arquivo muito grande (máx. 15MB)."}, status_code=400, headers=CORS_HEADERS
             )
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
+        ollama_client = criar_cliente_protegido(settings, "rh", sanitizar=True, usuario_id=usuario["sub"])
 
         try:
             candidato = await candidatos_tools.criar_candidato(
                 ollama_client,
-                settings.ollama_model,
+                modelo_ia_ativo(settings, "rh"),
                 settings.ollama_embedding_model,
                 arquivo.filename or "curriculo",
                 conteudo,

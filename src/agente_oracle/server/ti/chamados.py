@@ -73,12 +73,16 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.agent.ti.qualidade_chamado import avaliar_chamado
 from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
-from agente_oracle.config import ollama_model_do_dominio, settings
+from agente_oracle.config import settings
 from agente_oracle.db.connection import DatabaseError
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido
+from agente_oracle.tools.ia.cliente_protegido import (
+    USUARIO_SISTEMA,
+    criar_cliente_protegido,
+    modelo_ia_ativo,
+)
 from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
@@ -114,6 +118,11 @@ class ResultadoProcessamento:
     # a `classificar_categoria`, a pergunta "precisou de embedding" não se
     # aplica. `False` só acontece com `usar_ia=False`.
     precisou_embedding: bool | None
+    # `True` só quando a correção de categoria não rodou porque o provedor
+    # de IA ativo não suporta embedding (ver
+    # `agent/ti/roteamento_chamado.py::ResultadoClassificacao`) — usado pra
+    # avisar o usuário na rota manual "Verificar" (`chamado_verificar_route`).
+    embedding_indisponivel: bool = False
 
 
 def _chamado_para_json(chamado: Chamado) -> dict:
@@ -331,7 +340,9 @@ async def processar_chamado_novo(
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
 
     return ResultadoProcessamento(
-        avaliacao_suficiente=True, precisou_embedding=resultado_classificacao.precisou_embedding
+        avaliacao_suficiente=True,
+        precisou_embedding=resultado_classificacao.precisou_embedding,
+        embedding_indisponivel=resultado_classificacao.embedding_indisponivel,
     )
 
 
@@ -466,7 +477,7 @@ def registrar(mcp) -> None:
                 headers=CORS_HEADERS,
             )
 
-        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=usuario["sub"])
         tecnicos = await to_thread.run_sync(todos_os_tecnicos)
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
@@ -477,7 +488,7 @@ def registrar(mcp) -> None:
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
-                ollama_model_do_dominio(settings, "ti"),
+                modelo_ia_ativo(settings, "ti"),
                 chamado,
                 cargas,
                 usar_ia,
@@ -506,7 +517,11 @@ def registrar(mcp) -> None:
         chamado_final = await _cliente.buscar(chamado_id)
         if chamado_final is None:
             return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-        return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
+        # `embedding_indisponivel` é transiente (sobre ESTE processamento,
+        # não um atributo do chamado) — só entra aqui, na rota manual, não
+        # em `_chamado_para_json` (usado também pra listar vários chamados).
+        corpo_resposta = {**_chamado_para_json(chamado_final), "embedding_indisponivel": resultado.embedding_indisponivel}
+        return JSONResponse(corpo_resposta, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
@@ -548,8 +563,13 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     aqui, `aguardando_usuario` já implica que já houve 1 avaliação
     insuficiente antes). `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
     síncronos) rodam em thread separada a cada chamada; o resto do fluxo
-    (GLPI/Ollama) continua `await` genuíno."""
-    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
+    (GLPI/Ollama) continua `await` genuíno.
+
+    `usuario_id=USUARIO_SISTEMA`: processa vários chamados de pessoas
+    diferentes num lote só — mesmo quando disparado pela rota manual (não
+    só pelo poller), atribuir o custo todo a quem clicou "Verificar" seria
+    enganoso (ver `tools/ia/cliente_protegido.py::USUARIO_SISTEMA`)."""
+    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -580,7 +600,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
-                ollama_model_do_dominio(settings, "ti"),
+                modelo_ia_ativo(settings, "ti"),
                 chamado_com_resposta,
                 cargas,
                 usar_ia,
@@ -629,8 +649,12 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
     ponto. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres, síncronos)
     rodam em thread separada a cada chamada; o resto do fluxo (GLPI/
-    Ollama) continua `await` genuíno."""
-    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True)
+    Ollama) continua `await` genuíno.
+
+    `usuario_id=USUARIO_SISTEMA`: mesmo motivo de
+    `verificar_chamados_aguardando_resposta` — é um lote de vários
+    chamados de pessoas diferentes, não a ação de quem disparou."""
+    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -647,7 +671,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
-                ollama_model_do_dominio(settings, "ti"),
+                modelo_ia_ativo(settings, "ti"),
                 chamado,
                 cargas,
                 usar_ia,

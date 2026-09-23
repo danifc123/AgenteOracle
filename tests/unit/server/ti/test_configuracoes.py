@@ -2,7 +2,8 @@ from decimal import Decimal
 
 import pytest
 
-from agente_oracle.server.ti.configuracoes import _percentual_valido
+from agente_oracle.server.ti import configuracoes as configuracoes_module
+from agente_oracle.server.ti.configuracoes import _modelo_valido, _percentual_valido, _teto_tokens_valido
 
 
 class TestPercentualValido:
@@ -43,3 +44,44 @@ class TestPercentualValido:
     def test_tipo_invalido_e_rejeitado_inclusive_bool(self, bruto):
         # `True` é `int` em Python — sem a checagem explícita viraria 1%.
         assert _percentual_valido(bruto) is None
+
+
+class TestModeloValido:
+    def test_vazio_e_aceito_significa_usar_padrao_do_provedor(self):
+        assert _modelo_valido({"modelo_ia": ""}) is True
+
+    def test_nao_string_e_rejeitado(self):
+        assert _modelo_valido({"modelo_ia": 123}) is False
+
+    def test_modelo_fixo_da_oci_aceito_quando_provedor_vem_no_mesmo_corpo(self):
+        assert _modelo_valido({"provedor_ia": "oci_openai", "modelo_ia": "openai.gpt-oss-120b"}) is True
+
+    def test_modelo_fora_da_lista_rejeitado_quando_provedor_oci_no_mesmo_corpo(self):
+        assert _modelo_valido({"provedor_ia": "oci_openai", "modelo_ia": "modelo-inventado"}) is False
+
+    def test_qualquer_texto_aceito_quando_provedor_ollama_no_mesmo_corpo(self):
+        assert _modelo_valido({"provedor_ia": "ollama", "modelo_ia": "qwen2.5-coder:7b"}) is True
+
+    def test_sem_provedor_no_corpo_usa_o_provedor_ja_configurado(self, monkeypatch):
+        monkeypatch.setattr(configuracoes_module.configuracoes_provedor, "provedor_ia", lambda: "oci_openai")
+
+        assert _modelo_valido({"modelo_ia": "modelo-inventado"}) is False
+
+    def test_sem_provedor_no_corpo_e_ja_configurado_como_ollama_aceita_texto_livre(self, monkeypatch):
+        monkeypatch.setattr(configuracoes_module.configuracoes_provedor, "provedor_ia", lambda: "ollama")
+
+        assert _modelo_valido({"modelo_ia": "qwen2.5-coder:7b"}) is True
+
+
+class TestTetoTokensValido:
+    @pytest.mark.parametrize("bruto", [0, 1, 50000])
+    def test_inteiro_maior_ou_igual_a_zero_e_aceito(self, bruto):
+        assert _teto_tokens_valido(bruto) is True
+
+    def test_negativo_e_rejeitado(self):
+        assert _teto_tokens_valido(-1) is False
+
+    @pytest.mark.parametrize("bruto", [True, False, None, "50000", 12.5, [50000]])
+    def test_nao_inteiro_e_rejeitado_inclusive_bool(self, bruto):
+        # `True` é `int` em Python — sem a checagem explícita viraria 1.
+        assert _teto_tokens_valido(bruto) is False

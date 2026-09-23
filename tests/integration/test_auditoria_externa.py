@@ -24,23 +24,29 @@ def _isolar_dados_de_teste():
     _apagar_dados_de_teste()
 
 
+def _registrar(dominio: str, texto: str) -> None:
+    auditoria_externa.registrar(
+        dominio, "http://127.0.0.1:11434", texto, "ollama", "modelo-teste", 10, 5, None, "usuario-teste"
+    )
+
+
 class TestAuditoriaExterna:
     def test_registrar_e_contar_no_mesmo_dia(self):
         assert auditoria_externa.contagem_hoje(_DOMINIO_TESTE) == 0
 
-        auditoria_externa.registrar(_DOMINIO_TESTE, "http://127.0.0.1:11434", "primeiro texto")
-        auditoria_externa.registrar(_DOMINIO_TESTE, "http://127.0.0.1:11434", "segundo texto")
+        _registrar(_DOMINIO_TESTE, "primeiro texto")
+        _registrar(_DOMINIO_TESTE, "segundo texto")
 
         assert auditoria_externa.contagem_hoje(_DOMINIO_TESTE) == 2
 
     def test_contagem_nao_mistura_dominios_diferentes(self):
-        auditoria_externa.registrar(_DOMINIO_TESTE, "http://127.0.0.1:11434", "texto do domínio de teste")
-        auditoria_externa.registrar("ti", "http://127.0.0.1:11434", "texto de outro domínio")
+        _registrar(_DOMINIO_TESTE, "texto do domínio de teste")
+        _registrar("ti", "texto de outro domínio")
 
         assert auditoria_externa.contagem_hoje(_DOMINIO_TESTE) == 1
 
     def test_hash_gravado_nao_e_o_texto_puro(self):
-        auditoria_externa.registrar(_DOMINIO_TESTE, "http://127.0.0.1:11434", "CPF 123.456.789-00")
+        _registrar(_DOMINIO_TESTE, "CPF 123.456.789-00")
 
         with get_postgres_connection() as connection:
             cursor = connection.cursor()
@@ -52,3 +58,25 @@ class TestAuditoriaExterna:
 
         assert "123.456.789-00" not in hash_conteudo
         assert tamanho == len("CPF 123.456.789-00")
+
+    def test_resumo_por_provedor_agrega_tokens(self):
+        _registrar(_DOMINIO_TESTE, "primeiro texto")
+        _registrar(_DOMINIO_TESTE, "segundo texto")
+
+        resumo = auditoria_externa.resumo_por_provedor(dias=1)
+
+        linha = next(item for item in resumo if item.provedor == "ollama" and item.modelo == "modelo-teste")
+        assert linha.chamadas >= 2
+        assert linha.tokens_entrada_total >= 20
+        assert linha.tokens_saida_total >= 10
+
+    def test_resumo_por_usuario_agrega_tokens(self):
+        _registrar(_DOMINIO_TESTE, "primeiro texto")
+        _registrar(_DOMINIO_TESTE, "segundo texto")
+
+        resumo = auditoria_externa.resumo_por_usuario(dias=1)
+
+        linha = next(item for item in resumo if item.usuario_id == "usuario-teste")
+        assert linha.chamadas >= 2
+        assert linha.tokens_entrada_total >= 20
+        assert linha.tokens_saida_total >= 10

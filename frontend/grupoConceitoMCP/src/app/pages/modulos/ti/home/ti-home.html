@@ -18,3 +18,41 @@
     </svg>
   </div>
 </app-home-modulo>
+
+<section class="cartao-secao">
+  <h2>Chamados em aberto</h2>
+  @if (totalChamadosAbertos() === 0) {
+    <p class="lista-vazia">Nenhum chamado em aberto agora — tudo em dia.</p>
+  } @else {
+    <div class="grade-chamados">
+      <app-cartao-kpi rotulo="Em aberto agora" tipo="numero" [valor]="totalChamadosAbertos()" />
+      <app-grafico-rosca titulo="Por status" unidade="numero" [fatias]="fatiasChamadosPorStatus()" />
+    </div>
+  }
+</section>
+
+<ng-container *appSoDev>
+  <section class="cartao-secao">
+    <div class="cabecalho-ia">
+      <h2>Consumo de IA</h2>
+      <app-selo tom="neutro" texto="Só você vê isso" />
+    </div>
+    <div class="grade-ia">
+      <app-cartao-kpi rotulo="Tokens hoje" tipo="numero" [valor]="tokensHojeTotal()" />
+      @if (usoIa.chamadosIa(); as chamadosIa) {
+        <app-cartao-kpi rotulo="Chamados avaliados pela IA (30d)" tipo="numero" [valor]="chamadosIa.total_chamados" />
+        <app-cartao-kpi
+          rotulo="Escalados pra humano (30d)"
+          tipo="numero"
+          [valor]="chamadosIa.avaliados_insuficientes"
+        />
+      }
+    </div>
+    <a class="link-detalhe" routerLink="/ti/tokens">
+      Ver detalhes em Tokens
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </a>
+  </section>
+</ng-container>

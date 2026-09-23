@@ -123,27 +123,29 @@
 
         <div class="nav-submenu" [class.aberto]="grupoAberto() === grupo.chave">
           @for (item of grupo.itens; track item.rota) {
-            <a
-              class="nav-sublink"
-              [routerLink]="item.rota"
-              routerLinkActive="active"
-              [routerLinkActiveOptions]="{ exact: !!item.exato }"
-              [title]="colapsado() ? item.rotulo : null"
-              (click)="closeSidebar()"
-            >
-              <span class="nav-icon">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  [innerHTML]="iconeSeguro(item.iconeSvg)"
-                ></svg>
-              </span>
-              <span class="nav-label">{{ item.rotulo }}</span>
-            </a>
+            @if (!item.soDev || sessao.ehDesenvolvedor()) {
+              <a
+                class="nav-sublink"
+                [routerLink]="item.rota"
+                routerLinkActive="active"
+                [routerLinkActiveOptions]="{ exact: !!item.exato }"
+                [title]="colapsado() ? item.rotulo : null"
+                (click)="closeSidebar()"
+              >
+                <span class="nav-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="16"
+                    height="16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    [innerHTML]="iconeSeguro(item.iconeSvg)"
+                  ></svg>
+                </span>
+                <span class="nav-label">{{ item.rotulo }}</span>
+              </a>
+            }
           }
         </div>
       </div>

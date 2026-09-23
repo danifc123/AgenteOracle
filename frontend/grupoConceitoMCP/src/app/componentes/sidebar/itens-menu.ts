@@ -7,6 +7,10 @@ export interface ItemMenu {
   /** `true` só pro item que deve ficar "ativo" apenas na rota exata (ex:
    * visão geral de um módulo, que também é prefixo de outras rotas dele). */
   exato?: boolean;
+  /** `true` esconde o item de quem não é desenvolvedor (ver `sidebar.html`)
+   * — a rota por trás também é protegida por `devGuard`, isto aqui é só a
+   * visibilidade no menu. */
+  soDev?: boolean;
 }
 
 export interface GrupoMenu {
@@ -147,6 +151,12 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         rota: '/ti/chamados',
         rotulo: 'Auditoria de Chamados',
         iconeSvg: `<path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M8 10h8M8 13h5" stroke-linecap="round" />`,
+      },
+      {
+        rota: '/ti/tokens',
+        rotulo: 'Tokens',
+        soDev: true,
+        iconeSvg: `<circle cx="9" cy="15" r="5.5" /><circle cx="15" cy="9" r="5.5" />`,
       },
     ],
   },

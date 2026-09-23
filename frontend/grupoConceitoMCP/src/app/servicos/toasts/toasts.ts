@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export type TipoToast = 'sucesso' | 'erro';
+export type TipoToast = 'sucesso' | 'erro' | 'aviso';
 
 export interface ToastItem {
   id: string;
@@ -11,17 +11,19 @@ export interface ToastItem {
 const DURACAO_MS = 5000;
 
 /** Toast genérico — qualquer tela injeta este serviço e chama `sucesso()`/
- * `erro()` ao terminar uma ação (salvar, excluir, etc.), sem precisar de
- * `erro` local nem de repetir a marcação visual em cada tela. Exibido pelo
- * `Toast` (componente montado uma vez em `layout.html`, igual
+ * `erro()`/`aviso()` ao terminar uma ação (salvar, excluir, etc.), sem
+ * precisar de `erro` local nem de repetir a marcação visual em cada tela.
+ * Exibido pelo `Toast` (componente montado uma vez em `layout.html`, igual
  * `NotificacaoAnaliseCurriculo` já faz pro caso específico de currículo). */
 @Injectable({ providedIn: 'root' })
 export class Toasts {
   private readonly _itens = signal<ToastItem[]>([]);
   readonly itens = this._itens.asReadonly();
 
-  sucesso(mensagem: string): void {
-    this.mostrar('sucesso', mensagem);
+  /** Ação terminou, mas com uma ressalva — não é falha (fica vermelho) nem
+   * sucesso pleno (fica verde); tom âmbar próprio. */
+  aviso(mensagem: string): void {
+    this.mostrar('aviso', mensagem);
   }
 
   erro(mensagem: string): void {
@@ -30,6 +32,10 @@ export class Toasts {
 
   remover(id: string): void {
     this._itens.update((atual) => atual.filter((item) => item.id !== id));
+  }
+
+  sucesso(mensagem: string): void {
+    this.mostrar('sucesso', mensagem);
   }
 
   private mostrar(tipo: TipoToast, mensagem: string): void {

@@ -18,6 +18,7 @@ import {
 import {
   AlteracoesConfiguracoesTi,
   ConfiguracoesTi,
+  ProvedorIa,
 } from '../../servicos/configuracoes-ti/configuracoes-ti';
 import { mensagemErro } from '../../servicos/mensagens-erro/mensagens-erro';
 import { Toasts } from '../../servicos/toasts/toasts';
@@ -25,9 +26,24 @@ import { Botao } from '../botao/botao';
 import { CampoNumerico } from '../campo-numerico/campo-numerico';
 import { Dialog } from '../dialog/dialog';
 import { Interruptor } from '../interruptor/interruptor';
+import { OpcaoSelectBusca, SelectBusca } from '../select-busca/select-busca';
 import { SecaoConfiguracao } from '../secao-configuracao/secao-configuracao';
 
 const MENSAGEM_PERCENTUAL_INVALIDO = 'Informe um número de 0 a 100, com até 3 casas decimais.';
+
+const OPCOES_PROVEDOR: OpcaoSelectBusca[] = [
+  { valor: 'ollama', rotulo: 'Ollama (local)' },
+  { valor: 'oci_openai', rotulo: 'OCI Generative AI' },
+];
+
+// Mesmos 3 modelos liberados pelo suporte Oracle da empresa — lista fixa
+// porque o backend só aceita esses pra esse provedor (ver
+// server/ti/configuracoes.py::_modelo_valido).
+const OPCOES_MODELO_OCI: OpcaoSelectBusca[] = [
+  { valor: 'openai.gpt-oss-120b', rotulo: 'GPT-OSS 120B' },
+  { valor: 'meta.llama-3.3-70b-instruct', rotulo: 'Llama 3.3 70B' },
+  { valor: 'meta.llama-4-scout-17b-16e-instruct', rotulo: 'Llama 4 Scout 17B' },
+];
 
 function formatarPercentual(valor: number): string {
   return valor.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -41,7 +57,7 @@ interface AvisoMudanca {
 /** Dialog de configurações da Auditoria (só desenvolvedor); edita um rascunho e só grava em "Salvar alterações". */
 @Component({
   selector: 'app-configuracoes-chamados',
-  imports: [Botao, CampoNumerico, Dialog, Interruptor, SecaoConfiguracao],
+  imports: [Botao, CampoNumerico, Dialog, Interruptor, SecaoConfiguracao, SelectBusca],
   templateUrl: './configuracoes-chamados.html',
   styleUrl: './configuracoes-chamados.scss',
 })
@@ -55,14 +71,20 @@ export class ConfiguracoesChamados {
   protected readonly usarIa = signal(true);
   protected readonly percentualTexto = signal('100');
   protected readonly lerAntigos = signal(false);
+  protected readonly provedorRascunho = signal<ProvedorIa | null>('ollama');
+  protected readonly modeloRascunho = signal<string | null>('');
   protected readonly salvando = signal(false);
   protected readonly erroServidor = signal<string | null>(null);
+
+  protected readonly opcoesProvedor = OPCOES_PROVEDOR;
+  protected readonly opcoesModeloOci = OPCOES_MODELO_OCI;
 
   protected readonly percentual = computed(() => percentualValido(this.percentualTexto()));
   protected readonly erroPercentual = computed(() =>
     this.percentual() === null ? MENSAGEM_PERCENTUAL_INVALIDO : null,
   );
   protected readonly percentualTodos = computed(() => this.percentual() === 100);
+  protected readonly ehOci = computed(() => this.provedorRascunho() === 'oci_openai');
 
   protected readonly alteracoes = computed<AlteracoesConfiguracoesTi>(() => {
     const alteracoes: AlteracoesConfiguracoesTi = {};
@@ -75,6 +97,14 @@ export class ConfiguracoesChamados {
     }
     if (this.lerAntigos() !== this.configuracoes.lerChamadosAntigos()) {
       alteracoes.ler_chamados_antigos = this.lerAntigos();
+    }
+    const provedor = this.provedorRascunho();
+    if (provedor !== null && provedor !== this.configuracoes.provedorIa()) {
+      alteracoes.provedor_ia = provedor;
+    }
+    const modelo = this.modeloRascunho() ?? '';
+    if (modelo !== this.configuracoes.modeloIa()) {
+      alteracoes.modelo_ia = modelo;
     }
     return alteracoes;
   });
@@ -147,8 +177,18 @@ export class ConfiguracoesChamados {
     this.usarIa.set(this.configuracoes.usarIaAvaliacaoChamado());
     this.percentualTexto.set(String(this.configuracoes.percentualAmostragemChamados()));
     this.lerAntigos.set(this.configuracoes.lerChamadosAntigos());
+    this.provedorRascunho.set(this.configuracoes.provedorIa());
+    this.modeloRascunho.set(this.configuracoes.modeloIa());
     this.erroServidor.set(null);
     this.salvando.set(false);
+  }
+
+  /** Troca de provedor limpa o modelo escolhido — um nome válido pro
+   * Ollama quase nunca é válido pra OCI (e vice-versa); vazio sempre cai
+   * no padrão do provedor novo (ver `modelo_ia_ativo` no backend). */
+  protected aoTrocarProvedor(valor: string | null): void {
+    this.provedorRascunho.set(valor as ProvedorIa | null);
+    this.modeloRascunho.set('');
   }
 
   protected cancelar(): void {

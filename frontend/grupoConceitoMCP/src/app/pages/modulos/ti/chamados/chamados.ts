@@ -14,6 +14,7 @@ import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { Sessao } from '../../../../servicos/sessao/sessao';
+import { Toasts } from '../../../../servicos/toasts/toasts';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -32,6 +33,13 @@ export interface Chamado {
 interface TecnicoNome {
   identificador: string;
   nome: string;
+}
+
+/** Resposta de `/verificar` — o chamado normal, mais um aviso transiente
+ * sobre ESTE processamento (não um atributo do chamado em si, por isso
+ * fora de `Chamado`). Ver `server/ti/chamados.py::chamado_verificar_route`. */
+interface RespostaVerificarChamado extends Chamado {
+  embedding_indisponivel: boolean;
 }
 
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
@@ -78,6 +86,7 @@ interface TecnicoNome {
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
+  private readonly toasts = inject(Toasts);
   protected readonly sessao = inject(Sessao);
   private readonly ITENS_POR_PAGINA = 10;
 
@@ -193,7 +202,7 @@ export class ChamadosTi {
     this.erro.set(null);
 
     this.http
-      .post<Chamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {})
+      .post<RespostaVerificarChamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {})
       .subscribe({
         next: (atualizado) => {
           // "fila_atendimento" já foi entregue ao GLPI — some da lista, mesmo
@@ -208,6 +217,14 @@ export class ChamadosTi {
           }
           if (this.chamadoAberto()?.id === atualizado.id) {
             this.chamadoAberto.set(atualizado.status === 'fila_atendimento' ? null : atualizado);
+          }
+          if (atualizado.embedding_indisponivel) {
+            // Neutro de propósito: não sugere trocar de provedor — essa
+            // decisão é da empresa, o aviso só informa a limitação.
+            this.toasts.aviso(
+              'A categoria não foi corrigida automaticamente: o provedor de IA ativo não ' +
+                'suporta essa função. A triagem em si continua funcionando normal.',
+            );
           }
           this.verificandoId.set(null);
         },

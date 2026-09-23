@@ -44,6 +44,11 @@
   color: var(--color-error);
 }
 
+.toast--aviso .toast-icone {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
 .toast-mensagem {
   flex: 1;
   min-width: 0;

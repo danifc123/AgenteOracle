@@ -41,6 +41,67 @@
       </div>
     </app-secao-configuracao>
 
+    @if (usarIa()) {
+      <app-secao-configuracao titulo="Provedor de IA">
+        <div class="linha linha-campo">
+          <app-select-busca
+            rotulo="Provedor"
+            placeholder="Escolha o provedor"
+            [opcoes]="opcoesProvedor"
+            [valor]="provedorRascunho()"
+            (valorChange)="aoTrocarProvedor($event)"
+          />
+        </div>
+        <div class="linha linha-campo">
+          @if (ehOci()) {
+            <app-select-busca
+              rotulo="Modelo"
+              placeholder="Escolha o modelo"
+              [opcoes]="opcoesModeloOci"
+              [valor]="modeloRascunho()"
+              (valorChange)="modeloRascunho.set($event)"
+            />
+          } @else {
+            <div class="campo-texto-container">
+              <label class="rotulo-texto" for="modelo-ollama">Modelo</label>
+              <input
+                id="modelo-ollama"
+                class="campo-texto"
+                type="text"
+                autocomplete="off"
+                placeholder="Vazio usa o modelo padrão configurado"
+                [value]="modeloRascunho()"
+                (input)="modeloRascunho.set($any($event.target).value)"
+              />
+            </div>
+          }
+        </div>
+        @if (ehOci()) {
+          <p class="aviso" role="status">
+            <svg
+              class="aviso-icone"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v5M12 8h.01" />
+            </svg>
+            <span
+              >Correção automática de categoria fica desativada nesse provedor (sem suporte a
+              embedding) — a triagem continua funcionando normal.</span
+            >
+          </p>
+        }
+      </app-secao-configuracao>
+    }
+
     @if (aviso(); as mudanca) {
       <p class="aviso" [class.aviso--atencao]="mudanca.tom === 'atencao'" role="status">
         <svg

@@ -6,6 +6,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # `ollama_host_do_dominio` abaixo) e pro client protegido de `tools/ia/`.
 DominioIA = Literal["ti", "financeiro", "rh", "auditoria"]
 
+# Provedor por trás do client protegido (`tools/ia/cliente_protegido.py`) —
+# a escolha ATIVA (qual dos dois está em uso agora) mora no Postgres, editável
+# pela tela (`tools/ti/configuracoes.py::provedor_ia`); os campos de conexão
+# de cada um (host/API key) continuam aqui, no `.env`, porque são segredo.
+ProvedorIA = Literal["ollama", "oci_openai"]
+
+# Único endpoint OCI da empresa (não é por domínio — é um projeto/tenancy só,
+# diferente do Ollama que pode ter host diferente por domínio). Confirmado
+# com o suporte Oracle: cada modelo usa uma API diferente — só `gpt-oss-120b`
+# fala Responses API, os outros dois só Chat Completions (não é escolha
+# livre) — ver `tools/ia/cliente_openai_compativel.py`.
+MODELOS_OCI_GENERATIVE_AI: tuple[str, ...] = (
+    "openai.gpt-oss-120b",
+    "meta.llama-3.3-70b-instruct",
+    "meta.llama-4-scout-17b-16e-instruct",
+)
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -81,6 +98,14 @@ class Settings(BaseSettings):
     # pra calibrar um limite que trave sem risco de travar uso legítimo. Ver
     # `tools/ia/cliente_protegido.py`.
     teto_diario_ia_externa: int = 500
+
+    # OCI Generative AI (endpoint compatível com a API da OpenAI, liberado
+    # pelo suporte Oracle da empresa) — credencial única (não por domínio,
+    # diferente do Ollama), usada só quando a escolha ativa de algum domínio
+    # for `oci_openai` (ver `tools/ti/configuracoes.py::provedor_ia`).
+    oci_openai_base_url: str = "https://inference.generativeai.sa-saopaulo-1.oci.oraclecloud.com/openai/v1"
+    oci_openai_api_key: str = ""
+    oci_openai_project_id: str = ""
 
     auth_secret_key: str = ""
     # 8h = uma jornada de trabalho — depois disso o token expira sozinho e o

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from ollama import AsyncClient
 
+from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
 from agente_oracle.tools.ti import categorias
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import AreaChamado
@@ -40,6 +41,12 @@ class ResultadoClassificacao:
     # (usar_ia=False, falha do Ollama).
     categoria_id: int | None
     precisou_embedding: bool
+    # `True` só quando a falha foi especificamente o provedor de IA ativo
+    # não suportar embedding (`EmbeddingNaoSuportado` — ex: OCI Generative
+    # AI). Outra falha (rede, provedor fora do ar) cai no mesmo fallback,
+    # mas deixa isso `False` — quem chama usa pra avisar o usuário direito
+    # em vez de confundir os dois casos (ver `server/ti/chamados.py`).
+    embedding_indisponivel: bool = False
 
 
 async def classificar_categoria(
@@ -62,6 +69,13 @@ async def classificar_categoria(
 
     try:
         escolhida = await _melhor_categoria(ollama_client, modelo_embedding, titulo, descricao)
+    except EmbeddingNaoSuportado:
+        return ResultadoClassificacao(
+            area=area_atual or _AREA_PADRAO,
+            categoria_id=None,
+            precisou_embedding=True,
+            embedding_indisponivel=True,
+        )
     except Exception:
         return ResultadoClassificacao(
             area=area_atual or _AREA_PADRAO, categoria_id=None, precisou_embedding=True

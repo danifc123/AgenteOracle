@@ -85,9 +85,9 @@ class _ClienteOpenAIFake:
 
 
 class TestChat:
-    async def test_gpt_oss_120b_usa_responses_api(self):
+    async def test_estilo_responses_usa_a_responses_api(self):
         cliente_real = _ClienteOpenAIFake("resposta via responses")
-        cliente = ClienteOpenAICompativel(cliente_real)
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
 
         resposta = await cliente.chat(
             model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}]
@@ -97,9 +97,9 @@ class TestChat:
         assert len(cliente_real.chat.completions.chamadas) == 0
         assert resposta.message.content == "resposta via responses"
 
-    async def test_llama_3_3_usa_chat_completions(self):
+    async def test_estilo_chat_completions_usa_chat_completions(self):
         cliente_real = _ClienteOpenAIFake("resposta via chat completions")
-        cliente = ClienteOpenAICompativel(cliente_real)
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="chat_completions")
 
         resposta = await cliente.chat(
             model="meta.llama-3.3-70b-instruct", messages=[{"role": "user", "content": "oi"}]
@@ -109,15 +109,31 @@ class TestChat:
         assert len(cliente_real.responses.chamadas) == 0
         assert resposta.message.content == "resposta via chat completions"
 
-    async def test_llama_4_scout_usa_chat_completions(self):
+    async def test_estilo_padrao_do_construtor_e_chat_completions(self):
+        # Sem passar `estilo_api` explícito — o padrão é o formato mais
+        # comum (Chat Completions), não Responses API.
         cliente_real = _ClienteOpenAIFake()
         cliente = ClienteOpenAICompativel(cliente_real)
 
         await cliente.chat(
-            model="meta.llama-4-scout-17b-16e-instruct", messages=[{"role": "user", "content": "oi"}]
+            model="qualquer-modelo", messages=[{"role": "user", "content": "oi"}]
         )
 
         assert len(cliente_real.chat.completions.chamadas) == 1
+        assert len(cliente_real.responses.chamadas) == 0
+
+    async def test_estilo_nao_depende_do_nome_do_modelo(self):
+        # O nome do modelo não decide mais nada — só `estilo_api` decide,
+        # mesmo pra um nome que antes disparava a Responses API.
+        cliente_real = _ClienteOpenAIFake()
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="chat_completions")
+
+        await cliente.chat(
+            model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}]
+        )
+
+        assert len(cliente_real.chat.completions.chamadas) == 1
+        assert len(cliente_real.responses.chamadas) == 0
 
     async def test_chat_completions_recebe_as_mensagens_intactas(self):
         cliente_real = _ClienteOpenAIFake()
@@ -143,7 +159,7 @@ class TestChat:
 
     async def test_responses_api_normaliza_tokens_pro_formato_do_ollama(self):
         cliente_real = _ClienteOpenAIFake(uso_responses=_UsoResponsesFake(input_tokens=67, output_tokens=48))
-        cliente = ClienteOpenAICompativel(cliente_real)
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
 
         resposta = await cliente.chat(model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}])
 
@@ -182,7 +198,7 @@ class TestChat:
                 input_tokens=67, output_tokens=48, output_tokens_details=_DetalhesSaidaFake(reasoning_tokens=31)
             )
         )
-        cliente = ClienteOpenAICompativel(cliente_real)
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
 
         resposta = await cliente.chat(model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}])
 
@@ -190,7 +206,7 @@ class TestChat:
 
     async def test_responses_api_sem_detalhes_de_saida_grava_none(self):
         cliente_real = _ClienteOpenAIFake(uso_responses=_UsoResponsesFake(input_tokens=67, output_tokens=48))
-        cliente = ClienteOpenAICompativel(cliente_real)
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
 
         resposta = await cliente.chat(model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}])
 

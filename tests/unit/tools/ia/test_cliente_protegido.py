@@ -1,22 +1,49 @@
 import logging
+from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 from agente_oracle.config import Settings
-from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor
+from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor, provedores_llm
 from agente_oracle.tools.ia import cliente_protegido as mod
 from agente_oracle.tools.ia.cliente_protegido import (
     ClienteIAProtegido,
     criar_cliente_protegido,
     modelo_ia_ativo,
 )
+from agente_oracle.tools.ia.provedores_llm import ProvedorLLM
 
 
-def _com_provedor_ollama(monkeypatch) -> None:
-    """`criar_cliente_protegido`/`modelo_ia_ativo` agora leem
-    `configuracoes_provedor.provedor_ia()`/`modelo_ia()` (Postgres) — mocka pro
-    padrão de sempre, sem precisar de banco real num teste unitário."""
-    monkeypatch.setattr(configuracoes_provedor, "provedor_ia", lambda: "ollama")
-    monkeypatch.setattr(configuracoes_provedor, "modelo_ia", lambda: "")
+def _provedor_llm(**overrides) -> ProvedorLLM:
+    campos = {
+        "id": 1,
+        "nome": "OCI Generative AI — gpt-oss-120b",
+        "tipo_conexao": "openai_compativel",
+        "base_url": "https://inference.generativeai.sa-saopaulo-1.oci.oraclecloud.com/openai/v1",
+        "api_key": "sk-segredo",
+        "projeto_id": "ocid1.generativeaiproject.oc1...",
+        "modelo": "openai.gpt-oss-120b",
+        "estilo_api": "responses",
+        "preco_entrada_por_1k": Decimal("0"),
+        "preco_saida_por_1k": Decimal("0"),
+        "moeda": "R$",
+        "criado_em": datetime.now(UTC),
+    }
+    campos.update(overrides)
+    return ProvedorLLM(**campos)
+
+
+def _sem_cadastro_ativo(monkeypatch) -> None:
+    """`criar_cliente_protegido`/`modelo_ia_ativo` caem no Ollama padrão do
+    `.env` quando não há nenhum LLM cadastrado ativo — mocka
+    `provedor_llm_ativo_id` pra `None`, sem precisar de banco real num
+    teste unitário."""
+    monkeypatch.setattr(configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+
+
+def _com_cadastro_ativo(monkeypatch, provedor: ProvedorLLM) -> None:
+    monkeypatch.setattr(configuracoes_provedor, "provedor_llm_ativo_id", lambda: provedor.id)
+    monkeypatch.setattr(provedores_llm, "buscar", lambda _id: provedor)
 
 
 class _ClienteRealFake:
@@ -95,7 +122,9 @@ class TestClienteIAProtegidoChat:
                 tokens_raciocinio=2,
             )
         )
-        protegido = ClienteIAProtegido(cliente_real, "ti", "http://127.0.0.1:11434", True, 500, "oci_openai", "usuario-teste")
+        protegido = ClienteIAProtegido(
+            cliente_real, "ti", "http://127.0.0.1:11434", True, 500, "OCI Generative AI — gpt-oss-120b", "usuario-teste"
+        )
 
         await protegido.chat(model="m", messages=[{"role": "user", "content": "oi"}])
 
@@ -250,7 +279,7 @@ async def _embed_com_tokens(**_kwargs):
 
 class TestCriarClienteProtegido:
     def test_client_real_usa_o_host_resolvido_do_dominio(self, monkeypatch):
-        _com_provedor_ollama(monkeypatch)
+        _sem_cadastro_ativo(monkeypatch)
         chamadas = []
 
         class _AsyncClientFake:
@@ -265,7 +294,7 @@ class TestCriarClienteProtegido:
         assert chamadas[0]["host"] == "https://ollama.com"
 
     def test_inclui_header_de_autenticacao_quando_ha_api_key_do_dominio(self, monkeypatch):
-        _com_provedor_ollama(monkeypatch)
+        _sem_cadastro_ativo(monkeypatch)
         chamadas = []
 
         class _AsyncClientFake:
@@ -280,7 +309,7 @@ class TestCriarClienteProtegido:
         assert chamadas[0]["headers"] == {"Authorization": "Bearer segredo123"}
 
     def test_sem_api_key_nao_manda_header_nenhum(self, monkeypatch):
-        _com_provedor_ollama(monkeypatch)
+        _sem_cadastro_ativo(monkeypatch)
         chamadas = []
 
         class _AsyncClientFake:
@@ -295,7 +324,7 @@ class TestCriarClienteProtegido:
         assert chamadas[0]["headers"] == {}
 
     async def test_usa_o_teto_diario_configurado(self, monkeypatch, caplog):
-        _com_provedor_ollama(monkeypatch)
+        _sem_cadastro_ativo(monkeypatch)
         monkeypatch.setattr(mod, "AsyncClient", lambda **_kwargs: _ClienteRealFake())
         _sem_auditoria_real(monkeypatch, contagem=51)
         settings = Settings(teto_diario_ia_externa=50)
@@ -306,8 +335,9 @@ class TestCriarClienteProtegido:
 
         assert "teto" in caplog.text.lower()
 
-    def test_provedor_oci_monta_client_openai_apontado_pro_endpoint_certo(self, monkeypatch):
-        monkeypatch.setattr(configuracoes_provedor, "provedor_ia", lambda: "oci_openai")
+    def test_provedor_openai_compativel_monta_client_openai_com_o_cadastro_ativo(self, monkeypatch):
+        provedor = _provedor_llm()
+        _com_cadastro_ativo(monkeypatch, provedor)
         chamadas = []
 
         class _AsyncOpenAIFake:
@@ -315,32 +345,53 @@ class TestCriarClienteProtegido:
                 chamadas.append(kwargs)
 
         monkeypatch.setattr(mod, "AsyncOpenAI", _AsyncOpenAIFake)
-        settings = Settings(
-            oci_openai_base_url="https://inference.generativeai.sa-saopaulo-1.oci.oraclecloud.com/openai/v1",
-            oci_openai_api_key="sk-segredo",
-            oci_openai_project_id="ocid1.generativeaiproject.oc1...",
-        )
 
-        cliente = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id="usuario-teste")
+        cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
 
-        assert chamadas[0]["base_url"] == settings.oci_openai_base_url
-        assert chamadas[0]["api_key"] == "sk-segredo"
-        assert chamadas[0]["project"] == settings.oci_openai_project_id
+        assert chamadas[0]["base_url"] == provedor.base_url
+        assert chamadas[0]["api_key"] == provedor.api_key
+        assert chamadas[0]["project"] == provedor.projeto_id
         assert isinstance(cliente._cliente, mod.ClienteOpenAICompativel)
+        assert cliente._cliente._estilo_api == "responses"
+        assert cliente._provedor == provedor.nome
 
-    def test_provedor_ollama_continua_montando_asyncclient_como_sempre(self, monkeypatch):
-        # Regressão: provedor não configurado (padrão) não muda nada do
-        # comportamento de antes da OCI existir.
-        _com_provedor_ollama(monkeypatch)
+    def test_provedor_ollama_cadastrado_monta_asyncclient_com_o_base_url_do_cadastro(self, monkeypatch):
+        provedor = _provedor_llm(tipo_conexao="ollama", base_url="https://ollama-cadastrado.com", api_key="chave")
+        _com_cadastro_ativo(monkeypatch, provedor)
+        chamadas = []
+        monkeypatch.setattr(mod, "AsyncClient", lambda **kwargs: chamadas.append(kwargs) or _ClienteRealFake())
+
+        cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
+
+        assert chamadas[0]["host"] == "https://ollama-cadastrado.com"
+        assert chamadas[0]["headers"] == {"Authorization": "Bearer chave"}
+        assert cliente._provedor == provedor.nome
+
+    def test_registro_vazio_cai_no_ollama_padrao_como_antes_do_cadastro_existir(self, monkeypatch):
+        # Regressão: sem nenhum LLM cadastrado ativo não muda nada do
+        # comportamento de antes do cadastro existir.
+        _sem_cadastro_ativo(monkeypatch)
         chamadas = []
         monkeypatch.setattr(mod, "AsyncClient", lambda **kwargs: chamadas.append(kwargs))
 
-        criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
+        cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
 
         assert len(chamadas) == 1
+        assert cliente._provedor == mod._PROVEDOR_OLLAMA_PADRAO
+
+    def test_dominio_financeiro_nunca_consulta_o_cadastro_mesmo_com_algo_ativo(self, monkeypatch):
+        provedor = _provedor_llm()
+        _com_cadastro_ativo(monkeypatch, provedor)
+        chamadas = []
+        monkeypatch.setattr(mod, "AsyncClient", lambda **kwargs: chamadas.append(kwargs))
+
+        cliente = criar_cliente_protegido(Settings(), "financeiro", sanitizar=True, usuario_id="usuario-teste")
+
+        assert len(chamadas) == 1  # Ollama do .env, não a OpenAI do cadastro
+        assert cliente._provedor == mod._PROVEDOR_OLLAMA_PADRAO
 
     async def test_repassa_o_usuario_id_recebido_pra_auditoria(self, monkeypatch):
-        _com_provedor_ollama(monkeypatch)
+        _sem_cadastro_ativo(monkeypatch)
         registros = _sem_auditoria_real(monkeypatch)
         monkeypatch.setattr(mod, "AsyncClient", lambda **_kwargs: _ClienteRealFake())
         settings = Settings()
@@ -351,7 +402,7 @@ class TestCriarClienteProtegido:
         assert registros[0][-1] == "42"
 
     async def test_usuario_sistema_e_repassado_igual_a_qualquer_outro_id(self, monkeypatch):
-        _com_provedor_ollama(monkeypatch)
+        _sem_cadastro_ativo(monkeypatch)
         registros = _sem_auditoria_real(monkeypatch)
         monkeypatch.setattr(mod, "AsyncClient", lambda **_kwargs: _ClienteRealFake())
         settings = Settings()
@@ -363,20 +414,19 @@ class TestCriarClienteProtegido:
 
 
 class TestModeloIaAtivo:
-    def test_sem_escolha_configurada_usa_o_padrao_do_dominio_no_ollama(self, monkeypatch):
-        _com_provedor_ollama(monkeypatch)
+    def test_sem_cadastro_ativo_usa_o_padrao_do_dominio_no_ollama(self, monkeypatch):
+        _sem_cadastro_ativo(monkeypatch)
         settings = Settings(ollama_model="qwen2.5-coder:7b", ollama_model_ti="")
 
         assert modelo_ia_ativo(settings, "ti") == "qwen2.5-coder:7b"
 
-    def test_com_escolha_configurada_usa_ela_independente_do_provedor(self, monkeypatch):
-        monkeypatch.setattr(configuracoes_provedor, "provedor_ia", lambda: "ollama")
-        monkeypatch.setattr(configuracoes_provedor, "modelo_ia", lambda: "llama3:70b")
+    def test_com_cadastro_ativo_usa_o_modelo_cadastrado(self, monkeypatch):
+        _com_cadastro_ativo(monkeypatch, _provedor_llm(modelo="llama3:70b"))
 
         assert modelo_ia_ativo(Settings(), "ti") == "llama3:70b"
 
-    def test_sem_escolha_configurada_e_provedor_oci_usa_o_primeiro_modelo_fixo(self, monkeypatch):
-        monkeypatch.setattr(configuracoes_provedor, "provedor_ia", lambda: "oci_openai")
-        monkeypatch.setattr(configuracoes_provedor, "modelo_ia", lambda: "")
+    def test_dominio_financeiro_nunca_consulta_o_cadastro_mesmo_com_algo_ativo(self, monkeypatch):
+        _com_cadastro_ativo(monkeypatch, _provedor_llm(modelo="llama3:70b"))
+        settings = Settings(ollama_model="qwen2.5-coder:7b")
 
-        assert modelo_ia_ativo(Settings(), "ti") == "openai.gpt-oss-120b"
+        assert modelo_ia_ativo(settings, "financeiro") == "qwen2.5-coder:7b"

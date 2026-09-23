@@ -33,48 +33,36 @@ def _conexao_fake_para(monkeypatch, cursor: _CursorFake) -> None:
     monkeypatch.setattr(mod, "get_postgres_connection", _fake)
 
 
-class TestModeloIa:
-    def test_sem_configuracao_devolve_vazio(self, monkeypatch):
+class TestProvedorLlmAtivoId:
+    def test_sem_configuracao_devolve_none(self, monkeypatch):
         _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=None))
 
-        assert mod.modelo_ia() == ""
+        assert mod.provedor_llm_ativo_id() is None
 
-    def test_devolve_o_valor_gravado(self, monkeypatch):
-        _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=("openai.gpt-oss-120b",)))
+    def test_devolve_o_valor_gravado_como_inteiro(self, monkeypatch):
+        _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=("7",)))
 
-        assert mod.modelo_ia() == "openai.gpt-oss-120b"
+        assert mod.provedor_llm_ativo_id() == 7
 
     def test_definir_grava_como_texto(self, monkeypatch):
         cursor = _CursorFake(rowcount=0)
         _conexao_fake_para(monkeypatch, cursor)
 
-        mod.definir_modelo_ia("openai.gpt-oss-120b")
+        mod.definir_provedor_llm_ativo_id(7)
 
         _sql, binds = cursor.execucoes[-1]
-        assert binds["chave"] == "modelo_ia"
-        assert binds["valor"] == "openai.gpt-oss-120b"
+        assert binds["chave"] == "provedor_llm_ativo_id"
+        assert binds["valor"] == "7"
 
-
-class TestProvedorIa:
-    def test_sem_configuracao_devolve_ollama(self, monkeypatch):
-        _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=None))
-
-        assert mod.provedor_ia() == "ollama"
-
-    def test_devolve_o_valor_gravado(self, monkeypatch):
-        _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=("oci_openai",)))
-
-        assert mod.provedor_ia() == "oci_openai"
-
-    def test_definir_grava_como_texto(self, monkeypatch):
+    def test_definir_none_grava_vazio_e_volta_a_ler_none(self, monkeypatch):
         cursor = _CursorFake(rowcount=0)
         _conexao_fake_para(monkeypatch, cursor)
 
-        mod.definir_provedor_ia("oci_openai")
+        mod.definir_provedor_llm_ativo_id(None)
 
         _sql, binds = cursor.execucoes[-1]
-        assert binds["chave"] == "provedor_ia"
-        assert binds["valor"] == "oci_openai"
+        assert binds["chave"] == "provedor_llm_ativo_id"
+        assert binds["valor"] == ""
 
 
 class TestTetoTokensDiario:

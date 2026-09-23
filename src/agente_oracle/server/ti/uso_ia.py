@@ -18,13 +18,14 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis, usuarios
-from agente_oracle.tools.ia import auditoria_externa
+from agente_oracle.tools.ia import auditoria_externa, provedores_llm
 from agente_oracle.tools.ia.auditoria_externa import (
     ResumoTokensDia,
     ResumoTokensProvedor,
     ResumoTokensUsuario,
 )
 from agente_oracle.tools.ia.cliente_protegido import USUARIO_SISTEMA
+from agente_oracle.tools.ia.provedores_llm import ProvedorLLM
 from agente_oracle.tools.ti import uso_ia_chamados
 
 _DIAS_PADRAO = 30
@@ -48,7 +49,26 @@ def _dias_da_query(bruto: str | None) -> int:
         return _DIAS_PADRAO
 
 
-def _linha_para_json(linha: ResumoTokensProvedor) -> dict:
+def _custo_e_moeda(
+    provedor_nome: str, modelo: str, tokens_entrada: int, tokens_saida: int, cadastro_por_nome_modelo: dict
+) -> tuple[float | None, str | None]:
+    """`None` quando essa linha não bate com nenhum LLM cadastrado hoje —
+    chamada antiga, provedor removido do cadastro, ou o fallback "Ollama
+    (padrão)" (que nunca tem preço, por não ser um cadastro de verdade).
+    Casa por (nome, modelo) porque é isso que fica gravado em cada
+    chamada (ver `tools/ia/cliente_protegido.py::criar_cliente_protegido`)
+    — não por id, pra não quebrar se o cadastro for editado depois."""
+    cadastro: ProvedorLLM | None = cadastro_por_nome_modelo.get((provedor_nome, modelo))
+    if cadastro is None:
+        return None, None
+    custo = provedores_llm.custo_estimado(tokens_entrada, tokens_saida, cadastro)
+    return float(custo), cadastro.moeda
+
+
+def _linha_para_json(linha: ResumoTokensProvedor, cadastro_por_nome_modelo: dict) -> dict:
+    custo, moeda = _custo_e_moeda(
+        linha.provedor, linha.modelo, linha.tokens_entrada_total, linha.tokens_saida_total, cadastro_por_nome_modelo
+    )
     return {
         "provedor": linha.provedor,
         "modelo": linha.modelo,
@@ -57,6 +77,8 @@ def _linha_para_json(linha: ResumoTokensProvedor) -> dict:
         "tokens_saida": linha.tokens_saida_total,
         "tokens_raciocinio": linha.tokens_raciocinio_total,
         "tokens_total": linha.tokens_entrada_total + linha.tokens_saida_total,
+        "custo_estimado": custo,
+        "moeda": moeda,
     }
 
 
@@ -106,8 +128,13 @@ def _corpo_uso_ia(dias: int) -> dict:
     resumo_usuario = auditoria_externa.resumo_por_usuario(dias)
     resumo_dia = auditoria_externa.resumo_diario(dias)
     nomes_por_id = {str(usuario["id"]): usuario["nome"] for usuario in usuarios.listar_usuarios()}
+    # (nome, modelo) -> cadastro; usado só na visão "Geral" (por provedor +
+    # modelo) — a visão "por usuário" não sabe QUAL provedor cada tokens
+    # veio de (`resumo_por_usuario` soma através de todos eles), então não
+    # dá pra estimar custo por pessoa sem arriscar misturar moeda.
+    cadastro_por_nome_modelo = {(linha.nome, linha.modelo): linha for linha in provedores_llm.listar()}
     return {
-        "consumo": [_linha_para_json(linha) for linha in resumo],
+        "consumo": [_linha_para_json(linha, cadastro_por_nome_modelo) for linha in resumo],
         "por_usuario": [_linha_usuario_para_json(linha, nomes_por_id) for linha in resumo_usuario],
         "por_dia": [_linha_dia_para_json(linha) for linha in resumo_dia],
         "tokens_hoje_por_dominio": {

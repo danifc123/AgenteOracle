@@ -1,12 +1,17 @@
-"""Client compatível com OpenAI da OCI Generative AI (tenancy da própria
-empresa, liberado pelo suporte Oracle — e-mail do Gabriel, 04/09/2026) —
-mesma interface que `ClienteIAProtegido` espera (`chat`/`embed`), pra
-`qualidade_chamado.py`/`deteccao_seguranca.py` nem saberem que trocaram de
-provedor.
+"""Client genérico pra qualquer provedor compatível com a API da OpenAI
+(cadastrado por `tools/ia/provedores_llm.py`, ex: OCI Generative AI —
+tenancy da própria empresa, liberado pelo suporte Oracle, e-mail do
+Gabriel, 04/09/2026) — mesma interface que `ClienteIAProtegido` espera
+(`chat`/`embed`), pra `qualidade_chamado.py`/`deteccao_seguranca.py` nem
+saberem que trocaram de provedor.
 
-Confirmado direto com o suporte Oracle: cada modelo usa uma API diferente,
-não é escolha livre — só `openai.gpt-oss-120b` fala a Responses API, os
-outros dois (Llama) só a Chat Completions.
+Qual API usar (`estilo_api`) vem de fora, do cadastro — confirmado direto
+com o suporte Oracle que isso não é escolha livre do cliente, é o próprio
+modelo que exige uma ou outra (ex: `openai.gpt-oss-120b` só fala a
+Responses API, os Llama da OCI só falam Chat Completions). Em vez de
+adivinhar pelo nome do modelo (frágil pra qualquer provedor que não seja
+a OCI), quem cadastra o LLM escolhe o estilo certo na hora — funciona pra
+qualquer provedor novo sem precisar editar este arquivo.
 
 `chat` monta o `input` da Responses API concatenando as mensagens num texto
 só (papel + conteúdo) — simplificação de propósito, pra não arriscar
@@ -16,29 +21,32 @@ JSON schema não vier igual ao Ollama), é o primeiro lugar a revisar depois
 do teste manual com a chave de verdade."""
 
 from types import SimpleNamespace
+from typing import Literal
 
 from openai import AsyncOpenAI
 
-_MODELO_VIA_RESPONSES_API = "openai.gpt-oss-120b"
+EstiloApi = Literal["chat_completions", "responses"]
 
 
 class EmbeddingNaoSuportado(Exception):
-    """A API compatível com OpenAI da OCI não tem endpoint de embedding —
-    só a API nativa dela tem (confirmado na documentação da Oracle). Tipo
-    próprio, não `Exception` genérica, pra quem chama
-    (`agent/ti/roteamento_chamado.py`) conseguir distinguir "esse provedor
-    não suporta" de qualquer outra falha (rede, provedor fora do ar) e
-    avisar o usuário direito, em vez de só cair no fallback calado."""
+    """A API compatível com OpenAI não tem endpoint de embedding — a da
+    OCI, por exemplo, só tem isso na API nativa dela (confirmado na
+    documentação da Oracle). Tipo próprio, não `Exception` genérica, pra
+    quem chama (`agent/ti/roteamento_chamado.py`) conseguir distinguir
+    "esse provedor não suporta" de qualquer outra falha (rede, provedor
+    fora do ar) e avisar o usuário direito, em vez de só cair no fallback
+    calado."""
 
 
 class ClienteOpenAICompativel:
-    def __init__(self, cliente_real: AsyncOpenAI):
+    def __init__(self, cliente_real: AsyncOpenAI, estilo_api: EstiloApi = "chat_completions"):
         self._cliente = cliente_real
+        self._estilo_api = estilo_api
 
     async def chat(self, *, model, messages, **_kwargs):
         # `**_kwargs` absorve `format`/`options` — linguagem do Ollama, que
         # o client protegido manda pra qualquer provedor por baixo.
-        if model == _MODELO_VIA_RESPONSES_API:
+        if self._estilo_api == "responses":
             entrada = "\n\n".join(f"{mensagem['role']}: {mensagem['content']}" for mensagem in messages)
             resposta = await self._cliente.responses.create(model=model, input=entrada)
             uso = resposta.usage
@@ -66,5 +74,5 @@ class ClienteOpenAICompativel:
 
     async def embed(self, **_kwargs):
         raise EmbeddingNaoSuportado(
-            "OCI Generative AI (endpoint compatível com OpenAI) não tem endpoint de embedding."
+            "Este provedor (endpoint compatível com OpenAI) não tem endpoint de embedding."
         )

@@ -4,7 +4,6 @@ from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.config import MODELOS_OCI_GENERATIVE_AI
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
@@ -13,15 +12,15 @@ from agente_oracle.tools.ia import configuracoes_provedor
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 
 _CASAS_DECIMAIS_MAXIMAS = 3
-_PROVEDORES_VALIDOS = ("ollama", "oci_openai")
 
-# Só desenvolvedor grava; qualquer usuário do módulo TI lê.
+# Só desenvolvedor grava; qualquer usuário do módulo TI lê. Escolher QUAL
+# LLM está ativo não é mais uma chave aqui — mora em
+# `server/ti/provedores_llm.py` (tela `/ti/provedores`), junto do cadastro
+# em si.
 _CHAVES = (
     "usar_ia_avaliacao_chamado",
     "percentual_amostragem_chamados",
     "ler_chamados_antigos",
-    "provedor_ia",
-    "modelo_ia",
     "teto_tokens_diario",
 )
 
@@ -33,8 +32,6 @@ def _corpo_configuracoes() -> dict:
         "percentual_amostragem_chamados": float(configuracoes_tools.percentual_amostragem_chamados()),
         "percentual_alterado_em": alterado_em.isoformat() if alterado_em else None,
         "ler_chamados_antigos": configuracoes_tools.ler_chamados_antigos(),
-        "provedor_ia": configuracoes_provedor.provedor_ia(),
-        "modelo_ia": configuracoes_provedor.modelo_ia(),
         "teto_tokens_diario": configuracoes_provedor.teto_tokens_diario(),
     }
 
@@ -43,23 +40,6 @@ def _teto_tokens_valido(bruto) -> bool:
     """Inteiro `>= 0` — `bool` é recusado (é `int` em Python); `0` é válido
     e significa "sem teto" (ver `configuracoes_provedor.teto_tokens_diario`)."""
     return isinstance(bruto, int) and not isinstance(bruto, bool) and bruto >= 0
-
-
-def _modelo_valido(corpo: dict) -> bool:
-    """Texto livre serve pro Ollama (não dá pra saber de antemão quais
-    modelos estão baixados/liberados); só é restrito à lista fixa quando o
-    provedor EFETIVO (o que vem junto nesse PATCH, ou o que já está
-    configurado, se este PATCH não mexer nisso) for a OCI. Vazio sempre é
-    válido — significa "usa o padrão do provedor ativo"."""
-    modelo = corpo["modelo_ia"]
-    if not isinstance(modelo, str):
-        return False
-    if modelo == "":
-        return True
-    provedor_efetivo = corpo.get("provedor_ia", configuracoes_provedor.provedor_ia())
-    if provedor_efetivo == "oci_openai":
-        return modelo in MODELOS_OCI_GENERATIVE_AI
-    return True
 
 
 def _percentual_valido(bruto) -> Decimal | None:
@@ -105,10 +85,6 @@ def _gravar(corpo: dict) -> None:
         configuracoes_tools.definir_percentual_amostragem_chamados(
             _percentual_valido(corpo["percentual_amostragem_chamados"])
         )
-    if "provedor_ia" in corpo:
-        configuracoes_provedor.definir_provedor_ia(corpo["provedor_ia"])
-    if "modelo_ia" in corpo:
-        configuracoes_provedor.definir_modelo_ia(corpo["modelo_ia"])
     if "teto_tokens_diario" in corpo:
         configuracoes_provedor.definir_teto_tokens_diario(corpo["teto_tokens_diario"])
 
@@ -125,13 +101,6 @@ def _validar(corpo: dict) -> str | None:
         return (
             "Informe percentual_amostragem_chamados como um número de 0 a 100, "
             f"com até {_CASAS_DECIMAIS_MAXIMAS} casas decimais."
-        )
-    if "provedor_ia" in corpo and corpo["provedor_ia"] not in _PROVEDORES_VALIDOS:
-        return f"Informe provedor_ia como um destes: {', '.join(_PROVEDORES_VALIDOS)}."
-    if "modelo_ia" in corpo and not _modelo_valido(corpo):
-        return (
-            f"Informe modelo_ia como um destes pra OCI Generative AI: "
-            f"{', '.join(MODELOS_OCI_GENERATIVE_AI)} (ou vazio pra usar o padrão)."
         )
     if "teto_tokens_diario" in corpo and not _teto_tokens_valido(corpo["teto_tokens_diario"]):
         return "Informe teto_tokens_diario como um número inteiro >= 0 (0 = sem teto)."

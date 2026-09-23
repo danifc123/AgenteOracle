@@ -11,15 +11,18 @@ audita, sempre. Nenhuma IA extra no meio — sanitizar é regex, auditar é um
 INSERT no Postgres local, nada de chamada de rede a mais.
 
 Dois motores possíveis hoje: `ollama.AsyncClient` (padrão) e
-`ClienteOpenAICompativel` (OCI Generative AI) — a escolha ativa é lida do
-Postgres a cada chamada
-(`tools/ia/configuracoes_provedor.py::provedor_ia`), não em cache, então
-troca sem precisar reiniciar o servidor. Essa escolha é ÚNICA pro processo
-inteiro (não por domínio) — hoje vale pra TI e RH (editável pela tela de
-Configurações do TI); Financeiro/Auditoria ainda não estão ligados nisso —
-tocam dado real do Oracle, protegidos por
-`config.py::validar_ollama_host_seguro` até o fornecedor ser validado pra
-esse tipo de dado."""
+`ClienteOpenAICompativel` (qualquer LLM cadastrado compatível com OpenAI)
+— pra `dominio in ("ti", "rh")`, QUAL provedor usar vem do cadastro do
+usuário (`tools/ia/provedores_llm.py`, tela `/ti/provedores`), lido do
+Postgres a cada chamada, não em cache, então trocar de LLM ativo não
+precisa reiniciar o servidor nem editar código. Sem nenhum LLM cadastrado
+ativo, cai no Ollama padrão do `.env` — mesmo comportamento de antes desse
+cadastro existir, pra nunca quebrar uma instalação nova/vazia.
+
+Financeiro/Auditoria NUNCA olham o cadastro — tocam dado real do Oracle e
+continuam 100% no caminho antigo (Ollama do `.env`, por domínio), protegido
+por `config.py::validar_ollama_host_seguro`, até o fornecedor cadastrado
+ser validado pra esse tipo de dado."""
 
 import logging
 
@@ -27,17 +30,21 @@ from ollama import AsyncClient
 from openai import AsyncOpenAI
 
 from agente_oracle.config import (
-    MODELOS_OCI_GENERATIVE_AI,
     DominioIA,
-    ProvedorIA,
     Settings,
     ollama_api_key_do_dominio,
     ollama_host_do_dominio,
     ollama_model_do_dominio,
 )
-from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor
+from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor, provedores_llm
 from agente_oracle.tools.ia.cliente_openai_compativel import ClienteOpenAICompativel
 from agente_oracle.tools.ia.saneamento import sanitizar_dado_sensivel, sanitizar_mensagens
+
+# Domínios que podem usar o cadastro de LLM — os outros dois (financeiro,
+# auditoria) tocam dado real do Oracle, ver docstring do módulo.
+_DOMINIOS_COM_CADASTRO: tuple[DominioIA, ...] = ("ti", "rh")
+
+_PROVEDOR_OLLAMA_PADRAO = "Ollama (padrão)"
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +65,7 @@ class ClienteIAProtegido:
         host: str,
         sanitizar: bool,
         teto_diario: int,
-        provedor: ProvedorIA,
+        provedor: str,
         usuario_id: str,
     ):
         self._cliente = cliente_real
@@ -131,44 +138,58 @@ def _texto_das_mensagens(mensagens: list[dict]) -> str:
     return "\n".join(mensagem["content"] for mensagem in mensagens)
 
 
+def _provedor_llm_ativo(dominio: DominioIA) -> provedores_llm.ProvedorLLM | None:
+    """`None` pra domínio sem cadastro (financeiro/auditoria) ou sem
+    nenhum LLM ativo (nada cadastrado ainda, ou o cadastrado foi
+    removido) — os dois casos caem no Ollama padrão do `.env`."""
+    if dominio not in _DOMINIOS_COM_CADASTRO:
+        return None
+    id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
+    if id_ativo is None:
+        return None
+    return provedores_llm.buscar(id_ativo)
+
+
 def criar_cliente_protegido(
     settings: Settings, dominio: DominioIA, sanitizar: bool, usuario_id: str
 ) -> ClienteIAProtegido:
     """Substitui `AsyncClient(host=settings.ollama_host)` direto — olha o
-    provedor ativo (`configuracoes_provedor.provedor_ia()`) e monta o
-    client real certo (Ollama ou OCI), já envolto na proteção. O modelo
-    continua vindo de fora (`modelo_ia_ativo`), exatamente como já era
-    passado hoje pra `avaliar_chamado`/`classificar_categoria` — este
-    client só cuida de onde a chamada vai, não de qual modelo pedir nela.
-    `usuario_id` é `usuario["sub"]` de quem chamou, ou `USUARIO_SISTEMA`
-    quando não tem sessão por trás (poller, webhook do GLPI) — vai pro
-    relatório "por usuário" da página Tokens do TI."""
-    provedor = configuracoes_provedor.provedor_ia()
-    if provedor == "oci_openai":
-        cliente_real = ClienteOpenAICompativel(
-            AsyncOpenAI(
-                base_url=settings.oci_openai_base_url,
-                api_key=settings.oci_openai_api_key,
-                project=settings.oci_openai_project_id,
-            )
-        )
-        host = settings.oci_openai_base_url
-    else:
+    LLM cadastrado ativo (`tools/ia/provedores_llm.py`, só pra TI/RH) e
+    monta o client real certo, já envolto na proteção. O modelo continua
+    vindo de fora (`modelo_ia_ativo`), exatamente como já era passado hoje
+    pra `avaliar_chamado`/`classificar_categoria` — este client só cuida
+    de onde a chamada vai, não de qual modelo pedir nela. `usuario_id` é
+    `usuario["sub"]` de quem chamou, ou `USUARIO_SISTEMA` quando não tem
+    sessão por trás (poller, webhook do GLPI) — vai pro relatório "por
+    usuário" da página Tokens do TI."""
+    ativo = _provedor_llm_ativo(dominio)
+    if ativo is None:
         host = ollama_host_do_dominio(settings, dominio)
         chave = ollama_api_key_do_dominio(settings, dominio)
         cliente_real = AsyncClient(host=host, headers={"Authorization": f"Bearer {chave}"} if chave else {})
+        provedor = _PROVEDOR_OLLAMA_PADRAO
+    elif ativo.tipo_conexao == "ollama":
+        host = ativo.base_url
+        cliente_real = AsyncClient(
+            host=host, headers={"Authorization": f"Bearer {ativo.api_key}"} if ativo.api_key else {}
+        )
+        provedor = ativo.nome
+    else:
+        cliente_real = ClienteOpenAICompativel(
+            AsyncOpenAI(base_url=ativo.base_url, api_key=ativo.api_key, project=ativo.projeto_id or None),
+            ativo.estilo_api,
+        )
+        host = ativo.base_url
+        provedor = ativo.nome
     return ClienteIAProtegido(
         cliente_real, dominio, host, sanitizar, settings.teto_diario_ia_externa, provedor, usuario_id
     )
 
 
 def modelo_ia_ativo(settings: Settings, dominio: DominioIA) -> str:
-    """O modelo configurado na tela (`configuracoes_provedor.modelo_ia()`),
-    se alguém escolheu um; vazio cai no padrão do provedor ativo — o de
-    sempre pro Ollama, o primeiro da lista fixa (`gpt-oss-120b`) pra OCI."""
-    escolhido = configuracoes_provedor.modelo_ia()
-    if escolhido:
-        return escolhido
-    if configuracoes_provedor.provedor_ia() == "oci_openai":
-        return MODELOS_OCI_GENERATIVE_AI[0]
+    """O modelo do LLM cadastrado ativo; sem cadastro (financeiro/auditoria,
+    ou nada ativo ainda) cai no modelo padrão do Ollama pro domínio."""
+    ativo = _provedor_llm_ativo(dominio)
+    if ativo is not None:
+        return ativo.modelo
     return ollama_model_do_dominio(settings, dominio)

@@ -17,7 +17,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from agente_oracle.config import DominioIA, ProvedorIA
+from agente_oracle.config import DominioIA
 from agente_oracle.db.connection import DatabaseError, get_postgres_connection
 
 _tabela_garantida = False
@@ -101,7 +101,7 @@ def registrar(
     dominio: DominioIA,
     host: str,
     texto: str,
-    provedor: ProvedorIA,
+    provedor: str,
     modelo: str,
     tokens_entrada: int | None,
     tokens_saida: int | None,

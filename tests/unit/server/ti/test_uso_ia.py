@@ -1,8 +1,12 @@
+from datetime import UTC, datetime
+from decimal import Decimal
+
 from agente_oracle.server.ti import uso_ia as uso_ia_module
 from agente_oracle.server.ti.uso_ia import (
     _acesso_negado,
     _chamados_ia_para_json,
     _corpo_uso_ia,
+    _custo_e_moeda,
     _dias_da_query,
     _linha_dia_para_json,
     _linha_para_json,
@@ -14,7 +18,27 @@ from agente_oracle.tools.ia.auditoria_externa import (
     ResumoTokensProvedor,
     ResumoTokensUsuario,
 )
+from agente_oracle.tools.ia.provedores_llm import ProvedorLLM
 from agente_oracle.tools.ti.uso_ia_chamados import ResumoUsoIa
+
+
+def _provedor_llm(**overrides) -> ProvedorLLM:
+    campos = {
+        "id": 1,
+        "nome": "ollama",
+        "tipo_conexao": "ollama",
+        "base_url": "http://127.0.0.1:11434",
+        "api_key": "",
+        "projeto_id": "",
+        "modelo": "qwen2.5-coder:7b",
+        "estilo_api": "chat_completions",
+        "preco_entrada_por_1k": Decimal("0.01"),
+        "preco_saida_por_1k": Decimal("0.02"),
+        "moeda": "R$",
+        "criado_em": datetime.now(UTC),
+    }
+    campos.update(overrides)
+    return ProvedorLLM(**campos)
 
 
 class TestDiasDaQuery:
@@ -28,6 +52,33 @@ class TestDiasDaQuery:
         assert _dias_da_query("abc") == 30
 
 
+class TestCustoEMoeda:
+    def test_bate_com_o_cadastro_calcula_o_custo(self):
+        cadastro = _provedor_llm(preco_entrada_por_1k=Decimal("0.01"), preco_saida_por_1k=Decimal("0.02"))
+        mapa = {("ollama", "qwen2.5-coder:7b"): cadastro}
+
+        custo, moeda = _custo_e_moeda("ollama", "qwen2.5-coder:7b", 1000, 1000, mapa)
+
+        assert custo == 0.03
+        assert moeda == "R$"
+
+    def test_sem_bater_com_nenhum_cadastro_devolve_none(self):
+        custo, moeda = _custo_e_moeda("provedor-removido", "modelo-x", 1000, 1000, {})
+
+        assert custo is None
+        assert moeda is None
+
+    def test_fallback_ollama_padrao_nunca_bate_com_cadastro(self):
+        # "Ollama (padrão)" não é uma linha do cadastro — nunca aparece no
+        # mapa (nome, modelo), então nunca tem custo estimado.
+        mapa = {("ollama", "qwen2.5-coder:7b"): _provedor_llm()}
+
+        custo, moeda = _custo_e_moeda("Ollama (padrão)", "qwen2.5-coder:7b", 1000, 1000, mapa)
+
+        assert custo is None
+        assert moeda is None
+
+
 class TestLinhaParaJson:
     def test_soma_tokens_entrada_e_saida_e_inclui_raciocinio(self):
         linha = ResumoTokensProvedor(
@@ -39,7 +90,7 @@ class TestLinhaParaJson:
             tokens_raciocinio_total=62,
         )
 
-        corpo = _linha_para_json(linha)
+        corpo = _linha_para_json(linha, {})
 
         assert corpo == {
             "provedor": "oci_openai",
@@ -49,7 +100,25 @@ class TestLinhaParaJson:
             "tokens_saida": 96,
             "tokens_raciocinio": 62,
             "tokens_total": 230,
+            "custo_estimado": None,
+            "moeda": None,
         }
+
+    def test_inclui_custo_estimado_quando_bate_com_o_cadastro(self):
+        linha = ResumoTokensProvedor(
+            provedor="ollama",
+            modelo="qwen2.5-coder:7b",
+            chamadas=1,
+            tokens_entrada_total=1000,
+            tokens_saida_total=1000,
+            tokens_raciocinio_total=0,
+        )
+        mapa = {("ollama", "qwen2.5-coder:7b"): _provedor_llm(preco_entrada_por_1k=Decimal("0.01"), preco_saida_por_1k=Decimal("0.02"))}
+
+        corpo = _linha_para_json(linha, mapa)
+
+        assert corpo["custo_estimado"] == 0.03
+        assert corpo["moeda"] == "R$"
 
 
 class TestNomeUsuario:
@@ -136,6 +205,7 @@ class TestCorpoUsoIa:
         )
         monkeypatch.setattr(uso_ia_module.auditoria_externa, "tokens_hoje", lambda dominio: 450)
         monkeypatch.setattr(uso_ia_module.usuarios, "listar_usuarios", lambda: [{"id": 42, "nome": "Daniel Faria"}])
+        monkeypatch.setattr(uso_ia_module.provedores_llm, "listar", lambda: [_provedor_llm()])
         monkeypatch.setattr(
             uso_ia_module.uso_ia_chamados,
             "resumo_uso",

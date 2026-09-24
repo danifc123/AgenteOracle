@@ -8,6 +8,7 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { FatiaRosca, GraficoRosca } from '../../../../componentes/grafico-rosca/grafico-rosca';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
+import { MenuAcoes } from '../../../../componentes/menu-acoes/menu-acoes';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
@@ -70,13 +71,13 @@ const PASSOS_TOUR_CADASTRO: PassoTour[] = [
     alvo: '[data-tour-alvo="tipo-conexao"]',
     titulo: 'Tipo de conexão',
     descricao:
-      'A OCI fala a API da OpenAI, então escolha "Compatível com OpenAI". Isso revela dois campos a mais (Estilo de chamada e Projeto) — cada um tem sua própria dica quando aparecer.',
+      'Escolha o formato que o provedor fala: "Ollama" pra Ollama local ou instalação própria, e "Compatível com OpenAI" pra qualquer serviço que fale a API da OpenAI — a OCI é um exemplo disso. Escolher "Compatível com OpenAI" revela dois campos a mais (Estilo de chamada e Projeto), cada um com sua própria dica quando aparecer.',
   },
   {
     alvo: '[data-tour-alvo="endereco"]',
     titulo: 'Endereço (URL base)',
     descricao:
-      'O endereço da OCI Generative AI segue este padrão, trocando <região> pela mesma que você já usa no console da Oracle. https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1',
+      'O endereço base que o provedor informou na documentação — muda de provedor pra provedor. Exemplo real, da OCI Generative AI: https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1 (trocando <região> pela região da conta).',
   },
   {
     alvo: '[data-tour-alvo="modelo"]',
@@ -87,13 +88,14 @@ const PASSOS_TOUR_CADASTRO: PassoTour[] = [
   {
     alvo: '[data-tour-alvo="chave-api"]',
     titulo: 'Chave de API',
-    descricao: 'A chave que a OCI te deu. É secreta — depois de salva, nunca mais volta preenchida na tela, nem pra você.',
+    descricao:
+      'A chave de API que o provedor te deu — no caso da OCI, por exemplo, vem de um projeto criado no console da Oracle. É secreta: depois de salva, nunca mais volta preenchida na tela, nem pra você.',
   },
   {
     alvo: '[data-tour-alvo="precos"]',
     titulo: 'Preço por 1.000 tokens e moeda',
     descricao:
-      'Preço é opcional — pode deixar 0 por enquanto, e preencher quando a Oracle mandar o valor de verdade. Moeda é só o prefixo mostrado na tela (ex: "R$"), sem conversão automática.',
+      'Preço é opcional — pode deixar 0 por enquanto, e preencher depois quando o provedor informar o valor de verdade (ex: quando a Oracle mandar a tabela de preços da OCI). Moeda é só o prefixo mostrado na tela (ex: "R$"), sem conversão automática.',
   },
   {
     alvo: '[data-tour-alvo="criar-provedor"]',
@@ -177,6 +179,7 @@ function formatarCusto(custo: number, moeda: string): string {
     EstadoVazio,
     GraficoRosca,
     GraficoSerie,
+    MenuAcoes,
     ModuloHeader,
     SelectBusca,
     Selo,
@@ -203,6 +206,7 @@ export class ProvedoresLlm {
   provedorParaApagar = signal<ProvedorLlm | null>(null);
   apagandoId = signal<number | null>(null);
   ativandoId = signal<number | null>(null);
+  desativandoId = signal<number | null>(null);
 
   formNome = signal('');
   formTipoConexao = signal<TipoConexaoLlm>('ollama');
@@ -447,6 +451,27 @@ export class ProvedoresLlm {
       error: (erro: HttpErrorResponse) => {
         this.erro.set(mensagemErro(erro, 'Não foi possível ativar o provedor.'));
         this.ativandoId.set(null);
+      },
+    });
+  }
+
+  /** Volta pro fallback do Ollama do `.env` sem apagar nenhum provedor
+   * cadastrado — diferente de `apagar`, que perde o cadastro. */
+  desativar(provedor: ProvedorLlm): void {
+    if (this.desativandoId()) {
+      return;
+    }
+    this.desativandoId.set(provedor.id);
+    this.erro.set(null);
+
+    this.http.post<ProvedorLlm[]>(`${URL_PROVEDORES}/desativar`, {}).subscribe({
+      next: (provedores) => {
+        this.provedores.set(provedores);
+        this.desativandoId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erro.set(mensagemErro(erro, 'Não foi possível desativar o provedor.'));
+        this.desativandoId.set(null);
       },
     });
   }

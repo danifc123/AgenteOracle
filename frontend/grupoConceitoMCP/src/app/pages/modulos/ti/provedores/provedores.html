@@ -134,25 +134,36 @@
                 }
               </td>
               <td class="acoes">
-                @if (!provedor.ativo) {
+                <app-menu-acoes>
+                  @if (!provedor.ativo) {
+                    <app-botao
+                      variant="contorno"
+                      [loading]="ativandoId() === provedor.id"
+                      loadingText="Ativando..."
+                      (clicked)="ativar(provedor)"
+                    >
+                      Ativar
+                    </app-botao>
+                  } @else {
+                    <app-botao
+                      variant="contorno"
+                      [loading]="desativandoId() === provedor.id"
+                      loadingText="Desativando..."
+                      (clicked)="desativar(provedor)"
+                    >
+                      Desativar
+                    </app-botao>
+                  }
+                  <app-botao variant="contorno" (clicked)="abrirDialogEditar(provedor)">Editar</app-botao>
                   <app-botao
-                    variant="contorno"
-                    [loading]="ativandoId() === provedor.id"
-                    loadingText="Ativando..."
-                    (clicked)="ativar(provedor)"
+                    variant="perigo"
+                    [loading]="apagandoId() === provedor.id"
+                    loadingText="Apagando..."
+                    (clicked)="apagar(provedor)"
                   >
-                    Ativar
+                    Apagar
                   </app-botao>
-                }
-                <app-botao variant="contorno" (clicked)="abrirDialogEditar(provedor)">Editar</app-botao>
-                <app-botao
-                  variant="perigo"
-                  [loading]="apagandoId() === provedor.id"
-                  loadingText="Apagando..."
-                  (clicked)="apagar(provedor)"
-                >
-                  Apagar
-                </app-botao>
+                </app-menu-acoes>
               </td>
             </tr>
           }

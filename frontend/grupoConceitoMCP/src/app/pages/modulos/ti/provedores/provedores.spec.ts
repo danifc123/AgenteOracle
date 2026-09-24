@@ -120,17 +120,37 @@ function criar(
       (Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Novo provedor')) as HTMLButtonElement).click();
       fixture.detectChanges();
     },
+    // As ações (Ativar/Desativar/Editar/Apagar) ficam dentro do menu
+    // suspenso do `app-menu-acoes` — abre o gatilho da linha antes de
+    // procurar o botão, igual um usuário de verdade precisaria clicar.
+    abrirMenuAcoes: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
     abrirEditar: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
       (botoes.find((b) => b.textContent?.includes('Editar')) as HTMLButtonElement).click();
       fixture.detectChanges();
     },
     clicarAtivar: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
       (botoes.find((b) => b.textContent?.includes('Ativar')) as HTMLButtonElement).click();
       fixture.detectChanges();
     },
+    clicarDesativar: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.trim() === 'Desativar') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
     clicarApagar: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
       (botoes.find((b) => b.textContent?.includes('Apagar')) as HTMLButtonElement).click();
       fixture.detectChanges();
@@ -199,12 +219,15 @@ describe('ProvedoresLlm', () => {
       expect(linhasProvedores()[1].textContent).toContain('Configurada');
     });
 
-    it('só o provedor inativo mostra o botão "Ativar"', () => {
-      const { linhasProvedores } = criar();
+    it('só o provedor inativo mostra o botão "Ativar" no menu de ações', () => {
+      const { linhasProvedores, abrirMenuAcoes } = criar();
 
+      abrirMenuAcoes(0);
       expect(
         Array.from(linhasProvedores()[0].querySelectorAll('button')).some((b) => b.textContent?.includes('Ativar')),
       ).toBe(false);
+
+      abrirMenuAcoes(1);
       expect(
         Array.from(linhasProvedores()[1].querySelectorAll('button')).some((b) => b.textContent?.includes('Ativar')),
       ).toBe(true);
@@ -225,6 +248,39 @@ describe('ProvedoresLlm', () => {
       fixture.detectChanges();
 
       expect(linhasProvedores()[1].textContent).toContain('Ativo');
+    });
+
+    it('só o provedor ativo mostra o botão "Desativar" no menu de ações', () => {
+      const { linhasProvedores, abrirMenuAcoes } = criar();
+
+      abrirMenuAcoes(0);
+      expect(
+        Array.from(linhasProvedores()[0].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Desativar'),
+      ).toBe(true);
+
+      abrirMenuAcoes(1);
+      expect(
+        Array.from(linhasProvedores()[1].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Desativar'),
+      ).toBe(false);
+    });
+
+    it('desativar chama a rota certa e volta a lista pro fallback do Ollama, sem apagar nada', () => {
+      const { fixture, clicarDesativar, http, linhasProvedores, texto } = criar();
+
+      clicarDesativar(0);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/desativar') && req.method === 'POST',
+      );
+      requisicao.flush([
+        { ...PROVEDOR_OLLAMA, ativo: false },
+        { ...PROVEDOR_OCI, ativo: false },
+      ]);
+      fixture.detectChanges();
+
+      expect(linhasProvedores()[0].textContent).toContain('Inativo');
+      expect(texto()).toContain('Ollama local');
+      expect(texto()).toContain('OCI Generative AI — gpt-oss-120b');
     });
 
     it('apagar pede confirmação antes de chamar o backend', () => {

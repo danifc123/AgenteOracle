@@ -126,6 +126,15 @@ class TestResumoPorProvedor:
 
         assert mod.resumo_por_provedor(dias=30) == []
 
+    def test_sql_exclui_chamadas_de_antes_da_coluna_provedor_existir(self, monkeypatch):
+        cursor = _CursorFake(linhas_fetchall=[])
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.resumo_por_provedor(dias=30)
+
+        sql, _binds = cursor.execucoes[-1]
+        assert "provedor IS NOT NULL" in sql
+
 
 class TestResumoPorUsuario:
     def test_agrega_por_usuario_ordenado_por_consumo_total_desc(self, monkeypatch):
@@ -161,6 +170,15 @@ class TestResumoPorUsuario:
         _conexao_fake_para(monkeypatch, _CursorFake(linhas_fetchall=[]))
 
         assert mod.resumo_por_usuario(dias=30) == []
+
+    def test_sql_exclui_chamadas_de_antes_da_coluna_usuario_id_existir(self, monkeypatch):
+        cursor = _CursorFake(linhas_fetchall=[])
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.resumo_por_usuario(dias=30)
+
+        sql, _binds = cursor.execucoes[-1]
+        assert "usuario_id IS NOT NULL" in sql
 
 
 class TestResumoDiario:

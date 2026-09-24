@@ -169,10 +169,12 @@ def tokens_hoje(dominio: DominioIA) -> int:
 
 def resumo_por_provedor(dias: int) -> list[ResumoTokensProvedor]:
     """Volume real de chamadas e tokens dos últimos `dias` dias, agrupado
-    por provedor + modelo — a base da página Tokens do TI
-    (`server/ti/uso_ia.py`, `pages/modulos/ti/tokens/` no frontend). Não
-    converte em dinheiro: a OCI ainda não nos passou preço por token, então
-    mostrar só o volume real é mais honesto que estimar um valor."""
+    por provedor + modelo — a base da página de IA do TI
+    (`server/ti/uso_ia.py`, `pages/modulos/ti/provedores/` no frontend).
+    `provedor IS NOT NULL` exclui chamadas registradas antes dessa coluna
+    existir (ver `ALTER TABLE ... ADD COLUMN` em `_garantir_tabela`) — sem
+    esse filtro elas apareceriam como uma linha "vazia" confusa, somando
+    chamadas sem nenhum provedor/modelo/token de verdade por trás."""
     desde = datetime.now(UTC) - timedelta(days=dias)
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
@@ -183,7 +185,7 @@ def resumo_por_provedor(dias: int) -> list[ResumoTokensProvedor]:
                    COALESCE(SUM(tokens_entrada), 0), COALESCE(SUM(tokens_saida), 0),
                    COALESCE(SUM(tokens_raciocinio), 0)
             FROM auditoria_ia_externa
-            WHERE criado_em >= :desde
+            WHERE criado_em >= :desde AND provedor IS NOT NULL
             GROUP BY provedor, modelo
             ORDER BY provedor, modelo
             """,
@@ -192,7 +194,7 @@ def resumo_por_provedor(dias: int) -> list[ResumoTokensProvedor]:
         linhas = cursor.fetchall()
     return [
         ResumoTokensProvedor(
-            provedor=provedor or "",
+            provedor=provedor,
             modelo=modelo or "",
             chamadas=chamadas,
             tokens_entrada_total=int(tokens_entrada_total),
@@ -205,10 +207,12 @@ def resumo_por_provedor(dias: int) -> list[ResumoTokensProvedor]:
 
 def resumo_por_usuario(dias: int) -> list[ResumoTokensUsuario]:
     """Mesma ideia de `resumo_por_provedor`, agrupado por `usuario_id` em
-    vez de provedor/modelo — responde "quem gasta mais" na página Tokens
-    do TI. Ordena por consumo total DESCENDENTE de propósito (diferente de
+    vez de provedor/modelo — responde "quem gasta mais" na página de IA do
+    TI. Ordena por consumo total DESCENDENTE de propósito (diferente de
     `resumo_por_provedor`, que é alfabético): aqui a ordem em si já é a
-    resposta, sem precisar reordenar na tela."""
+    resposta, sem precisar reordenar na tela. Mesmo filtro
+    `usuario_id IS NOT NULL` de `resumo_por_provedor`, mesmo motivo:
+    exclui chamadas registradas antes dessa coluna existir."""
     desde = datetime.now(UTC) - timedelta(days=dias)
     with get_postgres_connection() as connection:
         cursor = connection.cursor()
@@ -219,7 +223,7 @@ def resumo_por_usuario(dias: int) -> list[ResumoTokensUsuario]:
                    COALESCE(SUM(tokens_entrada), 0), COALESCE(SUM(tokens_saida), 0),
                    COALESCE(SUM(tokens_raciocinio), 0)
             FROM auditoria_ia_externa
-            WHERE criado_em >= :desde
+            WHERE criado_em >= :desde AND usuario_id IS NOT NULL
             GROUP BY usuario_id
             ORDER BY COALESCE(SUM(tokens_entrada), 0) + COALESCE(SUM(tokens_saida), 0) DESC
             """,
@@ -228,7 +232,7 @@ def resumo_por_usuario(dias: int) -> list[ResumoTokensUsuario]:
         linhas = cursor.fetchall()
     return [
         ResumoTokensUsuario(
-            usuario_id=usuario_id or "",
+            usuario_id=usuario_id,
             chamadas=chamadas,
             tokens_entrada_total=int(tokens_entrada_total),
             tokens_saida_total=int(tokens_saida_total),

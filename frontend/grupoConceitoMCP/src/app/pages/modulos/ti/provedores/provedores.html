@@ -1,90 +1,345 @@
 <app-modulo-header
   breadcrumb="TI"
-  titulo="Provedores de IA"
-  descricao="Cadastro dos LLMs que TI e RH podem usar — ative qual está em uso agora. Visível só pra desenvolvedores."
-/>
+  titulo="IA"
+  descricao="Cadastro dos LLMs que TI e RH podem usar, e quanto cada um está custando. Visível só pra desenvolvedores."
+>
+  <div acoes class="acoes-config">
+    <app-botao
+      variant="icone"
+      ariaLabel="Configurações de tokens"
+      title="Configurações de tokens"
+      (clicked)="configuracoesAbertas.set(true)"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        />
+      </svg>
+    </app-botao>
+  </div>
+</app-modulo-header>
 
-<div class="barra-acoes">
-  <app-botao variant="primaria" (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
+<app-dialog
+  [aberto]="configuracoesAbertas()"
+  titulo="Configurações de tokens"
+  tamanho="compacto"
+  [temRodape]="true"
+  (fechar)="configuracoesAbertas.set(false)"
+>
+  <p class="apoio">Visível só para desenvolvedores.</p>
+
+  <div class="linha-teto">
+    <app-campo-numerico
+      rotulo="Teto diário de tokens"
+      descricao="0 = sem teto. Ao passar do teto, só avisa no log do servidor — nenhuma chamada é bloqueada."
+      [valor]="tetoTexto()"
+      [erro]="tetoValido() === null ? 'Informe um número inteiro maior ou igual a 0.' : null"
+      (valorChange)="tetoTexto.set($event)"
+    />
+  </div>
+
+  @if (erroTeto()) {
+    <p class="erro">{{ erroTeto() }}</p>
+  }
+
+  @if (percentualTeto() !== null) {
+    <p class="status-teto">
+      <app-selo [tom]="tomTeto()" [texto]="percentualTeto() + '% do teto usado hoje'" />
+    </p>
+  } @else {
+    <p class="status-teto">
+      <span class="sem-teto">Sem teto configurado — "Tokens hoje" é só informativo.</span>
+    </p>
+  }
+
+  <div rodape class="botoes-rodape">
+    <app-botao variant="contorno" (clicked)="configuracoesAbertas.set(false)">Cancelar</app-botao>
+    <app-botao
+      variant="primaria"
+      [disabled]="tetoValido() === null"
+      [loading]="salvandoTeto()"
+      loadingText="Salvando..."
+      (clicked)="salvarTeto()"
+    >
+      Salvar teto
+    </app-botao>
+  </div>
+</app-dialog>
+
+<section class="cartao-secao">
+  <div class="cabecalho-secao">
+    <h2>Provedores cadastrados</h2>
+    <app-botao variant="primaria" (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
+  </div>
+
+  @if (erro()) {
+    <p class="erro-carregamento">{{ erro() }}</p>
+  }
+
+  @if (carregando()) {
+    <p class="carregando">Carregando provedores...</p>
+  } @else if (provedores().length === 0) {
+    <app-estado-vazio titulo="Nenhum provedor cadastrado" variante="simples">
+      <p>
+        Sem nada cadastrado, o sistema usa o Ollama padrão do <code>.env</code>. Use o botão "Novo
+        provedor" pra cadastrar o primeiro.
+      </p>
+    </app-estado-vazio>
+  } @else {
+    <div class="table-wrapper">
+      <table class="tabela-provedores">
+        <thead>
+          <tr>
+            <th>Nome</th>
+            <th>Tipo</th>
+            <th>Modelo</th>
+            <th class="num">Preço entrada /1k</th>
+            <th class="num">Preço saída /1k</th>
+            <th>Chave</th>
+            <th>Status</th>
+            <th><span class="sr-only">Ações</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (provedor of provedores(); track provedor.id) {
+            <tr>
+              <td>{{ provedor.nome }}</td>
+              <td>{{ rotuloTipoConexao(provedor.tipo_conexao) }}</td>
+              <td>{{ provedor.modelo }}</td>
+              <td class="num">{{ provedor.moeda }} {{ provedor.preco_entrada_por_1k }}</td>
+              <td class="num">{{ provedor.moeda }} {{ provedor.preco_saida_por_1k }}</td>
+              <td>
+                @if (provedor.api_key_configurada) {
+                  <app-selo tom="ok" texto="Configurada" />
+                } @else {
+                  <app-selo tom="neutro" texto="Sem chave" />
+                }
+              </td>
+              <td>
+                @if (provedor.ativo) {
+                  <app-selo tom="ok" texto="Ativo" />
+                } @else {
+                  <app-selo tom="neutro" texto="Inativo" />
+                }
+              </td>
+              <td class="acoes">
+                @if (!provedor.ativo) {
+                  <app-botao
+                    variant="contorno"
+                    [loading]="ativandoId() === provedor.id"
+                    loadingText="Ativando..."
+                    (clicked)="ativar(provedor)"
+                  >
+                    Ativar
+                  </app-botao>
+                }
+                <app-botao variant="contorno" (clicked)="abrirDialogEditar(provedor)">Editar</app-botao>
+                <app-botao
+                  variant="perigo"
+                  [loading]="apagandoId() === provedor.id"
+                  loadingText="Apagando..."
+                  (clicked)="apagar(provedor)"
+                >
+                  Apagar
+                </app-botao>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+<div class="grade-visao-geral">
+  <section class="cartao-secao cartao-grafico">
+    <h2>Consumo por provedor (30 dias)</h2>
+    @if (fatiasProvedor().length === 0) {
+      <p class="lista-vazia">Sem dado ainda.</p>
+    } @else {
+      <app-grafico-rosca unidade="numero" [fatias]="fatiasProvedor()" />
+    }
+  </section>
+
+  <section class="cartao-secao cartao-grafico cartao-grafico-principal">
+    <div class="cabecalho-hoje">
+      <h2>Tendência diária</h2>
+      <div class="hoje">
+        <span class="hoje-rotulo">Hoje</span>
+        <span class="hoje-valor">{{ tokensHojeTotal() }}</span>
+        <span class="hoje-unidade">tokens</span>
+        @if (percentualTeto() !== null) {
+          <app-selo [tom]="tomTeto()" [texto]="percentualTeto() + '% do teto'" />
+        }
+      </div>
+    </div>
+    @if (porDia().length === 0) {
+      <p class="lista-vazia">Sem dado ainda.</p>
+    } @else {
+      <app-grafico-serie tipo="barra" unidade="numero" [series]="serieTokensPorDia()" />
+    }
+  </section>
 </div>
 
-@if (erro()) {
-  <p class="erro-carregamento">{{ erro() }}</p>
-}
-
-@if (carregando()) {
-  <p class="carregando">Carregando provedores...</p>
-} @else if (provedores().length === 0) {
-  <app-estado-vazio titulo="Nenhum provedor cadastrado" variante="simples">
-    <p>
-      Sem nada cadastrado, o sistema usa o Ollama padrão do <code>.env</code>. Use o botão "Novo
-      provedor" pra cadastrar o primeiro.
-    </p>
-  </app-estado-vazio>
-} @else {
-  <div class="table-wrapper">
-    <table class="tabela-provedores">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Tipo</th>
-          <th>Modelo</th>
-          <th class="num">Preço entrada /1k</th>
-          <th class="num">Preço saída /1k</th>
-          <th>Chave</th>
-          <th>Status</th>
-          <th><span class="sr-only">Ações</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (provedor of provedores(); track provedor.id) {
-          <tr>
-            <td>{{ provedor.nome }}</td>
-            <td>{{ rotuloTipoConexao(provedor.tipo_conexao) }}</td>
-            <td>{{ provedor.modelo }}</td>
-            <td class="num">{{ provedor.moeda }} {{ provedor.preco_entrada_por_1k }}</td>
-            <td class="num">{{ provedor.moeda }} {{ provedor.preco_saida_por_1k }}</td>
-            <td>
-              @if (provedor.api_key_configurada) {
-                <app-selo tom="ok" texto="Configurada" />
-              } @else {
-                <app-selo tom="neutro" texto="Sem chave" />
-              }
-            </td>
-            <td>
-              @if (provedor.ativo) {
-                <app-selo tom="ok" texto="Ativo" />
-              } @else {
-                <app-selo tom="neutro" texto="Inativo" />
-              }
-            </td>
-            <td class="acoes">
-              @if (!provedor.ativo) {
-                <app-botao
-                  variant="contorno"
-                  [loading]="ativandoId() === provedor.id"
-                  loadingText="Ativando..."
-                  (clicked)="ativar(provedor)"
-                >
-                  Ativar
-                </app-botao>
-              }
-              <app-botao variant="contorno" (clicked)="abrirDialogEditar(provedor)">Editar</app-botao>
-              <app-botao
-                variant="perigo"
-                [loading]="apagandoId() === provedor.id"
-                loadingText="Apagando..."
-                (clicked)="apagar(provedor)"
-              >
-                Apagar
-              </app-botao>
-            </td>
-          </tr>
-        }
-      </tbody>
-    </table>
+<section class="cartao-secao">
+  <div class="cabecalho-secao">
+    <h2>Detalhe do consumo (últimos 30 dias)</h2>
+    <div class="alternador" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        class="aba"
+        [class.aba--ativa]="abaAtiva() === 'geral'"
+        [attr.aria-selected]="abaAtiva() === 'geral'"
+        (click)="abaAtiva.set('geral')"
+      >
+        Geral
+      </button>
+      <button
+        type="button"
+        role="tab"
+        class="aba"
+        [class.aba--ativa]="abaAtiva() === 'usuario'"
+        [attr.aria-selected]="abaAtiva() === 'usuario'"
+        (click)="abaAtiva.set('usuario')"
+      >
+        Por usuário
+      </button>
+    </div>
   </div>
-}
+
+  @if (abaAtiva() === 'geral') {
+    @if (consumo().length === 0) {
+      <app-estado-vazio variante="simples" titulo="Nenhum consumo ainda">
+        <svg
+          viewBox="0 0 24 24"
+          width="40"
+          height="40"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <circle cx="9" cy="15" r="5.5" />
+          <circle cx="15" cy="9" r="5.5" />
+        </svg>
+        <p>Assim que uma chamada de IA passar por TI ou RH, o consumo aparece aqui.</p>
+      </app-estado-vazio>
+    } @else {
+      <div class="table-wrapper">
+        <table class="tabela-consumo">
+          <thead>
+            <tr>
+              <th>Provedor</th>
+              <th>Modelo</th>
+              <th class="num">Chamadas</th>
+              <th class="num">Tokens entrada</th>
+              <th class="num">Tokens saída</th>
+              <th class="num">Dos quais raciocínio</th>
+              <th class="num">Custo estimado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (linha of consumo(); track linha.provedor + linha.modelo) {
+              <tr>
+                <td>{{ linha.provedor }}</td>
+                <td>{{ linha.modelo || '(padrão do provedor)' }}</td>
+                <td class="num">{{ linha.chamadas }}</td>
+                <td class="num">{{ linha.tokens_entrada }}</td>
+                <td class="num">{{ linha.tokens_saida }}</td>
+                <td class="num">{{ linha.tokens_raciocinio || '—' }}</td>
+                <td class="num">{{ rotuloCusto(linha.custo_estimado, linha.moeda) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  } @else {
+    @if (porUsuario().length === 0) {
+      <app-estado-vazio variante="simples" titulo="Nenhum consumo ainda">
+        <svg
+          viewBox="0 0 24 24"
+          width="40"
+          height="40"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2" stroke-linecap="round" />
+        </svg>
+        <p>Assim que uma chamada de IA passar por TI ou RH, o consumo por pessoa aparece aqui.</p>
+      </app-estado-vazio>
+    } @else {
+      <div class="table-wrapper">
+        <table class="tabela-consumo">
+          <thead>
+            <tr>
+              <th>Usuário</th>
+              <th class="num">Chamadas</th>
+              <th class="num">Tokens entrada</th>
+              <th class="num">Tokens saída</th>
+              <th class="num">Dos quais raciocínio</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (linha of porUsuario(); track linha.usuario_id) {
+              <tr>
+                <td>{{ linha.nome }}</td>
+                <td class="num">{{ linha.chamadas }}</td>
+                <td class="num">{{ linha.tokens_entrada }}</td>
+                <td class="num">{{ linha.tokens_saida }}</td>
+                <td class="num">{{ linha.tokens_raciocinio || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+</section>
+
+<section class="cartao-secao">
+  <h2>Como gastar menos</h2>
+  <p class="aviso" role="note">
+    <svg
+      class="aviso-icone"
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 18h6M10 21h4" />
+      <path d="M12 3a6 6 0 0 0-4 10.5c.6.55 1 1.28 1 2.5h6c0-1.22.4-1.95 1-2.5A6 6 0 0 0 12 3Z" />
+    </svg>
+    <span>
+      O <strong>gpt-oss-120b</strong> passa por um passo de raciocínio interno antes de responder — num
+      teste real com o suporte Oracle, isso consumiu 65% dos tokens de saída, sem fazer parte da resposta
+      em si (coluna "Dos quais raciocínio" acima). Pra tarefas simples e já delimitadas — classificar
+      categoria de chamado, extrair perfil de currículo — os modelos Llama tendem a custar menos por não
+      terem essa etapa. Vale reservar o gpt-oss-120b pra onde o raciocínio realmente ajuda, como comparar e
+      justificar candidatos.
+    </span>
+  </p>
+</section>
 
 <app-dialog
   [aberto]="dialogAberto()"
@@ -92,8 +347,15 @@
   [temRodape]="true"
   (fechar)="fecharDialog()"
 >
+  @if (!editando()) {
+    <p class="barra-tour">
+      Nunca cadastrou um provedor?
+      <app-botao variant="contorno" (clicked)="abrirTour()">Veja um exemplo guiado (usando a OCI)</app-botao>
+    </p>
+  }
+
   <form class="form-provedor" (submit)="salvar(); $event.preventDefault()">
-    <label class="campo">
+    <label class="campo" data-tour-alvo="nome">
       <span>Nome</span>
       <input
         type="text"
@@ -105,25 +367,38 @@
     </label>
 
     <app-select-busca
+      data-tour-alvo="tipo-conexao"
       rotulo="Tipo de conexão"
       placeholder="Escolha o tipo"
       [opcoes]="opcoesTipoConexao"
       [valor]="formTipoConexao()"
       (valorChange)="formTipoConexao.set($any($event))"
     />
+    <p class="dica">
+      Ollama roda local ou numa instalação própria; "Compatível com OpenAI" cobre qualquer serviço que
+      fale a API da OpenAI — como a OCI Generative AI.
+    </p>
 
-    <label class="campo">
+    <label class="campo" data-tour-alvo="endereco">
       <span>Endereço (URL base)</span>
       <input
         type="text"
         [value]="formBaseUrl()"
         (input)="formBaseUrl.set($any($event.target).value)"
         autocomplete="off"
-        placeholder="http://127.0.0.1:11434"
+        [placeholder]="ehOpenAiCompativel() ? 'https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1' : 'http://127.0.0.1:11434'"
       />
+      @if (ehOpenAiCompativel()) {
+        <span class="dica">
+          Formato da OCI Generative AI, sem colar o rótulo — só o endereço:
+          <code>https://inference.generativeai.&lt;região&gt;.oci.oraclecloud.com/openai/v1</code>
+        </span>
+      } @else {
+        <span class="dica">Formato local do Ollama, sem colar o rótulo — só o endereço: <code>http://127.0.0.1:11434</code></span>
+      }
     </label>
 
-    <label class="campo">
+    <label class="campo" data-tour-alvo="modelo">
       <span>Modelo</span>
       <input
         type="text"
@@ -132,6 +407,10 @@
         autocomplete="off"
         placeholder="Ex: qwen2.5-coder:7b"
       />
+      <span class="dica">
+        Nome exato do modelo, do jeito que o provedor espera — ex: openai.gpt-oss-120b,
+        meta.llama-3.3-70b-instruct, ou qwen2.5-coder:7b pro Ollama.
+      </span>
     </label>
 
     @if (ehOpenAiCompativel()) {
@@ -142,6 +421,10 @@
         [valor]="formEstiloApi()"
         (valorChange)="formEstiloApi.set($any($event))"
       />
+      <p class="dica">
+        Chat Completions é o padrão pra maioria dos modelos. Responses API só é necessário quando o
+        suporte do provedor confirmar que o modelo exige — ex: gpt-oss-120b da OCI.
+      </p>
 
       <label class="campo">
         <span>Projeto (opcional)</span>
@@ -152,10 +435,11 @@
           autocomplete="off"
           placeholder="ocid1.generativeaiproject.oc1..."
         />
+        <span class="dica">Só alguns provedores pedem isso — ex: o OCID do projeto na OCI.</span>
       </label>
     }
 
-    <label class="campo">
+    <label class="campo" data-tour-alvo="chave-api">
       <span>Chave de API{{ editando() ? '' : ' (opcional)' }}</span>
       <input
         type="password"
@@ -169,35 +453,48 @@
       }
     </label>
 
-    <div class="linha-precos">
-      <app-campo-numerico
-        rotulo="Preço entrada /1k tokens"
-        [valor]="formPrecoEntrada()"
-        [erro]="precoEntradaValido() === null ? 'Informe um número >= 0.' : null"
-        (valorChange)="formPrecoEntrada.set($event)"
-      />
-      <app-campo-numerico
-        rotulo="Preço saída /1k tokens"
-        [valor]="formPrecoSaida()"
-        [erro]="precoSaidaValido() === null ? 'Informe um número >= 0.' : null"
-        (valorChange)="formPrecoSaida.set($event)"
-      />
+    <div class="linha-precos" data-tour-alvo="precos">
+      <label class="campo">
+        <span>Preço entrada /1k tokens</span>
+        <input
+          type="text"
+          inputmode="decimal"
+          [value]="formPrecoEntrada()"
+          (input)="formPrecoEntrada.set($any($event.target).value)"
+          autocomplete="off"
+        />
+        @if (precoEntradaValido() === null) {
+          <span class="erro">Informe um número &gt;= 0.</span>
+        }
+      </label>
+      <label class="campo">
+        <span>Preço saída /1k tokens</span>
+        <input
+          type="text"
+          inputmode="decimal"
+          [value]="formPrecoSaida()"
+          (input)="formPrecoSaida.set($any($event.target).value)"
+          autocomplete="off"
+        />
+        @if (precoSaidaValido() === null) {
+          <span class="erro">Informe um número &gt;= 0.</span>
+        }
+      </label>
+      <label class="campo campo-moeda">
+        <span>Moeda</span>
+        <input
+          type="text"
+          [value]="formMoeda()"
+          (input)="formMoeda.set($any($event.target).value)"
+          autocomplete="off"
+          placeholder="R$"
+        />
+      </label>
     </div>
-
-    <label class="campo campo-moeda">
-      <span>Moeda</span>
-      <input
-        type="text"
-        [value]="formMoeda()"
-        (input)="formMoeda.set($any($event.target).value)"
-        autocomplete="off"
-        placeholder="R$"
-      />
-    </label>
 
     <p class="dica">
       Preço é opcional (0 = sem custo) — inclusive pra Ollama, que não tem custo real. Só alimenta a
-      estimativa de custo da tela de Tokens.
+      estimativa de custo mostrada mais abaixo, nesta mesma tela.
     </p>
 
     @if (erroForm()) {
@@ -208,6 +505,7 @@
   <div rodape class="rodape-form">
     <app-botao variant="contorno" [disabled]="salvando()" (clicked)="fecharDialog()">Cancelar</app-botao>
     <app-botao
+      data-tour-alvo="criar-provedor"
       variant="primaria"
       [loading]="salvando()"
       loadingText="Salvando..."
@@ -226,3 +524,5 @@
   (confirmar)="confirmarApagar()"
   (cancelar)="cancelarApagar()"
 />
+
+<app-tour-guiado [passos]="passosTourCadastro" [aberto]="tourAberto()" (fechar)="fecharTour()" />

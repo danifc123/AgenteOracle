@@ -93,7 +93,7 @@ describe('TiHome', () => {
     expect(texto()).toContain('Consumo de IA');
     expect(texto()).toContain('Só você vê isso');
     expect(texto()).toContain('500'); // tokens hoje = 300 (ti) + 200 (rh)
-    expect(texto()).toContain('Ver detalhes em Tokens');
+    expect(texto()).toContain('Ver detalhes em IA');
   });
 
   it('atalhos de sempre continuam presentes (Segurança, Auditoria de Chamados, Central de suporte)', () => {

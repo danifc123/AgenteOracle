@@ -1,15 +1,23 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CampoNumerico } from '../../../../componentes/campo-numerico/campo-numerico';
 import { ConfirmacaoDialog } from '../../../../componentes/confirmacao-dialog/confirmacao-dialog';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
+import { FatiaRosca, GraficoRosca } from '../../../../componentes/grafico-rosca/grafico-rosca';
+import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
+import { PassoTour, TourGuiado } from '../../../../componentes/tour-guiado/tour-guiado';
+import {
+  AlteracoesConfiguracoesTi,
+  ConfiguracoesTi,
+} from '../../../../servicos/configuracoes-ti/configuracoes-ti';
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { UsoIa } from '../../../../servicos/uso-ia/uso-ia';
 
 export type TipoConexaoLlm = 'ollama' | 'openai_compativel';
 export type EstiloApiLlm = 'chat_completions' | 'responses';
@@ -42,6 +50,58 @@ const OPCOES_ESTILO_API: OpcaoSelectBusca[] = [
 
 const URL_PROVEDORES = `${MCP_API_BASE_URL}/api/ti/provedores-llm`;
 
+/** Tour guiado (`componentes/tour-guiado/`) de como cadastrar um provedor
+ * — não é "o tour da OCI", é o tour do CADASTRO, que usa a OCI como
+ * exemplo concreto pra ilustrar cada campo (poderia ser qualquer outro
+ * provedor compatível com OpenAI). Só em campos SEMPRE presentes no
+ * formulário, de propósito: o tour é passivo (não preenche nada sozinho),
+ * então se um passo apontasse pra "Estilo de chamada" ou "Projeto" (só
+ * existem com "Compatível com OpenAI" escolhido) e a pessoa ainda
+ * estivesse no Ollama, esse passo não teria alvo. O passo do "Tipo de
+ * conexão" já avisa que escolher "Compatível com OpenAI" revela os dois
+ * campos extras, cada um com sua própria dica quando aparecer. */
+const PASSOS_TOUR_CADASTRO: PassoTour[] = [
+  {
+    alvo: '[data-tour-alvo="nome"]',
+    titulo: 'Nome',
+    descricao: 'Um nome livre, só pra você identificar esse cadastro depois — ex: "OCI Generative AI — gpt-oss-120b".',
+  },
+  {
+    alvo: '[data-tour-alvo="tipo-conexao"]',
+    titulo: 'Tipo de conexão',
+    descricao:
+      'A OCI fala a API da OpenAI, então escolha "Compatível com OpenAI". Isso revela dois campos a mais (Estilo de chamada e Projeto) — cada um tem sua própria dica quando aparecer.',
+  },
+  {
+    alvo: '[data-tour-alvo="endereco"]',
+    titulo: 'Endereço (URL base)',
+    descricao:
+      'O endereço da OCI Generative AI segue este padrão, trocando <região> pela mesma que você já usa no console da Oracle. https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1',
+  },
+  {
+    alvo: '[data-tour-alvo="modelo"]',
+    titulo: 'Modelo',
+    descricao:
+      'O nome exato do modelo liberado pelo suporte Oracle — ex: openai.gpt-oss-120b, meta.llama-3.3-70b-instruct ou meta.llama-4-scout-17b-16e-instruct.',
+  },
+  {
+    alvo: '[data-tour-alvo="chave-api"]',
+    titulo: 'Chave de API',
+    descricao: 'A chave que a OCI te deu. É secreta — depois de salva, nunca mais volta preenchida na tela, nem pra você.',
+  },
+  {
+    alvo: '[data-tour-alvo="precos"]',
+    titulo: 'Preço por 1.000 tokens e moeda',
+    descricao:
+      'Preço é opcional — pode deixar 0 por enquanto, e preencher quando a Oracle mandar o valor de verdade. Moeda é só o prefixo mostrado na tela (ex: "R$"), sem conversão automática.',
+  },
+  {
+    alvo: '[data-tour-alvo="criar-provedor"]',
+    titulo: 'Pronto!',
+    descricao: 'Depois de preencher tudo, é só clicar aqui pra criar o provedor.',
+  },
+];
+
 /** Preço aceita vírgula ou ponto, sem teto nem limite de casas (o backend
  * usa `Decimal` — só a exibição na lista é que arredonda) — mesmo espírito
  * de `percentualValido` (`servicos/amostragem-chamados`), sem o teto de 100. */
@@ -50,27 +110,63 @@ function precoValido(texto: string): number | null {
   return /^\d+(\.\d+)?$/.test(limpo) ? Number(limpo) : null;
 }
 
-/** MÓDULO TI — CADASTRO DE LLM (`/ti/provedores`, só desenvolvedor)
+/** Cores reais do design system (ver `styles.scss`) — o nome do provedor é
+ * o nome cadastrado por quem usa, não um código fixo, então não dá pra
+ * fixar cor por provedor conhecido: roda por essa lista, sempre na mesma
+ * ordem em que os provedores aparecem. */
+const CORES_RESERVA = ['#1b4332', '#e8871e', '#2f9e58', '#5b6b62', '#c96f12'];
+
+function corDoProvedor(indice: number): string {
+  return CORES_RESERVA[indice % CORES_RESERVA.length];
+}
+
+/** "dd/MM" — mais curto que a data ISO completa, cabe no eixo X do
+ * gráfico sem precisar mexer em `GraficoSerie` (que hoje só sabe formatar
+ * rótulo no formato "YYYY-MM", pensado pra série mensal financeira). */
+function formatarDiaCurto(dataIso: string): string {
+  const partes = dataIso.split('-');
+  return partes.length === 3 ? `${partes[2]}/${partes[1]}` : dataIso;
+}
+
+/** `custo` é sempre o preço CADASTRADO HOJE (não congelado por chamada) —
+ * ver `server/ti/uso_ia.py::_custo_e_moeda` no backend. Até 4 casas: preço
+ * por 1k tokens costuma ser bem pequeno (ex: R$ 0,0100), 2 casas some o
+ * valor real. */
+function formatarCusto(custo: number, moeda: string): string {
+  return `${moeda} ${custo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+}
+
+/** MÓDULO TI — TELA "IA" (`/ti/provedores`, só desenvolvedor)
  *
- * Substitui os dois provedores fixos no código (Ollama/OCI, cada um com
- * URL e modelo fixos) por um cadastro livre — ver `tools/ia/provedores_llm.py`
- * no backend. Cada linha cadastrada é UMA conexão + UM modelo, e só fala uma
- * de duas "linguagens" (`tipo_conexao`): Ollama nativo, ou qualquer serviço
+ * Junta em uma página só o que antes eram duas telas separadas
+ * (`/ti/provedores` + `/ti/tokens`, 2026-09) — cadastro/ativação de LLM em
+ * cima, consumo/custo embaixo, porque no fundo é a mesma pergunta ("qual
+ * LLM eu uso, e quanto ele custa"). Ver `tools/ia/provedores_llm.py` no
+ * backend pro cadastro em si.
+ *
+ * Cadastro: cada linha é UMA conexão + UM modelo, e só fala uma de duas
+ * "linguagens" (`tipo_conexao`): Ollama nativo, ou qualquer serviço
  * compatível com a API da OpenAI (a OCI inclusa). Dentro da segunda,
  * `estilo_api` escolhe entre Chat Completions (a maioria dos modelos) e
  * Responses API (só quando o modelo exige — confirmado com o suporte
  * Oracle pro gpt-oss-120b). Preço é opcional pra qualquer um dos dois,
- * inclusive Ollama (que não tem custo real em dinheiro) — existe só pra
- * alimentar a estimativa de custo da tela de Tokens.
- *
- * Chave de API nunca volta do backend depois de salva (só o booleano
+ * inclusive Ollama (que não tem custo real em dinheiro) — alimenta a
+ * estimativa de custo mostrada mais abaixo, na mesma tela. Chave de API
+ * nunca volta do backend depois de salva (só o booleano
  * `api_key_configurada`) — editar sem preencher o campo de novo mantém a
  * que já estava lá.
  *
+ * Consumo: dois gráficos (`GraficoRosca`/`GraficoSerie`, já usados em
+ * Estoque/Financeiro, nenhuma lib nova) — donut de consumo por provedor e
+ * tendência diária — mais a tabela detalhada com abas "Geral"/"Por
+ * usuário". O teto diário de tokens fica atrás da engrenagem no
+ * cabeçalho, mesmo padrão que `chamados.html` já usa pras próprias
+ * configurações.
+ *
  * Só desenvolvedor acessa (rota protegida por `devGuard`, item do menu
  * escondido de quem não é desenvolvedor via `ItemMenu.soDev`) — o backend
- * (`/api/ti/provedores-llm*`) também exige isso no decorator de cada rota,
- * mais rígido que o resto do TI porque aqui tem segredo de verdade. */
+ * também exige isso em cada rota que essa tela chama, então não é
+ * proteção só de aparência. */
 @Component({
   selector: 'app-provedores-llm',
   imports: [
@@ -79,16 +175,22 @@ function precoValido(texto: string): number | null {
     ConfirmacaoDialog,
     Dialog,
     EstadoVazio,
+    GraficoRosca,
+    GraficoSerie,
     ModuloHeader,
     SelectBusca,
     Selo,
+    TourGuiado,
   ],
   templateUrl: './provedores.html',
   styleUrl: './provedores.scss',
 })
 export class ProvedoresLlm {
   private readonly http = inject(HttpClient);
+  private readonly usoIa = inject(UsoIa);
+  protected readonly configuracoes = inject(ConfiguracoesTi);
 
+  // Cadastro: lista + diálogo de criar/editar + apagar
   provedores = signal<ProvedorLlm[]>([]);
   carregando = signal(true);
   erro = signal<string | null>(null);
@@ -112,6 +214,9 @@ export class ProvedoresLlm {
   formPrecoEntrada = signal('0');
   formPrecoSaida = signal('0');
   formMoeda = signal('R$');
+
+  tourAberto = signal(false);
+  protected readonly passosTourCadastro = PASSOS_TOUR_CADASTRO;
 
   protected readonly opcoesTipoConexao = OPCOES_TIPO_CONEXAO;
   protected readonly opcoesEstiloApi = OPCOES_ESTILO_API;
@@ -137,8 +242,78 @@ export class ProvedoresLlm {
     return `Apagar o provedor "${provedor.nome}"? Essa ação não pode ser desfeita.${aviso}`;
   });
 
+  // Consumo: gráficos, tabela detalhada e teto diário de tokens
+  protected readonly consumo = this.usoIa.consumo;
+  protected readonly porUsuario = this.usoIa.porUsuario;
+  protected readonly porDia = this.usoIa.porDia;
+  protected readonly tokensHojePorDominio = this.usoIa.tokensHojePorDominio;
+
+  /** "Geral" = por provedor/modelo (responde "o que está custando");
+   * "usuario" = por pessoa (responde "quem está gastando"). */
+  protected readonly abaAtiva = signal<'geral' | 'usuario'>('geral');
+
+  protected readonly configuracoesAbertas = signal(false);
+  protected readonly tetoTexto = signal('0');
+  protected readonly salvandoTeto = signal(false);
+  protected readonly erroTeto = signal<string | null>(null);
+
+  protected readonly tokensHojeTotal = computed(() =>
+    Object.values(this.tokensHojePorDominio()).reduce((total, valor) => total + valor, 0),
+  );
+
+  protected readonly fatiasProvedor = computed<FatiaRosca[]>(() => {
+    const porProvedor = new Map<string, number>();
+    for (const linha of this.consumo()) {
+      porProvedor.set(linha.provedor, (porProvedor.get(linha.provedor) ?? 0) + linha.tokens_total);
+    }
+    return Array.from(porProvedor.entries()).map(([provedor, tokens], indice) => ({
+      nome: provedor,
+      valor: tokens,
+      cor: corDoProvedor(indice),
+    }));
+  });
+
+  protected readonly serieTokensPorDia = computed<SerieGrafico[]>(() => [
+    {
+      nome: 'Tokens',
+      cor: '#1b4332',
+      pontos: this.porDia().map((linha) => ({
+        rotulo: formatarDiaCurto(linha.data),
+        valor: linha.tokens_total,
+      })),
+    },
+  ]);
+
+  protected readonly tetoValido = computed<number | null>(() => {
+    const numero = Number(this.tetoTexto());
+    return Number.isInteger(numero) && numero >= 0 ? numero : null;
+  });
+
+  /** `null` = sem teto configurado (0), não mostra a barra de progresso. */
+  protected readonly percentualTeto = computed<number | null>(() => {
+    const teto = this.configuracoes.tetoTokensDiario();
+    if (teto <= 0) {
+      return null;
+    }
+    return Math.min(100, Math.round((this.tokensHojeTotal() / teto) * 100));
+  });
+
+  protected readonly tomTeto = computed<'ok' | 'atencao' | 'erro'>(() => {
+    const percentual = this.percentualTeto();
+    if (percentual === null) {
+      return 'ok';
+    }
+    return percentual >= 100 ? 'erro' : percentual >= 80 ? 'atencao' : 'ok';
+  });
+
   constructor() {
     this.carregarProvedores();
+    this.usoIa.carregar();
+    this.configuracoes.carregar();
+    // Semeia o rascunho do teto sempre que o valor real do servidor muda
+    // (primeiro load, e depois de salvar) — mesmo espírito de
+    // `iniciarRascunho` em `configuracoes-chamados.ts`.
+    effect(() => this.tetoTexto.set(String(this.configuracoes.tetoTokensDiario())));
   }
 
   carregarProvedores(): void {
@@ -194,6 +369,14 @@ export class ProvedoresLlm {
       return;
     }
     this.dialogAberto.set(false);
+  }
+
+  abrirTour(): void {
+    this.tourAberto.set(true);
+  }
+
+  fecharTour(): void {
+    this.tourAberto.set(false);
   }
 
   salvar(): void {
@@ -304,7 +487,32 @@ export class ProvedoresLlm {
     });
   }
 
+  protected rotuloCusto(custo: number | null, moeda: string | null): string {
+    return custo !== null && moeda !== null ? formatarCusto(custo, moeda) : '—';
+  }
+
   protected rotuloTipoConexao(tipo: TipoConexaoLlm): string {
     return tipo === 'ollama' ? 'Ollama' : 'Compatível com OpenAI';
+  }
+
+  protected salvarTeto(): void {
+    const teto = this.tetoValido();
+    if (teto === null || this.salvandoTeto()) {
+      return;
+    }
+
+    this.salvandoTeto.set(true);
+    this.erroTeto.set(null);
+    const alteracoes: AlteracoesConfiguracoesTi = { teto_tokens_diario: teto };
+    this.configuracoes.salvar(alteracoes).subscribe({
+      next: () => {
+        this.salvandoTeto.set(false);
+        this.configuracoesAbertas.set(false);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroTeto.set(mensagemErro(erro, 'Não foi possível salvar o teto de tokens.'));
+        this.salvandoTeto.set(false);
+      },
+    });
   }
 }

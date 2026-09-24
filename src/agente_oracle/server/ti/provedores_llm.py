@@ -155,6 +155,14 @@ def _remover(id_provedor_bruto: str) -> Response:
     return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
 
+def _desativar() -> Response:
+    """Volta o ponteiro pra `None` — mesmo estado de "nenhum LLM cadastrado
+    ativo" (`criar_cliente_protegido` cai no Ollama padrão do `.env`), sem
+    apagar nenhum provedor cadastrado."""
+    configuracoes_provedor.definir_provedor_llm_ativo_id(None)
+    return _listar()
+
+
 def _ativar(id_provedor_bruto: str) -> Response:
     try:
         id_provedor = int(id_provedor_bruto)
@@ -175,6 +183,13 @@ def registrar(mcp) -> None:
             return await to_thread.run_sync(_listar)
         corpo = await request.json()
         return await to_thread.run_sync(_criar, corpo)
+
+    # Registrada ANTES de `/{id}` de propósito — mesmo número de segmentos
+    # de path, "desativar" bateria com o padrão `{id}` se essa viesse depois.
+    @mcp.custom_route("/api/ti/provedores-llm/desativar", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
+    async def provedor_llm_desativar_route(request: Request, usuario: dict) -> Response:
+        return await to_thread.run_sync(_desativar)
 
     @mcp.custom_route("/api/ti/provedores-llm/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
     @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_desenvolvedor)

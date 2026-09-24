@@ -213,6 +213,19 @@ class TestRemover:
         assert limpou == []
 
 
+class TestDesativar:
+    def test_limpa_o_ponteiro_e_devolve_a_lista(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(mod.configuracoes_provedor, "definir_provedor_llm_ativo_id", lambda v: definidos.append(v))
+        monkeypatch.setattr(mod.provedores_llm, "listar", lambda: [_provedor_llm(id=1)])
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+
+        resposta = mod._desativar()
+
+        assert definidos == [None]
+        assert resposta.status_code == 200
+
+
 class TestAtivar:
     def test_id_nao_numerico_devolve_404(self):
         assert mod._ativar("abc").status_code == 404

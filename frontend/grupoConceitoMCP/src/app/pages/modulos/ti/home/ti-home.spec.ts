@@ -96,6 +96,17 @@ describe('TiHome', () => {
     expect(texto()).toContain('Ver detalhes em IA');
   });
 
+  it('mostra quantos chamados ficaram sem correção automática de categoria por falta de embedding', () => {
+    // Dado que já existia no backend/interface (`ChamadosIaResposta.
+    // com_fallback_embedding`) mas nunca aparecia em lugar nenhum da tela
+    // — só um toast passageiro na Auditoria de Chamados, e só quando
+    // alguém clicava "Verificar" manualmente.
+    const { texto } = criar([], sessaoFalso(true));
+
+    expect(texto()).toContain('Categoria não corrigida automaticamente (30d)');
+    expect(texto()).toContain('1'); // com_fallback_embedding do fake
+  });
+
   it('atalhos de sempre continuam presentes (Segurança, Auditoria de Chamados, Central de suporte)', () => {
     const { texto } = criar([]);
 

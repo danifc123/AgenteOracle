@@ -46,6 +46,11 @@
           tipo="numero"
           [valor]="chamadosIa.avaliados_insuficientes"
         />
+        <app-cartao-kpi
+          rotulo="Categoria não corrigida automaticamente (30d)"
+          tipo="numero"
+          [valor]="chamadosIa.com_fallback_embedding"
+        />
       }
     </div>
     <a class="link-detalhe" routerLink="/ti/provedores">

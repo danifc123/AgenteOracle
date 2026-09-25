@@ -57,6 +57,16 @@ class TestPromptSistema:
         # pra reler pergunta+resposta antes de decidir.
         assert "releia sua" in mod._PROMPT_SISTEMA
         assert "MESMO com palavras diferentes" in mod._PROMPT_SISTEMA
+
+    def test_prompt_probe_perguntar_dois_pontos_de_uma_vez(self):
+        # Simulação real (2026-09-25): a IA perguntou "qual sistema e
+        # desde quando" numa pergunta só; a pergunta seguinte, focada só
+        # em "qual sistema", ficou parecida demais com a 1ª pra rede de
+        # similaridade detectar de forma confiável (as duas comparam
+        # quase empatado contra pares genuinamente diferentes) — a causa
+        # raiz era a pergunta original juntar dois critérios.
+        assert "UM SÓ ponto por vez" in mod._PROMPT_SISTEMA
+        assert "nunca combine dois pontos na mesma pergunta" in mod._PROMPT_SISTEMA
         assert "peça um detalhe A MAIS" in mod._PROMPT_SISTEMA
 
     def test_prompt_exige_como_o_problema_se_manifesta_nao_so_o_verbo_generico(self):

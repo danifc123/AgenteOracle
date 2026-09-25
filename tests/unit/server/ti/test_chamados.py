@@ -139,7 +139,12 @@ class _OllamaClienteFake:
 
     async def chat(self, **kwargs):
         self.chamadas_chat.append(kwargs)
-        return _RespostaChatFake(json.dumps({"suficiente": self._suficiente, "mensagem": self._mensagem}))
+        # `pergunta`/`exemplo` é o schema real (ver `qualidade_chamado.py`)
+        # — `self._mensagem` vira `pergunta` sozinha, sem exemplo separado,
+        # que já é o bastante pro que os testes deste arquivo verificam.
+        return _RespostaChatFake(
+            json.dumps({"suficiente": self._suficiente, "pergunta": self._mensagem, "exemplo": ""})
+        )
 
     async def embed(self, **_kwargs):
         if self._levantar_no_embed:
@@ -163,6 +168,11 @@ class _ClienteGLPIFake:
         self.followups_por_chamado: dict[int, list[Followup]] = {}
         self.usuarios_atribuidos: list[tuple[int, str]] = []
         self.usuarios_desatribuidos: list[tuple[int, str]] = []
+        # Lista à parte (não muda a tupla de `avaliacoes`, que já é
+        # verificada em várias dezenas de asserts existentes) — mesma
+        # ordem/índice de `avaliacoes`, só pra quem quiser conferir
+        # `is_private` especificamente.
+        self.avaliacoes_privadas: list[bool] = []
 
     async def listar(self) -> list[Chamado]:
         return list(self._chamados.values())
@@ -170,8 +180,11 @@ class _ClienteGLPIFake:
     async def buscar(self, chamado_id: int) -> Chamado | None:
         return self._chamados.get(chamado_id)
 
-    async def atualizar_avaliacao(self, chamado_id: int, status: str, mensagem: str | None) -> None:
+    async def atualizar_avaliacao(
+        self, chamado_id: int, status: str, mensagem: str | None, privado: bool = False
+    ) -> None:
         self.avaliacoes.append((chamado_id, status, mensagem))
+        self.avaliacoes_privadas.append(privado)
         self._chamados[chamado_id] = replace(
             self._chamados[chamado_id], status=status, avaliacao_mensagem=mensagem
         )
@@ -255,6 +268,92 @@ class TestPerguntaParecidaComAlgumaAnterior:
         assert chamados_module._pergunta_parecida_com_alguma_anterior("Qual sistema é afetado?", []) is False
 
 
+class TestMensagemParaGlpi:
+    """`_mensagem_para_glpi` — GLPI trata o Followup como HTML de verdade
+    (confirmado ao vivo: descrição criada com texto puro volta envolvida
+    em `<p>`), não markdown nem texto solto (pedido do Daniel, 2026-09-25,
+    com print comparando "texto corrido" vs a tela de exemplo que queria)."""
+
+    def test_pergunta_unica_sem_exemplo_vira_um_paragrafo(self):
+        assert chamados_module._mensagem_para_glpi("Qual sistema está afetado?") == (
+            "<p>Qual sistema está afetado?</p>"
+        )
+
+    def test_pergunta_com_exemplo_destaca_o_exemplo_separado(self):
+        mensagem = 'Qual sistema está afetado?\n\nExemplo: "O sistema X trava desde ontem."'
+
+        # `html.escape` também escapa aspas (`quote=True`, o padrão) —
+        # renderiza igual no GLPI, só o HTML fonte usa `&quot;`.
+        assert chamados_module._mensagem_para_glpi(mensagem) == (
+            "<p>Qual sistema está afetado?</p>"
+            "<p><strong>Exemplo:</strong> <em>&quot;O sistema X trava desde ontem.&quot;</em></p>"
+        )
+
+    def test_mensagem_com_varias_linhas_vira_lista_com_marcadores(self):
+        # Caso da regra determinística (`_MENSAGEM_DESCRICAO_CURTA`) — 1
+        # linha de intro + 3 critérios, cada um vira `<li>`, não "- " literal.
+        mensagem = (
+            "Pode detalhar melhor o que está acontecendo? Um chamado bem preenchido inclui:\n"
+            "Qual sistema ou equipamento é afetado.\n"
+            "Desde quando ou com que frequência acontece.\n\n"
+            'Exemplo: "Não abre."'
+        )
+
+        html_gerado = chamados_module._mensagem_para_glpi(mensagem)
+
+        assert html_gerado == (
+            "<p>Pode detalhar melhor o que está acontecendo? Um chamado bem preenchido inclui:</p>"
+            "<ul><li>Qual sistema ou equipamento é afetado.</li>"
+            "<li>Desde quando ou com que frequência acontece.</li></ul>"
+            "<p><strong>Exemplo:</strong> <em>&quot;Não abre.&quot;</em></p>"
+        )
+
+    def test_mensagem_vazia_devolve_vazio(self):
+        assert chamados_module._mensagem_para_glpi("") == ""
+
+    def test_escapa_html_do_texto_pra_nao_virar_marcacao_por_acidente(self):
+        assert chamados_module._mensagem_para_glpi("Aparece <erro> & trava?") == (
+            "<p>Aparece &lt;erro&gt; &amp; trava?</p>"
+        )
+
+
+class TestResumoEsclarecimentoIncompleto:
+    def test_sem_turnos_devolve_paragrafo_generico(self):
+        assert chamados_module._resumo_esclarecimento_incompleto([]) == (
+            "<p>Triagem automática não conseguiu completar as informações deste chamado.</p>"
+        )
+
+    def test_monta_lista_com_marcadores_identificando_quem_falou(self):
+        turnos = [
+            TurnoConversa(papel="ia", conteudo="<p>Qual sistema está afetado?</p>"),
+            TurnoConversa(papel="usuario", conteudo="Não sei dizer"),
+        ]
+
+        resumo = chamados_module._resumo_esclarecimento_incompleto(turnos)
+
+        assert resumo == (
+            "<p>Triagem automática não conseguiu completar as informações deste chamado. "
+            "Conversa até agora:</p><ul>"
+            "<li><strong>IA:</strong> <p>Qual sistema está afetado?</p></li>"
+            "<li><strong>Solicitante:</strong> Não sei dizer</li></ul>"
+        )
+
+    def test_turno_da_ia_nao_e_escapado_de_novo_mas_do_usuario_sim(self):
+        # Turno "ia" já É o HTML que `_mensagem_para_glpi` gerou e foi
+        # postado de verdade — escapar de novo mostraria a tag literal
+        # ("&lt;p&gt;") em vez de formatada. Turno "usuario" é texto cru
+        # do GLPI, precisa escapar (ex: alguém digitando "<script>").
+        turnos = [
+            TurnoConversa(papel="ia", conteudo="<p><strong>Negrito</strong> de verdade</p>"),
+            TurnoConversa(papel="usuario", conteudo="Ele disse <tag> & tal"),
+        ]
+
+        resumo = chamados_module._resumo_esclarecimento_incompleto(turnos)
+
+        assert "<strong>Negrito</strong> de verdade" in resumo  # não virou &lt;strong&gt;
+        assert "Ele disse &lt;tag&gt; &amp; tal" in resumo  # escapado
+
+
 class TestProcessarChamadoNovo:
     async def test_chamado_insuficiente_fica_aguardando_usuario_sem_atribuir(self):
         cliente = _ClienteGLPIFake([_chamado()])
@@ -263,7 +362,9 @@ class TestProcessarChamadoNovo:
 
         resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(), cargas, True)
 
-        assert cliente.avaliacoes == [(1, "aguardando_usuario", "Qual sistema está afetado?")]
+        # HTML de verdade agora (`_mensagem_para_glpi`), não a string crua
+        # — ver docstring dela pro porquê (GLPI trata o Followup como HTML).
+        assert cliente.avaliacoes == [(1, "aguardando_usuario", "<p>Qual sistema está afetado?</p>")]
         assert cliente.atribuicoes == []  # nenhum técnico "de negócio" atribuído
         assert cargas == {}
         assert resultado.avaliacao_suficiente is False
@@ -320,7 +421,7 @@ class TestProcessarChamadoNovo:
             cliente, ollama, "modelo-teste", _chamado(categoria_id=None), cargas, True
         )
 
-        assert cliente.avaliacoes == [(1, "aguardando_usuario", "Qual sistema está afetado?")]
+        assert cliente.avaliacoes == [(1, "aguardando_usuario", "<p>Qual sistema está afetado?</p>")]
         assert resultado.avaliacao_suficiente is False
 
     async def test_chamado_sem_categoria_suficiente_classifica_do_zero_e_vai_pra_fila(self):
@@ -553,6 +654,10 @@ class TestProcessarChamadoNovo:
         chamado_id, status, mensagem = cliente.avaliacoes[0]
         assert (chamado_id, status) == (1, "fila_atendimento")
         assert mensagem is not None and "Triagem automática" in mensagem  # resumo pro técnico
+        # Resumo é anotação pro técnico, não pergunta pro solicitante —
+        # precisa ir como Followup privado (`is_private`), pedido do
+        # Daniel (2026-09-25).
+        assert cliente.avaliacoes_privadas == [True]
         assert len(cliente.atribuicoes) == 1
         chamado_id, area, _tecnico = cliente.atribuicoes[0]
         assert chamado_id == 1
@@ -571,7 +676,11 @@ class TestProcessarChamadoNovo:
             cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True
         )
 
-        assert cliente.avaliacoes == [(1, "aguardando_usuario", "E qual a frequência?")]
+        assert cliente.avaliacoes == [(1, "aguardando_usuario", "<p>E qual a frequência?</p>")]
+        # Pergunta de esclarecimento é pública — o solicitante precisa
+        # conseguir ver e responder (diferente do resumo de escalonamento,
+        # que é privado — ver o teste de escalonamento).
+        assert cliente.avaliacoes_privadas == [False]
         assert cliente.atribuicoes == []
         assert resultado.avaliacao_suficiente is False
 

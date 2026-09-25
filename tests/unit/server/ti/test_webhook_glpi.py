@@ -92,7 +92,9 @@ class _ClienteGLPIFake:
     async def buscar(self, chamado_id: int) -> Chamado | None:
         return self._chamados.get(chamado_id)
 
-    async def atualizar_avaliacao(self, chamado_id: int, status: str, mensagem: str | None) -> None:
+    async def atualizar_avaliacao(
+        self, chamado_id: int, status: str, mensagem: str | None, privado: bool = False
+    ) -> None:
         self._chamados[chamado_id] = replace(
             self._chamados[chamado_id], status=status, avaliacao_mensagem=mensagem
         )

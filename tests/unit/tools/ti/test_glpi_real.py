@@ -89,6 +89,7 @@ class _GlpiApiFake:
         # Formato confirmado ao vivo contra a instância real: uma lista de
         # `{"type": "Followup", "item": {...}}`, não um objeto plano.
         self.followups: list[dict] = []
+        self.followups_criados: list[dict] = []
         self.team_members_removidos: list[dict] = []
         self.tickets: list[dict] = [
             {
@@ -126,6 +127,7 @@ class _GlpiApiFake:
         if caminho == "/api.php/v2.3/Assistance/Ticket/1" and metodo == "PATCH":
             return httpx.Response(200, json={"ok": True})
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/Timeline/Followup" and metodo == "POST":
+            self.followups_criados.append(json.loads(request.read()))
             return httpx.Response(201, json={"id": 1})
         if caminho == "/api.php/v2.3/Assistance/Ticket/1/Timeline/Followup" and metodo == "GET":
             return httpx.Response(200, json=self.followups)
@@ -381,6 +383,27 @@ class TestAtualizarAvaliacao:
         # simulados no fake, nenhum dos dois deveria levantar.
         cliente = _cliente_fake(_GlpiApiFake())
         await cliente.atualizar_avaliacao(1, "aguardando_usuario", "Qual sistema está afetado?")
+
+    async def test_mensagem_publica_por_padrao(self):
+        # Pergunta de esclarecimento pro solicitante — precisa ficar
+        # visível pra ele, senão a pessoa nunca veria o que precisa
+        # responder (`privado` não informado = `False`, o padrão).
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake)
+
+        await cliente.atualizar_avaliacao(1, "aguardando_usuario", "Qual sistema está afetado?")
+
+        assert fake.followups_criados == [{"content": "Qual sistema está afetado?", "is_private": False}]
+
+    async def test_privado_true_marca_is_private_no_followup(self):
+        # Resumo de escalonamento pro técnico (`_escalar_para_tecnico`) —
+        # não é pergunta pro solicitante responder, é anotação interna.
+        fake = _GlpiApiFake()
+        cliente = _cliente_fake(fake)
+
+        await cliente.atualizar_avaliacao(1, "fila_atendimento", "Resumo interno pro técnico.", privado=True)
+
+        assert fake.followups_criados == [{"content": "Resumo interno pro técnico.", "is_private": True}]
 
     async def test_aguardando_usuario_sem_api_legada_configurada_nao_tenta_nada(self):
         # Sem `glpi_legacy_api_url`, nem tenta abrir sessão na API Legada —

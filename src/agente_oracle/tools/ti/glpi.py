@@ -120,7 +120,7 @@ class ClienteGLPI(Protocol):
     async def buscar(self, chamado_id: int) -> Chamado | None: ...
 
     async def atualizar_avaliacao(
-        self, chamado_id: int, status: StatusChamado, mensagem: str | None
+        self, chamado_id: int, status: StatusChamado, mensagem: str | None, privado: bool = False
     ) -> None: ...
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None: ...
@@ -395,7 +395,9 @@ class ClienteGLPIReal:
         resposta.raise_for_status()
         return _chamado_do_json(resposta.json())
 
-    async def atualizar_avaliacao(self, chamado_id: int, status: StatusChamado, mensagem: str | None) -> None:
+    async def atualizar_avaliacao(
+        self, chamado_id: int, status: StatusChamado, mensagem: str | None, privado: bool = False
+    ) -> None:
         # Precisa saber o status ATUAL antes de trocar — vira `previous_status`
         # do `PendingReason_Item` lá embaixo (pra onde o GLPI volta o chamado
         # se o motivo for removido). Só busca quando faz diferença: reavaliar
@@ -414,10 +416,17 @@ class ClienteGLPIReal:
         )
         resposta.raise_for_status()
         if mensagem:
+            # `is_private` é campo real do Followup (confirmado no Swagger
+            # da instância — schema `Followup`) — usado pelo resumo de
+            # escalonamento (`server/ti/chamados.py::_escalar_para_tecnico`),
+            # que é anotação PRO TÉCNICO, não pergunta pro solicitante
+            # responder; a pergunta de esclarecimento em si continua
+            # pública (`privado=False`, o padrão), senão a pessoa nunca
+            # veria a pergunta que precisa responder.
             resposta_comentario = await self._requisicao(
                 "POST",
                 f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/Timeline/Followup",
-                json={"content": mensagem},
+                json={"content": mensagem, "is_private": privado},
             )
             resposta_comentario.raise_for_status()
 

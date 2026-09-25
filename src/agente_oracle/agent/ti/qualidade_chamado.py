@@ -50,21 +50,32 @@ _MINIMO_PALAVRAS_DESCRICAO = 5
 # de `server/ti/chamados.py::processar_chamado_novo` — nesse caso quem
 # decide o que fazer com a repetição é quem chama, não este módulo).
 _MENSAGEM_DESCRICAO_CURTA = (
-    "Pode detalhar melhor o que está acontecendo? Um chamado bem preenchido diz: qual sistema ou "
-    "equipamento é afetado; desde quando ou com que frequência; e, o mais importante, COMO o problema "
-    'aparece na prática — não só "não funciona" ou "está lento", mas o que acontece de fato (mensagem '
-    "de erro? tela congelada? fecha sozinho? fica carregando sem terminar?). Exemplo: \"Não consigo "
-    'acessar o sistema de vendas desde ontem à tarde — a tela fica carregando e nunca abre, sem '
-    'nenhuma mensagem de erro."'
+    "Pode detalhar melhor o que está acontecendo? Um chamado bem preenchido inclui:\n"
+    "Qual sistema ou equipamento é afetado.\n"
+    "Desde quando ou com que frequência acontece.\n"
+    'Como o problema aparece na prática — não só "não funciona" ou "está lento": aparece mensagem de '
+    "erro? A tela congela? Fecha sozinho? Fica carregando sem terminar?\n\n"
+    'Exemplo: "Não consigo acessar o sistema de vendas desde ontem à tarde — a tela fica carregando e '
+    'nunca abre, sem nenhuma mensagem de erro."'
 )
 
+# `pergunta`/`exemplo` separados (não um `mensagem` só) de propósito: pedir
+# pra IA já devolver HTML/markdown dentro de um campo de texto livre é
+# frágil (tag mal fechada, aspas quebrando o JSON) — cada campo continua
+# TEXTO PURO, e quem monta a formatação bonita pro GLPI é código nosso
+# (`server/ti/chamados.py::_mensagem_para_glpi`), determinístico e testável,
+# nunca a IA. `avaliar_chamado` junta os dois num `AvaliacaoChamado.mensagem`
+# com um separador fixo (`\n\nExemplo: `) — mesmo formato de
+# `_MENSAGEM_DESCRICAO_CURTA` acima, pra `_mensagem_para_glpi` tratar os
+# dois caminhos (regra e IA) do mesmo jeito.
 _SCHEMA = {
     "type": "object",
     "properties": {
         "suficiente": {"type": "boolean"},
-        "mensagem": {"type": "string"},
+        "pergunta": {"type": "string"},
+        "exemplo": {"type": "string"},
     },
-    "required": ["suficiente", "mensagem"],
+    "required": ["suficiente", "pergunta", "exemplo"],
 }
 
 _PROMPT_SISTEMA = (
@@ -80,14 +91,15 @@ _PROMPT_SISTEMA = (
     "esse nível de detalhe, marque `suficiente: false` mesmo já sabendo o sistema e a data — um "
     "chamado só com 'sistema X trava desde ontem' ainda não é o bastante pro técnico agir, só o "
     "bastante pra saber ONDE olhar. Se faltar qualquer um dos três pontos, marque `suficiente: false` "
-    "e escreva em `mensagem` uma pergunta curta e direta pedindo especificamente o que falta, baseada "
-    "SÓ no que o título, a descrição e a conversa DESSE chamado específico já dizem, e nunca repita "
+    "e escreva em `pergunta` SÓ a pergunta em si — curta e direta, pedindo especificamente o que "
+    "falta, baseada SÓ no que o título, a descrição e a conversa DESSE chamado específico já dizem, "
+    "sem incluir o exemplo dentro dela (o exemplo vai em `exemplo`, campo separado) — e nunca repita "
     "uma pergunta genérica tipo 'detalhe melhor'. IMPORTANTE: pergunte sobre UM SÓ ponto por vez, "
     "mesmo que mais de um esteja faltando — nunca combine dois pontos na mesma pergunta (ex: nunca "
     "pergunte 'qual sistema é, e desde quando isso acontece?' junto; escolha o ponto mais importante "
     "faltando agora e pergunte só sobre ele, deixando o outro pra uma pergunta futura se ainda estiver "
     "faltando depois). Isso evita que o solicitante responda só uma parte e você perca o controle do "
-    "que já foi coberto. Junto da pergunta, inclua um exemplo curto de como "
+    "que já foi coberto. Em `exemplo`, escreva um exemplo curto de como "
     "uma descrição completa ficaria PARA ESSE CASO — construído só em cima do que já foi dito (se o "
     "solicitante já citou um sistema, use esse sistema no exemplo; se não citou nenhum, mantenha o "
     "exemplo genérico). Nunca cite um sistema, aplicativo ou equipamento específico (ex: OneDrive, "
@@ -105,7 +117,8 @@ _PROMPT_SISTEMA = (
     "três pontos já estiverem cobertos, ou, se ainda faltar um ponto DIFERENTE, pergunte só sobre esse "
     "outro ponto. Nunca repita a mesma pergunta nem uma pergunta parecida sobre um ponto que a resposta "
     "mais recente já tocou, mesmo que ainda pareça incompleta — nesse caso peça um detalhe A MAIS sobre "
-    "o que já foi dito, nunca a mesma pergunta de novo."
+    "o que já foi dito, nunca a mesma pergunta de novo. Se `suficiente: true`, deixe `pergunta` e "
+    "`exemplo` vazios."
 )
 
 
@@ -202,11 +215,18 @@ async def avaliar_chamado(
     if not isinstance(suficiente, bool):
         return _avaliar_por_regra(texto_combinado)
 
-    mensagem = corpo.get("mensagem")
-    mensagem = mensagem.strip() if isinstance(mensagem, str) else ""
-    if not suficiente and not mensagem:
+    pergunta = corpo.get("pergunta")
+    pergunta = pergunta.strip() if isinstance(pergunta, str) else ""
+    if not suficiente and not pergunta:
         # IA marcou insuficiente mas não disse o que falta — sem uma
         # pergunta de verdade pro usuário, a regra decide melhor que "deixa passar".
         return _avaliar_por_regra(texto_combinado)
+
+    exemplo = corpo.get("exemplo")
+    exemplo = exemplo.strip() if isinstance(exemplo, str) else ""
+    # Mesmo separador fixo de `_MENSAGEM_DESCRICAO_CURTA` (`\n\nExemplo: `)
+    # — `server/ti/chamados.py::_mensagem_para_glpi` conta com ele pra
+    # formatar os dois caminhos (regra e IA) do mesmo jeito.
+    mensagem = f"{pergunta}\n\nExemplo: {exemplo}" if pergunta and exemplo else pergunta
 
     return AvaliacaoChamado(suficiente=suficiente, mensagem=mensagem, origem="ia")

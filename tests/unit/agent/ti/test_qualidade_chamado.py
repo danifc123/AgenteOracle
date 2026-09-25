@@ -34,8 +34,8 @@ def _chat_nunca_chamado(**_kwargs):
     raise AssertionError("chat() não deveria ser chamado com usar_ia=False")
 
 
-def _avaliacao_json(suficiente: bool, mensagem: str = "") -> str:
-    return json.dumps({"suficiente": suficiente, "mensagem": mensagem})
+def _avaliacao_json(suficiente: bool, pergunta: str = "", exemplo: str = "") -> str:
+    return json.dumps({"suficiente": suficiente, "pergunta": pergunta, "exemplo": exemplo})
 
 
 class TestPromptSistema:
@@ -124,13 +124,29 @@ class TestAvaliarChamado:
         assert avaliacao.origem == "ia"
 
     async def test_chamado_insuficiente_traz_a_pergunta_da_ia(self):
-        cliente = _OllamaClientFake(conteudo=_avaliacao_json(False, "Qual sistema está afetado?"))
+        cliente = _OllamaClientFake(conteudo=_avaliacao_json(False, pergunta="Qual sistema está afetado?"))
 
         avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Não funciona", _DESCRICAO_LONGA, "TI")
 
         assert avaliacao.suficiente is False
         assert avaliacao.mensagem == "Qual sistema está afetado?"
         assert avaliacao.origem == "ia"
+
+    async def test_pergunta_e_exemplo_se_juntam_com_separador_fixo(self):
+        # Campos separados no JSON (`pergunta`/`exemplo`) — quem monta o
+        # `mensagem` final é este módulo, com um separador fixo
+        # (`\n\nExemplo: `), não a IA formatando texto livre. É esse
+        # separador que `server/ti/chamados.py::_mensagem_para_glpi` usa
+        # pra montar o HTML bonito depois.
+        cliente = _OllamaClientFake(
+            conteudo=_avaliacao_json(
+                False, pergunta="Qual sistema está afetado?", exemplo='"O sistema X trava."'
+            )
+        )
+
+        avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Não funciona", _DESCRICAO_LONGA, "TI")
+
+        assert avaliacao.mensagem == 'Qual sistema está afetado?\n\nExemplo: "O sistema X trava."'
 
     async def test_descricao_sem_conteudo_real_nunca_chama_a_ia(self):
         # Chamado de teste (ex: "blablabla") não dá pra IA julgar com segurança —
@@ -184,7 +200,7 @@ class TestAvaliarChamado:
         assert avaliacao.origem == "regra"
 
     async def test_campo_suficiente_com_tipo_errado_cai_pra_regra(self):
-        cliente = _OllamaClientFake(conteudo=json.dumps({"suficiente": "sim", "mensagem": "..."}))
+        cliente = _OllamaClientFake(conteudo=json.dumps({"suficiente": "sim", "pergunta": "...", "exemplo": ""}))
 
         avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Título", _DESCRICAO_LONGA, "Sistemas")
 

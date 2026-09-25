@@ -72,6 +72,7 @@ desatribui quando a triagem termina (suficiente ou escalado) — a troca
 de status já feita continua valendo mesmo depois de desatribuir."""
 
 import asyncio
+import html
 import logging
 import re
 import time
@@ -200,9 +201,14 @@ _PALAVRAS_IGNORADAS = frozenset(
 
 
 def _palavras_significativas(texto: str) -> set[str]:
+    # Tira tag HTML antes de extrair palavra — desde que `_mensagem_para_glpi`
+    # existe, `turno.conteudo` de um turno "ia" é HTML de verdade (é o que
+    # foi postado no Followup), e nomes de tag ("strong", "ul") não podem
+    # contar como palavra "em comum" entre mensagens só por estrutura.
+    sem_tags = re.sub(r"<[^>]+>", " ", texto)
     return {
         palavra
-        for palavra in re.findall(r"[a-zà-úA-ZÀ-Ú]+", texto.lower())
+        for palavra in re.findall(r"[a-zà-úA-ZÀ-Ú]+", sem_tags.lower())
         if palavra not in _PALAVRAS_IGNORADAS and len(palavra) > 2
     }
 
@@ -244,15 +250,56 @@ def _turnos_da_conversa(followups: list[Followup]) -> list[TurnoConversa]:
     ]
 
 
+def _mensagem_para_glpi(mensagem: str) -> str:
+    """Converte o texto plano de `AvaliacaoChamado.mensagem` (a pergunta
+    da IA, ou `_MENSAGEM_DESCRICAO_CURTA` da regra — os dois já vêm com o
+    mesmo separador fixo `\\n\\nExemplo: `, ver `qualidade_chamado.py`)
+    pro HTML que o GLPI de fato renderiza no Followup — confirmado ao
+    vivo que o campo é tratado como HTML (a descrição de um chamado
+    criado com texto puro volta envolvida em `<p>`), não markdown nem
+    texto solto; sem isso, listas e negrito ficavam com o marcador
+    literal na tela em vez de formatados de verdade (pedido do Daniel,
+    2026-09-25, com print comparando o antes/depois).
+
+    Primeira linha do corpo vira parágrafo; linhas seguintes (quando
+    existem — é o caso de `_MENSAGEM_DESCRICAO_CURTA`, que lista os 3
+    critérios um por linha) viram itens de lista; o exemplo, quando
+    presente, fica destacado à parte. `html.escape` em tudo, pra nada do
+    texto (IA ou o que o usuário digitou, se algum dia entrar aqui)
+    virar marcação por acidente."""
+    corpo, _separador, exemplo = mensagem.partition("\n\nExemplo: ")
+    linhas = [linha.strip() for linha in corpo.split("\n") if linha.strip()]
+    if not linhas:
+        return ""
+
+    partes = [f"<p>{html.escape(linhas[0])}</p>"]
+    if len(linhas) > 1:
+        itens = "".join(f"<li>{html.escape(linha)}</li>" for linha in linhas[1:])
+        partes.append(f"<ul>{itens}</ul>")
+    if exemplo:
+        partes.append(f"<p><strong>Exemplo:</strong> <em>{html.escape(exemplo)}</em></p>")
+    return "".join(partes)
+
+
 def _resumo_esclarecimento_incompleto(turnos: list[TurnoConversa]) -> str:
     """Followup curto postado ao escalar um chamado que segue incompleto
     (limite de rodadas batido, ou a regra determinística repetiria a
-    mesma pergunta) — poupa o técnico de reconstruir o histórico sozinho."""
-    linhas = ["Triagem automática não conseguiu completar as informações deste chamado. Conversa até agora:"]
-    for turno in turnos:
-        quem = "IA" if turno.papel == "ia" else "Solicitante"
-        linhas.append(f"- {quem}: {turno.conteudo}")
-    return "\n".join(linhas)
+    mesma pergunta) — poupa o técnico de reconstruir o histórico sozinho.
+    Lista com marcadores de verdade (HTML), não "- " literal — mesmo
+    motivo de `_mensagem_para_glpi`. Turno "ia" já é HTML (o que
+    `_mensagem_para_glpi` gerou e foi de fato postado) — só escapa o
+    turno "usuario" (texto cru do solicitante)."""
+    if not turnos:
+        return "<p>Triagem automática não conseguiu completar as informações deste chamado.</p>"
+    itens = "".join(
+        f"<li><strong>{'IA' if turno.papel == 'ia' else 'Solicitante'}:</strong> "
+        f"{turno.conteudo if turno.papel == 'ia' else html.escape(turno.conteudo)}</li>"
+        for turno in turnos
+    )
+    return (
+        "<p>Triagem automática não conseguiu completar as informações deste chamado. "
+        f"Conversa até agora:</p><ul>{itens}</ul>"
+    )
 
 
 def _chamados_da_tela(chamados: list[Chamado], fora_da_amostra: set[int]) -> list[dict]:
@@ -424,7 +471,7 @@ async def processar_chamado_novo(
         else:
             if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
                 await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
-            await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
+            await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", _mensagem_para_glpi(avaliacao.mensagem))
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
     resultado_classificacao = await classificar_categoria(
@@ -462,8 +509,11 @@ async def _escalar_para_tecnico(
     pergunta — ver `processar_chamado_novo`) não ganha outra pergunta
     automática — em vez disso, atribui um técnico humano de menor carga
     pra tentar extrair a informação diretamente com o solicitante, com um
-    Followup resumindo a conversa (`_resumo_esclarecimento_incompleto`)
-    pra ele não precisar reler tudo. Atribuir alguém muda o status
+    Followup **privado** (`is_private`, só quem tem acesso técnico vê —
+    pedido do Daniel, 2026-09-25: é uma anotação PRO TÉCNICO sobre a
+    triagem, não faz sentido pro solicitante ler) resumindo a conversa
+    (`_resumo_esclarecimento_incompleto`) pra ele não precisar reler tudo.
+    Atribuir alguém muda o status
     sozinho pra "Em atendimento" (confirmado ao vivo, não dá pra atribuir
     e manter "Pendente") — aceito de propósito: o técnico escalado passa
     a possuir o chamado oficialmente, igual uma resolução normal, então o
@@ -483,7 +533,7 @@ async def _escalar_para_tecnico(
     if chamado.tecnico_atribuido != tecnico.identificador:
         await cliente.atribuir(chamado.id, area, tecnico.identificador)
     resumo = _resumo_esclarecimento_incompleto(turnos) if turnos else None
-    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", resumo)
+    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", resumo, privado=True)
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
 
 

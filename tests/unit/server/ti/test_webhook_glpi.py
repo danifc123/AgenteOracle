@@ -29,12 +29,12 @@ def _roster_de_tecnicos_para_teste(monkeypatch):
     # Mesmo motivo de `test_chamados.py`: `escolher_tecnico`/
     # `todos_os_tecnicos` leem o roster do Postgres via
     # `listar_tecnicos_ti` — sem essa fixture, roster vazio estoura `min()`.
-    # Cobre "processos" também — é `_AREA_PADRAO` de
-    # `roteamento_chamado.py`, usada quando `usar_ia=False` e o chamado
-    # não tem categoria nenhuma pra resolver área.
+    # Cobre "sistemas" também — é `_AREA_PADRAO` de `roteamento_chamado.py`,
+    # usada quando `usar_ia=False` e o chamado não tem categoria nenhuma
+    # pra resolver área.
     roster = [
         {"usuario": "7", "nome": "Técnico Infra", "tecnico_glpi_id": "7", "area_ti": "infra"},
-        {"usuario": "278", "nome": "Técnico Processos", "tecnico_glpi_id": "278", "area_ti": "processos"},
+        {"usuario": "8", "nome": "Técnico Sistemas", "tecnico_glpi_id": "8", "area_ti": "sistemas"},
     ]
     monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
 
@@ -108,6 +108,9 @@ class _ClienteGLPIFake:
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]:
         return dict.fromkeys(tecnicos_identificadores, 0)
+
+    async def buscar_followups(self, chamado_id: int) -> list:
+        return []
 
 
 class TestAutorizado:

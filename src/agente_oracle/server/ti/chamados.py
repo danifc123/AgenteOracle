@@ -30,15 +30,22 @@ resposta nova, o GLPI já tem o próprio mecanismo de resolver sozinho
 depois de 3 dias (`PendingReason` — ver
 `tools/ti/glpi.py::ClienteGLPIReal._marcar_aguardando_usuario`).
 
-`processar_chamado_novo` nunca manda a mesma pergunta automática duas
-vezes pro mesmo chamado — `ja_foi_avaliado_insuficiente` (calculado por
-quem chama, via `tools/ti/uso_ia_chamados.py::ultima_avaliacao`, de
-propósito fora desta função testável-com-fake) decide entre perguntar
-(primeira vez) e escalar pra um técnico humano (`_escalar_para_tecnico`,
-a partir da segunda vez que o MESMO chamado segue insuficiente) — bug
-real visto em produção: o mesmo chamado recebendo a mesma pergunta
-genérica repetida em dias diferentes, porque ninguém tinha memória do
-que já tinha sido perguntado antes.
+`processar_chamado_novo` insiste até `_LIMITE_RODADAS_ESCLARECIMENTO`
+vezes com o solicitante antes de escalar pra um técnico humano — cada
+rodada manda a `avaliar_chamado` a conversa inteira (`TurnoConversa[]`,
+montada aqui a partir dos `Followup`s reais do GLPI, papel "ia" pra
+mensagem da própria conta de serviço e "usuario" pra qualquer outra
+pessoa), então a IA sempre enxerga o que já foi perguntado/respondido e
+nunca repete a mesma pergunta. `rodadas_do_usuario` é só a contagem de
+Followups de fora da conta de serviço — fonte de verdade é o próprio
+GLPI, não uma tabela nossa. Exceção: se `avaliar_chamado` cair no plano B
+determinístico (`AvaliacaoChamado.origem == "regra"`) numa rodada além da
+1ª, escala na hora mesmo sem bater o limite — a regra sempre devolve o
+MESMO texto fixo, então insistir repetiria a pergunta (o bug real visto
+em produção, #3262, que essa checagem evita). Ao escalar por qualquer um
+desses dois motivos (limite batido ou regra repetiria), posta um
+Followup resumindo a conversa pro técnico não precisar reler tudo
+(`_resumo_esclarecimento_incompleto`).
 
 Amostragem (`tools/ti/amostragem_chamados.py`): só parte dos chamados novos é triada; o botão
 "Verificar" de UM chamado ignora a amostra.
@@ -62,7 +69,7 @@ de status já feita continua valendo mesmo depois de desatribuir."""
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 
 from anyio import to_thread
@@ -71,7 +78,7 @@ from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.agent.ti.qualidade_chamado import avaliar_chamado
+from agente_oracle.agent.ti.qualidade_chamado import TurnoConversa, avaliar_chamado
 from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
 from agente_oracle.config import settings
 from agente_oracle.db.connection import DatabaseError
@@ -85,7 +92,14 @@ from agente_oracle.tools.ia.cliente_protegido import (
 )
 from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
-from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
+from agente_oracle.tools.ti.glpi import (
+    AreaChamado,
+    Chamado,
+    ClienteGLPI,
+    Followup,
+    chamado_e_alheio,
+    criar_cliente,
+)
 from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico, escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
@@ -99,7 +113,14 @@ _INTERVALO_POLLER_SEGUNDOS = 300
 # de propósito (é 1 linha, não compensa acoplar os dois módulos por isso).
 # Só entra em jogo em `_escalar_para_tecnico`, quando o chamado nem tem
 # categoria pra derivar a área de outro jeito.
-_AREA_PADRAO_ESCALONAMENTO: AreaChamado = "processos"
+_AREA_PADRAO_ESCALONAMENTO: AreaChamado = "sistemas"
+
+# Quantas vezes a IA insiste pedindo esclarecimento pro solicitante antes
+# de desistir e escalar pra um técnico humano mesmo incompleto — decisão
+# do Daniel (2026-09-24): equilíbrio entre dar chance real de completar o
+# chamado e não deixar um solicitante que não vai/não consegue responder
+# preso num ciclo sem fim.
+_LIMITE_RODADAS_ESCLARECIMENTO = 3
 
 # Rótulo pra exibição no painel de saúde do roster (`tecnicos_saude_route`,
 # só-desenvolvedor) — não existe em nenhum outro lugar do backend hoje,
@@ -153,6 +174,29 @@ def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa |
     except DatabaseError:
         _logger.exception("Falha consultando última avaliação do chamado %s", chamado_id)
         return None
+
+
+def _turnos_da_conversa(followups: list[Followup]) -> list[TurnoConversa]:
+    """Mapeia os `Followup`s reais do GLPI (já vêm ordenados por
+    `criado_em`, ver `ClienteGLPIReal.buscar_followups`) pro tipo
+    GLPI-agnóstico que `avaliar_chamado` entende — `qualidade_chamado.py`
+    não sabe (nem precisa saber) o que é `settings.glpi_username`, essa
+    decisão de "quem é a IA" é só nossa."""
+    return [
+        TurnoConversa(papel="ia" if followup.autor_nome == settings.glpi_username else "usuario", conteudo=followup.conteudo)
+        for followup in followups
+    ]
+
+
+def _resumo_esclarecimento_incompleto(turnos: list[TurnoConversa]) -> str:
+    """Followup curto postado ao escalar um chamado que segue incompleto
+    (limite de rodadas batido, ou a regra determinística repetiria a
+    mesma pergunta) — poupa o técnico de reconstruir o histórico sozinho."""
+    linhas = ["Triagem automática não conseguiu completar as informações deste chamado. Conversa até agora:"]
+    for turno in turnos:
+        quem = "IA" if turno.papel == "ia" else "Solicitante"
+        linhas.append(f"- {quem}: {turno.conteudo}")
+    return "\n".join(linhas)
 
 
 def _chamados_da_tela(chamados: list[Chamado], fora_da_amostra: set[int]) -> list[dict]:
@@ -252,18 +296,18 @@ async def processar_chamado_novo(
     chamado: Chamado,
     cargas: dict[str, int],
     usar_ia: bool,
-    ja_foi_avaliado_insuficiente: bool = False,
 ) -> ResultadoProcessamento:
-    """Avalia se o chamado tem informação suficiente. Se não tiver e for
-    a primeira vez (`ja_foi_avaliado_insuficiente=False`), marca
-    `aguardando_usuario` com a pergunta da IA e para por aqui — igual
-    sempre foi. Se **já** tinha sido avaliado insuficiente antes (quem
-    chama decide isso, olhando `tools/ti/uso_ia_chamados.py::ultima_avaliacao`
-    — de propósito fora desta função, que continua sem tocar Postgres,
-    ver abaixo), não manda outra pergunta automática — repetiria algo
-    parecido com o que já foi perguntado (bug real visto no #3262: a
-    mesma pergunta genérica voltando em dias diferentes). Em vez disso,
-    escala pra um técnico humano (`_escalar_para_tecnico`).
+    """Avalia se o chamado tem informação suficiente, olhando a conversa
+    de esclarecimento inteira (`cliente.buscar_followups`, mapeada pra
+    `TurnoConversa` — ver `_turnos_da_conversa`). Insuficiente com menos
+    de `_LIMITE_RODADAS_ESCLARECIMENTO` respostas do solicitante marca
+    `aguardando_usuario` com uma NOVA pergunta da IA (que vê a conversa
+    inteira, então varia a cada rodada) e para por aqui. Bateu o limite —
+    ou a avaliação veio do plano B determinístico numa rodada além da 1ª
+    (`AvaliacaoChamado.origem == "regra"`, que sempre devolveria o MESMO
+    texto fixo — repetir seria o bug real visto no #3262) — escala pra um
+    técnico humano (`_escalar_para_tecnico`), com um Followup resumindo a
+    conversa pra ele.
 
     Antes de marcar `aguardando_usuario` pela 1ª vez, atribui a própria
     conta de serviço da IA (`settings.glpi_conta_ia_id`) como "segurador
@@ -307,12 +351,17 @@ async def processar_chamado_novo(
     aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
     Postgres fora das funções testáveis com fake)."""
     descricao_limpa = _texto_para_ia(chamado.descricao)
+    followups = await cliente.buscar_followups(chamado.id)
+    turnos = _turnos_da_conversa(followups)
+    rodadas_do_usuario = sum(1 for turno in turnos if turno.papel == "usuario")
     avaliacao = await avaliar_chamado(
-        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, usar_ia
+        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
     )
     if not avaliacao.suficiente:
-        if ja_foi_avaliado_insuficiente:
-            await _escalar_para_tecnico(cliente, chamado, cargas)
+        bateu_limite = rodadas_do_usuario >= _LIMITE_RODADAS_ESCLARECIMENTO
+        regra_repetiria = avaliacao.origem == "regra" and rodadas_do_usuario > 0
+        if bateu_limite or regra_repetiria:
+            await _escalar_para_tecnico(cliente, chamado, cargas, turnos)
         else:
             if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
                 await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
@@ -346,16 +395,21 @@ async def processar_chamado_novo(
     )
 
 
-async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int]) -> None:
-    """Chamado que segue sem informação suficiente numa segunda (ou
-    enésima) avaliação não ganha outra pergunta automática — em vez
-    disso, atribui um técnico humano de menor carga pra tentar extrair a
-    informação diretamente com o solicitante. Atribuir alguém muda o
-    status sozinho pra "Em atendimento" (confirmado ao vivo, não dá pra
-    atribuir e manter "Pendente") — aceito de propósito: o técnico
-    escalado passa a possuir o chamado oficialmente, igual uma resolução
-    normal, então o PATCH pra `fila_atendimento` no final é só deixar
-    explícito o que o GLPI já fez sozinho.
+async def _escalar_para_tecnico(
+    cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int], turnos: list[TurnoConversa]
+) -> None:
+    """Chamado que segue sem informação suficiente (bateu
+    `_LIMITE_RODADAS_ESCLARECIMENTO`, ou o plano B repetiria a mesma
+    pergunta — ver `processar_chamado_novo`) não ganha outra pergunta
+    automática — em vez disso, atribui um técnico humano de menor carga
+    pra tentar extrair a informação diretamente com o solicitante, com um
+    Followup resumindo a conversa (`_resumo_esclarecimento_incompleto`)
+    pra ele não precisar reler tudo. Atribuir alguém muda o status
+    sozinho pra "Em atendimento" (confirmado ao vivo, não dá pra atribuir
+    e manter "Pendente") — aceito de propósito: o técnico escalado passa
+    a possuir o chamado oficialmente, igual uma resolução normal, então o
+    PATCH pra `fila_atendimento` no final é só deixar explícito o que o
+    GLPI já fez sozinho.
 
     Área vem da categoria ATUAL do chamado (`AREA_POR_CATEGORIA_ID`), sem
     chamar `classificar_categoria`/Ollama de novo — mais barato, e nesta
@@ -369,7 +423,8 @@ async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: 
     tecnico = escolher_tecnico(area, cargas, f"{chamado.titulo}\n{chamado.descricao}")
     if chamado.tecnico_atribuido != tecnico.identificador:
         await cliente.atribuir(chamado.id, area, tecnico.identificador)
-    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
+    resumo = _resumo_esclarecimento_incompleto(turnos) if turnos else None
+    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", resumo)
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
 
 
@@ -456,9 +511,9 @@ def registrar(mcp) -> None:
         chamado ainda estar `novo` (ao contrário do lote, roda de novo
         mesmo em `aguardando_usuario`/`fila_atendimento` — útil pra
         reavaliar um chamado depois de ajustar algo manualmente durante
-        teste). Também respeita `ja_foi_avaliado_insuficiente`: clicar
-        "Verificar" de novo num chamado que já ficou insuficiente antes
-        escala pro técnico em vez de gerar outra pergunta repetida.
+        teste). Mesma regra de rodadas de `processar_chamado_novo`: clicar
+        "Verificar" de novo num chamado que já esgotou as tentativas de
+        esclarecimento escala pro técnico em vez de gerar outra pergunta.
         Recusa (409) chamado "alheio" (`chamado_e_alheio`) — já
         gerenciado fora do nosso sistema, ver docstring dele."""
         try:
@@ -482,7 +537,6 @@ def registrar(mcp) -> None:
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
 
-        registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
         inicio = time.monotonic()
         try:
             resultado = await processar_chamado_novo(
@@ -492,8 +546,6 @@ def registrar(mcp) -> None:
                 chamado,
                 cargas,
                 usar_ia,
-                ja_foi_avaliado_insuficiente=registro_anterior is not None
-                and not registro_anterior.avaliacao_suficiente,
             )
         except SemTecnicoNaArea as erro:
             rotulo_area = _ROTULOS_AREA.get(erro.area, erro.area)
@@ -555,13 +607,11 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     existe depois de pelo menos 1 avaliação, mas mais vale pular do que
     assumir errado).
 
-    Reaproveita `processar_chamado_novo` passando uma cópia do chamado com
-    a(s) resposta(s) nova(s) anexada(s) à descrição (`dataclasses.replace`)
-    — mantém a avaliação da IA olhando o texto completo (pergunta original
-    + resposta), sem precisar mudar a assinatura de `avaliar_chamado`.
-    Ainda insuficiente escala pro técnico humano (nunca é a "primeira vez"
-    aqui, `aguardando_usuario` já implica que já houve 1 avaliação
-    insuficiente antes). `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
+    Reaproveita `processar_chamado_novo` direto com o `chamado` original —
+    ele busca os `Followup`s sozinho (`_turnos_da_conversa`) e decide
+    perguntar de novo ou escalar a partir de quantas vezes o SOLICITANTE
+    já respondeu, então não precisa mais que este método pré-edite a
+    descrição. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
     síncronos) rodam em thread separada a cada chamada; o resto do fluxo
     (GLPI/Ollama) continua `await` genuíno.
 
@@ -590,21 +640,14 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             if not respostas_novas:
                 continue
 
-            chamado_com_resposta = replace(
-                chamado,
-                descricao=chamado.descricao
-                + "\n\n"
-                + "\n".join(followup.conteudo for followup in respostas_novas),
-            )
             inicio = time.monotonic()
             resultado = await processar_chamado_novo(
                 _cliente,
                 ollama_client,
                 modelo_ia_ativo(settings, "ti"),
-                chamado_com_resposta,
+                chamado,
                 cargas,
                 usar_ia,
-                ja_foi_avaliado_insuficiente=True,
             )
         except Exception:
             _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
@@ -675,8 +718,6 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
                 chamado,
                 cargas,
                 usar_ia,
-                ja_foi_avaliado_insuficiente=registro_anterior is not None
-                and not registro_anterior.avaliacao_suficiente,
             )
         except Exception:
             _logger.exception("Falha processando o chamado %s", chamado.id)

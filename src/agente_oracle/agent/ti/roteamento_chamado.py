@@ -9,7 +9,12 @@ dono dela (`CategoriaGlpi.area`).
 Nunca falha, nunca trava um chamado real — falha do Ollama (ou
 `usar_ia=False`, a flag do time de TI) cai pra área já resolvida da
 categoria atual, sem tentar corrigir nada; sem categoria atual nenhuma
-(nem isso), cai pra `_AREA_PADRAO`.
+(nem isso), cai pra `_AREA_PADRAO` — "sistemas" (decisão do Daniel,
+2026-09-24: é a área mais comum pra chamado sem categoria, melhor chute
+que "processos"). Mesmo fallback dispara sempre que o provedor de IA
+ativo não suporta embedding (`EmbeddingNaoSuportado` — ex: OCI Generative
+AI, que não tem esse endpoint), já que sem embedding não dá pra comparar
+contra as categorias reais.
 
 `_cache_embeddings_categorias` existe porque comparar contra 211
 categorias a cada chamado significaria 211 chamadas de embedding por
@@ -27,7 +32,7 @@ from agente_oracle.tools.ti import categorias
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import AreaChamado
 
-_AREA_PADRAO: AreaChamado = "processos"
+_AREA_PADRAO: AreaChamado = "sistemas"
 
 _cache_embeddings_categorias: dict[int, list[float]] | None = None
 

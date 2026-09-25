@@ -89,6 +89,32 @@ def _chamado(
     )
 
 
+def _followups_ciclo(rodadas: int) -> list[Followup]:
+    """`rodadas` pares (pergunta da IA, resposta do solicitante) — usado
+    pra simular um chamado que já passou por N rodadas de esclarecimento
+    antes desta avaliação. `autor_nome == settings.glpi_username` é o
+    sinal que `_turnos_da_conversa` usa pra reconhecer "isso foi a IA"."""
+    followups = []
+    for indice in range(rodadas):
+        followups.append(
+            Followup(
+                autor_id=274,
+                autor_nome=settings.glpi_username,
+                conteudo=f"Pergunta {indice + 1} da IA",
+                criado_em=datetime(2026, 1, indice + 1, 10, tzinfo=UTC),
+            )
+        )
+        followups.append(
+            Followup(
+                autor_id=999,
+                autor_nome="solicitante.teste",
+                conteudo=f"Resposta {indice + 1} do solicitante",
+                criado_em=datetime(2026, 1, indice + 1, 11, tzinfo=UTC),
+            )
+        )
+    return followups
+
+
 class _RespostaChatFake:
     def __init__(self, conteudo: str):
         self.message = type("Mensagem", (), {"content": conteudo})()
@@ -459,40 +485,74 @@ class TestProcessarChamadoNovo:
         assert resultado.avaliacao_suficiente is True
         assert len(cliente.atribuicoes) == 1
 
-    async def test_insuficiente_de_novo_escala_pro_tecnico_em_vez_de_perguntar_de_novo(self):
+    async def test_insuficiente_apos_bater_o_limite_de_rodadas_escala_pro_tecnico(self):
         # Bug real visto em produção (#3262): sem essa distinção, a IA
         # manda a mesma pergunta genérica de novo a cada reavaliação.
-        # `ja_foi_avaliado_insuficiente=True` (decidido por quem chama,
-        # via `uso_ia_chamados.ultima_avaliacao`) muda o comportamento:
-        # em vez de outro Followup, atribui um técnico humano. Atribuir
-        # alguém muda o status sozinho pra "Em atendimento" (confirmado
-        # ao vivo) — por isso o escalonamento também chama
-        # `atualizar_avaliacao` com `fila_atendimento`, deixando isso
-        # explícito.
+        # Agora o corte é `_LIMITE_RODADAS_ESCLARECIMENTO` (3) respostas
+        # do solicitante ainda insuficientes — bate isso, atribui um
+        # técnico humano em vez de continuar perguntando. Atribuir alguém
+        # muda o status sozinho pra "Em atendimento" (confirmado ao vivo)
+        # — por isso o escalonamento também chama `atualizar_avaliacao`
+        # com `fila_atendimento`, deixando isso explícito.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        cliente.followups_por_chamado[1] = _followups_ciclo(3)
         ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
         cargas = {"7": 0}
 
         resultado = await processar_chamado_novo(
-            cliente,
-            ollama,
-            "modelo-teste",
-            _chamado(categoria_id=999),
-            cargas,
-            True,
-            ja_foi_avaliado_insuficiente=True,
+            cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True
         )
 
-        assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
+        assert len(cliente.avaliacoes) == 1
+        chamado_id, status, mensagem = cliente.avaliacoes[0]
+        assert (chamado_id, status) == (1, "fila_atendimento")
+        assert mensagem is not None and "Triagem automática" in mensagem  # resumo pro técnico
         assert len(cliente.atribuicoes) == 1
         chamado_id, area, _tecnico = cliente.atribuicoes[0]
         assert chamado_id == 1
         assert area == "infra"
         assert resultado.avaliacao_suficiente is False
 
+    async def test_insuficiente_com_menos_rodadas_que_o_limite_continua_perguntando(self):
+        # Menos de 3 respostas do solicitante ainda: mais uma rodada de
+        # esclarecimento (aguardando_usuario), não escala ainda.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        cliente.followups_por_chamado[1] = _followups_ciclo(2)
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="E qual a frequência?")
+        cargas = {"7": 0}
+
+        resultado = await processar_chamado_novo(
+            cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True
+        )
+
+        assert cliente.avaliacoes == [(1, "aguardando_usuario", "E qual a frequência?")]
+        assert cliente.atribuicoes == []
+        assert resultado.avaliacao_suficiente is False
+
+    async def test_regra_disparando_numa_rodada_alem_da_primeira_escala_em_vez_de_repetir(self):
+        # `_avaliar_por_regra` sempre devolve o MESMO texto fixo — deixar
+        # isso repetir numa rodada além da 1ª seria o próprio bug #3262.
+        # `usar_ia=False` força o caminho da regra mesmo com 1 resposta já
+        # registrada (rodada > 0) — descrição vazia o bastante pra, mesmo
+        # somada com a resposta do followup, continuar batendo a regra
+        # (_MINIMO_PALAVRAS_DESCRICAO = 5).
+        chamado_curto = _chamado(categoria_id=999, descricao="")
+        cliente = _ClienteGLPIFake([chamado_curto])
+        cliente.followups_por_chamado[1] = _followups_ciclo(1)
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="não deveria ser usada")
+        cargas = {"7": 0}
+
+        resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado_curto, cargas, False)
+
+        assert len(cliente.avaliacoes) == 1
+        assert cliente.avaliacoes[0][1] == "fila_atendimento"
+        assert len(cliente.atribuicoes) == 1
+        assert resultado.avaliacao_suficiente is False
+
     async def test_escalonamento_desatribui_a_conta_da_ia_se_estiver_atribuida(self, monkeypatch):
         monkeypatch.setattr(settings, "glpi_conta_ia_id", "274-teste")
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999, tecnico_atribuido="274-teste")])
+        cliente.followups_por_chamado[1] = _followups_ciclo(3)
         ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
         cargas = {"7": 0}
 
@@ -503,33 +563,26 @@ class TestProcessarChamadoNovo:
             _chamado(categoria_id=999, tecnico_atribuido="274-teste"),
             cargas,
             True,
-            ja_foi_avaliado_insuficiente=True,
         )
 
         assert cliente.usuarios_desatribuidos == [(1, "274-teste")]
         assert len(cliente.atribuicoes) == 1
 
-    async def test_insuficiente_de_novo_sem_categoria_usa_area_padrao(self):
+    async def test_insuficiente_apos_limite_sem_categoria_usa_area_padrao(self):
         # Chamado aberto por e-mail (sem categoria) que segue insuficiente
-        # na segunda passada ainda precisa de alguém pra escalar — cai na
-        # área padrão em vez de travar por falta de categoria.
+        # depois de esgotar as rodadas ainda precisa de alguém pra
+        # escalar — cai na área padrão em vez de travar por falta de
+        # categoria.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=None)])
+        cliente.followups_por_chamado[1] = _followups_ciclo(3)
         ollama = _OllamaClienteFake(suficiente=False, mensagem="Qual sistema está afetado?")
         cargas: dict[str, int] = {}
 
-        await processar_chamado_novo(
-            cliente,
-            ollama,
-            "modelo-teste",
-            _chamado(categoria_id=None),
-            cargas,
-            True,
-            ja_foi_avaliado_insuficiente=True,
-        )
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(categoria_id=None), cargas, True)
 
         assert len(cliente.atribuicoes) == 1
         _chamado_id, area, _tecnico = cliente.atribuicoes[0]
-        assert area == "processos"
+        assert area == "sistemas"
 
 
 class TestVerificarChamadosPendentes:
@@ -653,13 +706,20 @@ class TestClienteProtegidoDeVerdade:
     continuar sem rede/banco real num teste unitário."""
 
     async def test_descricao_com_cpf_chega_mascarada_no_ollama(self, monkeypatch):
-        from agente_oracle.tools.ia import auditoria_externa
+        from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor
         from agente_oracle.tools.ia import cliente_protegido as cliente_protegido_module
 
         cliente_ollama_fake = _OllamaClienteFake(suficiente=True)
         monkeypatch.setattr(cliente_protegido_module, "AsyncClient", lambda **_kwargs: cliente_ollama_fake)
         monkeypatch.setattr(auditoria_externa, "registrar", lambda *_args: None)
         monkeypatch.setattr(auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+        # Isola do banco real: este teste quer especificamente o caminho
+        # `ollama.AsyncClient` (nenhum provedor cadastrado ativo) — sem
+        # isso, ele passa a depender do que estiver ativado no Postgres de
+        # dev no momento (ex: um provedor OpenAI-compatível cadastrado
+        # manualmente pra teste), que usaria `ClienteOpenAICompativel` em
+        # vez do `AsyncClient` mockado aqui.
+        monkeypatch.setattr(configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
 
         chamado = _chamado(
             categoria_id=999, descricao=_DESCRICAO_PADRAO_TESTE + " Meu CPF é 123.456.789-00."

@@ -89,9 +89,18 @@ _PROMPT_SISTEMA = (
     "SAP, Protheus, uma impressora) que não apareça literalmente no título, na descrição ou na "
     "conversa — a categoria pode sugerir um tipo de problema (ex: 'sincronização, acesso'), mas isso "
     "não é licença pra adivinhar qual sistema é; nesse caso pergunte usando os termos genéricos da "
-    "própria categoria. Se já existir uma pergunta sua na conversa, a nova pergunta precisa ser "
-    "DIFERENTE dela — nunca repita o mesmo tópico já perguntado, avance pro que ainda falta. Se já "
-    "tiver os três pontos cobertos, marque `suficiente: true` e deixe `mensagem` vazia."
+    "própria categoria. Se já existir uma pergunta sua nesta conversa, ANTES de decidir: releia sua "
+    "ÚLTIMA pergunta e a resposta mais recente do solicitante, e verifique se essa resposta já cobre o "
+    "que você perguntou — MESMO com palavras diferentes das que você sugeriu como exemplo. Exemplo: se "
+    "você perguntou 'aparece mensagem de erro, a tela fica em branco, ou os itens desaparecem?' e o "
+    "solicitante respondeu 'não vejo mais no menu', isso JÁ RESPONDE o ponto de como o problema se "
+    "manifesta — não é uma resposta vaga só porque não usou exatamente uma das suas opções de exemplo; "
+    "é uma manifestação específica, só descrita com outras palavras. Se a resposta mais recente cobrir "
+    "o que sua última pergunta pedia, considere esse ponto resolvido: marque `suficiente: true` se os "
+    "três pontos já estiverem cobertos, ou, se ainda faltar um ponto DIFERENTE, pergunte só sobre esse "
+    "outro ponto. Nunca repita a mesma pergunta nem uma pergunta parecida sobre um ponto que a resposta "
+    "mais recente já tocou, mesmo que ainda pareça incompleta — nesse caso peça um detalhe A MAIS sobre "
+    "o que já foi dito, nunca a mesma pergunta de novo."
 )
 
 

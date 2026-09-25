@@ -47,8 +47,17 @@ class TestPromptSistema:
     def test_prompt_pede_exemplo_construido_em_cima_do_que_ja_foi_dito(self):
         assert "exemplo curto de como uma descrição completa ficaria" in mod._PROMPT_SISTEMA
 
-    def test_prompt_probe_repetir_pergunta_ja_feita(self):
-        assert "precisa ser DIFERENTE dela" in mod._PROMPT_SISTEMA
+    def test_prompt_pede_pra_reler_a_ultima_resposta_antes_de_repetir_pergunta(self):
+        # Bug real (chamado #3340, 2026-09-25): a IA perguntou "erro, tela
+        # branca ou os itens desaparecem?", o solicitante respondeu "não
+        # vejo mais no menu" (já cobre "desaparecem", só com outra
+        # palavra), e a IA repetiu quase a mesma pergunta de novo — a
+        # conversa que ela recebe estava correta, ela só não conectou a
+        # resposta à própria pergunta anterior. Reforço explícito pedindo
+        # pra reler pergunta+resposta antes de decidir.
+        assert "releia sua" in mod._PROMPT_SISTEMA
+        assert "MESMO com palavras diferentes" in mod._PROMPT_SISTEMA
+        assert "peça um detalhe A MAIS" in mod._PROMPT_SISTEMA
 
     def test_prompt_exige_como_o_problema_se_manifesta_nao_so_o_verbo_generico(self):
         # Régua levantada a pedido do Daniel (2026-09-24): "sistema trava

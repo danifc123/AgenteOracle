@@ -35,16 +35,21 @@ vezes com o solicitante antes de escalar pra um técnico humano — cada
 rodada manda a `avaliar_chamado` a conversa inteira (`TurnoConversa[]`,
 montada aqui a partir dos `Followup`s reais do GLPI, papel "ia" pra
 mensagem da própria conta de serviço e "usuario" pra qualquer outra
-pessoa), então a IA sempre enxerga o que já foi perguntado/respondido e
-nunca repete a mesma pergunta. `rodadas_do_usuario` é só a contagem de
-Followups de fora da conta de serviço — fonte de verdade é o próprio
-GLPI, não uma tabela nossa. Exceção: se `avaliar_chamado` cair no plano B
-determinístico (`AvaliacaoChamado.origem == "regra"`) numa rodada além da
-1ª, escala na hora mesmo sem bater o limite — a regra sempre devolve o
-MESMO texto fixo, então insistir repetiria a pergunta (o bug real visto
-em produção, #3262, que essa checagem evita). Ao escalar por qualquer um
-desses dois motivos (limite batido ou regra repetiria), posta um
-Followup resumindo a conversa pro técnico não precisar reler tudo
+pessoa), então a IA sempre enxerga o que já foi perguntado/respondido —
+mas "enxergar" não é garantia de não repetir na prática (bug real visto
+no chamado #3340: mesmo com o histórico certo, a IA repetiu uma pergunta
+quase idêntica). `rodadas_do_usuario` é só a contagem de Followups de
+fora da conta de serviço — fonte de verdade é o próprio GLPI, não uma
+tabela nossa. Além de bater o limite de rodadas, dois motivos escalam
+mais cedo: (1) `avaliar_chamado` caiu no plano B determinístico
+(`AvaliacaoChamado.origem == "regra"`) numa rodada além da 1ª — a regra
+sempre devolve o MESMO texto fixo, insistir repetiria a pergunta (bug
+real em produção, #3262); (2) a nova pergunta da IA saiu parecida demais
+com uma pergunta anterior DELA MESMA nesta conversa
+(`_pergunta_parecida_com_alguma_anterior`, rede de segurança pro caso
+#3340 — a IA pode repetir com outras palavras, não só literalmente). Ao
+escalar por qualquer um desses três motivos, posta um Followup resumindo
+a conversa pro técnico não precisar reler tudo
 (`_resumo_esclarecimento_incompleto`).
 
 Amostragem (`tools/ti/amostragem_chamados.py`): só parte dos chamados novos é triada; o botão
@@ -68,6 +73,7 @@ de status já feita continua valendo mesmo depois de desatribuir."""
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -174,6 +180,56 @@ def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa |
     except DatabaseError:
         _logger.exception("Falha consultando última avaliação do chamado %s", chamado_id)
         return None
+
+
+# Limiar calibrado contra dados reais do chamado #3340 (2026-09-25), já
+# com a mesma filtragem de `_palavras_significativas`: entre a pergunta
+# repetida de verdade e a anterior, 0.29-0.63; entre perguntas
+# genuinamente diferentes da mesma conversa, 0.13-0.21. 0.25 fica no meio
+# dessa folga — o custo de um falso positivo é baixo (escala 1 rodada
+# mais cedo do que o teto normal já escalaria), o de um falso negativo é
+# a IA repetir sem ninguém notar.
+_LIMIAR_SIMILARIDADE_PERGUNTA = 0.25
+
+# Palavras comuns o bastante pra não distinguir pergunta nenhuma — sem
+# filtrar isso, duas perguntas sobre qualquer chamado de TI colam alto só
+# por dividirem "que"/"para"/"como" etc., mascarando a diferença real.
+_PALAVRAS_IGNORADAS = frozenset(
+    ["que", "de", "a", "o", "e", "do", "da", "em", "um", "uma", "para", "com", "não", "os", "as", "dos", "das", "ao", "aos", "se", "por", "mais", "como", "mas", "foi", "ou", "ser", "tem", "seu", "sua", "quando", "muito", "nos", "já", "está", "eu", "também", "só", "pelo", "pela", "até", "isso", "ela", "entre", "depois", "sem", "mesmo", "esse", "essa", "num", "numa", "pelos", "pelas", "esses", "essas", "exemplo"]
+)
+
+
+def _palavras_significativas(texto: str) -> set[str]:
+    return {
+        palavra
+        for palavra in re.findall(r"[a-zà-úA-ZÀ-Ú]+", texto.lower())
+        if palavra not in _PALAVRAS_IGNORADAS and len(palavra) > 2
+    }
+
+
+def _pergunta_parecida_com_alguma_anterior(mensagem: str, turnos: list[TurnoConversa]) -> bool:
+    """Rede de segurança determinística contra a IA repetir uma pergunta
+    já feita nesta conversa (com outras palavras, então nunca é IDÊNTICA
+    — se fosse, `avaliacao.origem == "regra"` já cobriria) — bug real
+    visto no chamado #3340: mesmo com o histórico correto e instrução
+    explícita pra não repetir, o modelo às vezes repete assim mesmo.
+    Similaridade Jaccard por palavra (ignorando termos comuns demais) da
+    nova mensagem contra CADA pergunta anterior da própria IA na
+    conversa — `_LIMIAR_SIMILARIDADE_PERGUNTA` explica a calibração."""
+    palavras_novas = _palavras_significativas(mensagem)
+    if not palavras_novas:
+        return False
+    for turno in turnos:
+        if turno.papel != "ia":
+            continue
+        palavras_anteriores = _palavras_significativas(turno.conteudo)
+        uniao = palavras_novas | palavras_anteriores
+        if not uniao:
+            continue
+        similaridade = len(palavras_novas & palavras_anteriores) / len(uniao)
+        if similaridade > _LIMIAR_SIMILARIDADE_PERGUNTA:
+            return True
+    return False
 
 
 def _turnos_da_conversa(followups: list[Followup]) -> list[TurnoConversa]:
@@ -360,7 +416,10 @@ async def processar_chamado_novo(
     if not avaliacao.suficiente:
         bateu_limite = rodadas_do_usuario >= _LIMITE_RODADAS_ESCLARECIMENTO
         regra_repetiria = avaliacao.origem == "regra" and rodadas_do_usuario > 0
-        if bateu_limite or regra_repetiria:
+        pergunta_repetitiva = avaliacao.origem == "ia" and _pergunta_parecida_com_alguma_anterior(
+            avaliacao.mensagem, turnos
+        )
+        if bateu_limite or regra_repetiria or pergunta_repetitiva:
             await _escalar_para_tecnico(cliente, chamado, cargas, turnos)
         else:
             if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:

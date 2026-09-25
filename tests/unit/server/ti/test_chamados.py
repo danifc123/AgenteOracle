@@ -6,6 +6,7 @@ import psycopg
 import pytest
 
 from agente_oracle.agent.ti import roteamento_chamado
+from agente_oracle.agent.ti.qualidade_chamado import TurnoConversa
 from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
@@ -207,6 +208,51 @@ class _ClienteGLPIFake:
 
     async def buscar_area_do_tecnico(self, usuario_id: str) -> None:
         return None
+
+
+class TestPerguntaParecidaComAlgumaAnterior:
+    def test_pergunta_praticamente_repetida_e_detectada(self):
+        # Caso real, chamado #3340 (2026-09-25): a IA perguntou de novo,
+        # com outras palavras, algo que já tinha perguntado antes.
+        anterior = (
+            'Qual é o comportamento exato quando tenta abrir as pastas do módulo financeiro? Por '
+            'exemplo: ao clicar no módulo financeiro, aparece a mensagem "Acesso negado" ou a tela '
+            "fica em branco sem carregar as pastas."
+        )
+        nova = (
+            "Você poderia especificar o que acontece exatamente ao tentar abrir o módulo financeiro? "
+            "Por exemplo: aparece alguma mensagem de erro, a tela fica em branco ou o sistema não "
+            "responde ao clique."
+        )
+        turnos = [TurnoConversa(papel="ia", conteudo=anterior)]
+
+        assert chamados_module._pergunta_parecida_com_alguma_anterior(nova, turnos) is True
+
+    def test_pergunta_genuinamente_diferente_nao_e_marcada(self):
+        turnos = [
+            TurnoConversa(
+                papel="ia",
+                conteudo="Desde quando você está enfrentando esse problema ao tentar visualizar as pastas?",
+            )
+        ]
+        nova = (
+            'Qual é o comportamento exato quando tenta abrir as pastas do módulo financeiro? Por '
+            'exemplo: ao clicar, aparece a mensagem "Acesso negado" ou a tela fica em branco?'
+        )
+
+        assert chamados_module._pergunta_parecida_com_alguma_anterior(nova, turnos) is False
+
+    def test_ignora_turnos_do_usuario_na_comparacao(self):
+        # Só compara contra perguntas da PRÓPRIA IA — a resposta do
+        # usuário pode compartilhar palavras com a pergunta nova sem que
+        # isso seja repetição nenhuma.
+        turnos = [TurnoConversa(papel="usuario", conteudo="Qual é o comportamento exato do módulo financeiro?")]
+        nova = "Qual é o comportamento exato do módulo financeiro?"
+
+        assert chamados_module._pergunta_parecida_com_alguma_anterior(nova, turnos) is False
+
+    def test_sem_turnos_anteriores_nunca_e_repetitiva(self):
+        assert chamados_module._pergunta_parecida_com_alguma_anterior("Qual sistema é afetado?", []) is False
 
 
 class TestProcessarChamadoNovo:
@@ -543,6 +589,25 @@ class TestProcessarChamadoNovo:
         cargas = {"7": 0}
 
         resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado_curto, cargas, False)
+
+        assert len(cliente.avaliacoes) == 1
+        assert cliente.avaliacoes[0][1] == "fila_atendimento"
+        assert len(cliente.atribuicoes) == 1
+        assert resultado.avaliacao_suficiente is False
+
+    async def test_ia_repetindo_pergunta_parecida_escala_mesmo_sem_bater_o_limite(self):
+        # Rede de segurança pro caso real do chamado #3340: mesmo vindo da
+        # IA de verdade (não da regra) e ainda dentro do limite de
+        # rodadas, uma pergunta parecida demais com uma que a própria IA
+        # já fez nesta conversa escala em vez de repetir.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        cliente.followups_por_chamado[1] = _followups_ciclo(1)  # 1 rodada, bem abaixo do limite (3)
+        ollama = _OllamaClienteFake(suficiente=False, mensagem="Pergunta 1 da IA")  # igual à pergunta anterior
+        cargas = {"7": 0}
+
+        resultado = await processar_chamado_novo(
+            cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True
+        )
 
         assert len(cliente.avaliacoes) == 1
         assert cliente.avaliacoes[0][1] == "fila_atendimento"

@@ -6,6 +6,7 @@ from agente_oracle.server.ti.uso_ia import (
     _acesso_negado,
     _chamados_ia_para_json,
     _corpo_uso_ia,
+    _custo_convertido_brl,
     _custo_e_moeda,
     _dias_da_query,
     _linha_dia_para_json,
@@ -102,6 +103,7 @@ class TestLinhaParaJson:
             "tokens_total": 230,
             "custo_estimado": None,
             "moeda": None,
+            "custo_brl": None,
         }
 
     def test_inclui_custo_estimado_quando_bate_com_o_cadastro(self):
@@ -119,6 +121,51 @@ class TestLinhaParaJson:
 
         assert corpo["custo_estimado"] == 0.03
         assert corpo["moeda"] == "R$"
+        # Cadastro em R$ — nada pra converter, ver TestCustoConvertidoBrl.
+        assert corpo["custo_brl"] is None
+
+    def test_inclui_custo_brl_quando_cadastro_e_em_dolar(self, monkeypatch):
+        linha = ResumoTokensProvedor(
+            provedor="oci_openai",
+            modelo="openai.gpt-oss-120b",
+            chamadas=1,
+            tokens_entrada_total=1000,
+            tokens_saida_total=1000,
+            tokens_raciocinio_total=0,
+        )
+        cadastro = _provedor_llm(
+            preco_entrada_por_1k=Decimal("0.01"), preco_saida_por_1k=Decimal("0.02"), moeda="US$"
+        )
+        mapa = {("oci_openai", "openai.gpt-oss-120b"): cadastro}
+        monkeypatch.setattr(uso_ia_module.cotacao_dolar, "cotacao_usd_brl", lambda: Decimal("5.00"))
+
+        corpo = _linha_para_json(linha, mapa)
+
+        assert corpo["custo_estimado"] == 0.03
+        assert corpo["moeda"] == "US$"
+        assert corpo["custo_brl"] == 0.15
+
+
+class TestCustoConvertidoBrl:
+    def test_custo_em_dolar_com_cotacao_disponivel_converte(self, monkeypatch):
+        monkeypatch.setattr(uso_ia_module.cotacao_dolar, "cotacao_usd_brl", lambda: Decimal("5.20"))
+
+        assert _custo_convertido_brl(2.0, "US$") == 10.4
+
+    def test_custo_em_real_nao_converte(self, monkeypatch):
+        monkeypatch.setattr(uso_ia_module.cotacao_dolar, "cotacao_usd_brl", lambda: Decimal("5.20"))
+
+        assert _custo_convertido_brl(2.0, "R$") is None
+
+    def test_custo_ausente_nao_converte(self, monkeypatch):
+        monkeypatch.setattr(uso_ia_module.cotacao_dolar, "cotacao_usd_brl", lambda: Decimal("5.20"))
+
+        assert _custo_convertido_brl(None, "US$") is None
+
+    def test_cotacao_indisponivel_nao_converte(self, monkeypatch):
+        monkeypatch.setattr(uso_ia_module.cotacao_dolar, "cotacao_usd_brl", lambda: None)
+
+        assert _custo_convertido_brl(2.0, "US$") is None
 
 
 class TestNomeUsuario:

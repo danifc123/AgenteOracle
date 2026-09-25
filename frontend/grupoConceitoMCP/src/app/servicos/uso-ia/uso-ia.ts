@@ -16,6 +16,11 @@ export interface LinhaUsoIa {
    * `server/ti/uso_ia.py::_custo_e_moeda` no backend. */
   custo_estimado: number | null;
   moeda: string | null;
+  /** `custo_estimado` convertido pra R$ quando `moeda` é "US$" e a cotação
+   * do dia foi obtida com sucesso — `null` quando já é R$, quando
+   * `custo_estimado` é `null`, ou quando a API de câmbio está fora do ar.
+   * Ver `server/ti/uso_ia.py::_custo_convertido_brl` no backend. */
+  custo_brl: number | null;
 }
 
 export interface LinhaUsoIaPorUsuario {

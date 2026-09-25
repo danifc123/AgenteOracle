@@ -18,7 +18,7 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis, usuarios
-from agente_oracle.tools.ia import auditoria_externa, provedores_llm
+from agente_oracle.tools.ia import auditoria_externa, cotacao_dolar, provedores_llm
 from agente_oracle.tools.ia.auditoria_externa import (
     ResumoTokensDia,
     ResumoTokensProvedor,
@@ -65,6 +65,27 @@ def _custo_e_moeda(
     return float(custo), cadastro.moeda
 
 
+# Único valor que `custo_brl` sabe converter — combinado com o select
+# fechado do cadastro (`provedores.html`, só "R$"/"US$"), nunca precisa
+# adivinhar outra grafia ("USD", "U$" etc.).
+_MOEDA_DOLAR = "US$"
+
+
+def _custo_convertido_brl(custo: float | None, moeda: str | None) -> float | None:
+    """`None` sempre que não há o que converter: já é R$, custo é `None`
+    (sem cadastro batendo), ou a cotação não veio (API de câmbio fora do
+    ar) — nunca inventa um número. Só existe pra QUEM DECIDE trocar de
+    provedor enxergar o gasto na mesma moeda que a empresa usa pra
+    decidir, sem misturar com o cálculo de custo em si (que continua
+    sempre na moeda original do cadastro, ver `_custo_e_moeda`)."""
+    if custo is None or moeda != _MOEDA_DOLAR:
+        return None
+    cotacao = cotacao_dolar.cotacao_usd_brl()
+    if cotacao is None:
+        return None
+    return custo * float(cotacao)
+
+
 def _linha_para_json(linha: ResumoTokensProvedor, cadastro_por_nome_modelo: dict) -> dict:
     custo, moeda = _custo_e_moeda(
         linha.provedor, linha.modelo, linha.tokens_entrada_total, linha.tokens_saida_total, cadastro_por_nome_modelo
@@ -79,6 +100,7 @@ def _linha_para_json(linha: ResumoTokensProvedor, cadastro_por_nome_modelo: dict
         "tokens_total": linha.tokens_entrada_total + linha.tokens_saida_total,
         "custo_estimado": custo,
         "moeda": moeda,
+        "custo_brl": _custo_convertido_brl(custo, moeda),
     }
 
 

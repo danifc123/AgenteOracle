@@ -1,6 +1,16 @@
 import pytest
 
-from agente_oracle.tools.ia.cliente_openai_compativel import ClienteOpenAICompativel, EmbeddingNaoSuportado
+from agente_oracle.tools.ia.cliente_openai_compativel import (
+    _NOME_SCHEMA,
+    ClienteOpenAICompativel,
+    EmbeddingNaoSuportado,
+)
+
+_SCHEMA_TESTE = {
+    "type": "object",
+    "properties": {"suficiente": {"type": "boolean"}},
+    "required": ["suficiente"],
+}
 
 
 class _DetalhesSaidaFake:
@@ -144,16 +154,17 @@ class TestChat:
 
         assert cliente_real.chat.completions.chamadas[0]["messages"] == mensagens
 
-    async def test_kwargs_extras_do_ollama_sao_absorvidos_sem_erro(self):
-        # `format`/`options` são linguagem do Ollama — a OCI não usa isso,
-        # mas o client protegido manda do mesmo jeito pra qualquer provedor.
+    async def test_options_do_ollama_e_absorvido_sem_erro(self):
+        # `options` (`num_ctx` etc) é linguagem do Ollama sem equivalente
+        # aqui — o client protegido manda do mesmo jeito pra qualquer
+        # provedor, e este client só ignora (`format`, ao contrário, É
+        # traduzido — ver os testes de `TestFormatoEstruturado`).
         cliente_real = _ClienteOpenAIFake()
         cliente = ClienteOpenAICompativel(cliente_real)
 
         await cliente.chat(
             model="meta.llama-3.3-70b-instruct",
             messages=[{"role": "user", "content": "oi"}],
-            format={"type": "object"},
             options={"num_ctx": 1},
         )
 
@@ -226,6 +237,57 @@ class TestChat:
         )
 
         assert getattr(resposta, "tokens_raciocinio", None) is None
+
+
+class TestFormatoEstruturado:
+    """`format=SCHEMA` é como todo módulo de IA do projeto já pede saída
+    estruturada (linguagem do `ollama.AsyncClient`) — regressão real:
+    esse client absorvia e descartava, então o modelo respondia em texto
+    livre com a OCI ativa (o julgamento de suficiência de chamado saía
+    mais frouxo do que com o Ollama, que sempre respeitou o schema)."""
+
+    async def test_responses_api_sem_format_nao_pede_saida_estruturada(self):
+        cliente_real = _ClienteOpenAIFake()
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
+
+        await cliente.chat(model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}])
+
+        assert "text" not in cliente_real.responses.chamadas[0]
+
+    async def test_responses_api_com_format_pede_json_schema_no_text(self):
+        cliente_real = _ClienteOpenAIFake()
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
+
+        await cliente.chat(
+            model="openai.gpt-oss-120b", messages=[{"role": "user", "content": "oi"}], format=_SCHEMA_TESTE
+        )
+
+        assert cliente_real.responses.chamadas[0]["text"] == {
+            "format": {"type": "json_schema", "name": _NOME_SCHEMA, "schema": _SCHEMA_TESTE}
+        }
+
+    async def test_chat_completions_sem_format_nao_pede_saida_estruturada(self):
+        cliente_real = _ClienteOpenAIFake()
+        cliente = ClienteOpenAICompativel(cliente_real)
+
+        await cliente.chat(model="meta.llama-3.3-70b-instruct", messages=[{"role": "user", "content": "oi"}])
+
+        assert "response_format" not in cliente_real.chat.completions.chamadas[0]
+
+    async def test_chat_completions_com_format_pede_json_schema_no_response_format(self):
+        cliente_real = _ClienteOpenAIFake()
+        cliente = ClienteOpenAICompativel(cliente_real)
+
+        await cliente.chat(
+            model="meta.llama-3.3-70b-instruct",
+            messages=[{"role": "user", "content": "oi"}],
+            format=_SCHEMA_TESTE,
+        )
+
+        assert cliente_real.chat.completions.chamadas[0]["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": _NOME_SCHEMA, "schema": _SCHEMA_TESTE},
+        }
 
 
 class TestEmbed:

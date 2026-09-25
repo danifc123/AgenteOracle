@@ -16,14 +16,29 @@ qualquer provedor novo sem precisar editar este arquivo.
 `chat` monta o `input` da Responses API concatenando as mensagens num texto
 só (papel + conteúdo) — simplificação de propósito, pra não arriscar
 inventar um formato de `input` estruturado sem poder testar contra a API
-real; se algo se comportar diferente do esperado (ex: saída estruturada por
-JSON schema não vier igual ao Ollama), é o primeiro lugar a revisar depois
-do teste manual com a chave de verdade."""
+real; se algo se comportar diferente do esperado, é o primeiro lugar a
+revisar depois do teste manual com a chave de verdade.
+
+`format` (o JSON schema que todo módulo de IA do projeto já manda —
+linguagem do `ollama.AsyncClient.chat(..., format=SCHEMA)`) é traduzido
+pro parâmetro de saída estruturada de cada estilo (`text.format` na
+Responses API, `response_format` no Chat Completions — nomes diferentes,
+mesma ideia) — sem isso, o modelo respondia em texto livre e a gente só
+torcia pra vir JSON parseável (bug real: o julgamento de suficiência de
+chamado saía mais frouxo com a OCI ativa do que com o Ollama). Sem
+`strict: true` de propósito: esse modo da OpenAI exige `additionalProperties:
+false` em todo schema, e nenhum schema do projeto declara isso hoje —
+ainda restringe a saída ao schema, só não na wire mais rígida da OpenAI."""
 
 from types import SimpleNamespace
-from typing import Literal
+from typing import Any, Literal
 
 from openai import AsyncOpenAI
+
+# Nome fixo do schema — a Structured Outputs API exige um `name`, mas
+# `format=SCHEMA` (linguagem do Ollama) nunca carrega um; como só existe
+# UM schema por chamada, um nome genérico é suficiente.
+_NOME_SCHEMA = "resposta_estruturada"
 
 EstiloApi = Literal["chat_completions", "responses"]
 
@@ -38,17 +53,38 @@ class EmbeddingNaoSuportado(Exception):
     calado."""
 
 
+def _kwargs_saida_estruturada_responses(format: dict[str, Any] | None) -> dict[str, Any]:
+    """Kwargs extra pra `responses.create` pedir saída em JSON schema
+    (estilo Responses API) — `{}` quando ninguém pediu schema (chamada de
+    texto livre, sem `format=`), pra não forçar JSON onde não foi pedido."""
+    if format is None:
+        return {}
+    return {"text": {"format": {"type": "json_schema", "name": _NOME_SCHEMA, "schema": format}}}
+
+
+def _kwargs_saida_estruturada_chat_completions(format: dict[str, Any] | None) -> dict[str, Any]:
+    """Mesma ideia de `_kwargs_saida_estruturada_responses`, pro estilo
+    Chat Completions — cada estilo usa um parâmetro/formato diferente pra
+    pedir a mesma coisa (saída em JSON schema)."""
+    if format is None:
+        return {}
+    return {"response_format": {"type": "json_schema", "json_schema": {"name": _NOME_SCHEMA, "schema": format}}}
+
+
 class ClienteOpenAICompativel:
     def __init__(self, cliente_real: AsyncOpenAI, estilo_api: EstiloApi = "chat_completions"):
         self._cliente = cliente_real
         self._estilo_api = estilo_api
 
-    async def chat(self, *, model, messages, **_kwargs):
-        # `**_kwargs` absorve `format`/`options` — linguagem do Ollama, que
-        # o client protegido manda pra qualquer provedor por baixo.
+    async def chat(self, *, model, messages, format: dict[str, Any] | None = None, **_kwargs):
+        # `**_kwargs` ainda absorve `options` (`num_ctx` etc — linguagem do
+        # Ollama sem equivalente aqui); só `format` é traduzido, ver
+        # docstring do módulo.
         if self._estilo_api == "responses":
             entrada = "\n\n".join(f"{mensagem['role']}: {mensagem['content']}" for mensagem in messages)
-            resposta = await self._cliente.responses.create(model=model, input=entrada)
+            resposta = await self._cliente.responses.create(
+                model=model, input=entrada, **_kwargs_saida_estruturada_responses(format)
+            )
             uso = resposta.usage
             detalhes_saida = getattr(uso, "output_tokens_details", None) if uso else None
             return SimpleNamespace(
@@ -64,7 +100,9 @@ class ClienteOpenAICompativel:
                 # conceito, ficam sempre `None`.
                 tokens_raciocinio=getattr(detalhes_saida, "reasoning_tokens", None),
             )
-        resposta = await self._cliente.chat.completions.create(model=model, messages=messages)
+        resposta = await self._cliente.chat.completions.create(
+            model=model, messages=messages, **_kwargs_saida_estruturada_chat_completions(format)
+        )
         uso = resposta.usage
         return SimpleNamespace(
             message=SimpleNamespace(content=resposta.choices[0].message.content),

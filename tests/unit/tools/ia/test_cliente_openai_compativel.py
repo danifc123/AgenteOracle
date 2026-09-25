@@ -154,6 +154,27 @@ class TestChat:
 
         assert cliente_real.chat.completions.chamadas[0]["messages"] == mensagens
 
+    async def test_responses_api_recebe_input_estruturado_nao_texto_achatado(self):
+        # Regressão real (2026-09-25): mandar tudo achatado num texto só
+        # ("system: ...\n\nuser: ...") atrapalhava o modelo distinguir
+        # pergunta própria de resposta do solicitante numa conversa de
+        # várias rodadas — `input` agora recebe a mesma lista estruturada
+        # de `{"role", "content"}` que o Chat Completions já recebe
+        # (confirmado contra a API real que `EasyInputMessageParam` aceita
+        # isso, mesmos papéis system/user/assistant).
+        cliente_real = _ClienteOpenAIFake()
+        cliente = ClienteOpenAICompativel(cliente_real, estilo_api="responses")
+        mensagens = [
+            {"role": "system", "content": "sistema"},
+            {"role": "user", "content": "pergunta 1"},
+            {"role": "assistant", "content": "resposta 1"},
+            {"role": "user", "content": "pergunta 2"},
+        ]
+
+        await cliente.chat(model="openai.gpt-oss-120b", messages=mensagens)
+
+        assert cliente_real.responses.chamadas[0]["input"] == mensagens
+
     async def test_options_do_ollama_e_absorvido_sem_erro(self):
         # `options` (`num_ctx` etc) é linguagem do Ollama sem equivalente
         # aqui — o client protegido manda do mesmo jeito pra qualquer

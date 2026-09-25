@@ -13,11 +13,16 @@ adivinhar pelo nome do modelo (frágil pra qualquer provedor que não seja
 a OCI), quem cadastra o LLM escolhe o estilo certo na hora — funciona pra
 qualquer provedor novo sem precisar editar este arquivo.
 
-`chat` monta o `input` da Responses API concatenando as mensagens num texto
-só (papel + conteúdo) — simplificação de propósito, pra não arriscar
-inventar um formato de `input` estruturado sem poder testar contra a API
-real; se algo se comportar diferente do esperado, é o primeiro lugar a
-revisar depois do teste manual com a chave de verdade.
+`chat` manda `messages` pra Responses API como `input` estruturado — uma
+lista de `{"role", "content"}`, igual ao Chat Completions — não como um
+texto achatado (`"system: ...\n\nuser: ..."` num blob só). Testado contra
+a API real: `input` aceita essa lista igual (`EasyInputMessageParam`,
+mesmos papéis `system`/`user`/`assistant` que `messages` já usa). Isso
+importa de verdade pra conversa de várias rodadas — um texto achatado
+dificulta o modelo distinguir "isso eu perguntei" de "isso ele respondeu"
+(bug real, 2026-09-25: chamado de service desk com a mesma pergunta de
+esclarecimento repetida, mesmo com o histórico completo — corrigido
+trocando o texto achatado pela lista estruturada).
 
 `format` (o JSON schema que todo módulo de IA do projeto já manda —
 linguagem do `ollama.AsyncClient.chat(..., format=SCHEMA)`) é traduzido
@@ -81,9 +86,8 @@ class ClienteOpenAICompativel:
         # Ollama sem equivalente aqui); só `format` é traduzido, ver
         # docstring do módulo.
         if self._estilo_api == "responses":
-            entrada = "\n\n".join(f"{mensagem['role']}: {mensagem['content']}" for mensagem in messages)
             resposta = await self._cliente.responses.create(
-                model=model, input=entrada, **_kwargs_saida_estruturada_responses(format)
+                model=model, input=messages, **_kwargs_saida_estruturada_responses(format)
             )
             uso = resposta.usage
             detalhes_saida = getattr(uso, "output_tokens_details", None) if uso else None

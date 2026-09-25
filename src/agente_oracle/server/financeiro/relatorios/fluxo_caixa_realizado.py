@@ -349,7 +349,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], str] | None:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/fluxo-caixa-realizado/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_fluxo_caixa_realizado_route(request: Request, usuario: dict) -> Response:
+    def exportar_fluxo_caixa_realizado_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Fluxo de Caixa Realizado (FINR01) — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -371,7 +371,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/fluxo-caixa-realizado", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_fluxo_caixa_realizado_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_fluxo_caixa_realizado_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Fluxo de Caixa Realizado (FINR01) — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

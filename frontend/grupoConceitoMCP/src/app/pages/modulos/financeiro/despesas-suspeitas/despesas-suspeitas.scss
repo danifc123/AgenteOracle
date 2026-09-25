@@ -77,16 +77,6 @@
   flex-wrap: wrap;
 }
 
-.badge-tipo {
-  display: inline-flex;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .fornecedor-achado {
   font-weight: 600;
   color: var(--color-text);
@@ -208,22 +198,6 @@
   font-family: var(--font-display);
   color: var(--cor-achado-texto);
   white-space: nowrap;
-}
-
-.badge-tipo {
-  display: inline-flex;
-  align-self: flex-start;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.badge-tipo--anomalia {
-  background: rgb(232 135 30 / 0.14);
-  color: #b5620f;
 }
 
 .detalhamento-secao-titulo {

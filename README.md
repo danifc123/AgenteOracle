@@ -293,7 +293,7 @@ filtro, 9.873 clientes viravam 12.242 linhas — 24% de duplicação).
 |---|---|---|
 | `SA1010` | Cliente | Views de faturamento/vendas |
 | `SA2010` | Fornecedor | Views de contas a pagar |
-| `SA3010` | Vendedor | `vw_faturamento.vendedor_nome` |
+| `SA3010` | Vendedor | `vwia_faturamento.vendedor_nome` |
 
 Uma view nova que junte com `PESSOA` **sempre** precisa desse filtro de papel — esquecer
 é o tipo de bug que não aparece em teste com poucos dados, só quando alguém do mundo real

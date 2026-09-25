@@ -161,7 +161,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], list[str], dict[s
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/contas-receber-produto/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_contas_receber_produto_route(request: Request, usuario: dict) -> Response:
+    def exportar_contas_receber_produto_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Contas a Receber com Descrição do Produto — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -183,7 +183,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/contas-receber-produto", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_contas_receber_produto_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_contas_receber_produto_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Contas a Receber com Descrição do Produto — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

@@ -1,11 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import { AnaliseCurriculo, Candidato, ROTULOS_SENIORIDADE } from '../../../../servicos/analise-curriculo';
-import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos';
+import { Selo } from '../../../../componentes/selo/selo';
+import { AnaliseCurriculo, Candidato, ROTULOS_SENIORIDADE } from '../../../../servicos/analise-curriculo/analise-curriculo';
+import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos/busca-candidatos';
 
 const LIMITE_RESUMO_TRUNCADO = 140;
 
@@ -30,7 +32,7 @@ type ModoRepescagem = 'lista' | 'busca';
  */
 @Component({
   selector: 'app-repescagem',
-  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader],
+  imports: [Botao, CartaoResultado, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, Selo],
   templateUrl: './repescagem.html',
   styleUrl: './repescagem.scss',
 })

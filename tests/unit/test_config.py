@@ -3,6 +3,9 @@ import pytest
 from agente_oracle.config import (
     TAMANHO_MINIMO_AUTH_SECRET_KEY,
     Settings,
+    ollama_api_key_do_dominio,
+    ollama_host_do_dominio,
+    ollama_model_do_dominio,
     validar_auth_secret_key,
     validar_glpi_configurado,
     validar_ollama_host_seguro,
@@ -81,6 +84,34 @@ class TestValidarGlpiConfigurado:
         )
 
 
+class TestOllamaHostDoDominio:
+    def test_sem_override_usa_o_host_global(self):
+        settings = Settings(ollama_host="http://127.0.0.1:11434", ollama_host_ti="")
+        assert ollama_host_do_dominio(settings, "ti") == "http://127.0.0.1:11434"
+
+    def test_com_override_usa_o_host_do_dominio(self):
+        settings = Settings(ollama_host="http://127.0.0.1:11434", ollama_host_ti="https://ollama.com")
+        assert ollama_host_do_dominio(settings, "ti") == "https://ollama.com"
+
+
+class TestOllamaModelDoDominio:
+    def test_sem_override_usa_o_modelo_global(self):
+        settings = Settings(ollama_model="qwen2.5-coder:7b", ollama_model_financeiro="")
+        assert ollama_model_do_dominio(settings, "financeiro") == "qwen2.5-coder:7b"
+
+    def test_com_override_usa_o_modelo_do_dominio(self):
+        settings = Settings(ollama_model="qwen2.5-coder:7b", ollama_model_ti="gpt-oss:120b")
+        assert ollama_model_do_dominio(settings, "ti") == "gpt-oss:120b"
+
+
+class TestOllamaApiKeyDoDominio:
+    def test_sem_override_devolve_vazio(self):
+        assert ollama_api_key_do_dominio(Settings(ollama_api_key_ti=""), "ti") == ""
+
+    def test_com_override_devolve_a_chave_do_dominio(self):
+        assert ollama_api_key_do_dominio(Settings(ollama_api_key_rh="abc123"), "rh") == "abc123"
+
+
 class TestValidarOllamaHostSeguro:
     def test_host_remoto_com_oracle_levanta_erro(self):
         settings = Settings(db_backend="oracle", ollama_host="http://203.0.113.10:11434")
@@ -96,3 +127,31 @@ class TestValidarOllamaHostSeguro:
     def test_host_remoto_com_postgres_nao_levanta_erro(self):
         # Banco fictício, sem dado real da empresa — seguro usar IA remota.
         validar_ollama_host_seguro(Settings(db_backend="postgres", ollama_host="http://203.0.113.10:11434"))
+
+    def test_dominio_ti_remoto_com_oracle_e_global_local_nao_levanta_erro(self):
+        # TI não toca Oracle — pode ser liberado sozinho, mesmo com o resto travado.
+        validar_ollama_host_seguro(
+            Settings(
+                db_backend="oracle",
+                ollama_host="http://127.0.0.1:11434",
+                ollama_host_ti="https://ollama.com",
+            )
+        )
+
+    def test_dominio_financeiro_remoto_com_oracle_levanta_erro_citando_o_dominio(self):
+        settings = Settings(
+            db_backend="oracle",
+            ollama_host="http://127.0.0.1:11434",
+            ollama_host_financeiro="https://ollama.com",
+        )
+        with pytest.raises(RuntimeError, match="OLLAMA_HOST_FINANCEIRO"):
+            validar_ollama_host_seguro(settings)
+
+    def test_dominio_ti_local_explicito_com_oracle_nao_levanta_erro(self):
+        validar_ollama_host_seguro(
+            Settings(
+                db_backend="oracle",
+                ollama_host="http://127.0.0.1:11434",
+                ollama_host_ti="http://127.0.0.1:11434",
+            )
+        )

@@ -8,7 +8,7 @@ uma frente bem maior, separada desta. Cada fator do score vira uma frase
 legível em `fatores`, nunca uma caixa preta.
 
 Comportamento de pagamento é 100% cálculo sobre títulos já liquidados de
-`vw_titulos_receber` (sem IA). Clima regional vem de `clima_regional.py`
+`vwia_titulos_receber` (sem IA). Clima regional vem de `clima_regional.py`
 (Open-Meteo, opcional — `None`/`indisponivel` nunca derruba o score)."""
 
 from dataclasses import dataclass

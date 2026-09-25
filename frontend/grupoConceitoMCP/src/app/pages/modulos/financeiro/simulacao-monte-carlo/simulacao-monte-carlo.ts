@@ -7,7 +7,7 @@ import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 
 interface Filial {
   codigo: string;

@@ -31,6 +31,8 @@ GLPI reenvie o evento em caso de erro. Se falhar antes de
 `/api/ti/chamados/verificar` (polling manual) acaba pegando ele depois —
 rede de segurança automática, sem esforço extra.
 
+Amostragem: a rota só chama `processar_webhook` se o chamado entrar na amostra (usa Postgres).
+
 Sem tratamento de CORS/OPTIONS de propósito — o GLPI chama servidor-a-
 servidor, nunca por um navegador.
 
@@ -49,12 +51,22 @@ import hmac
 import logging
 import time
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from agente_oracle.config import settings
-from agente_oracle.server.ti.chamados import ResultadoProcessamento, processar_chamado_novo
+from agente_oracle.server.ti.chamados import (
+    ResultadoProcessamento,
+    chamado_entra_na_amostra,
+    processar_chamado_novo,
+)
+from agente_oracle.tools.ia.cliente_protegido import (
+    USUARIO_SISTEMA,
+    criar_cliente_protegido,
+    modelo_ia_ativo,
+)
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti import uso_ia_chamados
 from agente_oracle.tools.ti.glpi import ClienteGLPI, criar_cliente
@@ -69,13 +81,6 @@ _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
 
 
-def _autorizado(segredo_recebido: str, segredo_esperado: str) -> bool:
-    """`segredo_esperado` vazio (`GLPI_WEBHOOK_SECRET` não configurado)
-    nunca autoriza, mesmo sem nenhum header na requisição — ver docstring
-    do módulo pro motivo (`compare_digest("", "")` sozinho daria `True`)."""
-    return bool(segredo_esperado) and hmac.compare_digest(segredo_recebido, segredo_esperado)
-
-
 def _chamado_id_do_payload(corpo: dict) -> int | None:
     """TODO: confirmar o formato exato do payload do evento "Ticket
     created" — aceita algumas chaves plausíveis enquanto isso não é
@@ -85,6 +90,13 @@ def _chamado_id_do_payload(corpo: dict) -> int | None:
         return int(bruto) if bruto is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _autorizado(segredo_recebido: str, segredo_esperado: str) -> bool:
+    """`segredo_esperado` vazio (`GLPI_WEBHOOK_SECRET` não configurado)
+    nunca autoriza, mesmo sem nenhum header na requisição — ver docstring
+    do módulo pro motivo (`compare_digest("", "")` sozinho daria `True`)."""
+    return bool(segredo_esperado) and hmac.compare_digest(segredo_recebido, segredo_esperado)
 
 
 async def processar_webhook(
@@ -106,9 +118,8 @@ async def processar_webhook(
 
     resultado = None
     try:
-        cargas = await cliente.carga_atual_por_tecnico(
-            [tecnico.identificador for tecnico in todos_os_tecnicos()]
-        )
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        cargas = await cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         resultado = await processar_chamado_novo(cliente, ollama_client, modelo, chamado, cargas, usar_ia)
     except Exception:
         _logger.exception("Falha processando webhook do GLPI pro chamado %s", chamado_id)
@@ -128,16 +139,27 @@ def registrar(mcp) -> None:
         except Exception:
             return JSONResponse({"erro": "Payload inválido."}, status_code=400)
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        # Fora da amostra: 200 sem processar; o poller repete a decisão já gravada.
+        chamado_id_amostragem = _chamado_id_do_payload(corpo)
+        if chamado_id_amostragem is not None and not await to_thread.run_sync(
+            chamado_entra_na_amostra, chamado_id_amostragem
+        ):
+            return JSONResponse({"ok": True, "amostrado": False}, status_code=200)
+
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
         inicio = time.monotonic()
         status_code, corpo_resposta, resultado = await processar_webhook(
-            corpo, _cliente, ollama_client, settings.ollama_model, usar_ia
+            corpo, _cliente, ollama_client, modelo_ia_ativo(settings, "ti"), usar_ia
         )
         if resultado is not None:
             duracao_ms = round((time.monotonic() - inicio) * 1000)
             chamado_id = _chamado_id_do_payload(corpo)
-            uso_ia_chamados.registrar(
-                chamado_id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+            await to_thread.run_sync(
+                uso_ia_chamados.registrar,
+                chamado_id,
+                resultado.avaliacao_suficiente,
+                resultado.precisou_embedding,
+                duracao_ms,
             )
         return JSONResponse(corpo_resposta, status_code=status_code)

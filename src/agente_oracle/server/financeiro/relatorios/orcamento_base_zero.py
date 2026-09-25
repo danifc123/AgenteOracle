@@ -45,7 +45,7 @@ _QUERY = """
         natureza_descricao,
         TO_CHAR(data_emissao, 'YYYY-MM') AS mes,
         SUM(valor_original) AS total
-    FROM vw_titulos_pagar
+    FROM vwia_titulos_pagar
     WHERE filial IN __FILIAL_IN__
       AND TO_CHAR(data_emissao, 'YYYY-MM') >= :mes_inicio
     GROUP BY natureza_codigo, natureza_descricao, TO_CHAR(data_emissao, 'YYYY-MM')
@@ -124,7 +124,7 @@ def _buscar_orcamentos(filiais: list[str]) -> list[dict]:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/orcamento-base-zero/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_orcamento_base_zero_route(request: Request, usuario: dict) -> Response:
+    def exportar_orcamento_base_zero_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Orçamento Base Zero — exportação em Excel."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
@@ -147,7 +147,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/orcamento-base-zero", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_orcamento_base_zero_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_orcamento_base_zero_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Orçamento Base Zero — endpoint JSON usado pela tela."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:

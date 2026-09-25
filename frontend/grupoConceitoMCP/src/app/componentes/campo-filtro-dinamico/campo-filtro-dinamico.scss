@@ -56,7 +56,7 @@ app-select-busca {
   width: 20px;
   height: 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: none;
   color: var(--color-text-muted);
   cursor: pointer;

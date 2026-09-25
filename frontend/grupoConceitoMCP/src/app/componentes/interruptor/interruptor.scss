@@ -1,0 +1,81 @@
+:host {
+  display: block;
+}
+
+.interruptor {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4);
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: var(--transition-control);
+
+  &:hover:not(:disabled) {
+    background: var(--color-primary-softer);
+  }
+
+  &:focus-visible {
+    box-shadow: inset var(--focus-ring);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.texto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.rotulo {
+  font: var(--type-label);
+  color: var(--color-text);
+}
+
+.descricao {
+  font: var(--type-body-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.trilho {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+  transition: var(--transition-control);
+
+  &--ligado {
+    background: var(--color-primary);
+  }
+}
+
+.bolinha {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.trilho--ligado .bolinha {
+  transform: translateX(20px);
+}

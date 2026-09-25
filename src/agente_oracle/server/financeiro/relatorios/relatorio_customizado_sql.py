@@ -25,8 +25,13 @@ com texto livre digitado pelo usuário)."""
 
 from collections import deque
 
-from agente_oracle.agent.financeiro.schema import VIEWS_DISPONIVEIS, ViewFinanceira, inferir_tipo_filtro
-from agente_oracle.db.connection import get_connection_para_fonte
+from agente_oracle.agent.financeiro.schema import (
+    VIEWS_DISPONIVEIS,
+    ColunaView,
+    ViewFinanceira,
+    inferir_tipo_filtro,
+)
+from agente_oracle.db.connection import DatabaseError, eh_erro_tabela_inexistente, get_connection_para_fonte
 from agente_oracle.server.financeiro.relatorios import _comum
 from agente_oracle.server.financeiro.relatorios.filtros_sql import clausula_in
 
@@ -40,45 +45,16 @@ class RelatorioCustomizadoInvalido(Exception):
     """Levantada quando a seleção de colunas/filtros pedida pela tela não pode virar um SQL válido."""
 
 
-def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
-    """Valores distintos (não nulos) de uma coluna de tipo "texto" — usado
-    pra popular o <select multiplo> do filtro dessa coluna na tela. `nome_view`
-    e `nome_coluna` já vêm validados contra o registro (nunca texto cru do
-    cliente), então é seguro interpolar direto no SQL."""
-    sql = (
-        f'SELECT DISTINCT "{nome_coluna}" FROM {nome_view} '
-        f'WHERE "{nome_coluna}" IS NOT NULL '
-        f'ORDER BY "{nome_coluna}" '
-        f"FETCH FIRST {LIMITE_OPCOES_COLUNA} ROWS ONLY"
-    )
-    with get_connection_para_fonte(_VIEWS_POR_NOME[nome_view].fonte) as connection:
-        cursor = connection.cursor()
-        cursor.execute(sql)
-        return [str(linha[0]) for linha in cursor.fetchall()]
+class ViewIndisponivel(RelatorioCustomizadoInvalido):
+    """A view está no registro mas não existe no banco conectado (as rotas devolvem 503)."""
 
 
-def buscar_relatorio_customizado(
-    colunas_por_view: dict[str, list[str]],
-    filiais: list[str],
-    filtros: dict[str, dict[str, str | list[str]]],
-    pagina: int,
-) -> tuple[list[str], list[tuple], bool]:
-    fonte = _fonte_comum(list(colunas_por_view.keys()))
-    offset = (pagina - 1) * LIMITE_MAXIMO_LINHAS
-    sql, binds = _montar_sql(colunas_por_view, filiais, filtros, offset)
-
-    with get_connection_para_fonte(fonte) as connection:
-        cursor = connection.cursor()
-        cursor.execute(sql, **binds)
-        colunas = [descricao[0] for descricao in cursor.description]
-        linhas = cursor.fetchall()
-
-    # Pede uma linha a mais que o necessário (ver `_montar_sql`) só pra saber
-    # se existe próxima página sem precisar de um `COUNT(*)` — que seria caro
-    # nas views com CTE pesada (ex: `vw_baixas_pagar`) pelo mesmo motivo que
-    # a consulta principal já é.
-    tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
-    return colunas, linhas[:LIMITE_MAXIMO_LINHAS], tem_mais_paginas
+def _coluna_view(nome_view: str, nome_coluna: str) -> ColunaView:
+    """Resolve o `ColunaView` (com `tipo_filtro`, se declarado) a partir de
+    um par nome_view/nome_coluna já validado contra o registro — usado
+    pelos pontos que precisam chamar `inferir_tipo_filtro`."""
+    view = _VIEWS_POR_NOME[nome_view]
+    return next(coluna for coluna in view.colunas if coluna.nome == nome_coluna)
 
 
 def _fonte_comum(views_selecionadas: list[str]) -> str:
@@ -98,6 +74,87 @@ def _fonte_comum(views_selecionadas: list[str]) -> str:
     return fontes.pop()
 
 
+def _identificador_coluna(fonte: str, coluna: str) -> str:
+    """Como citar a coluna: Protheus em minúsculo (alias entre aspas), STAGE em MAIÚSCULO (alias sem aspas)."""
+    return f'"{coluna}"' if fonte == "protheus" else f'"{coluna.upper()}"'
+
+
+def _levantar_se_view_inexistente(erro: Exception, views: list[str], fonte: str) -> None:
+    """Troca o ORA-00942 (que não diz qual objeto faltou) por `ViewIndisponivel` listando as views."""
+    if not eh_erro_tabela_inexistente(erro):
+        return
+    raise ViewIndisponivel(
+        f"Não encontrei no banco ({fonte}) alguma destas views: {', '.join(views)}. "
+        "Confira se foram criadas com exatamente esse nome, no schema do usuário conectado "
+        "(ver db/views/financeiro_science.sql)."
+    ) from erro
+
+
+def buscar_opcoes_coluna(nome_view: str, nome_coluna: str) -> list[str]:
+    """Valores distintos (não nulos) de uma coluna do tipo "texto" ou
+    "texto-numerico" — usado pra popular o <select multiplo> do filtro
+    dessa coluna na tela. `nome_view` e `nome_coluna` já vêm validados
+    contra o registro (nunca texto cru do cliente), então é seguro
+    interpolar direto no SQL."""
+    fonte = _VIEWS_POR_NOME[nome_view].fonte
+    coluna_sql = _identificador_coluna(fonte, nome_coluna)
+    sql = (
+        f"SELECT DISTINCT {coluna_sql} FROM {nome_view} "
+        f"WHERE {coluna_sql} IS NOT NULL "
+        f"ORDER BY {coluna_sql} "
+        f"FETCH FIRST {LIMITE_OPCOES_COLUNA} ROWS ONLY"
+    )
+    try:
+        with get_connection_para_fonte(fonte) as connection:
+            cursor = connection.cursor()
+            cursor.execute(sql)
+            return [str(linha[0]) for linha in cursor.fetchall()]
+    except DatabaseError as erro:
+        _levantar_se_view_inexistente(erro, [nome_view], fonte)
+        raise
+
+
+def buscar_opcoes_colunas(colunas: list[tuple[str, str]]) -> dict[str, list[str]]:
+    """Mesma consulta de `buscar_opcoes_coluna`, mas pra várias colunas de
+    uma vez — ainda um `SELECT DISTINCT` por coluna internamente (não dá
+    pra combinar num `SELECT` só, cada coluna tem sua própria lista de
+    distintos), mas numa chamada/thread só em vez de uma requisição HTTP
+    por coluna. `colunas` já vem validada; devolve um dict chaveado por
+    "view.coluna", no mesmo formato de `filtros` em `_montar_sql`."""
+    return {
+        f"{nome_view}.{nome_coluna}": buscar_opcoes_coluna(nome_view, nome_coluna)
+        for nome_view, nome_coluna in colunas
+    }
+
+
+def buscar_relatorio_customizado(
+    colunas_por_view: dict[str, list[str]],
+    filiais: list[str],
+    filtros: dict[str, dict[str, str | list[str]]],
+    pagina: int,
+) -> tuple[list[str], list[tuple], bool]:
+    fonte = _fonte_comum(list(colunas_por_view.keys()))
+    offset = (pagina - 1) * LIMITE_MAXIMO_LINHAS
+    sql, binds = _montar_sql(colunas_por_view, filiais, filtros, offset)
+
+    try:
+        with get_connection_para_fonte(fonte) as connection:
+            cursor = connection.cursor()
+            cursor.execute(sql, **binds)
+            colunas = [descricao[0] for descricao in cursor.description]
+            linhas = cursor.fetchall()
+    except DatabaseError as erro:
+        _levantar_se_view_inexistente(erro, list(colunas_por_view), fonte)
+        raise
+
+    # Pede uma linha a mais que o necessário (ver `_montar_sql`) só pra saber
+    # se existe próxima página sem precisar de um `COUNT(*)` — que seria caro
+    # nas views com CTE pesada (ex: `vwia_baixas_pagar`) pelo mesmo motivo que
+    # a consulta principal já é.
+    tem_mais_paginas = len(linhas) > LIMITE_MAXIMO_LINHAS
+    return colunas, _rotular_linhas(colunas, linhas[:LIMITE_MAXIMO_LINHAS]), tem_mais_paginas
+
+
 def _montar_sql(
     colunas_por_view: dict[str, list[str]],
     filiais: list[str],
@@ -105,6 +162,7 @@ def _montar_sql(
     offset: int,
 ) -> tuple[str, dict[str, str | int]]:
     views_selecionadas = list(colunas_por_view.keys())
+    fonte = _fonte_comum(views_selecionadas)
     arestas = _resolver_caminho_join(views_selecionadas)
 
     raiz = views_selecionadas[0]
@@ -119,7 +177,7 @@ def _montar_sql(
         alias = alias_por_view[nome_view]
         for coluna in colunas:
             rotulo = f"{nome_view}.{coluna}"
-            partes_select.append(f'{alias}."{coluna}" AS "{rotulo}"')
+            partes_select.append(f'{alias}.{_identificador_coluna(fonte, coluna)} AS "{rotulo}"')
 
     sql = [f"SELECT {', '.join(partes_select)}", f"FROM {raiz} {alias_por_view[raiz]}"]
 
@@ -127,7 +185,8 @@ def _montar_sql(
         alias_pai = alias_por_view[view_pai]
         alias_filha = alias_por_view[view_filha]
         condicoes = " AND ".join(
-            f'{alias_pai}."{col_pai}" = {alias_filha}."{col_filha}"'
+            f"{alias_pai}.{_identificador_coluna(fonte, col_pai)} = "
+            f"{alias_filha}.{_identificador_coluna(fonte, col_filha)}"
             for col_pai, col_filha in zip(cols_pai, cols_filha, strict=True)
         )
         sql.append(f"LEFT JOIN {view_filha} {alias_filha} ON {condicoes}")
@@ -141,9 +200,10 @@ def _montar_sql(
         alias = alias_por_view[nome_view]
         marcadores, binds_filial = clausula_in(f"filial_{alias}", filiais)
         binds.update(binds_filial)
-        clausula = f'{alias}."filial" IN {marcadores}'
+        coluna_filial = f"{alias}.{_identificador_coluna(fonte, 'filial')}"
+        clausula = f"{coluna_filial} IN {marcadores}"
         if nome_view != raiz:
-            clausula = f'({clausula} OR {alias}."filial" IS NULL)'
+            clausula = f"({clausula} OR {coluna_filial} IS NULL)"
         condicoes_where.append(clausula)
 
     contador_filtro = 0
@@ -153,29 +213,50 @@ def _montar_sql(
             continue  # coluna de uma view que nem entrou no relatório atual
 
         alias = alias_por_view[nome_view]
-        coluna_sql = f'{alias}."{nome_coluna}"'
-        tipo = inferir_tipo_filtro(nome_coluna)
+        coluna_sql = f"{alias}.{_identificador_coluna(fonte, nome_coluna)}"
+        coluna_declarada = _coluna_view(nome_view, nome_coluna)
+        tipo = inferir_tipo_filtro(coluna_declarada)
 
         if tipo == "periodo-data":
-            # `coluna_sql` já é DATE de verdade na view (não texto "YYYYMMDD" cru
-            # do Protheus, como nos relatórios fixos) — só o bind, que chega da
-            # tela como "YYYY-MM-DD" (`<input type="date">`), precisa converter.
+            # A maioria das colunas "data_*" já é DATE de verdade na view (não
+            # texto "YYYYMMDD" cru do Protheus, como nos relatórios fixos) —
+            # só o bind, que chega da tela como "YYYY-MM-DD" (`<input
+            # type="date">`), precisa converter. Só as colunas ainda
+            # guardadas como texto formatado (`formato_data_texto` declarado
+            # em schema.py, ex: várias datas das views VWIA_*) precisam do
+            # `TO_DATE` no lado da coluna também.
+            coluna_data = (
+                coluna_sql
+                if coluna_declarada.formato_data_texto is None
+                else f"TO_DATE({coluna_sql}, '{coluna_declarada.formato_data_texto}')"
+            )
             for extremo, operador in (("ini", ">="), ("fim", "<=")):
                 if not filtro.get(extremo):
                     continue
                 contador_filtro += 1
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
-                condicoes_where.append(f"{coluna_sql} {operador} TO_DATE(:{bind}, 'YYYY-MM-DD')")
-        elif tipo == "numero":
+                condicoes_where.append(f"{coluna_data} {operador} TO_DATE(:{bind}, 'YYYY-MM-DD')")
+            continue
+
+        # "texto-numerico" (ex: coluna "nota") aceita os dois filtros ao
+        # mesmo tempo — a tela deixa o usuário alternar entre lista e
+        # faixa pra essa coluna, mas o backend não presume qual dos dois
+        # veio preenchido, só aplica o que tiver valor.
+        if tipo in ("numero", "texto-numerico"):
+            # "numero" já é NUMBER de verdade na view; "texto-numerico" é
+            # texto zero-padded ("000000002") que precisa virar número
+            # antes de comparar com a faixa.
+            coluna_numerica = coluna_sql if tipo == "numero" else _comum.numero_coluna(coluna_sql)
             for extremo, operador in (("min", ">="), ("max", "<=")):
                 if not filtro.get(extremo):
                     continue
                 contador_filtro += 1
                 bind = f"filtro_{contador_filtro}"
                 binds[bind] = filtro[extremo]
-                condicoes_where.append(f"{coluna_sql} {operador} {_comum.numero_bind(bind)}")
-        else:
+                condicoes_where.append(f"{coluna_numerica} {operador} {_comum.numero_bind(bind)}")
+
+        if tipo in ("texto", "texto-numerico"):
             valores_filtro = filtro.get("valores")
             if valores_filtro:
                 marcadores = []
@@ -262,6 +343,39 @@ def _grafo_relacionamentos() -> dict[str, list[tuple[str, tuple[str, ...], tuple
             grafo[view.nome].append((rel.view_destino, rel.colunas_locais, rel.colunas_destino))
             grafo[rel.view_destino].append((view.nome, rel.colunas_destino, rel.colunas_locais))
     return grafo
+
+
+def _rotular_linhas(colunas: list[str], linhas: list[tuple]) -> list[tuple]:
+    """Troca o valor cru pelo rótulo nas colunas que declaram `rotulos`; `None` e as demais colunas passam intactos."""
+    rotuladores: dict[int, ColunaView] = {}
+    for indice, cabecalho in enumerate(colunas):
+        validado = validar_coluna(cabecalho)
+        if validado is not None and (coluna := _coluna_view(*validado)).rotulos:
+            rotuladores[indice] = coluna
+    if not rotuladores:
+        return linhas
+
+    return [
+        tuple(
+            rotuladores[indice].rotulo_de(valor) if indice in rotuladores and valor is not None else valor
+            for indice, valor in enumerate(linha)
+        )
+        for linha in linhas
+    ]
+
+
+def rotular_opcao(nome_view: str, nome_coluna: str, valor: str) -> str:
+    """Rótulo legível de um valor cru da lista de opções do filtro."""
+    return _coluna_view(nome_view, nome_coluna).rotulo_de(valor)
+
+
+def suporta_lista_opcoes(nome_view: str, nome_coluna: str) -> bool:
+    """A coluna (já validada) tem filtro por lista de valores exatos —
+    "texto" ou "texto-numerico" — e por isso pode alimentar
+    `buscar_opcoes_coluna`/`buscar_opcoes_colunas`? Usado por
+    `listar_opcoes_coluna_route` pra rejeitar colunas do tipo "numero"/
+    "periodo-data", que não têm esse modo de filtro."""
+    return inferir_tipo_filtro(_coluna_view(nome_view, nome_coluna)) in ("texto", "texto-numerico")
 
 
 def validar_coluna(token: str) -> tuple[str, str] | None:

@@ -2,6 +2,10 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Domínios que hoje chamam IA — usado pra host/modelo por domínio (ver
+# `ollama_host_do_dominio` abaixo) e pro client protegido de `tools/ia/`.
+DominioIA = Literal["ti", "financeiro", "rh", "auditoria"]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -53,6 +57,30 @@ class Settings(BaseSettings):
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5-coder:7b"
     ollama_embedding_model: str = "nomic-embed-text"
+
+    # Override por domínio (`DominioIA`) — vazio usa o valor global acima
+    # (`ollama_host_do_dominio`/`ollama_model_do_dominio`/`ollama_api_key_do_dominio`
+    # resolvem isso). Aditivo: não preencher nada mantém o comportamento de
+    # sempre, um host global só. `OLLAMA_HOST_TI` remoto é sempre permitido
+    # (TI não toca Oracle); os outros três continuam bloqueados com
+    # `DB_BACKEND=oracle` — ver `validar_ollama_host_seguro`.
+    ollama_host_ti: str = ""
+    ollama_model_ti: str = ""
+    ollama_api_key_ti: str = ""
+    ollama_host_financeiro: str = ""
+    ollama_model_financeiro: str = ""
+    ollama_api_key_financeiro: str = ""
+    ollama_host_rh: str = ""
+    ollama_model_rh: str = ""
+    ollama_api_key_rh: str = ""
+    ollama_host_auditoria: str = ""
+    ollama_model_auditoria: str = ""
+    ollama_api_key_auditoria: str = ""
+
+    # Só alerta (log), não bloqueia — sem volume real de uso em nuvem ainda
+    # pra calibrar um limite que trave sem risco de travar uso legítimo. Ver
+    # `tools/ia/cliente_protegido.py`.
+    teto_diario_ia_externa: int = 500
 
     auth_secret_key: str = ""
     # 8h = uma jornada de trabalho — depois disso o token expira sozinho e o
@@ -112,6 +140,21 @@ class Settings(BaseSettings):
 settings = Settings()
 
 TAMANHO_MINIMO_AUTH_SECRET_KEY = 32
+
+
+def ollama_api_key_do_dominio(settings: Settings, dominio: DominioIA) -> str:
+    return getattr(settings, f"ollama_api_key_{dominio}")
+
+
+def ollama_host_do_dominio(settings: Settings, dominio: DominioIA) -> str:
+    """Host do domínio se configurado (`OLLAMA_HOST_TI` etc.), senão o host
+    global — aditivo, sem override nenhum todo domínio cai no `ollama_host`
+    de sempre."""
+    return getattr(settings, f"ollama_host_{dominio}") or settings.ollama_host
+
+
+def ollama_model_do_dominio(settings: Settings, dominio: DominioIA) -> str:
+    return getattr(settings, f"ollama_model_{dominio}") or settings.ollama_model
 
 
 def validar_auth_secret_key(settings: Settings) -> None:
@@ -175,28 +218,64 @@ def validar_glpi_configurado(settings: Settings) -> None:
 _MARCADORES_OLLAMA_HOST_LOCAL = ("127.0.0.1", "localhost", "::1")
 
 
+# TI de propósito fora dessa lista: confirmado no código que os agentes de TI
+# (`agent/ti/qualidade_chamado.py`, `roteamento_chamado.py`, `deteccao_seguranca.py`)
+# nunca leem dado do Oracle — só GLPI e Postgres próprio. É por isso que dá
+# pra liberar `OLLAMA_HOST_TI` remoto mesmo com `DB_BACKEND=oracle` sem
+# validar nada: não existe dado real da Conceito nesse caminho pra proteger.
+# TI de propósito fora dessa lista: confirmado no código que os agentes de TI
+# (`agent/ti/qualidade_chamado.py`, `roteamento_chamado.py`, `deteccao_seguranca.py`)
+# nunca leem dado do Oracle — só GLPI e Postgres próprio. É por isso que dá
+# pra liberar `OLLAMA_HOST_TI` remoto mesmo com `DB_BACKEND=oracle` sem
+# validar nada: não existe dado real da Conceito nesse caminho pra proteger.
+_DOMINIOS_COM_RISCO_ORACLE: tuple[DominioIA, ...] = ("financeiro", "rh", "auditoria")
+
+
+def _eh_host_local(host: str) -> bool:
+    host_normalizado = host.lower()
+    return any(marcador in host_normalizado for marcador in _MARCADORES_OLLAMA_HOST_LOCAL)
+
+
 def validar_ollama_host_seguro(settings: Settings) -> None:
     """Falha rápido na inicialização se `DB_BACKEND=oracle` (dado real da
-    Conceito) e `OLLAMA_HOST` apontar pra fora da própria máquina — protege
-    contra dado real sair pra uma IA em nuvem/servidor remoto só porque
-    alguém trocou pra um modelo maior pra testar algo e esqueceu de voltar
-    pro host local antes de reconectar no Oracle de verdade. Com
-    `DB_BACKEND=postgres` (banco fictício, sem dado real da empresa) não
-    bloqueia nada — ali é seguro usar qualquer IA, local ou remota. Mesmo
-    espírito de `validar_auth_secret_key`: só roda em `server/app.py:main()`,
-    nunca ao importar este módulo, então não afeta teste nem script."""
+    Conceito) e `OLLAMA_HOST` (ou um `OLLAMA_HOST_<DOMÍNIO>` específico)
+    apontar pra fora da própria máquina — protege contra dado real sair pra
+    uma IA em nuvem/servidor remoto só porque alguém trocou pra um modelo
+    maior pra testar algo e esqueceu de voltar pro host local antes de
+    reconectar no Oracle de verdade. Com `DB_BACKEND=postgres` (banco
+    fictício, sem dado real da empresa) não bloqueia nada — ali é seguro usar
+    qualquer IA, local ou remota. Mesmo espírito de `validar_auth_secret_key`:
+    só roda em `server/app.py:main()`, nunca ao importar este módulo, então
+    não afeta teste nem script.
+
+    O global (`OLLAMA_HOST`) é validado primeiro, exatamente como sempre foi
+    — quem nunca configurou nada por domínio continua com o mesmo
+    comportamento de antes. Só depois checa, um a um, o override explícito
+    de `_DOMINIOS_COM_RISCO_ORACLE` (financeiro/RH/auditoria — domínio sem
+    override nenhum já caiu no global e não é checado de novo). `ti` fica
+    de fora dessa lista de propósito: confirmado no código que os agentes de
+    TI nunca leem dado do Oracle, então `OLLAMA_HOST_TI` pode ser remoto sem
+    checagem nenhuma, mesmo com `DB_BACKEND=oracle` — é o que permite ligar
+    só o TI numa IA em nuvem sem abrir os outros domínios."""
     if settings.db_backend != "oracle":
         return
 
-    host = settings.ollama_host.lower()
-    if any(marcador in host for marcador in _MARCADORES_OLLAMA_HOST_LOCAL):
-        return
+    if not _eh_host_local(settings.ollama_host):
+        raise RuntimeError(
+            f"OLLAMA_HOST está configurado pra um endereço fora desta máquina "
+            f"('{settings.ollama_host}') enquanto DB_BACKEND=oracle (dado real da "
+            "Conceito) — isso mandaria dado real da empresa pra uma IA remota/em "
+            "nuvem. Ou volte OLLAMA_HOST pra um endereço local (ex: "
+            "http://127.0.0.1:11434), ou troque DB_BACKEND=postgres (banco "
+            "fictício local) antes de usar uma IA remota."
+        )
 
-    raise RuntimeError(
-        f"OLLAMA_HOST está configurado pra um endereço fora desta máquina "
-        f"('{settings.ollama_host}') enquanto DB_BACKEND=oracle (dado real da "
-        "Conceito) — isso mandaria dado real da empresa pra uma IA remota/em "
-        "nuvem. Ou volte OLLAMA_HOST pra um endereço local (ex: "
-        "http://127.0.0.1:11434), ou troque DB_BACKEND=postgres (banco "
-        "fictício local) antes de usar uma IA remota."
-    )
+    for dominio in _DOMINIOS_COM_RISCO_ORACLE:
+        host_dominio = getattr(settings, f"ollama_host_{dominio}")
+        if host_dominio and not _eh_host_local(host_dominio):
+            raise RuntimeError(
+                f"OLLAMA_HOST_{dominio.upper()} está configurado pra um endereço fora desta "
+                f"máquina ('{host_dominio}') enquanto DB_BACKEND=oracle (dado real da Conceito) "
+                f"— confirme que o domínio '{dominio}' realmente não usa dado do Oracle antes de "
+                "liberar isso, ou volte esse host pra um endereço local."
+            )

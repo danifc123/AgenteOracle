@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import { ChatFinanceiro } from '../../../../servicos/chat-financeiro';
+import { ChatFinanceiro } from '../../../../servicos/chat-financeiro/chat-financeiro';
 import { ChatEntrada } from './entrada/chat-entrada';
 import { ChatMensagens } from './mensagens/chat-mensagens';
 

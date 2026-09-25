@@ -117,7 +117,7 @@ def _buscar_so_codigo(query: str) -> list[dict[str, str]]:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/clientes", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_clientes_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_clientes_route(request: Request, usuario: dict) -> JSONResponse:
         """Clientes cadastrados (STAGE.CLIENTE) para o campo de filtro "Cliente"."""
         clientes = _buscar_com_nome(_QUERY_CLIENTES)
         _comum.registrar_acesso(usuario, "cadastros:clientes", len(clientes))
@@ -125,13 +125,13 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/contas-bancarias", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_contas_bancarias_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_contas_bancarias_route(request: Request, usuario: dict) -> JSONResponse:
         """Contas bancárias cadastradas (STAGE.SALDOBANCARIO) para o campo de filtro "Conta Bancária" — código é "banco|agencia|conta"."""
         return JSONResponse(_buscar_pronto(_QUERY_CONTAS_BANCARIAS), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/fornecedores", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_fornecedores_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_fornecedores_route(request: Request, usuario: dict) -> JSONResponse:
         """Fornecedores cadastrados (STAGE.FORNECEDOR) para o campo de filtro "Fornecedor"."""
         fornecedores = _buscar_com_nome(_QUERY_FORNECEDORES)
         _comum.registrar_acesso(usuario, "cadastros:fornecedores", len(fornecedores))
@@ -139,7 +139,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/lojas", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_lojas_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_lojas_route(request: Request, usuario: dict) -> JSONResponse:
         """Filtro "Loja" — sem fonte de dado no STAGE (ver docstring do módulo):
         devolve sempre vazio até decidirmos o que fazer com esse filtro nas
         telas que ainda o exibem."""
@@ -147,19 +147,19 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/naturezas", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_naturezas_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_naturezas_route(request: Request, usuario: dict) -> JSONResponse:
         """Naturezas financeiras (STAGE.NATUREZA) para os campos de filtro "Natureza De/Até"."""
         return JSONResponse(_buscar_com_nome(_QUERY_NATUREZAS), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/prefixos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_prefixos_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_prefixos_route(request: Request, usuario: dict) -> JSONResponse:
         """Prefixos de título já usados (STAGE.CONTARECEBER) para o campo de filtro "Prefixo"."""
         return JSONResponse(_buscar_so_codigo(_QUERY_PREFIXOS), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/produtos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_produtos_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_produtos_route(request: Request, usuario: dict) -> JSONResponse:
         """Produtos cadastrados (STAGE.PRODUTO) para os campos de filtro "Produto De/Até"."""
         produtos = _buscar_com_nome(_QUERY_PRODUTOS)
         _comum.registrar_acesso(usuario, "cadastros:produtos", len(produtos))
@@ -167,13 +167,13 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/tipos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_tipos_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_tipos_route(request: Request, usuario: dict) -> JSONResponse:
         """Tipos de título já usados (STAGE.CONTARECEBER) para o campo de filtro "Tipo"."""
         return JSONResponse(_buscar_so_codigo(_QUERY_TIPOS), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/financeiro/vendedores", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_vendedores_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_vendedores_route(request: Request, usuario: dict) -> JSONResponse:
         """Vendedores/consultores cadastrados (STAGE.VENDEDOR) para o campo de filtro "Consultor"."""
         vendedores = _buscar_com_nome(_QUERY_VENDEDORES)
         _comum.registrar_acesso(usuario, "cadastros:vendedores", len(vendedores))

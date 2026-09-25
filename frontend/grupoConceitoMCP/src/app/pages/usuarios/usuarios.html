@@ -11,10 +11,9 @@
 @if (carregando()) {
   <p class="carregando">Carregando usuários...</p>
 } @else if (usuarios().length === 0) {
-  <div class="empty-state">
-    <h2>Nenhum usuário cadastrado</h2>
+  <app-estado-vazio titulo="Nenhum usuário cadastrado" variante="simples">
     <p>Use o botão "Novo usuário" pra cadastrar o primeiro.</p>
-  </div>
+  </app-estado-vazio>
 } @else {
   <div class="table-wrapper">
     <table class="tabela-usuarios">
@@ -51,28 +50,32 @@
             <td>{{ rotuloPapeis(usuario.papeis) }}</td>
             <td>
               @if (usuario.bloqueado) {
-                <span class="badge-bloqueado">Bloqueado</span>
+                <app-selo tom="erro" texto="Bloqueado" />
               } @else if (usuario.ativo) {
-                <span class="badge-ativo">Ativo</span>
+                <app-selo tom="ok" texto="Ativo" />
               } @else {
-                <span class="badge-inativo">Inativo</span>
+                <app-selo tom="neutro" texto="Inativo" />
               }
             </td>
             <td class="acoes">
-              @if (sessao.modulos().includes('financeiro') && usuarioTemFinanceiro(usuario)) {
-                <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
-                  Gerenciar filiais
-                </app-botao>
-              }
-              @if (usuario.bloqueado && sessao.ehDesenvolvedor()) {
-                <app-botao
-                  variant="contorno"
-                  [loading]="desbloqueandoId() === usuario.id"
-                  loadingText="Desbloqueando..."
-                  (clicked)="desbloquearUsuario(usuario)"
-                >
-                  Desbloquear
-                </app-botao>
+              <ng-container *appSoModulo="'financeiro'">
+                @if (usuarioTemFinanceiro(usuario)) {
+                  <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
+                    Gerenciar filiais
+                  </app-botao>
+                }
+              </ng-container>
+              @if (usuario.bloqueado) {
+                <ng-container *appSoDev>
+                  <app-botao
+                    variant="contorno"
+                    [loading]="desbloqueandoId() === usuario.id"
+                    loadingText="Desbloqueando..."
+                    (clicked)="desbloquearUsuario(usuario)"
+                  >
+                    Desbloquear
+                  </app-botao>
+                </ng-container>
               }
               <app-botao
                 variant="perigo"
@@ -107,11 +110,28 @@
 
     @if (mostrarCampoTecnico()) {
       <app-select-busca
-        rotulo="Técnico do GLPI (opcional)"
-        placeholder="Nenhum — este login não atende chamado"
+        rotulo="Técnico do GLPI"
+        placeholder="Selecione o técnico"
         [opcoes]="opcoesTecnicosGlpi()"
         [(valor)]="formTecnicoGlpiId"
       />
+
+      <label class="campo">
+        <span>E-mail corporativo dessa pessoa</span>
+        <input
+          type="email"
+          [value]="formEmail()"
+          (input)="formEmail.set($any($event.target).value)"
+          autocomplete="off"
+          placeholder="nome.sobrenome@grupoconceito.com"
+        />
+      </label>
+
+      <p class="dialog-filiais-instrucao">
+        Papel de TI exige um técnico do GLPI vinculado — o e-mail confirma que é a pessoa certa
+        (confere com o e-mail real dela no GLPI). Sem isso, este usuário não vai poder receber
+        chamado atribuído automaticamente pela Auditoria de Chamados.
+      </p>
     }
 
     <label class="campo">

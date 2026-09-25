@@ -31,7 +31,7 @@ class TestAchadoValido:
     def test_dict_com_todos_os_campos_e_valido(self):
         achado = {
             "modulo": "financeiro",
-            "view": "vw_clientes",
+            "view": "vwia_clientes",
             "campo": "estado",
             "valor": "XX",
             "descricao": "...",
@@ -39,13 +39,13 @@ class TestAchadoValido:
         assert mod._achado_valido(achado) is True
 
     def test_campo_faltando_e_invalido(self):
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "estado", "valor": "XX"}
+        achado = {"modulo": "financeiro", "view": "vwia_clientes", "campo": "estado", "valor": "XX"}
         assert mod._achado_valido(achado) is False
 
     def test_campo_vazio_e_invalido(self):
         achado = {
             "modulo": "financeiro",
-            "view": "vw_clientes",
+            "view": "vwia_clientes",
             "campo": "estado",
             "valor": "",
             "descricao": "...",
@@ -58,69 +58,74 @@ class TestAchadoValido:
 
 class TestAchadoFundamentado:
     _PERFIS = {
-        ("financeiro", "vw_clientes", "filial"): ({"0101", "0102", "1908745"}, "0101"),
+        ("financeiro", "vwia_clientes", "filial"): ({"0101", "0102", "1908745"}, "0101"),
     }
 
     def test_valor_real_e_nao_e_o_mais_comum_e_fundamentado(self):
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "filial", "valor": "1908745"}
+        achado = {"modulo": "financeiro", "view": "vwia_clientes", "campo": "filial", "valor": "1908745"}
         assert mod._achado_fundamentado(achado, self._PERFIS) is True
 
     def test_valor_que_nao_esta_no_perfil_e_descartado(self):
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "filial", "valor": "9999999"}
+        achado = {"modulo": "financeiro", "view": "vwia_clientes", "campo": "filial", "valor": "9999999"}
         assert mod._achado_fundamentado(achado, self._PERFIS) is False
 
     def test_view_campo_errados_sao_descartados_mesmo_com_valor_real(self):
         # "1908745" é um valor real do perfil (filial), mas anexado a um
         # (view, campo) que não tem nada a ver — não pode passar só porque o
         # valor existe em ALGUM perfil.
-        achado = {"modulo": "financeiro", "view": "vw_fornecedores", "campo": "cnpj_cpf", "valor": "1908745"}
+        achado = {
+            "modulo": "financeiro",
+            "view": "vwia_fornecedores",
+            "campo": "cnpj_cpf",
+            "valor": "1908745",
+        }
         assert mod._achado_fundamentado(achado, self._PERFIS) is False
 
     def test_valor_mais_comum_e_descartado_quando_ha_mais_de_um_valor(self):
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "filial", "valor": "0101"}
+        achado = {"modulo": "financeiro", "view": "vwia_clientes", "campo": "filial", "valor": "0101"}
         assert mod._achado_fundamentado(achado, self._PERFIS) is False
 
     def test_valor_unico_do_perfil_nao_e_descartado_por_ser_o_mais_comum(self):
-        perfis = {("financeiro", "vw_clientes", "estado"): ({"MT"}, "MT")}
-        achado = {"modulo": "financeiro", "view": "vw_clientes", "campo": "estado", "valor": "MT"}
+        perfis = {("financeiro", "vwia_clientes", "estado"): ({"MT"}, "MT")}
+        achado = {"modulo": "financeiro", "view": "vwia_clientes", "campo": "estado", "valor": "MT"}
         assert mod._achado_fundamentado(achado, perfis) is True
 
 
 class TestFiltrarValoresConhecidos:
     def test_remove_so_o_valor_conhecido_mantendo_o_resto_do_perfil(self):
         perfil = PerfilCampo(
-            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0101", 40), ("1908745", 1))
+            modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("0101", 40), ("1908745", 1))
         )
-        conhecidos = {("financeiro", "vw_clientes", "filial", "1908745")}
+        conhecidos = {("financeiro", "vwia_clientes", "filial", "1908745")}
         resultado = mod.filtrar_valores_conhecidos([perfil], conhecidos)
         assert resultado == [
-            PerfilCampo(modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0101", 40),))
+            PerfilCampo(modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("0101", 40),))
         ]
 
     def test_perfil_que_fica_sem_nenhum_valor_e_descartado_inteiro(self):
         perfil = PerfilCampo(
-            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),)
+            modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("1908745", 1),)
         )
-        conhecidos = {("financeiro", "vw_clientes", "filial", "1908745")}
+        conhecidos = {("financeiro", "vwia_clientes", "filial", "1908745")}
         assert mod.filtrar_valores_conhecidos([perfil], conhecidos) == []
 
     def test_tupla_de_outro_modulo_view_ou_campo_nao_remove_por_engano(self):
         perfil = PerfilCampo(
-            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),)
+            modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("1908745", 1),)
         )
-        conhecidos = {("financeiro", "vw_fornecedores", "filial", "1908745")}
+        conhecidos = {("financeiro", "vwia_fornecedores", "filial", "1908745")}
         assert mod.filtrar_valores_conhecidos([perfil], conhecidos) == [perfil]
 
     def test_sem_conhecidos_devolve_os_perfis_intactos(self):
         perfil = PerfilCampo(
-            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("1908745", 1),)
+            modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("1908745", 1),)
         )
         assert mod.filtrar_valores_conhecidos([perfil], set()) == [perfil]
 
 
 class TestAnalisarPerfis:
     _PERFIL = PerfilCampo(
-        modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0101", 40), ("1908745", 1))
+        modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("0101", 40), ("1908745", 1))
     )
 
     async def test_lista_vazia_de_perfis_nao_chama_o_ollama(self):
@@ -129,7 +134,7 @@ class TestAnalisarPerfis:
         assert resultado == []
 
     async def test_perfis_sem_nenhum_valor_sao_ignorados(self):
-        perfil_vazio = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="estado", valores=())
+        perfil_vazio = PerfilCampo(modulo="financeiro", view="vwia_clientes", campo="estado", valores=())
         cliente = _OllamaClientFake(levantar=AssertionError("não deveria ter chamado o Ollama"))
         resultado = await mod.analisar_perfis(cliente, "modelo-teste", [perfil_vazio])
         assert resultado == []
@@ -138,7 +143,7 @@ class TestAnalisarPerfis:
         conteudo = _achados_json(
             {
                 "modulo": "financeiro",
-                "view": "vw_clientes",
+                "view": "vwia_clientes",
                 "campo": "filial",
                 "valor": "1908745",
                 "descricao": "Analise a filial 1908745, ela parece estar fora do padrão.",
@@ -153,7 +158,7 @@ class TestAnalisarPerfis:
         conteudo = _achados_json(
             {
                 "modulo": "financeiro",
-                "view": "vw_clientes",
+                "view": "vwia_clientes",
                 "campo": "filial",
                 "valor": "9999999",
                 "descricao": "Valor que não veio do perfil.",
@@ -184,19 +189,19 @@ class TestAnalisarPerfis:
         assert resultado == []
 
     async def test_perfis_com_mesma_chave_unem_valores_em_vez_de_sobrescrever(self):
-        # Dois perfis pra (financeiro, vw_clientes, filial) — hoje não
+        # Dois perfis pra (financeiro, vwia_clientes, filial) — hoje não
         # acontece na prática (só o provider do Financeiro existe), mas é
         # a infraestrutura compartilhada que outros providers vão usar.
         perfil_a = PerfilCampo(
-            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("AAAA", 5), ("0101", 40))
+            modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("AAAA", 5), ("0101", 40))
         )
         perfil_b = PerfilCampo(
-            modulo="financeiro", view="vw_clientes", campo="filial", valores=(("0102", 30), ("0101", 40))
+            modulo="financeiro", view="vwia_clientes", campo="filial", valores=(("0102", 30), ("0101", 40))
         )
         conteudo = _achados_json(
             {
                 "modulo": "financeiro",
-                "view": "vw_clientes",
+                "view": "vwia_clientes",
                 "campo": "filial",
                 "valor": "AAAA",
                 "descricao": "Analise a filial AAAA, ela parece estar fora do padrão.",

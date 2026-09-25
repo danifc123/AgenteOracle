@@ -1,0 +1,33 @@
+<div class="campo">
+  <div class="linha">
+    <label class="rotulo" [for]="id">{{ rotulo() }}</label>
+
+    <div
+      class="entrada"
+      [class.entrada--erro]="!!erro()"
+      [class.entrada--desabilitada]="desabilitado()"
+    >
+      <input
+        [id]="id"
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        [value]="valor()"
+        [disabled]="desabilitado()"
+        [attr.aria-invalid]="!!erro()"
+        [attr.aria-describedby]="idsDescricao()"
+        (input)="aoDigitar($event)"
+      />
+      @if (sufixo()) {
+        <span class="sufixo">{{ sufixo() }}</span>
+      }
+    </div>
+  </div>
+
+  @if (descricao()) {
+    <p class="descricao" [id]="id + '-descricao'">{{ descricao() }}</p>
+  }
+  @if (erro()) {
+    <p class="erro" role="alert" [id]="id + '-erro'">{{ erro() }}</p>
+  }
+</div>

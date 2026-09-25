@@ -50,7 +50,7 @@
             (click)="abrirDetalhamento(achado)"
           >
             <div class="cartao-achado-cabecalho">
-              <span class="badge-tipo">{{ rotuloTipo(achado.tipo) }}</span>
+              <app-selo tom="neutro" [texto]="rotuloTipo(achado.tipo)" />
               <span class="fornecedor-achado">{{ achado.fornecedor_nome }}</span>
               <span class="valor-achado">{{ formatarValor(achado.valor) }}</span>
             </div>
@@ -85,9 +85,7 @@
           }
         </div>
         <div class="detalhamento-topo-texto">
-          <span class="badge-tipo" [class.badge-tipo--anomalia]="achado.tipo === 'anomalia_valor'">
-            {{ rotuloTipo(achado.tipo) }}
-          </span>
+          <app-selo [tom]="tomTipo(achado.tipo)" [texto]="rotuloTipo(achado.tipo)" />
           <h3>{{ achado.fornecedor_nome }}</h3>
           <span class="detalhamento-codigo">Fornecedor {{ achado.fornecedor_codigo }}</span>
         </div>

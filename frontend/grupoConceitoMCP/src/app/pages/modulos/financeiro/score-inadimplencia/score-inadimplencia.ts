@@ -3,13 +3,15 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
-import { TOAST_DESATIVADO } from '../../../../servicos/toast.interceptor';
-import { Toasts } from '../../../../servicos/toasts';
+import { Selo } from '../../../../componentes/selo/selo';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { TOAST_DESATIVADO } from '../../../../servicos/toast.interceptor/toast.interceptor';
+import { Toasts } from '../../../../servicos/toasts/toasts';
 
 interface Filial {
   codigo: string;
@@ -89,7 +91,7 @@ const ROTULOS_TENDENCIA: Record<ComportamentoPagamento['tendencia'], string> = {
  * nunca é encontrado. Campos separados eliminam essa adivinhação. */
 @Component({
   selector: 'app-score-inadimplencia',
-  imports: [Botao, Dialog, EstadoVazio, FormsModule, ModuloHeader, SelectBusca],
+  imports: [Botao, CartaoResultado, Dialog, EstadoVazio, FormsModule, ModuloHeader, SelectBusca, Selo],
   templateUrl: './score-inadimplencia.html',
   styleUrl: './score-inadimplencia.scss',
 })
@@ -154,14 +156,14 @@ export class ScoreInadimplenciaComponent {
     return ROTULOS_TENDENCIA[tendencia];
   }
 
-  protected classeScore(score: number): string {
+  protected tomScore(score: number): 'erro' | 'atencao' | 'ok' {
     if (score >= 60) {
-      return 'badge-score--alto';
+      return 'erro';
     }
     if (score >= 30) {
-      return 'badge-score--medio';
+      return 'atencao';
     }
-    return 'badge-score--baixo';
+    return 'ok';
   }
 
   protected formatarData(data: string): string {

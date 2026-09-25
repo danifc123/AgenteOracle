@@ -55,7 +55,7 @@ Datas em `MOVIMENTACAOFINANCEIRA`/`CONTARECEBER`/`CONTAPAGAR` já são
 ATENÇÃO charset: comparações envolvendo colunas `NVARCHAR2` (`MOTIVOBAIXA`,
 `BENEFICIARIO`) contra literal solto (`''`, `'DSD'`) dão `ORA-12704`
 (character set mismatch) — usar literal nacional (`N''`, `N'DSD'`). Mesmo
-problema documentado em `financeiro_science.sql` (`vw_movimento_bancario`).
+problema documentado em `financeiro_science.sql` (`vwia_movimento_bancario`).
 
 Filtros opcionais usam `:bind IS NULL OR :bind = ''` (não `:bind = ''`
 puro) — ver o "ACHADO IMPORTANTE" no topo de `_comum.py`. Contra Postgres
@@ -245,7 +245,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/relacao-baixas/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_relacao_baixas_route(request: Request, usuario: dict) -> Response:
+    def exportar_relacao_baixas_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Relação de Baixas (FINR190) — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -269,7 +269,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/relacao-baixas", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_relacao_baixas_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_relacao_baixas_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Relação de Baixas (FINR190) — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

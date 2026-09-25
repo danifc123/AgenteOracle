@@ -55,7 +55,7 @@ def _postgres_disponivel() -> bool:
 
 
 def views_curadas_disponiveis() -> bool:
-    """As views curadas (`vw_titulos_pagar` etc.) existem no banco de
+    """As views curadas (`vwia_titulos_pagar` etc.) existem no banco de
     negócio/RAG configurado em `DB_BACKEND`? No Postgres de teste elas já
     existem (criadas manualmente); no Oracle, dependem do DBA rodar
     `db/views/financeiro_science.sql` — ver `test_relatorios_oracle_hml.py`, que
@@ -63,7 +63,7 @@ def views_curadas_disponiveis() -> bool:
     try:
         with get_connection() as connection:
             cursor = connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM vw_titulos_pagar")
+            cursor.execute("SELECT COUNT(*) FROM vwia_titulos_pagar")
             cursor.fetchone()
         return True
     except DatabaseError:

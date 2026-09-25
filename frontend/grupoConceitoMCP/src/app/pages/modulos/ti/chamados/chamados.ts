@@ -4,11 +4,17 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteudo-chamado';
+import { ConfiguracoesChamados } from '../../../../componentes/configuracoes-chamados/configuracoes-chamados';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
-import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
+import { Selo } from '../../../../componentes/selo/selo';
+import { SoDev } from '../../../../diretivas/so-dev/so-dev';
+import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { Sessao } from '../../../../servicos/sessao/sessao';
+import { Toasts } from '../../../../servicos/toasts/toasts';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -29,6 +35,13 @@ interface TecnicoNome {
   nome: string;
 }
 
+/** Resposta de `/verificar` — o chamado normal, mais um aviso transiente
+ * sobre ESTE processamento (não um atributo do chamado em si, por isso
+ * fora de `Chamado`). Ver `server/ti/chamados.py::chamado_verificar_route`. */
+interface RespostaVerificarChamado extends Chamado {
+  embedding_indisponivel: boolean;
+}
+
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
  * Item "Service Desk IA" da planilha de demandas — integração real com o
@@ -44,6 +57,8 @@ interface TecnicoNome {
  * "Verificar" por linha força uma reavaliação na hora, sem esperar o
  * poller.
  *
+ * A engrenagem no cabeçalho (só desenvolvedor) abre as configurações da Auditoria (`ConfiguracoesChamados`).
+ *
  * Sem botão de "reportar ao usuário" de propósito: o Followup que a IA
  * posta ao marcar `aguardando_usuario` já dispara a notificação nativa
  * do GLPI pro solicitante (mecanismo padrão dele pra mensagem em
@@ -53,14 +68,34 @@ interface TecnicoNome {
  * o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
-  imports: [Botao, ConteudoChamado, DatePipe, Dialog, EstadoVazio, ModuloHeader],
+  imports: [
+    Botao,
+    ConfiguracoesChamados,
+    ConteudoChamado,
+    DatePipe,
+    Dialog,
+    EstadoVazio,
+    ModuloHeader,
+    SaudeRoster,
+    Selo,
+    SoDev,
+  ],
   templateUrl: './chamados.html',
   styleUrl: './chamados.scss',
 })
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
+  private readonly toasts = inject(Toasts);
+  protected readonly sessao = inject(Sessao);
   private readonly ITENS_POR_PAGINA = 10;
+
+  // Painel de diagnóstico só-desenvolvedor (`/api/ti/tecnicos/saude`,
+  // restrito a `exigir_desenvolvedor` no backend) — mostra técnico
+  // cadastrado por área, pra pegar área com zero técnicos (causa real de um
+  // 500 em `escolher_tecnico`, `tools/ti/tecnicos.py`) antes de alguém
+  // tropeçar nisso usando a tela de verdade.
+  protected readonly saudeAreas = signal<SaudeArea[]>([]);
 
   protected readonly chamados = signal<Chamado[]>([]);
   protected readonly carregando = signal(true);
@@ -69,7 +104,16 @@ export class ChamadosTi {
   protected readonly verificandoId = signal<number | null>(null);
   protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
-  protected readonly usarIa = this.configuracoesTi.usarIaAvaliacaoChamado;
+  protected readonly configuracoesAbertas = signal(false);
+  // Avisa de relance (só desenvolvedor) que há amostragem ativa.
+  protected readonly amostragemAtiva = computed(
+    () => this.configuracoesTi.percentualAmostragemChamados() < 100,
+  );
+  protected readonly percentualFormatado = computed(() =>
+    this.configuracoesTi
+      .percentualAmostragemChamados()
+      .toLocaleString('pt-BR', { maximumFractionDigits: 3 }),
+  );
   // Nome pro badge "Com {técnico}" — vem do roster de verdade
   // (`/api/ti/tecnicos`, backend por `tools/ti/tecnicos.py`), não mais
   // fixo aqui — um técnico novo cadastrado aparece certo sem precisar
@@ -88,25 +132,11 @@ export class ChamadosTi {
   constructor() {
     this.carregarChamados();
     this.carregarTecnicos();
-    this.configuracoesTi.carregar();
-  }
-
-  protected alternarUsarIa(): void {
-    const novoValor = !this.usarIa();
-    this.configuracoesTi.usarIaAvaliacaoChamado.set(novoValor);
-    this.configuracoesTi.definirUsarIa(novoValor).subscribe({
-      error: () => this.configuracoesTi.usarIaAvaliacaoChamado.set(!novoValor),
-    });
-  }
-
-  protected abrirDetalhe(chamado: Chamado): void {
-    this.chamadoAberto.set(chamado);
-  }
-
-  // `null` = ainda só com a IA (aguardando resposta do solicitante); um
-  // nome = já escalado pra esse técnico.
-  protected tecnicoEscalado(chamado: Chamado): string | null {
-    return chamado.tecnico_atribuido ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null) : null;
+    if (this.sessao.ehDesenvolvedor()) {
+      // As configurações só aparecem (e só são editáveis) pra desenvolvedor.
+      this.configuracoesTi.carregar();
+      this.carregarSaudeAreas();
+    }
   }
 
   private carregarChamados(): void {
@@ -121,6 +151,13 @@ export class ChamadosTi {
     });
   }
 
+  private carregarSaudeAreas(): void {
+    this.http.get<SaudeArea[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos/saude`).subscribe({
+      next: (areas) => this.saudeAreas.set(areas),
+      error: () => this.saudeAreas.set([]),
+    });
+  }
+
   private carregarTecnicos(): void {
     this.http.get<TecnicoNome[]>(`${MCP_API_BASE_URL}/api/ti/tecnicos`).subscribe({
       next: (tecnicos) => {
@@ -132,6 +169,14 @@ export class ChamadosTi {
     });
   }
 
+  protected abrirDetalhe(chamado: Chamado): void {
+    this.chamadoAberto.set(chamado);
+  }
+
+  protected fecharDetalhe(): void {
+    this.chamadoAberto.set(null);
+  }
+
   protected paginaAnterior(): void {
     this.paginaAtual.update((atual) => Math.max(1, atual - 1));
   }
@@ -140,16 +185,12 @@ export class ChamadosTi {
     this.paginaAtual.update((atual) => Math.min(this.totalPaginas(), atual + 1));
   }
 
-  // Chamado removido da lista (foi pra fila) pode esvaziar a última
-  // página — sem isso, ficaria preso numa página vazia até recarregar.
-  private ajustarPaginaAtual(): void {
-    if (this.paginaAtual() > this.totalPaginas()) {
-      this.paginaAtual.set(this.totalPaginas());
-    }
-  }
-
-  protected fecharDetalhe(): void {
-    this.chamadoAberto.set(null);
+  // `null` = ainda só com a IA (aguardando resposta do solicitante); um
+  // nome = já escalado pra esse técnico.
+  protected tecnicoEscalado(chamado: Chamado): string | null {
+    return chamado.tecnico_atribuido
+      ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null)
+      : null;
   }
 
   protected verificarChamado(chamado: Chamado): void {
@@ -160,25 +201,45 @@ export class ChamadosTi {
     this.verificandoId.set(chamado.id);
     this.erro.set(null);
 
-    this.http.post<Chamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {}).subscribe({
-      next: (atualizado) => {
-        // "fila_atendimento" já foi entregue ao GLPI — some da lista, mesmo
-        // critério de `_precisa_atencao` no backend.
-        if (atualizado.status === 'fila_atendimento') {
-          this.chamados.update((atual) => atual.filter((item) => item.id !== atualizado.id));
-          this.ajustarPaginaAtual();
-        } else {
-          this.chamados.update((atual) => atual.map((item) => (item.id === atualizado.id ? atualizado : item)));
-        }
-        if (this.chamadoAberto()?.id === atualizado.id) {
-          this.chamadoAberto.set(atualizado.status === 'fila_atendimento' ? null : atualizado);
-        }
-        this.verificandoId.set(null);
-      },
-      error: (erro: HttpErrorResponse) => {
-        this.erro.set(mensagemErro(erro, 'Não foi possível verificar este chamado.'));
-        this.verificandoId.set(null);
-      },
-    });
+    this.http
+      .post<RespostaVerificarChamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {})
+      .subscribe({
+        next: (atualizado) => {
+          // "fila_atendimento" já foi entregue ao GLPI — some da lista, mesmo
+          // critério de `_precisa_atencao` no backend.
+          if (atualizado.status === 'fila_atendimento') {
+            this.chamados.update((atual) => atual.filter((item) => item.id !== atualizado.id));
+            this.ajustarPaginaAtual();
+          } else {
+            this.chamados.update((atual) =>
+              atual.map((item) => (item.id === atualizado.id ? atualizado : item)),
+            );
+          }
+          if (this.chamadoAberto()?.id === atualizado.id) {
+            this.chamadoAberto.set(atualizado.status === 'fila_atendimento' ? null : atualizado);
+          }
+          if (atualizado.embedding_indisponivel) {
+            // Neutro de propósito: não sugere trocar de provedor — essa
+            // decisão é da empresa, o aviso só informa a limitação.
+            this.toasts.aviso(
+              'A categoria não foi corrigida automaticamente: o provedor de IA ativo não ' +
+                'suporta essa função. A triagem em si continua funcionando normal.',
+            );
+          }
+          this.verificandoId.set(null);
+        },
+        error: (erro: HttpErrorResponse) => {
+          this.erro.set(mensagemErro(erro, 'Não foi possível verificar este chamado.'));
+          this.verificandoId.set(null);
+        },
+      });
+  }
+
+  // Chamado removido da lista (foi pra fila) pode esvaziar a última
+  // página — sem isso, ficaria preso numa página vazia até recarregar.
+  private ajustarPaginaAtual(): void {
+    if (this.paginaAtual() > this.totalPaginas()) {
+      this.paginaAtual.set(this.totalPaginas());
+    }
   }
 }

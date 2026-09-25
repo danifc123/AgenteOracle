@@ -8,6 +8,7 @@ demanda, nunca em background, mesmo espírito de `despesas_suspeitas.py`."""
 from datetime import date, timedelta
 
 import httpx
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -44,7 +45,7 @@ def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloReceberLiq
     clausula_filial, binds_filial = clausula_in("filial", filiais)
     sql = f"""
         SELECT cliente_codigo, cliente_nome, data_vencimento, data_baixa
-        FROM vw_titulos_receber
+        FROM vwia_titulos_receber
         WHERE filial IN {clausula_filial}
           AND data_baixa IS NOT NULL
           AND data_baixa >= :desde
@@ -73,7 +74,7 @@ def _buscar_municipios(clientes_codigos: list[str]) -> dict[str, tuple[str, str]
     clausula_cliente, binds_cliente = clausula_in("cliente", clientes_codigos)
     sql = f"""
         SELECT codigo, municipio_nome, estado
-        FROM vw_clientes
+        FROM vwia_clientes
         WHERE codigo IN {clausula_cliente}
     """
     with get_connection() as connection:
@@ -91,7 +92,7 @@ def _buscar_safras(clientes_codigos: list[str]) -> list[SafraCliente]:
     clausula_cliente, binds_cliente = clausula_in("cliente", clientes_codigos)
     sql = f"""
         SELECT cliente_codigo, cultura, safra_codigo, safra_descricao, safra_inicio, safra_fim, data_compra
-        FROM vw_safra_cliente
+        FROM vwia_safra_cliente
         WHERE cliente_codigo IN {clausula_cliente}
     """
     with get_connection() as connection:
@@ -134,7 +135,7 @@ def _buscar_abertos(
     fim = hoje + timedelta(days=horizonte_dias)
     sql = f"""
         SELECT cliente_codigo, cliente_nome, numero, parcela, data_vencimento, saldo_aberto
-        FROM vw_titulos_receber
+        FROM vwia_titulos_receber
         WHERE filial IN {clausula_filial}
           AND cliente_codigo IN {clausula_cliente}
           AND data_baixa IS NULL
@@ -323,18 +324,20 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/score-inadimplencia", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
     async def score_inadimplencia_route(request: Request, usuario: dict) -> Response:
-        """Comportamento de pagamento (`vw_titulos_receber`, últimos
+        """Comportamento de pagamento (`vwia_titulos_receber`, últimos
         `_DIAS_HISTORICO` dias) + clima regional na janela real da safra
         relevante do cliente (Open-Meteo — localização cadastrada
         manualmente pro cliente, se houver e tiver resolvido; senão o
-        centro do município via `vw_clientes`) — indicador composto por
+        centro do município via `vwia_clientes`) — indicador composto por
         regra, sem IA (ver docstring de `agent/financeiro/
         score_inadimplencia.py`). Só devolve cliente com algum indício de
         risco (score > 0, ver `_apenas_com_risco`) — cliente 100% em dia
         não aparece na lista. Cada cliente devolvido também traz
         `titulos_em_risco`: os títulos em aberto dele vencendo nos
         próximos `_HORIZONTE_DIAS` dias — a parte "antecipa" do score,
-        ligando o risco já calculado a compromissos concretos."""
+        ligando o risco já calculado a compromissos concretos. Cada
+        consulta síncrona (STAGE/Postgres) roda em thread separada; as
+        chamadas de clima (Open-Meteo) continuam `await` normal."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
             return JSONResponse(
@@ -343,12 +346,14 @@ def registrar(mcp) -> None:
 
         desde = date.today() - timedelta(days=_DIAS_HISTORICO)
         hoje = date.today()
-        comportamentos = comportamento_por_cliente(_buscar_liquidados(filiais, desde), hoje)
+        liquidados = await to_thread.run_sync(_buscar_liquidados, filiais, desde)
+        comportamentos = comportamento_por_cliente(liquidados, hoje)
 
         clientes_codigos = [c.cliente_codigo for c in comportamentos]
-        municipios_por_cliente = _buscar_municipios(clientes_codigos)
+        municipios_por_cliente = await to_thread.run_sync(_buscar_municipios, clientes_codigos)
 
-        safras_relevantes = safra_relevante_por_cliente(_buscar_safras(clientes_codigos), hoje)
+        safras = await to_thread.run_sync(_buscar_safras, clientes_codigos)
+        safras_relevantes = safra_relevante_por_cliente(safras, hoje)
         janelas_por_cliente = {
             cliente_codigo: (safra.safra_inicio, min(hoje, safra.safra_fim))
             for cliente_codigo, safra in safras_relevantes.items()
@@ -363,7 +368,9 @@ def registrar(mcp) -> None:
         }
         climas_por_municipio = await _climas_por_municipio(chaves_municipio)
 
-        localizacoes_por_cliente = localizacao_cliente.buscar_varios(clientes_codigos)
+        localizacoes_por_cliente = await to_thread.run_sync(
+            localizacao_cliente.buscar_varios, clientes_codigos
+        )
         climas_por_cliente_cadastrado = await _climas_por_cliente_cadastrado(
             localizacoes_por_cliente, janelas_por_cliente
         )
@@ -385,13 +392,17 @@ def registrar(mcp) -> None:
         scores.sort(key=lambda score: score.score, reverse=True)
 
         scores_por_cliente = {score.cliente_codigo: score for score in scores}
-        abertos = _buscar_abertos(filiais, list(scores_por_cliente), hoje, _HORIZONTE_DIAS)
+        abertos = await to_thread.run_sync(
+            _buscar_abertos, filiais, list(scores_por_cliente), hoje, _HORIZONTE_DIAS
+        )
         titulos_em_risco = titulos_em_risco_por_cliente(abertos, scores_por_cliente, hoje, _HORIZONTE_DIAS)
         titulos_por_cliente: dict[str, list[TituloEmRisco]] = {}
         for titulo in titulos_em_risco:
             titulos_por_cliente.setdefault(titulo.cliente_codigo, []).append(titulo)
 
-        _comum.registrar_acesso(usuario, "score_inadimplencia:calcular", len(scores))
+        await to_thread.run_sync(
+            _comum.registrar_acesso, usuario, "score_inadimplencia:calcular", len(scores)
+        )
         return JSONResponse(
             [
                 _score_para_json(
@@ -412,7 +423,9 @@ def registrar(mcp) -> None:
         coordenadas diretas. Exige cidade OU coordenadas válidas. Não
         conseguindo geocodificar cidade/bairro, ainda assim salva (pra não
         perder o que a pessoa preencheu) e avisa que o clima segue usando o
-        município enquanto isso."""
+        município enquanto isso. O registro de acesso (Postgres) roda em
+        thread separada; a geocodificação/gravação de localização já é
+        `await` genuíno (`localizacao_cliente.salvar`)."""
         corpo = await request.json()
         cliente_codigo = str(corpo.get("cliente_codigo") or "").strip()
         cidade = str(corpo.get("cidade") or "").strip() or None
@@ -441,5 +454,7 @@ def registrar(mcp) -> None:
                 http_client, cliente_codigo, cidade, bairro, latitude, longitude
             )
 
-        _comum.registrar_acesso(usuario, "score_inadimplencia:cadastrar_localizacao", 1)
+        await to_thread.run_sync(
+            _comum.registrar_acesso, usuario, "score_inadimplencia:cadastrar_localizacao", 1
+        )
         return JSONResponse(_localizacao_para_json(localizacao), headers=CORS_HEADERS)

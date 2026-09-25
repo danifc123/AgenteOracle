@@ -24,7 +24,7 @@
 
 .rotina-linha--ativa {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-brand);
 
   &:hover {
     background: var(--color-primary);
@@ -32,7 +32,7 @@
 
   .rotina-icone {
     background: rgba(255, 255, 255, 0.15);
-    color: #fff;
+    color: var(--text-on-brand);
   }
 
   .rotina-categoria {
@@ -91,7 +91,7 @@
   color: var(--color-text-muted);
   background: var(--color-bg);
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .chevron {

@@ -1,5 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { Toasts } from '../../servicos/toasts';
+import { Toasts } from '../../servicos/toasts/toasts';
 
 /** Empilha os toasts do serviço `Toasts` no canto inferior direito — montado
  * uma vez em `layout.html`, igual `NotificacaoAnaliseCurriculo`. Qualquer

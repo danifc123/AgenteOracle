@@ -23,6 +23,18 @@
   --color-primary-softer: #f2f8f4;
   --color-accent-dark: #c96f12;
 
+  /* Cores semânticas de estado — faltavam (achado do audit de
+     componentes: ~20 arquivos reinventavam hex cru pra erro/aviso/
+     sucesso, cada um com seu próprio tom). Valores = os hex já mais
+     usados na prática, não invenção nova — nada muda visualmente ao
+     introduzir o token, só dá pra esses lugares migrarem depois. */
+  --color-error: #9a2f2f;
+  --color-error-soft: rgba(154, 47, 47, 0.12);
+  --color-warning: #b5620a;
+  --color-warning-soft: rgba(181, 98, 10, 0.12);
+  --color-success: var(--color-primary-light);
+  --color-success-soft: var(--color-primary-soft);
+
   /* Tipografia */
   --font-display: 'Poppins', 'Segoe UI', Roboto, Arial, sans-serif;
   --font-sans: 'Manrope', 'Segoe UI', Roboto, Arial, sans-serif;

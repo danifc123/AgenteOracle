@@ -94,16 +94,16 @@
     } @else if (!busca.carregando() && busca.resultados().length) {
       <div class="lista-resultados">
         @for (resultado of busca.resultados(); track resultado.candidato_id) {
-          <div class="cartao-resultado">
+          <app-cartao-resultado>
             <div class="cartao-resultado-cabecalho">
               <span class="posicao">#{{ resultado.posicao }}</span>
               <h3>{{ resultado.nome }}</h3>
               <span class="similaridade">{{ percentual(resultado.similaridade) }} de similaridade</span>
             </div>
             <div class="linha-meta-badges">
-              <span class="badge-meta">{{ rotuloSenioridade(resultado) }}</span>
-              @if (resultado.area_atuacao_principal) {
-                <span class="badge-meta">{{ resultado.area_atuacao_principal }}</span>
+              <app-selo tom="neutro" [texto]="rotuloSenioridade(resultado)" />
+              @if (resultado.area_atuacao_principal; as area) {
+                <app-selo tom="neutro" [texto]="area" />
               }
             </div>
             <p class="justificativa">{{ resultado.justificativa }}</p>
@@ -114,7 +114,7 @@
                 Baixar currículo
               </app-botao>
             </div>
-          </div>
+          </app-cartao-resultado>
         }
       </div>
     } @else if (!busca.carregando() && buscaFeita()) {

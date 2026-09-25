@@ -1,0 +1,300 @@
+:host {
+  display: block;
+}
+
+.cartao-saude {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px 20px 18px;
+}
+
+.saude-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.saude-titulo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.saude-fonte {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.saude-cobertura {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cobertura-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+
+  b {
+    color: #b5620a;
+  }
+}
+
+.cobertura-barra {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(27, 67, 50, 0.08);
+  overflow: hidden;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: var(--color-primary-light);
+    transition: width 200ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+}
+
+.saude-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+
+  // Faixa de status no topo — leitura do cartão inteiro antes de ler o número.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--color-primary-light);
+  }
+}
+
+.area--vazia::before {
+  background: var(--color-accent);
+}
+
+.area-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.area-icone {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: rgba(27, 67, 50, 0.08);
+  color: var(--color-primary);
+
+  .area--vazia & {
+    background: rgba(232, 135, 30, 0.14);
+    color: #b5620a;
+  }
+}
+
+.area-identidade {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.area-rotulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.area-numeros {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.area-contagem {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+
+  b {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+  }
+
+  .area--vazia & b {
+    color: #b5620a;
+  }
+}
+
+.area-fila {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.area-rodape {
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.area-aviso {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.lista-tecnicos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tecnico {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  // Transparente por padrão — só ganha cor quando é a própria linha do
+  // usuário logado (`.tecnico--voce`), pra não competir visualmente com o
+  // resto do roster.
+  border-left: 3px solid transparent;
+}
+
+// A própria linha do usuário logado (`ehVoce()`, comparado por login, não
+// por nome) — laranja de destaque (`--color-accent`), diferente do verde
+// usado pro resto do roster, pra saltar aos olhos sem precisar ler nome
+// por nome quantos chamados a pessoa logada tem.
+.tecnico--voce {
+  background: rgba(232, 135, 30, 0.08);
+  border-left-color: var(--color-accent);
+}
+
+.tecnico-inicial {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(27, 67, 50, 0.1);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 600;
+
+  .tecnico--voce & {
+    background: rgba(232, 135, 30, 0.16);
+    color: var(--color-accent-dark);
+  }
+}
+
+.tecnico-dados {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tecnico-nome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tecnico-selo-voce {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--text-on-brand);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+// Carga relativa ao técnico mais carregado do roster — serve pra ver
+// concentração (um técnico segurando a fila inteira de uma área).
+.tecnico-carga-barra {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: rgba(27, 67, 50, 0.08);
+  overflow: hidden;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: var(--color-primary);
+  }
+
+  .tecnico--voce & {
+    background: rgba(232, 135, 30, 0.14);
+
+    i {
+      background: var(--color-accent);
+    }
+  }
+}
+
+.tecnico-carga {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+
+  .tecnico--voce & {
+    color: var(--color-accent-dark);
+    font-weight: 600;
+  }
+}

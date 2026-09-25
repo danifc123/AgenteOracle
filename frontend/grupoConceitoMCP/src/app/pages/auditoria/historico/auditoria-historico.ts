@@ -2,15 +2,17 @@ import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../app-config';
+import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
-import { Auditoria } from '../../../servicos/auditoria';
+import { Selo } from '../../../componentes/selo/selo';
+import { Auditoria } from '../../../servicos/auditoria/auditoria';
 import {
   compararValores,
   DirecaoOrdenacao,
   proximaDirecao,
-} from '../../../servicos/ordenacao-tabela';
-import { Sessao } from '../../../servicos/sessao';
+} from '../../../servicos/ordenacao-tabela/ordenacao-tabela';
+import { Sessao } from '../../../servicos/sessao/sessao';
 
 export interface AchadoHistorico {
   execucao_id: string;
@@ -26,7 +28,7 @@ export interface AchadoHistorico {
 
 @Component({
   selector: 'app-auditoria-historico',
-  imports: [DatePipe, IconeOrdenacao, ModuloHeader],
+  imports: [DatePipe, EstadoVazio, IconeOrdenacao, ModuloHeader, Selo],
   templateUrl: './auditoria-historico.html',
   styleUrl: './auditoria-historico.scss',
 })

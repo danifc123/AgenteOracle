@@ -16,6 +16,7 @@ não pede mudança de frontend, só uma entrada nova em `_ACOES_POR_MODULO`."""
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from anyio import to_thread
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -73,10 +74,55 @@ def _achado_para_json(achado: Achado) -> dict:
     }
 
 
+def _auditoria_historico_ativo(corpo: dict) -> Response:
+    modulo = str(corpo.get("modulo", "")).strip()
+    view = str(corpo.get("view", "")).strip()
+    campo = str(corpo.get("campo", "")).strip()
+    valor = str(corpo.get("valor", "")).strip()
+    ativo = corpo.get("ativo")
+
+    if not (modulo and view and campo and valor) or not isinstance(ativo, bool):
+        return JSONResponse(
+            {"erro": "Informe modulo, view, campo, valor e ativo (booleano)."},
+            status_code=400,
+            headers=CORS_HEADERS,
+        )
+
+    atualizado = historico_tools.definir_ativo(modulo, view, campo, valor, ativo)
+    if not atualizado:
+        return JSONResponse(
+            {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+        )
+
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
+def _dispensar(usuario: dict, corpo: dict) -> Response:
+    modulo = str(corpo.get("modulo", "")).strip()
+    view = str(corpo.get("view", "")).strip()
+    campo = str(corpo.get("campo", "")).strip()
+    valor = str(corpo.get("valor", "")).strip()
+
+    if not (modulo and view and campo and valor):
+        return JSONResponse(
+            {"erro": "Informe modulo, view, campo e valor."}, status_code=400, headers=CORS_HEADERS
+        )
+
+    # Revalida o módulo aqui também (não só no GET) — sem isso, um usuário
+    # sem acesso a um módulo poderia gravar uma dispensa pra um módulo que
+    # nem deveria saber que existe.
+    if modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
+        return JSONResponse({"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS)
+
+    dispensados.dispensar(usuario["sub"], modulo, view, campo, valor)
+    historico_tools.definir_ativo(modulo, view, campo, valor, False)
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/auditoria/acoes", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")
-    async def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
+    def acoes_auditoria_route(request: Request, usuario: dict) -> Response:
         """Ações de auditoria disponíveis pro módulo informado — o frontend
         monta um botão por ação (`auditoria-painel`), cada uma rodando só a
         própria verificação. Módulo sem ação nenhuma (Estoque/RH/TI hoje)
@@ -104,32 +150,15 @@ def registrar(mcp) -> None:
         desenvolvedor testar a auditoria repetidamente: desativado, o achado
         deixa de contar em `ja_identificados` e a próxima execução volta a
         tratá-lo como novo, mesmo sem o dado ter mudado. Restrito ao papel
-        `desenvolvedor` (não qualquer administrador)."""
+        `desenvolvedor` (não qualquer administrador). Só o parsing do
+        corpo é assíncrono de verdade; o resto roda em thread separada,
+        mesmo padrão de `login_route`."""
         corpo = await request.json()
-        modulo = str(corpo.get("modulo", "")).strip()
-        view = str(corpo.get("view", "")).strip()
-        campo = str(corpo.get("campo", "")).strip()
-        valor = str(corpo.get("valor", "")).strip()
-        ativo = corpo.get("ativo")
-
-        if not (modulo and view and campo and valor) or not isinstance(ativo, bool):
-            return JSONResponse(
-                {"erro": "Informe modulo, view, campo, valor e ativo (booleano)."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        atualizado = historico_tools.definir_ativo(modulo, view, campo, valor, ativo)
-        if not atualizado:
-            return JSONResponse(
-                {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-            )
-
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return await to_thread.run_sync(_auditoria_historico_ativo, corpo)
 
     @mcp.custom_route("/api/auditoria/historico", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS")
-    async def auditoria_historico_route(request: Request, usuario: dict) -> Response:
+    def auditoria_historico_route(request: Request, usuario: dict) -> Response:
         """Lista os achados que a auditoria já encontrou ao longo do tempo
         (todas as execuções, de qualquer usuário), restritos aos módulos que
         quem está consultando tem acesso — nunca expira, ao contrário de
@@ -176,7 +205,9 @@ def registrar(mcp) -> None:
         cada achado novo aparecia duplicado — bug real que já aconteceu).
         `ativo` é a ÚNICA fonte de verdade do que aparece aqui — dispensar
         (`/api/auditoria/dispensar`) desativa, então não tem filtro
-        adicional por usuário depois disso."""
+        adicional por usuário depois disso. Cada consulta/gravação
+        síncrona roda em thread separada; só a chamada à IA (`tipo="ia"`)
+        continua `await` normal."""
         modulo = request.query_params.get("modulo", "").strip()
         if not modulo:
             return JSONResponse(
@@ -199,16 +230,18 @@ def registrar(mcp) -> None:
 
         # Global: um problema já identificado antes (por qualquer execução,
         # de qualquer ação) não é reanalisado nem re-registrado.
-        conhecidos = historico_tools.ja_identificados()
+        conhecidos = await to_thread.run_sync(historico_tools.ja_identificados)
 
         if acao.tipo == "ia":
-            perfis = filtrar_valores_conhecidos(acao.executar(), conhecidos)
+            resultado_acao = await to_thread.run_sync(acao.executar)
+            perfis = filtrar_valores_conhecidos(resultado_acao, conhecidos)
             ollama_client = AsyncClient(host=settings.ollama_host)
             achados_novos = await analisar_perfis(ollama_client, settings.ollama_model, perfis)
         else:
+            resultado_acao = await to_thread.run_sync(acao.executar)
             achados_novos = [
                 achado
-                for achado in acao.executar()
+                for achado in resultado_acao
                 if (achado.modulo, achado.view, achado.campo, achado.valor) not in conhecidos
             ]
 
@@ -218,11 +251,11 @@ def registrar(mcp) -> None:
         # DEPOIS de salvar duplicava cada achado novo: um vindo de
         # `achados_novos` (em memória) e o mesmo de novo vindo de
         # `achados_ativos` (lido do banco, já com a linha recém-inserida).
-        achados_ja_conhecidos = historico_tools.achados_ativos([modulo])
+        achados_ja_conhecidos = await to_thread.run_sync(historico_tools.achados_ativos, [modulo])
 
         # Guarda todo achado novo no histórico (é o que alimenta
         # `ja_identificados` na próxima execução, de qualquer usuário).
-        historico_tools.salvar(usuario["sub"], achados_novos)
+        await to_thread.run_sync(historico_tools.salvar, usuario["sub"], achados_novos)
 
         # Junta com o que já era conhecido, senão o dialog só mostraria a
         # novidade desta execução — não o que ainda está pendente de
@@ -243,26 +276,8 @@ def registrar(mcp) -> None:
         execuções), mas também tira o valor de `ja_identificados` — se o
         dado continuar errado, a IA pode reencontrar e reapontar o mesmo
         problema numa execução futura. "Dispensar" aqui não é "isto nunca é
-        um problema", é "parei de olhar pra isso agora"."""
+        um problema", é "parei de olhar pra isso agora". Só o parsing do
+        corpo é assíncrono de verdade; o resto roda em thread separada,
+        mesmo padrão de `login_route`."""
         corpo = await request.json()
-        modulo = str(corpo.get("modulo", "")).strip()
-        view = str(corpo.get("view", "")).strip()
-        campo = str(corpo.get("campo", "")).strip()
-        valor = str(corpo.get("valor", "")).strip()
-
-        if not (modulo and view and campo and valor):
-            return JSONResponse(
-                {"erro": "Informe modulo, view, campo e valor."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        # Revalida o módulo aqui também (não só no GET) — sem isso, um
-        # usuário sem acesso a um módulo poderia gravar uma dispensa pra um
-        # módulo que nem deveria saber que existe.
-        if modulo not in papeis.modulos_liberados(usuario.get("papeis", [])):
-            return JSONResponse(
-                {"erro": "Acesso restrito a este módulo."}, status_code=403, headers=CORS_HEADERS
-            )
-
-        dispensados.dispensar(usuario["sub"], modulo, view, campo, valor)
-        historico_tools.definir_ativo(modulo, view, campo, valor, False)
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return await to_thread.run_sync(_dispensar, usuario, corpo)

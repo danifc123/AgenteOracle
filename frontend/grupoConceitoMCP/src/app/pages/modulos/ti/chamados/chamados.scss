@@ -1,25 +1,9 @@
-.barra-acoes {
+/* Engrenagem e selo no slot `acoes`, alinhados ao título (longe do sino fixo do canto). */
+.acoes-config {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.toggle-usar-ia {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-
-  input {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--color-primary);
-    cursor: pointer;
-  }
+  align-self: flex-end;
+  gap: var(--space-3);
 }
 
 .erro {
@@ -93,30 +77,6 @@ table {
   color: var(--color-text-muted);
 }
 
-.badge-situacao {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-// Ainda só com a conta de serviço da IA, esperando o solicitante —
-// mesmo tom de "atenção" já usado em `.aviso-ia`.
-.badge-situacao--aguardando {
-  background: rgba(232, 135, 30, 0.12);
-  color: #b5620a;
-}
-
-// Já escalado pra um técnico humano — tom do verde da marca
-// (`--color-primary`), sinalizando que alguém assumiu o chamado.
-.badge-situacao--escalado {
-  background: rgba(27, 67, 50, 0.1);
-  color: var(--color-primary);
-}
-
 .detalhe-chamado {
   display: flex;
   flex-direction: column;
@@ -127,17 +87,6 @@ table {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-}
-
-.badge-meta {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .aviso-ia {
@@ -165,4 +114,11 @@ table {
   margin: 0;
   font-size: 13px;
   color: var(--color-text-muted);
+}
+
+// Painel só-desenvolvedor (`sessao.ehDesenvolvedor()`) — componente próprio,
+// ver `componentes/saude-roster/`.
+.saude-roster-topo {
+  display: block;
+  margin-bottom: 16px;
 }

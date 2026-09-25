@@ -122,6 +122,31 @@ class TestClassificarCategoria:
         assert resultado.area == mod._AREA_PADRAO
         assert resultado.categoria_id is None
 
+    async def test_falha_de_rede_nao_marca_embedding_indisponivel(self):
+        # Falha genérica (Ollama fora do ar, timeout etc.) cai no mesmo
+        # fallback, mas não é "provedor sem suporte a embedding" — não pode
+        # confundir os dois casos, senão o aviso pro usuário mente.
+        cliente = _OllamaEmbedFake(levantar=ConnectionError("Ollama fora do ar"))
+        resultado = await mod.classificar_categoria(
+            cliente, "modelo-embed", "titulo", "descricao", 2, usar_ia=True
+        )
+        assert resultado.embedding_indisponivel is False
+
+    async def test_provedor_sem_suporte_a_embedding_marca_embedding_indisponivel(self):
+        cliente = _OllamaEmbedFake(levantar=mod.EmbeddingNaoSuportado("sem embedding nesse provedor"))
+        resultado = await mod.classificar_categoria(
+            cliente, "modelo-embed", "titulo", "descricao", 2, usar_ia=True
+        )
+        assert resultado.area == "sistemas"
+        assert resultado.embedding_indisponivel is True
+
+    async def test_categoria_corrigida_com_sucesso_nao_marca_embedding_indisponivel(self):
+        cliente = _OllamaEmbedFake()
+        resultado = await mod.classificar_categoria(
+            cliente, "modelo-embed", "titulo", "descricao", None, usar_ia=True
+        )
+        assert resultado.embedding_indisponivel is False
+
     async def test_cache_de_embeddings_das_categorias_e_reaproveitado(self):
         cliente = _OllamaEmbedFake()
 

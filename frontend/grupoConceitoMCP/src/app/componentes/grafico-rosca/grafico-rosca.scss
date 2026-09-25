@@ -37,7 +37,7 @@
 .rosca-rotulo {
   font-size: 12px;
   font-weight: 600;
-  fill: #fff;
+  fill: var(--text-on-brand);
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
@@ -62,5 +62,5 @@
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }

@@ -7,7 +7,7 @@ from agente_oracle.tools.financeiro.consulta_livre import (
     _validar_consulta,
 )
 
-_VIEW_PERMITIDA = "vw_titulos_pagar"
+_VIEW_PERMITIDA = "vwia_titulos_pagar"
 
 
 def test_select_simples_valido_ganha_limite_automatico():

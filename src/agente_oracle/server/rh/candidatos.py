@@ -10,7 +10,7 @@ fica travado — mesmo espírito da chamada síncrona e longa que
 `Auditoria.buscar()` já faz contra o Ollama.
 """
 
-from ollama import AsyncClient
+from anyio import to_thread
 from starlette.datastructures import UploadFile
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -20,6 +20,7 @@ from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_rh
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido, modelo_ia_ativo
 from agente_oracle.tools.rh import candidatos as candidatos_tools
 from agente_oracle.tools.rh.extracao_curriculo import ArquivoCurriculoInvalido
 from agente_oracle.tools.ti import acessos_dados
@@ -40,6 +41,22 @@ def _candidato_para_json(candidato: dict) -> dict:
     return resultado
 
 
+def _candidato_detalhe(id_candidato_bruto: str, corpo: dict) -> Response:
+    try:
+        id_candidato = int(id_candidato_bruto)
+    except ValueError:
+        return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+    status = str(corpo.get("status") or "").strip()
+    if status not in _STATUS_VALIDOS:
+        return JSONResponse({"erro": "Status inválido."}, status_code=400, headers=CORS_HEADERS)
+
+    atualizado = candidatos_tools.atualizar_status(id_candidato, status)
+    if atualizado is None:
+        return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
+    return JSONResponse(_candidato_para_json(atualizado), headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/rh/candidatos/analisar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_rh)
@@ -57,12 +74,12 @@ def registrar(mcp) -> None:
                 {"erro": "Arquivo muito grande (máx. 15MB)."}, status_code=400, headers=CORS_HEADERS
             )
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
+        ollama_client = criar_cliente_protegido(settings, "rh", sanitizar=True, usuario_id=usuario["sub"])
 
         try:
             candidato = await candidatos_tools.criar_candidato(
                 ollama_client,
-                settings.ollama_model,
+                modelo_ia_ativo(settings, "rh"),
                 settings.ollama_embedding_model,
                 arquivo.filename or "curriculo",
                 conteudo,
@@ -76,7 +93,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/rh/candidatos/{id}/curriculo", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_rh)
-    async def candidato_curriculo_route(request: Request, usuario: dict) -> Response:
+    def candidato_curriculo_route(request: Request, usuario: dict) -> Response:
         """Baixa o currículo original (PDF/DOCX) de um candidato já cadastrado."""
         try:
             id_candidato = int(request.path_params["id"])
@@ -101,25 +118,15 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/rh/candidatos/{id}", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_modulo_rh)
     async def candidato_detalhe_route(request: Request, usuario: dict) -> Response:
-        """Atualiza o status (ativo/contratado/descartado) de um candidato."""
-        try:
-            id_candidato = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
+        """Atualiza o status (ativo/contratado/descartado) de um candidato.
+        Só o parsing do corpo é assíncrono de verdade; o resto roda em
+        thread separada, mesmo padrão de `login_route`."""
         corpo = await request.json()
-        status = str(corpo.get("status") or "").strip()
-        if status not in _STATUS_VALIDOS:
-            return JSONResponse({"erro": "Status inválido."}, status_code=400, headers=CORS_HEADERS)
-
-        atualizado = candidatos_tools.atualizar_status(id_candidato, status)
-        if atualizado is None:
-            return JSONResponse({"erro": "Candidato não encontrado."}, status_code=404, headers=CORS_HEADERS)
-        return JSONResponse(_candidato_para_json(atualizado), headers=CORS_HEADERS)
+        return await to_thread.run_sync(_candidato_detalhe, request.path_params["id"], corpo)
 
     @mcp.custom_route("/api/rh/candidatos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_rh)
-    async def candidatos_route(request: Request, usuario: dict) -> Response:
+    def candidatos_route(request: Request, usuario: dict) -> Response:
         """Lista os candidatos do pool, opcionalmente filtrados por status."""
         status = request.query_params.get("status", "").strip() or None
         candidatos = candidatos_tools.listar(status=status)

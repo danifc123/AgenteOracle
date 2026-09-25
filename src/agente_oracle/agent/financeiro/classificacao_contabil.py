@@ -13,7 +13,7 @@ documento muda de lançamento pra lançamento).
 Confirmado direto no STAGE antes de escrever isto: de 2.399.918
 lançamentos ativos, 658.950 (27%) têm CONTA = '-1' — fila real de
 trabalho, não um cenário hipotético (ver comentário em
-`db/views/financeiro_science.sql::vw_lancamentos_contabeis`). Significado
+`db/views/financeiro_science.sql::vwia_lancamentos_contabeis`). Significado
 de `-1` confirmado com o DBA: é o placeholder que a etapa "replace null"
 do Pentaho (ETL que carrega o STAGE) usa pra substituir valor nulo em
 certas colunas — ou seja, `-1` aqui é mesmo "sem conta definida" (nulo no

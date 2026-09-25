@@ -21,13 +21,15 @@ import { RhHome } from './pages/modulos/rh/home/rh-home';
 import { ChamadosTi } from './pages/modulos/ti/chamados/chamados';
 import { SegurancaTi } from './pages/modulos/ti/seguranca/seguranca';
 import { TiHome } from './pages/modulos/ti/home/ti-home';
+import { ProvedoresLlm } from './pages/modulos/ti/provedores/provedores';
 import { Login } from './pages/login/login';
 import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
 import { JuntarExcel } from './pages/juntar-excel/juntar-excel';
 import { Historico } from './pages/relatorios/historico/historico';
 import { Usuarios } from './pages/usuarios/usuarios';
-import { adminGuard } from './servicos/admin.guard';
-import { authGuard } from './servicos/auth.guard';
+import { adminGuard } from './servicos/admin.guard/admin.guard';
+import { authGuard } from './servicos/auth.guard/auth.guard';
+import { devGuard } from './servicos/dev.guard/dev.guard';
 
 export const routes: Routes = [
   { path: 'login', component: Login },
@@ -58,6 +60,7 @@ export const routes: Routes = [
       { path: 'ti', component: TiHome },
       { path: 'ti/seguranca', component: SegurancaTi },
       { path: 'ti/chamados', component: ChamadosTi },
+      { path: 'ti/provedores', component: ProvedoresLlm, canActivate: [devGuard] },
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },

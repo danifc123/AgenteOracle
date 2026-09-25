@@ -9,12 +9,12 @@ import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-bu
 import { TabelaDetalhe } from '../../../../componentes/tabela-detalhe/tabela-detalhe';
 import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
-import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
-import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
-import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
+import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
+import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras/views-financeiras';
+import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo/download-arquivo';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { filtrosPorColuna } from './filtros-relatorio';
-import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views';
+import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views/relacionamento-views';
 
 interface Filial {
   codigo: string;
@@ -144,21 +144,48 @@ export class CriarRelatorio {
       });
   }
 
-  /** Valores distintos da coluna, pro select multiplo do filtro dela — busca
-   * uma vez só e guarda em cache (não muda enquanto a tela estiver aberta). */
-  private carregarOpcoesColuna(chave: string): void {
-    if (this.opcoesColunas()[chave]) {
+  /** Valores distintos de uma ou mais colunas, pro select multiplo do
+   * filtro delas — busca numa requisição só (mesmo formato "view.coluna,..."
+   * de `colunas` já usado por `/relatorio-customizado`), ignora as que já
+   * estão em cache (não mudam enquanto a tela estiver aberta) e só chama o
+   * backend se sobrar alguma faltando. Usado tanto pra 1 coluna
+   * (`alternarColuna`) quanto pra várias de uma vez (`aplicarLayout`) — um
+   * caminho de código só pros dois casos. */
+  private carregarOpcoesColunas(chaves: string[]): void {
+    const faltantes = chaves.filter((chave) => !this.opcoesColunas()[chave]);
+    if (!faltantes.length) {
       return;
     }
 
     this.http
-      .get<OpcaoSelectBusca[]>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/opcoes-coluna`, {
-        params: { coluna: chave },
+      .get<Record<string, OpcaoSelectBusca[]>>(`${MCP_API_BASE_URL}/api/financeiro/relatorio/opcoes-coluna`, {
+        params: { colunas: faltantes.join(',') },
       })
       .subscribe({
-        next: (opcoes) => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: opcoes })),
-        error: () => this.opcoesColunas.update((atual) => ({ ...atual, [chave]: [] })),
+        next: (opcoesPorColuna) => this.opcoesColunas.update((atual) => ({ ...atual, ...opcoesPorColuna })),
+        error: () =>
+          this.opcoesColunas.update((atual) => ({
+            ...atual,
+            ...Object.fromEntries(faltantes.map((chave) => [chave, []])),
+          })),
       });
+  }
+
+  /** Colunas do layout/seleção atual que precisam de opções carregadas —
+   * "texto" (lista exata) e "texto-numerico" (que também oferece modo
+   * lista, além da faixa). */
+  private chavesComOpcoes(colunasSelecionadas: Record<string, string[]>): string[] {
+    const chaves: string[] = [];
+    for (const [nomeView, nomesColunas] of Object.entries(colunasSelecionadas)) {
+      const view = this.views().find((item) => item.nome === nomeView);
+      for (const nomeColuna of nomesColunas) {
+        const tipo = view?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo;
+        if (tipo === 'texto' || tipo === 'texto-numerico') {
+          chaves.push(`${nomeView}.${nomeColuna}`);
+        }
+      }
+    }
+    return chaves;
   }
 
   private carregarViews(): void {
@@ -222,8 +249,8 @@ export class CriarRelatorio {
       const tipo = this.views()
         .find((view) => view.nome === nomeView)
         ?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo;
-      if (tipo === 'texto') {
-        this.carregarOpcoesColuna(`${nomeView}.${nomeColuna}`);
+      if (tipo === 'texto' || tipo === 'texto-numerico') {
+        this.carregarOpcoesColunas([`${nomeView}.${nomeColuna}`]);
       }
     }
   }
@@ -260,30 +287,31 @@ export class CriarRelatorio {
     this.valoresFiltros.set(layout.valores_filtros);
     this.filiaisSelecionadas.set(layout.filiais_selecionadas);
 
-    for (const [nomeView, colunas] of Object.entries(layout.colunas_selecionadas)) {
-      const view = this.views().find((item) => item.nome === nomeView);
-      for (const nomeColuna of colunas) {
-        const tipo = view?.colunas.find((coluna) => coluna.nome === nomeColuna)?.tipo;
-        if (tipo === 'texto') {
-          this.carregarOpcoesColuna(`${nomeView}.${nomeColuna}`);
-        }
-      }
-    }
+    this.carregarOpcoesColunas(this.chavesComOpcoes(layout.colunas_selecionadas));
   }
 
+  /** Baixa exatamente o que já está carregado na tela (`relatorioDados`,
+   * que acumula toda página trazida via "Carregar mais") — manda as
+   * linhas no corpo pro backend só montar a planilha, em vez de
+   * reconsultar o banco (que sempre traria só a 1ª página de 1000
+   * linhas, mesmo que a tela já tivesse carregado mais). */
   protected baixarRelatorio(): void {
-    if (this.baixandoRelatorio()) {
+    const dados = this.relatorioDados();
+    if (this.baixandoRelatorio() || !dados?.length) {
       return;
     }
 
     this.baixandoRelatorio.set(true);
 
+    const colunas = Object.keys(dados[0]);
+    const linhas = dados.map((linha) => colunas.map((coluna) => linha[coluna] ?? null));
+
     this.http
-      .get(`${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar`, {
-        params: this.parametrosRelatorio(),
-        observe: 'response',
-        responseType: 'blob',
-      })
+      .post(
+        `${MCP_API_BASE_URL}/api/financeiro/relatorio-customizado/exportar-linhas`,
+        { colunas, linhas },
+        { observe: 'response', responseType: 'blob' },
+      )
       .subscribe({
         next: (resposta) => {
           const blob = resposta.body;

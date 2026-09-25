@@ -1,6 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, input, output } from '@angular/core';
-import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro';
+import { CampoFiltro } from '../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { OpcaoSelectBusca, SelectBusca } from '../select-busca/select-busca';
 
 @Component({

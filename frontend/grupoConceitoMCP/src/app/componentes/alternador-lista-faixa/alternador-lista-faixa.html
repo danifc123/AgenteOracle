@@ -1,0 +1,41 @@
+<button
+  type="button"
+  class="gatilho"
+  [class.gatilho--ativo]="aberto()"
+  (click)="alternarAberto()"
+  [attr.aria-expanded]="aberto()"
+  [attr.aria-label]="'Modo do filtro: ' + (modo() === 'faixa' ? 'faixa numérica' : 'lista de valores') + '. Clique para trocar.'"
+  title="Modo do filtro (lista ou faixa)"
+>
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+    <line x1="4" y1="7" x2="20" y2="7" stroke-linecap="round" />
+    <circle cx="9" cy="7" r="2.2" fill="currentColor" stroke="none" />
+    <line x1="4" y1="17" x2="20" y2="17" stroke-linecap="round" />
+    <circle cx="15" cy="17" r="2.2" fill="currentColor" stroke="none" />
+  </svg>
+</button>
+
+@if (aberto()) {
+  <div class="popover" role="menu">
+    <button
+      type="button"
+      role="menuitemradio"
+      [attr.aria-checked]="modo() === 'lista'"
+      class="opcao"
+      [class.opcao--ativa]="modo() === 'lista'"
+      (click)="escolher('lista')"
+    >
+      Lista de valores
+    </button>
+    <button
+      type="button"
+      role="menuitemradio"
+      [attr.aria-checked]="modo() === 'faixa'"
+      class="opcao"
+      [class.opcao--ativa]="modo() === 'faixa'"
+      (click)="escolher('faixa')"
+    >
+      Faixa numérica
+    </button>
+  </div>
+}

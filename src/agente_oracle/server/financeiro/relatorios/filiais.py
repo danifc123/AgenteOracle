@@ -48,7 +48,7 @@ def _filiais_visiveis(filiais: list[dict[str, str]], bloqueadas: set[str]) -> li
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/filiais", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_financeiro)
-    async def listar_filiais_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_filiais_route(request: Request, usuario: dict) -> JSONResponse:
         """Lista as filiais (STAGE.EMPRESA) disponíveis para os relatórios do
         Financeiro, já excluindo as que o coordenador bloqueou pra esse
         usuário."""

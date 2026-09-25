@@ -9,7 +9,12 @@ dono dela (`CategoriaGlpi.area`).
 Nunca falha, nunca trava um chamado real — falha do Ollama (ou
 `usar_ia=False`, a flag do time de TI) cai pra área já resolvida da
 categoria atual, sem tentar corrigir nada; sem categoria atual nenhuma
-(nem isso), cai pra `_AREA_PADRAO`.
+(nem isso), cai pra `_AREA_PADRAO` — "sistemas" (decisão do Daniel,
+2026-09-24: é a área mais comum pra chamado sem categoria, melhor chute
+que "processos"). Mesmo fallback dispara sempre que o provedor de IA
+ativo não suporta embedding (`EmbeddingNaoSuportado` — ex: OCI Generative
+AI, que não tem esse endpoint), já que sem embedding não dá pra comparar
+contra as categorias reais.
 
 `_cache_embeddings_categorias` existe porque comparar contra 211
 categorias a cada chamado significaria 211 chamadas de embedding por
@@ -22,11 +27,12 @@ from dataclasses import dataclass
 
 from ollama import AsyncClient
 
+from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
 from agente_oracle.tools.ti import categorias
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import AreaChamado
 
-_AREA_PADRAO: AreaChamado = "processos"
+_AREA_PADRAO: AreaChamado = "sistemas"
 
 _cache_embeddings_categorias: dict[int, list[float]] | None = None
 
@@ -40,6 +46,12 @@ class ResultadoClassificacao:
     # (usar_ia=False, falha do Ollama).
     categoria_id: int | None
     precisou_embedding: bool
+    # `True` só quando a falha foi especificamente o provedor de IA ativo
+    # não suportar embedding (`EmbeddingNaoSuportado` — ex: OCI Generative
+    # AI). Outra falha (rede, provedor fora do ar) cai no mesmo fallback,
+    # mas deixa isso `False` — quem chama usa pra avisar o usuário direito
+    # em vez de confundir os dois casos (ver `server/ti/chamados.py`).
+    embedding_indisponivel: bool = False
 
 
 async def classificar_categoria(
@@ -62,6 +74,13 @@ async def classificar_categoria(
 
     try:
         escolhida = await _melhor_categoria(ollama_client, modelo_embedding, titulo, descricao)
+    except EmbeddingNaoSuportado:
+        return ResultadoClassificacao(
+            area=area_atual or _AREA_PADRAO,
+            categoria_id=None,
+            precisou_embedding=True,
+            embedding_indisponivel=True,
+        )
     except Exception:
         return ResultadoClassificacao(
             area=area_atual or _AREA_PADRAO, categoria_id=None, precisou_embedding=True

@@ -1,0 +1,84 @@
+<app-dialog
+  [aberto]="aberto()"
+  titulo="Configurações da Auditoria"
+  tamanho="compacto"
+  [temRodape]="true"
+  (fechar)="cancelar()"
+>
+  <p class="apoio">
+    Visível só para desenvolvedores. Estas opções mudam o que a IA faz com os chamados em produção.
+  </p>
+
+  <div class="secoes">
+    <app-secao-configuracao titulo="Avaliação por IA">
+      <app-interruptor
+        rotulo="Usar IA na avaliação"
+        descricao="Desligada, usa uma regra simples de contagem de palavras, sem chamar o Ollama."
+        [marcado]="usarIa()"
+        (alterado)="usarIa.set($event)"
+      />
+    </app-secao-configuracao>
+
+    <app-secao-configuracao titulo="Quantos chamados a IA analisa">
+      <div class="linha">
+        <app-campo-numerico
+          rotulo="Chamados analisados"
+          sufixo="%"
+          [valor]="percentualTexto()"
+          [descricao]="exemplo()"
+          [erro]="erroPercentual()"
+          (valorChange)="percentualTexto.set($event)"
+        />
+      </div>
+      <div class="linha">
+        <app-interruptor
+          rotulo="Ler chamados antigos"
+          [descricao]="descricaoAntigos()"
+          [marcado]="lerAntigos()"
+          [desabilitado]="percentualTodos()"
+          (alterado)="lerAntigos.set($event)"
+        />
+      </div>
+    </app-secao-configuracao>
+
+    @if (aviso(); as mudanca) {
+      <p class="aviso" [class.aviso--atencao]="mudanca.tom === 'atencao'" role="status">
+        <svg
+          class="aviso-icone"
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 8h.01" />
+        </svg>
+        <span>{{ mudanca.texto }}</span>
+      </p>
+    }
+
+    @if (erroServidor()) {
+      <p class="erro-servidor" role="alert">{{ erroServidor() }}</p>
+    }
+  </div>
+
+  <div rodape class="botoes-rodape">
+    <app-botao variant="contorno" [disabled]="salvando()" (clicked)="cancelar()"
+      >Cancelar</app-botao
+    >
+    <app-botao
+      variant="primaria"
+      [disabled]="!podeSalvar()"
+      [loading]="salvando()"
+      loadingText="Salvando..."
+      (clicked)="salvar()"
+    >
+      Salvar alterações
+    </app-botao>
+  </div>
+</app-dialog>

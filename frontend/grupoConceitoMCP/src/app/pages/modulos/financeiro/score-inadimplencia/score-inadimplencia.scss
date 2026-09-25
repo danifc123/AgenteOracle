@@ -38,46 +38,11 @@
   gap: 12px;
 }
 
-.cartao-score {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
 .cartao-score-cabecalho {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.badge-score {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.badge-score--alto {
-  background: rgba(154, 47, 47, 0.15);
-  color: #9a2f2f;
-}
-
-.badge-score--medio {
-  background: rgba(232, 135, 30, 0.15);
-  color: #e8871e;
-}
-
-.badge-score--baixo {
-  background: rgba(47, 158, 88, 0.15);
-  color: #2f9e58;
 }
 
 .nome-cliente {

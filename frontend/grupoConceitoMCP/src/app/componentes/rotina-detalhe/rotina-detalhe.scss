@@ -114,9 +114,9 @@ h2 {
 }
 
 .botao-fixar--ativo {
-  color: #8a6d1a;
-  border-color: #d8a81a;
-  background: rgba(216, 168, 26, 0.1);
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
 }
 
 .detalhe-corpo {

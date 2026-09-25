@@ -1,0 +1,408 @@
+.acoes-config {
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: var(--space-3);
+}
+
+.apoio {
+  margin: 0 0 var(--space-5);
+  font: var(--type-body-sm);
+  color: var(--color-text-muted);
+}
+
+.botoes-rodape {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.cartao-secao {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+
+  h2 {
+    margin: 0 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.cabecalho-secao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+
+  h2 {
+    margin: 0;
+  }
+}
+
+.erro-carregamento {
+  margin: -12px 0 16px;
+  color: #9a2f2f;
+  font-size: 14px;
+}
+
+.carregando {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.tabela-provedores {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+
+  th,
+  td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  // "Nome"/"Modelo" ficam bem mais longos com 3+ provedores cadastrados
+  // (ex: "meta.llama-4-scout-17b-16e-instruct", sem espaço nenhum pra
+  // quebrar sozinho) — sem isso, `white-space: nowrap` empurrava a
+  // tabela inteira mais larga que a tela, forçando scroll horizontal
+  // sempre visível. Só essas duas colunas quebram linha; o resto
+  // (preço, chave, status) continua curto o bastante pra 1 linha só.
+  td:nth-child(1),
+  td:nth-child(3) {
+    white-space: normal;
+    overflow-wrap: break-word;
+    max-width: 220px;
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  thead th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: var(--color-bg);
+    }
+  }
+}
+
+.barra-tour {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: var(--color-primary-softer);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  color: var(--color-primary-dark);
+}
+
+.form-provedor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+app-select-busca {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.rodape-form {
+  display: flex;
+  gap: 16px;
+}
+
+.acoes {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+
+  input {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    font-weight: 400;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-primary-light);
+    }
+  }
+}
+
+.campo-moeda {
+  // `app-select-busca` (não mais um `<input>` livre, ver `provedores.html`
+  // — só "R$"/"US$", pra `custo_brl` conseguir converter com segurança)
+  // dentro de `.linha-precos` — sem margem inferior própria, fica
+  // alinhada com os outros dois campos da mesma linha.
+  margin-bottom: 0;
+}
+
+.linha-precos {
+  display: grid;
+  // 3ª coluna era `minmax(88px, 110px)` — largura certa pro `<input>` de
+  // texto livre de antes (só "R$"/"US$" digitados), mas espremia o rótulo
+  // completo do `app-select-busca` de hoje ("R$ — Real", "US$ — Dólar").
+  grid-template-columns: 1fr 1fr minmax(140px, 180px);
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 560px) {
+  .linha-precos {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dica {
+  margin: -4px 0 16px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.erro {
+  margin: 8px 0 0;
+  color: var(--color-error);
+  font-size: 14px;
+}
+
+// Consumo: gráficos, tabela detalhada e teto diário (vem da antiga tela
+// /ti/tokens, unificada nesta página).
+
+.grade-visao-geral {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+  .grade-visao-geral {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cartao-grafico {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.cartao-grafico-principal {
+  align-items: stretch;
+}
+
+.cabecalho-hoje {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 4px;
+
+  h2 {
+    margin: 0;
+  }
+}
+
+.hoje {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hoje-rotulo {
+  font: 600 11.5px/1 'Manrope', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.hoje-valor {
+  font: var(--type-h3);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.hoje-unidade {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+.alternador {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.aba {
+  padding: 6px 14px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 3px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-control, background 0.15s ease);
+
+  &--ativa {
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+}
+
+.linha-teto {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.linha-teto app-campo-numerico {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.status-teto {
+  margin: 14px 0 0;
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
+.sem-teto {
+  color: var(--color-text-muted);
+}
+
+.lista-vazia {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.tabela-consumo {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+
+  th,
+  td {
+    padding: 10px 12px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .num {
+    text-align: right;
+  }
+
+  thead th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  tbody tr {
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: var(--color-bg);
+    }
+  }
+}
+
+.aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-softer);
+  color: var(--color-primary-dark);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.aviso-icone {
+  flex-shrink: 0;
+  margin-top: 1px;
+}

@@ -13,7 +13,7 @@ duplica um `(usuario, tipo)` que a IA acabou de reapontar com o que já
 estava ativo de uma execução anterior — o achado novo, mais atual,
 prevalece)."""
 
-from ollama import AsyncClient
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -24,6 +24,7 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis
+from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido, modelo_ia_ativo
 from agente_oracle.tools.ti import acessos_dados, historico_seguranca
 
 _DIAS_JANELA_ACESSO = 7
@@ -39,6 +40,25 @@ def _achado_para_json(achado: AchadoSeguranca) -> dict:
     }
 
 
+def _seguranca_dispensar(corpo: dict) -> Response:
+    usuario_alvo = str(corpo.get("usuario", "")).strip()
+    sistema = str(corpo.get("sistema", "")).strip()
+    tipo = str(corpo.get("tipo", "")).strip()
+
+    if not (usuario_alvo and sistema and tipo):
+        return JSONResponse(
+            {"erro": "Informe usuario, sistema e tipo."}, status_code=400, headers=CORS_HEADERS
+        )
+
+    atualizado = historico_seguranca.definir_ativo(usuario_alvo, sistema, tipo, False)
+    if not atualizado:
+        return JSONResponse(
+            {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
+        )
+
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/seguranca/dispensar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
@@ -46,28 +66,15 @@ def registrar(mcp) -> None:
         """Dispensa um achado — desativa globalmente (some da tela de todo
         mundo do TI e das próximas execuções), mesmo mecanismo de
         `/api/auditoria/dispensar`. Se o padrão persistir, a IA pode
-        reencontrar e reapontar numa execução futura."""
+        reencontrar e reapontar numa execução futura. Só o parsing do
+        corpo é assíncrono de verdade; o resto roda em thread separada,
+        mesmo padrão de `login_route`."""
         corpo = await request.json()
-        usuario_alvo = str(corpo.get("usuario", "")).strip()
-        sistema = str(corpo.get("sistema", "")).strip()
-        tipo = str(corpo.get("tipo", "")).strip()
-
-        if not (usuario_alvo and sistema and tipo):
-            return JSONResponse(
-                {"erro": "Informe usuario, sistema e tipo."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        atualizado = historico_seguranca.definir_ativo(usuario_alvo, sistema, tipo, False)
-        if not atualizado:
-            return JSONResponse(
-                {"erro": "Achado não encontrado no histórico."}, status_code=404, headers=CORS_HEADERS
-            )
-
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return await to_thread.run_sync(_seguranca_dispensar, corpo)
 
     @mcp.custom_route("/api/ti/seguranca/historico", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
-    async def seguranca_historico_route(request: Request, usuario: dict) -> Response:
+    def seguranca_historico_route(request: Request, usuario: dict) -> Response:
         """Lista os achados de segurança já encontrados ao longo do tempo —
         nunca expira, ao contrário de `/api/relatorios/historico`. Achado
         desativado só aparece pra quem tem o papel `desenvolvedor` — pra
@@ -87,24 +94,32 @@ def registrar(mcp) -> None:
         (`tools/ti/acessos_dados.py`), manda pra IA
         (`agent/ti/deteccao_seguranca.py`), salva os achados novos no
         histórico e junta com os que já estavam ativos (sem duplicar
-        `(usuario, sistema, tipo)` que a IA acabou de reapontar)."""
-        perfis_login = perfil_login.perfil_logins()
-        perfis_login_protheus = perfil_login.perfil_logins_protheus(dias=_DIAS_JANELA_ACESSO)
-        perfis_acesso = acessos_dados.perfil_acessos(dias=_DIAS_JANELA_ACESSO)
+        `(usuario, sistema, tipo)` que a IA acabou de reapontar). Cada
+        consulta/gravação síncrona roda em thread separada; só a chamada
+        à IA continua `await` normal."""
+        perfis_login = await to_thread.run_sync(perfil_login.perfil_logins)
+        perfis_login_protheus = await to_thread.run_sync(
+            perfil_login.perfil_logins_protheus, _DIAS_JANELA_ACESSO
+        )
+        perfis_acesso = await to_thread.run_sync(acessos_dados.perfil_acessos, _DIAS_JANELA_ACESSO)
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
+        # `sanitizar=False`: `usuario`/`usuario_id` é o próprio objeto do
+        # achado de segurança — mascarar tornaria o achado inacionável (ver
+        # tools/ia/cliente_protegido.py e o plano de guardrails de IA).
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=False, usuario_id=usuario["sub"])
         achados_novos = await detectar(
-            ollama_client, settings.ollama_model, perfis_login, perfis_login_protheus, perfis_acesso
+            ollama_client, modelo_ia_ativo(settings, "ti"), perfis_login, perfis_login_protheus, perfis_acesso
         )
 
         chaves_novas = {(achado.usuario, achado.sistema, achado.tipo) for achado in achados_novos}
+        achados_ativos = await to_thread.run_sync(historico_seguranca.achados_ativos)
         achados_ja_conhecidos = [
             achado
-            for achado in historico_seguranca.achados_ativos()
+            for achado in achados_ativos
             if (achado.usuario, achado.sistema, achado.tipo) not in chaves_novas
         ]
 
-        historico_seguranca.salvar(usuario["sub"], achados_novos)
+        await to_thread.run_sync(historico_seguranca.salvar, usuario["sub"], achados_novos)
 
         achados = achados_novos + achados_ja_conhecidos
         return JSONResponse([_achado_para_json(achado) for achado in achados], headers=CORS_HEADERS)

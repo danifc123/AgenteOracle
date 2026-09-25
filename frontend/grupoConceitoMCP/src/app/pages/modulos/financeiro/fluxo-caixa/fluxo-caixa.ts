@@ -8,7 +8,7 @@ import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-seri
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { MCP_API_BASE_URL } from '../../../../app-config';
-import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream';
+import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream/previsao-stream';
 
 interface Filial {
   codigo: string;

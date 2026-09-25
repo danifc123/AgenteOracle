@@ -120,6 +120,11 @@ export class GraficoSerie {
 
   tipo = input<'linha' | 'barra'>('linha');
   series = input.required<SerieGrafico[]>();
+  /** Mesma semântica de `CartaoKpi.tipo`/`GraficoRosca.unidade`: 'moeda'
+   * (padrão, mantém o comportamento de sempre) abrevia e prefixa "R$";
+   * 'numero' é contagem simples, sem abreviar nem prefixo — pra série que
+   * não é dinheiro (ex: tokens por dia) não aparecer com "R$" na frente. */
+  unidade = input<'moeda' | 'numero'>('moeda');
 
   protected readonly LARGURA = LARGURA;
   protected readonly ALTURA = ALTURA;
@@ -183,7 +188,7 @@ export class GraficoSerie {
     const amplitude = maximo - minimo;
     return [0, 0.25, 0.5, 0.75, 1].map((fracao) => ({
       y: MARGEM_SUPERIOR + ALTURA_PLOT * (1 - fracao),
-      rotulo: formatarMoedaAbreviada(minimo + amplitude * fracao),
+      rotulo: this.formatarValor(minimo + amplitude * fracao),
     }));
   });
 
@@ -452,6 +457,6 @@ export class GraficoSerie {
   }
 
   protected formatarValor(valor: number): string {
-    return formatarMoedaAbreviada(valor);
+    return this.unidade() === 'numero' ? valor.toLocaleString('pt-BR') : formatarMoedaAbreviada(valor);
   }
 }

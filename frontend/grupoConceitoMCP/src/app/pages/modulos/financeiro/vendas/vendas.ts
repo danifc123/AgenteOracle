@@ -7,7 +7,7 @@ import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
-import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream';
+import { gerarPrevisaoStream, mensagemErroPrevisao } from '../../../../servicos/previsao-stream/previsao-stream';
 
 interface Filial {
   codigo: string;

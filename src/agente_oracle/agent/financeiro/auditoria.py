@@ -34,14 +34,14 @@ _DIAS_JANELA_DESVIO_MARGEM = 30
 _LIMIAR_DESVIO_PERCENTUAL = -15.0
 
 # `filial` existe (e deveria seguir o mesmo padrão de numeração) nessas
-# views de título/faturamento; cadastro (vw_clientes/vw_fornecedores) não
+# views de título/faturamento; cadastro (vwia_clientes/vwia_fornecedores) não
 # tem coluna `filial` no STAGE — só `estado`/`tipo_pessoa`/`cnpj_cpf`.
 _VIEWS_COM_FILIAL = (
-    "vw_titulos_pagar",
-    "vw_titulos_receber",
-    "vw_faturamento",
+    "vwia_titulos_pagar",
+    "vwia_titulos_receber",
+    "vwia_faturamento",
 )
-_VIEWS_CADASTRO = ("vw_clientes", "vw_fornecedores")
+_VIEWS_CADASTRO = ("vwia_clientes", "vwia_fornecedores")
 
 # Protege o num_ctx do Ollama (16384, mesma constante usada no resto do
 # projeto) de estourar se um campo que devia ser baixa cardinalidade não for,
@@ -61,7 +61,7 @@ def construir_achados_desvio_margem() -> list[Achado]:
         WITH linhas AS (
             SELECT nota_fiscal, serie, item_nota, produto_codigo, produto_descricao,
                    valor_total, custo
-            FROM vw_faturamento
+            FROM vwia_faturamento
             WHERE data_emissao >= :desde AND valor_total > 0
         ),
         com_desvio AS (
@@ -99,7 +99,7 @@ def _achados_a_partir_das_linhas(linhas: list[tuple]) -> list[Achado]:
         achados.append(
             Achado(
                 modulo=_MODULO,
-                view="vw_faturamento",
+                view="vwia_faturamento",
                 campo="desvio_percentual",
                 valor=f"NF {nota_fiscal}/{serie} item {item_nota}",
                 descricao=(

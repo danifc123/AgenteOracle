@@ -3,7 +3,7 @@
 (seca/excesso de chuva prejudica a colheita, colheita ruim = menos receita
 pra pagar título), não como previsão de tempo. Por isso a janela consultada
 aqui não é fixa — é a janela real da safra (`safra_inicio`/`safra_fim` de
-`vw_safra_cliente`, recortada em `hoje` quando a safra ainda está em
+`vwia_safra_cliente`, recortada em `hoje` quando a safra ainda está em
 andamento), decidida por quem chama (`score_inadimplencia.py`).
 
 Gratuito, sem chave de API (testado ao vivo antes de escrever isto:
@@ -13,7 +13,7 @@ funcionando sem autenticação — https://open-meteo.com/).
 Geolocalização é por MUNICÍPIO, não por fazenda exata:
 `STAGE.PESSOA.LATITUDE/LONGITUDE` existem mas 9.854 de 9.855 clientes têm
 só `'-'` (placeholder, inútil) — confirmado direto no Oracle. A precisão
-real disponível é a do município do cliente (`vw_clientes.municipio_nome`).
+real disponível é a do município do cliente (`vwia_clientes.municipio_nome`).
 
 Qualquer falha (cidade não encontrada, API fora do ar, timeout) devolve
 `classificacao='indisponivel'` — nunca levanta erro pra quem chamou,

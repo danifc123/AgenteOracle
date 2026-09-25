@@ -5,7 +5,7 @@ de demandas de IA do Financeiro ("Contas a Pagar e Fluxo de Caixa").
 100% cálculo sobre o histórico real de pagamento
 (`agent/financeiro/otimizador_pagamento.py`), sem IA — mesmo espírito de
 `desvio_margem.py`/`projecoes.py` ("número não pode depender do Ollama
-estar no ar"). Usa a view curada `vw_titulos_pagar` (`agent/financeiro/
+estar no ar"). Usa a view curada `vwia_titulos_pagar` (`agent/financeiro/
 schema.py`), que ganhou `valor_desconto`/`valor_multa`/`valor_juros`/
 `data_baixa` nesta rodada."""
 
@@ -47,7 +47,7 @@ def _buscar_liquidados(filiais: list[str], desde: date) -> list[TituloPagarLiqui
     sql = f"""
         SELECT fornecedor_codigo, fornecedor_nome, valor_original, data_vencimento,
                data_baixa, valor_desconto, valor_multa, valor_juros
-        FROM vw_titulos_pagar
+        FROM vwia_titulos_pagar
         WHERE filial IN {clausula_filial}
           AND data_baixa IS NOT NULL
           AND data_baixa >= :desde
@@ -85,7 +85,7 @@ def _buscar_abertos(filiais: list[str]) -> list[TituloPagarAberto]:
     sql = f"""
         SELECT fornecedor_codigo, fornecedor_nome, prefixo, numero, parcela,
                valor_original, data_vencimento
-        FROM vw_titulos_pagar
+        FROM vwia_titulos_pagar
         WHERE filial IN {clausula_filial} AND saldo_aberto > 0
     """
     with get_connection() as connection:
@@ -136,7 +136,7 @@ def _recomendacao_para_linha(recomendacao: RecomendacaoPagamento) -> tuple:
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/otimizador-pagamento/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_otimizador_pagamento_route(request: Request, usuario: dict) -> Response:
+    def exportar_otimizador_pagamento_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Otimizador de Fluxo de Caixa Preditivo — exportação em Excel."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:
@@ -159,7 +159,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/otimizador-pagamento", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_otimizador_pagamento_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_otimizador_pagamento_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Otimizador de Fluxo de Caixa Preditivo — endpoint JSON usado pela tela."""
         filiais = _comum.filiais_da_query(request)
         if filiais is None:

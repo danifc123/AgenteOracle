@@ -30,15 +30,30 @@ resposta nova, o GLPI já tem o próprio mecanismo de resolver sozinho
 depois de 3 dias (`PendingReason` — ver
 `tools/ti/glpi.py::ClienteGLPIReal._marcar_aguardando_usuario`).
 
-`processar_chamado_novo` nunca manda a mesma pergunta automática duas
-vezes pro mesmo chamado — `ja_foi_avaliado_insuficiente` (calculado por
-quem chama, via `tools/ti/uso_ia_chamados.py::ultima_avaliacao`, de
-propósito fora desta função testável-com-fake) decide entre perguntar
-(primeira vez) e escalar pra um técnico humano (`_escalar_para_tecnico`,
-a partir da segunda vez que o MESMO chamado segue insuficiente) — bug
-real visto em produção: o mesmo chamado recebendo a mesma pergunta
-genérica repetida em dias diferentes, porque ninguém tinha memória do
-que já tinha sido perguntado antes.
+`processar_chamado_novo` insiste até `_LIMITE_RODADAS_ESCLARECIMENTO`
+vezes com o solicitante antes de escalar pra um técnico humano — cada
+rodada manda a `avaliar_chamado` a conversa inteira (`TurnoConversa[]`,
+montada aqui a partir dos `Followup`s reais do GLPI, papel "ia" pra
+mensagem da própria conta de serviço e "usuario" pra qualquer outra
+pessoa), então a IA sempre enxerga o que já foi perguntado/respondido —
+mas "enxergar" não é garantia de não repetir na prática (bug real visto
+no chamado #3340: mesmo com o histórico certo, a IA repetiu uma pergunta
+quase idêntica). `rodadas_do_usuario` é só a contagem de Followups de
+fora da conta de serviço — fonte de verdade é o próprio GLPI, não uma
+tabela nossa. Além de bater o limite de rodadas, dois motivos escalam
+mais cedo: (1) `avaliar_chamado` caiu no plano B determinístico
+(`AvaliacaoChamado.origem == "regra"`) numa rodada além da 1ª — a regra
+sempre devolve o MESMO texto fixo, insistir repetiria a pergunta (bug
+real em produção, #3262); (2) a nova pergunta da IA saiu parecida demais
+com uma pergunta anterior DELA MESMA nesta conversa
+(`_pergunta_parecida_com_alguma_anterior`, rede de segurança pro caso
+#3340 — a IA pode repetir com outras palavras, não só literalmente). Ao
+escalar por qualquer um desses três motivos, posta um Followup resumindo
+a conversa pro técnico não precisar reler tudo
+(`_resumo_esclarecimento_incompleto`).
+
+Amostragem (`tools/ti/amostragem_chamados.py`): só parte dos chamados novos é triada; o botão
+"Verificar" de UM chamado ignora a amostra.
 
 `_texto_para_ia` limpa o HTML da descrição antes de mandar pra IA — um
 chamado aberto por e-mail pode chegar como um e-mail HTML inteiro
@@ -57,26 +72,42 @@ desatribui quando a triagem termina (suficiente ou escalado) — a troca
 de status já feita continua valendo mesmo depois de desatribuir."""
 
 import asyncio
+import html
 import logging
+import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
+from datetime import datetime
 
+from anyio import to_thread
 from bs4 import BeautifulSoup
 from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from agente_oracle.agent.ti.qualidade_chamado import avaliar_chamado
+from agente_oracle.agent.ti.qualidade_chamado import TurnoConversa, avaliar_chamado
 from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
 from agente_oracle.config import settings
 from agente_oracle.db.connection import DatabaseError
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_modulo_ti
+from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.ti import categorias, uso_ia_chamados
+from agente_oracle.tools.ia.cliente_protegido import (
+    USUARIO_SISTEMA,
+    criar_cliente_protegido,
+    modelo_ia_ativo,
+)
+from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
-from agente_oracle.tools.ti.glpi import AreaChamado, Chamado, ClienteGLPI, chamado_e_alheio, criar_cliente
-from agente_oracle.tools.ti.tecnicos import escolher_tecnico, todos_os_tecnicos
+from agente_oracle.tools.ti.glpi import (
+    AreaChamado,
+    Chamado,
+    ClienteGLPI,
+    Followup,
+    chamado_e_alheio,
+    criar_cliente,
+)
+from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico, escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -89,7 +120,23 @@ _INTERVALO_POLLER_SEGUNDOS = 300
 # de propósito (é 1 linha, não compensa acoplar os dois módulos por isso).
 # Só entra em jogo em `_escalar_para_tecnico`, quando o chamado nem tem
 # categoria pra derivar a área de outro jeito.
-_AREA_PADRAO_ESCALONAMENTO: AreaChamado = "processos"
+_AREA_PADRAO_ESCALONAMENTO: AreaChamado = "sistemas"
+
+# Quantas vezes a IA insiste pedindo esclarecimento pro solicitante antes
+# de desistir e escalar pra um técnico humano mesmo incompleto — decisão
+# do Daniel (2026-09-24): equilíbrio entre dar chance real de completar o
+# chamado e não deixar um solicitante que não vai/não consegue responder
+# preso num ciclo sem fim.
+_LIMITE_RODADAS_ESCLARECIMENTO = 3
+
+# Rótulo pra exibição no painel de saúde do roster (`tecnicos_saude_route`,
+# só-desenvolvedor) — não existe em nenhum outro lugar do backend hoje,
+# área sempre aparece como badge/texto solto no frontend.
+_ROTULOS_AREA: dict[AreaChamado, str] = {
+    "infra": "Infraestrutura",
+    "sistemas": "Sistemas",
+    "processos": "Processos",
+}
 
 
 @dataclass(frozen=True)
@@ -99,15 +146,11 @@ class ResultadoProcessamento:
     # a `classificar_categoria`, a pergunta "precisou de embedding" não se
     # aplica. `False` só acontece com `usar_ia=False`.
     precisou_embedding: bool | None
-
-
-def _precisa_atencao(chamado: Chamado) -> bool:
-    """`fila_atendimento` já tem técnico e área definidos — vira ticket
-    normal do GLPI, e a partir daí quem acompanha é o GLPI, não esta tela.
-    Só vale mostrar aqui `novo` (ainda não avaliado) e `aguardando_usuario`
-    (sem dono, parado esperando o solicitante) — os "perdidos", que é o
-    valor real desta auditoria."""
-    return chamado.status != "fila_atendimento"
+    # `True` só quando a correção de categoria não rodou porque o provedor
+    # de IA ativo não suporta embedding (ver
+    # `agent/ti/roteamento_chamado.py::ResultadoClassificacao`) — usado pra
+    # avisar o usuário na rota manual "Verificar" (`chamado_verificar_route`).
+    embedding_indisponivel: bool = False
 
 
 def _chamado_para_json(chamado: Chamado) -> dict:
@@ -126,122 +169,6 @@ def _chamado_para_json(chamado: Chamado) -> dict:
     }
 
 
-def _texto_para_ia(html: str) -> str:
-    """GLPI guarda a descrição em HTML — às vezes rich text simples, às
-    vezes um e-mail inteiro (cabeçalho, rodapé, tabela de estilo), quando
-    o chamado chega por e-mail. Confirmado ao vivo: um chamado real
-    chegou com um bloco gigante de HTML de notificação (links "Accept/
-    Decline", rodapé "Automaticamente gerado por GLPI", 7 blocos de
-    "Acompanhamento" vazios) em volta de uma frase só de conteúdo real —
-    e a mesma descrição dava resultado diferente em avaliações separadas
-    da IA, provavelmente por causa do volume de marcação sendo
-    interpretado junto com o texto. Tira as tags e extrai só o texto —
-    não separa boilerplate de conteúdo real (isso exigiria regra própria
-    pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
-    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
-    si não muda, a tela continua renderizando o HTML original."""
-    sopa = BeautifulSoup(html, "html.parser")
-    for tag_indesejada in sopa(["style", "script"]):
-        tag_indesejada.decompose()
-    return sopa.get_text(separator=" ", strip=True)
-
-
-async def processar_chamado_novo(
-    cliente: ClienteGLPI,
-    ollama_client: AsyncClient,
-    modelo: str,
-    chamado: Chamado,
-    cargas: dict[str, int],
-    usar_ia: bool,
-    ja_foi_avaliado_insuficiente: bool = False,
-) -> ResultadoProcessamento:
-    """Avalia se o chamado tem informação suficiente. Se não tiver e for
-    a primeira vez (`ja_foi_avaliado_insuficiente=False`), marca
-    `aguardando_usuario` com a pergunta da IA e para por aqui — igual
-    sempre foi. Se **já** tinha sido avaliado insuficiente antes (quem
-    chama decide isso, olhando `tools/ti/uso_ia_chamados.py::ultima_avaliacao`
-    — de propósito fora desta função, que continua sem tocar Postgres,
-    ver abaixo), não manda outra pergunta automática — repetiria algo
-    parecido com o que já foi perguntado (bug real visto no #3262: a
-    mesma pergunta genérica voltando em dias diferentes). Em vez disso,
-    escala pra um técnico humano (`_escalar_para_tecnico`).
-
-    Antes de marcar `aguardando_usuario` pela 1ª vez, atribui a própria
-    conta de serviço da IA (`settings.glpi_conta_ia_id`) como "segurador
-    de lugar" — confirmado ao vivo contra a instância real que um chamado
-    sem NINGUÉM atribuído (usuário, não só Group) rejeita silenciosamente
-    qualquer troca de status (o `PATCH` retorna 200, mas o GLPI ignora).
-    A conta fica atribuída enquanto o chamado está pendente; quando a
-    triagem terminar de verdade (suficiente ou escalado), é desatribuída
-    e o técnico de verdade assume — desatribuir não desfaz a troca de
-    status já feita (confirmado ao vivo: o status fica onde foi deixado).
-
-    Chamado aberto por e-mail chega do GLPI sem categoria nenhuma
-    (`categoria_id is None`) — confirmado com quem cuida do GLPI que
-    esse é um padrão real, não uma falha de cadastro. `classificar_categoria`
-    já lida bem com "sem categoria atual" (escolhe a melhor categoria
-    pelas ~211 reais por similaridade, sem precisar de nada pra
-    comparar antes), então esses chamados passam pelo MESMO fluxo de
-    quem já tem categoria — a IA escolhe uma do zero, em vez de corrigir
-    uma errada. Sem isso, um chamado suficiente e sem categoria ficava
-    preso em `novo` pra sempre, sendo reavaliado (e gastando IA) a cada
-    rodada do poller sem nunca sair dali — bug real visto em produção.
-
-    Com ou sem categoria de partida, classifica a área, escolhe o técnico de menor carga
-    NAQUELE momento (`cargas` é atualizado in-place — importante quando
-    processando um lote: duas chamadas seguidas não caem sempre no mesmo
-    técnico só porque nenhum dos dois ainda foi salvo no GLPI), atribui e
-    libera pra fila. Se `chamado.tecnico_atribuido` já for exatamente
-    esse técnico, pula a atribuição — confirmado contra a instância
-    real que o GLPI rejeita (`400 ERROR_INVALID_PARAMETER`) atribuir a
-    MESMA pessoa com o mesmo papel duas vezes. Isso acontece quando um
-    chamado ficou "meio processado" numa rodada anterior (técnico
-    atribuído, mas a chamada seguinte — marcar `fila_atendimento` —
-    falhou ou foi interrompida antes de terminar); sem esse pulo, o
-    chamado ficaria travado pra sempre, tropeçando nessa mesma falha a
-    cada rodada do poller.
-
-    `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
-    aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
-    Postgres fora das funções testáveis com fake)."""
-    descricao_limpa = _texto_para_ia(chamado.descricao)
-    avaliacao = await avaliar_chamado(
-        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, usar_ia
-    )
-    if not avaliacao.suficiente:
-        if ja_foi_avaliado_insuficiente:
-            await _escalar_para_tecnico(cliente, chamado, cargas)
-        else:
-            if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
-                await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
-            await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", avaliacao.mensagem)
-        return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
-
-    resultado_classificacao = await classificar_categoria(
-        ollama_client,
-        settings.ollama_embedding_model,
-        chamado.titulo,
-        descricao_limpa,
-        chamado.categoria_id,
-        usar_ia,
-    )
-    if resultado_classificacao.categoria_id is not None:
-        await cliente.atualizar_categoria(chamado.id, resultado_classificacao.categoria_id)
-
-    if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
-        await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
-
-    tecnico = escolher_tecnico(resultado_classificacao.area, cargas)
-    if chamado.tecnico_atribuido != tecnico.identificador:
-        await cliente.atribuir(chamado.id, resultado_classificacao.area, tecnico.identificador)
-    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
-    cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
-
-    return ResultadoProcessamento(
-        avaliacao_suficiente=True, precisou_embedding=resultado_classificacao.precisou_embedding
-    )
-
-
 def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa | None:
     """Envolve `uso_ia_chamados.ultima_avaliacao` (que de propósito não
     engole erro — ver docstring dela) só nos pontos de chamada: uma falha
@@ -256,158 +183,176 @@ def _ultima_avaliacao_segura(chamado_id: int) -> uso_ia_chamados.RegistroUsoIa |
         return None
 
 
-async def _escalar_para_tecnico(cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int]) -> None:
-    """Chamado que segue sem informação suficiente numa segunda (ou
-    enésima) avaliação não ganha outra pergunta automática — em vez
-    disso, atribui um técnico humano de menor carga pra tentar extrair a
-    informação diretamente com o solicitante. Atribuir alguém muda o
-    status sozinho pra "Em atendimento" (confirmado ao vivo, não dá pra
-    atribuir e manter "Pendente") — aceito de propósito: o técnico
-    escalado passa a possuir o chamado oficialmente, igual uma resolução
-    normal, então o PATCH pra `fila_atendimento` no final é só deixar
-    explícito o que o GLPI já fez sozinho.
+# Limiar calibrado contra dados reais do chamado #3340 (2026-09-25), já
+# com a mesma filtragem de `_palavras_significativas`: entre a pergunta
+# repetida de verdade e a anterior, 0.29-0.63; entre perguntas
+# genuinamente diferentes da mesma conversa, 0.13-0.21. 0.25 fica no meio
+# dessa folga — o custo de um falso positivo é baixo (escala 1 rodada
+# mais cedo do que o teto normal já escalaria), o de um falso negativo é
+# a IA repetir sem ninguém notar.
+_LIMIAR_SIMILARIDADE_PERGUNTA = 0.25
 
-    Área vem da categoria ATUAL do chamado (`AREA_POR_CATEGORIA_ID`), sem
-    chamar `classificar_categoria`/Ollama de novo — mais barato, e nesta
-    altura corrigir a categoria não é o problema (falta informação, não
-    categoria errada). Cai em `_AREA_PADRAO_ESCALONAMENTO` se o chamado
-    não tiver categoria nenhuma (aberto por e-mail)."""
-    if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
-        await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
-
-    area = categorias.AREA_POR_CATEGORIA_ID.get(chamado.categoria_id, _AREA_PADRAO_ESCALONAMENTO)
-    tecnico = escolher_tecnico(area, cargas)
-    if chamado.tecnico_atribuido != tecnico.identificador:
-        await cliente.atribuir(chamado.id, area, tecnico.identificador)
-    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
-    cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
+# Palavras comuns o bastante pra não distinguir pergunta nenhuma — sem
+# filtrar isso, duas perguntas sobre qualquer chamado de TI colam alto só
+# por dividirem "que"/"para"/"como" etc., mascarando a diferença real.
+_PALAVRAS_IGNORADAS = frozenset(
+    ["que", "de", "a", "o", "e", "do", "da", "em", "um", "uma", "para", "com", "não", "os", "as", "dos", "das", "ao", "aos", "se", "por", "mais", "como", "mas", "foi", "ou", "ser", "tem", "seu", "sua", "quando", "muito", "nos", "já", "está", "eu", "também", "só", "pelo", "pela", "até", "isso", "ela", "entre", "depois", "sem", "mesmo", "esse", "essa", "num", "numa", "pelos", "pelas", "esses", "essas", "exemplo"]
+)
 
 
-async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
-    """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
-    também devolve `aguardando_usuario` (é o que a tela mostra), mas
-    reprocessar esses é trabalho de `verificar_chamados_aguardando_resposta`,
-    que só reavalia quando detecta resposta nova (ver docstring dela). O
-    GLPI também resolve sozinho depois de 3 dias sem resposta
-    (`PendingReason`, ver docstring do módulo). `cargas` é buscado uma
-    vez só no início do lote — cada chamado processado no meio do loop
-    já conta pro próximo, então o lote inteiro se equilibra entre si.
+def _palavras_significativas(texto: str) -> set[str]:
+    # Tira tag HTML antes de extrair palavra — desde que `_mensagem_para_glpi`
+    # existe, `turno.conteudo` de um turno "ia" é HTML de verdade (é o que
+    # foi postado no Followup), e nomes de tag ("strong", "ul") não podem
+    # contar como palavra "em comum" entre mensagens só por estrutura.
+    sem_tags = re.sub(r"<[^>]+>", " ", texto)
+    return {
+        palavra
+        for palavra in re.findall(r"[a-zà-úA-ZÀ-Ú]+", sem_tags.lower())
+        if palavra not in _PALAVRAS_IGNORADAS and len(palavra) > 2
+    }
 
-    Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
-    real de volume/duração pra decidir se a IA nessa etapa está pesando
-    (nunca em dinheiro por chamada, Ollama é local — ver docstring de
-    `tools/ti/uso_ia_chamados.py`). Chamada tanto pela rota manual
-    quanto pelo poller em background (`iniciar_poller_verificar_chamados`).
 
-    Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
-    filtrar por status) — é o que alimenta a tela, mesmo os chamados que
-    este loop pulou de propósito.
+def _pergunta_parecida_com_alguma_anterior(mensagem: str, turnos: list[TurnoConversa]) -> bool:
+    """Rede de segurança determinística contra a IA repetir uma pergunta
+    já feita nesta conversa (com outras palavras, então nunca é IDÊNTICA
+    — se fosse, `avaliacao.origem == "regra"` já cobriria) — bug real
+    visto no chamado #3340: mesmo com o histórico correto e instrução
+    explícita pra não repetir, o modelo às vezes repete assim mesmo.
+    Similaridade Jaccard por palavra (ignorando termos comuns demais) da
+    nova mensagem contra CADA pergunta anterior da própria IA na
+    conversa — `_LIMIAR_SIMILARIDADE_PERGUNTA` explica a calibração."""
+    palavras_novas = _palavras_significativas(mensagem)
+    if not palavras_novas:
+        return False
+    for turno in turnos:
+        if turno.papel != "ia":
+            continue
+        palavras_anteriores = _palavras_significativas(turno.conteudo)
+        uniao = palavras_novas | palavras_anteriores
+        if not uniao:
+            continue
+        similaridade = len(palavras_novas & palavras_anteriores) / len(uniao)
+        if similaridade > _LIMIAR_SIMILARIDADE_PERGUNTA:
+            return True
+    return False
 
-    Falha isolada num chamado (rede, um erro de validação do GLPI etc.)
-    não pode travar o lote inteiro — sem isolar por chamado, um problema
-    num único chamado (ex: já visto na prática — GLPI rejeitando
-    reatribuir o mesmo técnico) interrompe o `for` no meio, e todo
-    chamado que viria depois dele na lista nunca chega a ser processado
-    NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
-    ponto."""
-    ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico(
-        [tecnico.identificador for tecnico in todos_os_tecnicos()]
+
+def _turnos_da_conversa(followups: list[Followup]) -> list[TurnoConversa]:
+    """Mapeia os `Followup`s reais do GLPI (já vêm ordenados por
+    `criado_em`, ver `ClienteGLPIReal.buscar_followups`) pro tipo
+    GLPI-agnóstico que `avaliar_chamado` entende — `qualidade_chamado.py`
+    não sabe (nem precisa saber) o que é `settings.glpi_username`, essa
+    decisão de "quem é a IA" é só nossa."""
+    return [
+        TurnoConversa(papel="ia" if followup.autor_nome == settings.glpi_username else "usuario", conteudo=followup.conteudo)
+        for followup in followups
+    ]
+
+
+def _mensagem_para_glpi(mensagem: str) -> str:
+    """Converte o texto plano de `AvaliacaoChamado.mensagem` (a pergunta
+    da IA, ou `_MENSAGEM_DESCRICAO_CURTA` da regra — os dois já vêm com o
+    mesmo separador fixo `\\n\\nExemplo: `, ver `qualidade_chamado.py`)
+    pro HTML que o GLPI de fato renderiza no Followup — confirmado ao
+    vivo que o campo é tratado como HTML (a descrição de um chamado
+    criado com texto puro volta envolvida em `<p>`), não markdown nem
+    texto solto; sem isso, listas e negrito ficavam com o marcador
+    literal na tela em vez de formatados de verdade (pedido do Daniel,
+    2026-09-25, com print comparando o antes/depois).
+
+    Primeira linha do corpo vira parágrafo; linhas seguintes (quando
+    existem — é o caso de `_MENSAGEM_DESCRICAO_CURTA`, que lista os 3
+    critérios um por linha) viram itens de lista; o exemplo, quando
+    presente, fica destacado à parte. `html.escape` em tudo, pra nada do
+    texto (IA ou o que o usuário digitou, se algum dia entrar aqui)
+    virar marcação por acidente."""
+    corpo, _separador, exemplo = mensagem.partition("\n\nExemplo: ")
+    linhas = [linha.strip() for linha in corpo.split("\n") if linha.strip()]
+    if not linhas:
+        return ""
+
+    partes = [f"<p>{html.escape(linhas[0])}</p>"]
+    if len(linhas) > 1:
+        itens = "".join(f"<li>{html.escape(linha)}</li>" for linha in linhas[1:])
+        partes.append(f"<ul>{itens}</ul>")
+    if exemplo:
+        partes.append(f"<p><strong>Exemplo:</strong> <em>{html.escape(exemplo)}</em></p>")
+    return "".join(partes)
+
+
+def _resumo_esclarecimento_incompleto(turnos: list[TurnoConversa]) -> str:
+    """Followup curto postado ao escalar um chamado que segue incompleto
+    (limite de rodadas batido, ou a regra determinística repetiria a
+    mesma pergunta) — poupa o técnico de reconstruir o histórico sozinho.
+    Lista com marcadores de verdade (HTML), não "- " literal — mesmo
+    motivo de `_mensagem_para_glpi`. Turno "ia" já é HTML (o que
+    `_mensagem_para_glpi` gerou e foi de fato postado) — só escapa o
+    turno "usuario" (texto cru do solicitante)."""
+    if not turnos:
+        return "<p>Triagem automática não conseguiu completar as informações deste chamado.</p>"
+    itens = "".join(
+        f"<li><strong>{'IA' if turno.papel == 'ia' else 'Solicitante'}:</strong> "
+        f"{turno.conteudo if turno.papel == 'ia' else html.escape(turno.conteudo)}</li>"
+        for turno in turnos
+    )
+    return (
+        "<p>Triagem automática não conseguiu completar as informações deste chamado. "
+        f"Conversa até agora:</p><ul>{itens}</ul>"
     )
 
-    for chamado in await _cliente.listar():
-        if chamado.status != "novo":
-            continue
-        inicio = time.monotonic()
-        try:
-            registro_anterior = _ultima_avaliacao_segura(chamado.id)
-            resultado = await processar_chamado_novo(
-                _cliente,
-                ollama_client,
-                settings.ollama_model,
-                chamado,
-                cargas,
-                usar_ia,
-                ja_foi_avaliado_insuficiente=registro_anterior is not None
-                and not registro_anterior.avaliacao_suficiente,
-            )
-        except Exception:
-            _logger.exception("Falha processando o chamado %s", chamado.id)
-            continue
-        duracao_ms = round((time.monotonic() - inicio) * 1000)
-        uso_ia_chamados.registrar(
-            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
-        )
 
-    return await _cliente.listar()
+def _chamados_da_tela(chamados: list[Chamado], fora_da_amostra: set[int]) -> list[dict]:
+    return [
+        _chamado_para_json(chamado)
+        for chamado in chamados
+        if _precisa_atencao(chamado) and chamado.id not in fora_da_amostra
+    ]
 
 
-async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
-    """Segunda perna do poller: chamado `novo` é coberto por
-    `verificar_chamados_pendentes`, chamado `aguardando_usuario` é coberto
-    aqui — só reavalia quando detecta uma resposta NOVA (Followup mais
-    recente que a última avaliação registrada, escrito por alguém que não
-    seja a nossa própria conta de serviço), pra não gastar IA (nem uma
-    chamada de rede) à toa a cada rodada num chamado que ninguém tocou.
+def _precisa_atencao(chamado: Chamado) -> bool:
+    """`fila_atendimento` já tem técnico e área definidos — vira ticket
+    normal do GLPI, e a partir daí quem acompanha é o GLPI, não esta tela.
+    Só vale mostrar aqui `novo` (ainda não avaliado) e `aguardando_usuario`
+    (sem dono, parado esperando o solicitante) — os "perdidos", que é o
+    valor real desta auditoria."""
+    return chamado.status != "fila_atendimento"
 
-    Sem log de "última avaliação" (`uso_ia_chamados.ultima_avaliacao`), não
-    dá pra saber se há resposta nova nem qual o histórico — chamado nessa
-    situação é pulado (não deveria acontecer, `aguardando_usuario` só
-    existe depois de pelo menos 1 avaliação, mas mais vale pular do que
-    assumir errado).
 
-    Reaproveita `processar_chamado_novo` passando uma cópia do chamado com
-    a(s) resposta(s) nova(s) anexada(s) à descrição (`dataclasses.replace`)
-    — mantém a avaliação da IA olhando o texto completo (pergunta original
-    + resposta), sem precisar mudar a assinatura de `avaliar_chamado`.
-    Ainda insuficiente escala pro técnico humano (nunca é a "primeira vez"
-    aqui, `aguardando_usuario` já implica que já houve 1 avaliação
-    insuficiente antes)."""
-    ollama_client = AsyncClient(host=settings.ollama_host)
-    cargas = await _cliente.carga_atual_por_tecnico(
-        [tecnico.identificador for tecnico in todos_os_tecnicos()]
-    )
+def _saude_por_area(tecnicos: tuple[Tecnico, ...], cargas: dict[str, int]) -> list[dict]:
+    """Conta técnico cadastrado por área e monta o roster (nome + carga
+    atual no GLPI) de cada uma — extraída de `tecnicos_saude_route` só pra
+    ser testável sem precisar montar request/auth/GLPI (mesmo espírito de
+    `_chamado_para_json`, `_precisa_atencao` etc. logo abaixo). `cargas` é o
+    mesmo dict de `ClienteGLPI.carga_atual_por_tecnico` — técnico sem
+    entrada nele (nenhum chamado em `fila_atendimento` no momento) conta
+    como 0, não erro."""
+    return [
+        {
+            "area": area,
+            "rotulo": rotulo,
+            "quantidade": sum(1 for tecnico in tecnicos if tecnico.area == area),
+            "tecnicos": [
+                {
+                    "nome": tecnico.nome,
+                    "usuario": tecnico.usuario,
+                    "chamados_abertos": cargas.get(tecnico.identificador, 0),
+                }
+                for tecnico in tecnicos
+                if tecnico.area == area
+            ],
+        }
+        for area, rotulo in _ROTULOS_AREA.items()
+    ]
 
-    for chamado in await _cliente.listar():
-        if chamado.status != "aguardando_usuario":
-            continue
-        try:
-            registro_anterior = _ultima_avaliacao_segura(chamado.id)
-            if registro_anterior is None:
-                continue
-            followups = await _cliente.buscar_followups(chamado.id)
-            respostas_novas = [
-                followup
-                for followup in followups
-                if followup.autor_nome != settings.glpi_username
-                and followup.criado_em > registro_anterior.criado_em
-            ]
-            if not respostas_novas:
-                continue
 
-            chamado_com_resposta = replace(
-                chamado,
-                descricao=chamado.descricao
-                + "\n\n"
-                + "\n".join(followup.conteudo for followup in respostas_novas),
-            )
-            inicio = time.monotonic()
-            resultado = await processar_chamado_novo(
-                _cliente,
-                ollama_client,
-                settings.ollama_model,
-                chamado_com_resposta,
-                cargas,
-                usar_ia,
-                ja_foi_avaliado_insuficiente=True,
-            )
-        except Exception:
-            _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
-            continue
-        duracao_ms = round((time.monotonic() - inicio) * 1000)
-        uso_ia_chamados.registrar(
-            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
-        )
+def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None) -> bool:
+    """Decide a amostragem; se o banco falhar, não analisa (a próxima rodada tenta de novo)."""
+    try:
+        return amostragem_chamados.deve_analisar(chamado_id, criado_em)
+    except DatabaseError:
+        _logger.exception("Falha decidindo a amostragem do chamado %s", chamado_id)
+        return False
 
 
 async def iniciar_poller_verificar_chamados() -> None:
@@ -447,21 +392,185 @@ async def iniciar_poller_verificar_chamados() -> None:
         await asyncio.sleep(_INTERVALO_POLLER_SEGUNDOS)
 
 
+async def processar_chamado_novo(
+    cliente: ClienteGLPI,
+    ollama_client: AsyncClient,
+    modelo: str,
+    chamado: Chamado,
+    cargas: dict[str, int],
+    usar_ia: bool,
+) -> ResultadoProcessamento:
+    """Avalia se o chamado tem informação suficiente, olhando a conversa
+    de esclarecimento inteira (`cliente.buscar_followups`, mapeada pra
+    `TurnoConversa` — ver `_turnos_da_conversa`). Insuficiente com menos
+    de `_LIMITE_RODADAS_ESCLARECIMENTO` respostas do solicitante marca
+    `aguardando_usuario` com uma NOVA pergunta da IA (que vê a conversa
+    inteira, então varia a cada rodada) e para por aqui. Bateu o limite —
+    ou a avaliação veio do plano B determinístico numa rodada além da 1ª
+    (`AvaliacaoChamado.origem == "regra"`, que sempre devolveria o MESMO
+    texto fixo — repetir seria o bug real visto no #3262) — escala pra um
+    técnico humano (`_escalar_para_tecnico`), com um Followup resumindo a
+    conversa pra ele.
+
+    Antes de marcar `aguardando_usuario` pela 1ª vez, atribui a própria
+    conta de serviço da IA (`settings.glpi_conta_ia_id`) como "segurador
+    de lugar" — confirmado ao vivo contra a instância real que um chamado
+    sem NINGUÉM atribuído (usuário, não só Group) rejeita silenciosamente
+    qualquer troca de status (o `PATCH` retorna 200, mas o GLPI ignora).
+    A conta fica atribuída enquanto o chamado está pendente; quando a
+    triagem terminar de verdade (suficiente ou escalado), é desatribuída
+    e o técnico de verdade assume — desatribuir não desfaz a troca de
+    status já feita (confirmado ao vivo: o status fica onde foi deixado).
+
+    Chamado aberto por e-mail chega do GLPI sem categoria nenhuma
+    (`categoria_id is None`) — confirmado com quem cuida do GLPI que
+    esse é um padrão real, não uma falha de cadastro. `classificar_categoria`
+    já lida bem com "sem categoria atual" (escolhe a melhor categoria
+    pelas ~211 reais por similaridade, sem precisar de nada pra
+    comparar antes), então esses chamados passam pelo MESMO fluxo de
+    quem já tem categoria — a IA escolhe uma do zero, em vez de corrigir
+    uma errada. Sem isso, um chamado suficiente e sem categoria ficava
+    preso em `novo` pra sempre, sendo reavaliado (e gastando IA) a cada
+    rodada do poller sem nunca sair dali — bug real visto em produção.
+
+    Com ou sem categoria de partida, classifica a área, escolhe o técnico de menor carga
+    NAQUELE momento (`cargas` é atualizado in-place — importante quando
+    processando um lote: duas chamadas seguidas não caem sempre no mesmo
+    técnico só porque nenhum dos dois ainda foi salvo no GLPI) — a menos
+    que o título/descrição cite um único técnico dessa área pelo nome, que
+    aí ganha prioridade sobre a carga (`escolher_tecnico`, ver
+    `tools/ti/tecnicos.py`) —, atribui e libera pra fila. Se
+    `chamado.tecnico_atribuido` já for exatamente
+    esse técnico, pula a atribuição — confirmado contra a instância
+    real que o GLPI rejeita (`400 ERROR_INVALID_PARAMETER`) atribuir a
+    MESMA pessoa com o mesmo papel duas vezes. Isso acontece quando um
+    chamado ficou "meio processado" numa rodada anterior (técnico
+    atribuído, mas a chamada seguinte — marcar `fila_atendimento` —
+    falhou ou foi interrompida antes de terminar); sem esse pulo, o
+    chamado ficaria travado pra sempre, tropeçando nessa mesma falha a
+    cada rodada do poller.
+
+    `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
+    aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
+    Postgres fora das funções testáveis com fake)."""
+    descricao_limpa = _texto_para_ia(chamado.descricao)
+    followups = await cliente.buscar_followups(chamado.id)
+    turnos = _turnos_da_conversa(followups)
+    rodadas_do_usuario = sum(1 for turno in turnos if turno.papel == "usuario")
+    avaliacao = await avaliar_chamado(
+        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
+    )
+    if not avaliacao.suficiente:
+        bateu_limite = rodadas_do_usuario >= _LIMITE_RODADAS_ESCLARECIMENTO
+        regra_repetiria = avaliacao.origem == "regra" and rodadas_do_usuario > 0
+        pergunta_repetitiva = avaliacao.origem == "ia" and _pergunta_parecida_com_alguma_anterior(
+            avaliacao.mensagem, turnos
+        )
+        if bateu_limite or regra_repetiria or pergunta_repetitiva:
+            await _escalar_para_tecnico(cliente, chamado, cargas, turnos)
+        else:
+            if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
+                await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
+            await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", _mensagem_para_glpi(avaliacao.mensagem))
+        return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
+
+    resultado_classificacao = await classificar_categoria(
+        ollama_client,
+        settings.ollama_embedding_model,
+        chamado.titulo,
+        descricao_limpa,
+        chamado.categoria_id,
+        usar_ia,
+    )
+    if resultado_classificacao.categoria_id is not None:
+        await cliente.atualizar_categoria(chamado.id, resultado_classificacao.categoria_id)
+
+    if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
+        await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
+
+    tecnico = escolher_tecnico(resultado_classificacao.area, cargas, f"{chamado.titulo}\n{descricao_limpa}")
+    if chamado.tecnico_atribuido != tecnico.identificador:
+        await cliente.atribuir(chamado.id, resultado_classificacao.area, tecnico.identificador)
+    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", None)
+    cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
+
+    return ResultadoProcessamento(
+        avaliacao_suficiente=True,
+        precisou_embedding=resultado_classificacao.precisou_embedding,
+        embedding_indisponivel=resultado_classificacao.embedding_indisponivel,
+    )
+
+
+async def _escalar_para_tecnico(
+    cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int], turnos: list[TurnoConversa]
+) -> None:
+    """Chamado que segue sem informação suficiente (bateu
+    `_LIMITE_RODADAS_ESCLARECIMENTO`, ou o plano B repetiria a mesma
+    pergunta — ver `processar_chamado_novo`) não ganha outra pergunta
+    automática — em vez disso, atribui um técnico humano de menor carga
+    pra tentar extrair a informação diretamente com o solicitante, com um
+    Followup **privado** (`is_private`, só quem tem acesso técnico vê —
+    pedido do Daniel, 2026-09-25: é uma anotação PRO TÉCNICO sobre a
+    triagem, não faz sentido pro solicitante ler) resumindo a conversa
+    (`_resumo_esclarecimento_incompleto`) pra ele não precisar reler tudo.
+    Atribuir alguém muda o status
+    sozinho pra "Em atendimento" (confirmado ao vivo, não dá pra atribuir
+    e manter "Pendente") — aceito de propósito: o técnico escalado passa
+    a possuir o chamado oficialmente, igual uma resolução normal, então o
+    PATCH pra `fila_atendimento` no final é só deixar explícito o que o
+    GLPI já fez sozinho.
+
+    Área vem da categoria ATUAL do chamado (`AREA_POR_CATEGORIA_ID`), sem
+    chamar `classificar_categoria`/Ollama de novo — mais barato, e nesta
+    altura corrigir a categoria não é o problema (falta informação, não
+    categoria errada). Cai em `_AREA_PADRAO_ESCALONAMENTO` se o chamado
+    não tiver categoria nenhuma (aberto por e-mail)."""
+    if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
+        await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
+
+    area = categorias.AREA_POR_CATEGORIA_ID.get(chamado.categoria_id, _AREA_PADRAO_ESCALONAMENTO)
+    tecnico = escolher_tecnico(area, cargas, f"{chamado.titulo}\n{chamado.descricao}")
+    if chamado.tecnico_atribuido != tecnico.identificador:
+        await cliente.atribuir(chamado.id, area, tecnico.identificador)
+    resumo = _resumo_esclarecimento_incompleto(turnos) if turnos else None
+    await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", resumo, privado=True)
+    cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
+
+
+def _texto_para_ia(html: str) -> str:
+    """GLPI guarda a descrição em HTML — às vezes rich text simples, às
+    vezes um e-mail inteiro (cabeçalho, rodapé, tabela de estilo), quando
+    o chamado chega por e-mail. Confirmado ao vivo: um chamado real
+    chegou com um bloco gigante de HTML de notificação (links "Accept/
+    Decline", rodapé "Automaticamente gerado por GLPI", 7 blocos de
+    "Acompanhamento" vazios) em volta de uma frase só de conteúdo real —
+    e a mesma descrição dava resultado diferente em avaliações separadas
+    da IA, provavelmente por causa do volume de marcação sendo
+    interpretado junto com o texto. Tira as tags e extrai só o texto —
+    não separa boilerplate de conteúdo real (isso exigiria regra própria
+    pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
+    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
+    si não muda, a tela continua renderizando o HTML original."""
+    sopa = BeautifulSoup(html, "html.parser")
+    for tag_indesejada in sopa(["style", "script"]):
+        tag_indesejada.decompose()
+    return sopa.get_text(separator=" ", strip=True)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/chamados", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_route(request: Request, usuario: dict) -> Response:
         """Lista só os chamados que ainda precisam de atenção desta tela —
-        ver `_precisa_atencao`. `fila_atendimento` já foi entregue ao GLPI."""
+        ver `_precisa_atencao`. `fila_atendimento` já foi entregue ao GLPI.
+        Chamado fora da amostra também não aparece — ver `_chamados_da_tela`."""
         chamados = await _cliente.listar()
-        return JSONResponse(
-            [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
-            headers=CORS_HEADERS,
-        )
+        fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
+        return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/tecnicos", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
-    async def tecnicos_route(request: Request, usuario: dict) -> Response:
+    def tecnicos_route(request: Request, usuario: dict) -> Response:
         """Nomes pro badge "Com {técnico}" na tela de Auditoria — o roster
         de verdade (`tools/ti/tecnicos.py`), aberto pra qualquer um do
         módulo TI. Diferente de `/api/ti/tecnicos-glpi` (candidatos crus
@@ -474,6 +583,20 @@ def registrar(mcp) -> None:
             headers=CORS_HEADERS,
         )
 
+    @mcp.custom_route("/api/ti/tecnicos/saude", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_desenvolvedor)
+    async def tecnicos_saude_route(request: Request, usuario: dict) -> Response:
+        """Diagnóstico só-desenvolvedor: quantos técnicos existem cadastrados
+        por área (e o roster de cada uma, com carga atual no GLPI) — pra
+        pegar área com zero técnicos (`escolher_tecnico` levanta
+        `SemTecnicoNaArea` nesse caso, ver `tools/ti/tecnicos.py`) antes de
+        alguém tropeçar nisso usando a tela de verdade. `todos_os_tecnicos`
+        (Postgres, síncrona) roda em thread separada; `carga_atual_por_tecnico`
+        (GLPI) continua `await` genuíno."""
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+        return JSONResponse(_saude_por_area(tecnicos, cargas), headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/ti/chamados/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_verificar_route(request: Request, usuario: dict) -> Response:
@@ -481,14 +604,12 @@ def registrar(mcp) -> None:
         roda sozinho a cada `_INTERVALO_POLLER_SEGUNDOS` — útil pra forçar
         uma rodada na hora, sem esperar o intervalo, durante teste. Ver
         `verificar_chamados_pendentes`/`verificar_chamados_aguardando_resposta`."""
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
         await verificar_chamados_pendentes(usar_ia)
         await verificar_chamados_aguardando_resposta(usar_ia)
         chamados = await _cliente.listar()
-        return JSONResponse(
-            [_chamado_para_json(chamado) for chamado in chamados if _precisa_atencao(chamado)],
-            headers=CORS_HEADERS,
-        )
+        fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
+        return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/chamados/{id}/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
@@ -499,9 +620,9 @@ def registrar(mcp) -> None:
         chamado ainda estar `novo` (ao contrário do lote, roda de novo
         mesmo em `aguardando_usuario`/`fila_atendimento` — útil pra
         reavaliar um chamado depois de ajustar algo manualmente durante
-        teste). Também respeita `ja_foi_avaliado_insuficiente`: clicar
-        "Verificar" de novo num chamado que já ficou insuficiente antes
-        escala pro técnico em vez de gerar outra pergunta repetida.
+        teste). Mesma regra de rodadas de `processar_chamado_novo`: clicar
+        "Verificar" de novo num chamado que já esgotou as tentativas de
+        esclarecimento escala pro técnico em vez de gerar outra pergunta.
         Recusa (409) chamado "alheio" (`chamado_e_alheio`) — já
         gerenciado fora do nosso sistema, ver docstring dele."""
         try:
@@ -520,33 +641,48 @@ def registrar(mcp) -> None:
                 headers=CORS_HEADERS,
             )
 
-        ollama_client = AsyncClient(host=settings.ollama_host)
-        cargas = await _cliente.carga_atual_por_tecnico(
-            [tecnico.identificador for tecnico in todos_os_tecnicos()]
-        )
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=usuario["sub"])
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
 
-        registro_anterior = _ultima_avaliacao_segura(chamado.id)
         inicio = time.monotonic()
-        resultado = await processar_chamado_novo(
-            _cliente,
-            ollama_client,
-            settings.ollama_model,
-            chamado,
-            cargas,
-            usar_ia,
-            ja_foi_avaliado_insuficiente=registro_anterior is not None
-            and not registro_anterior.avaliacao_suficiente,
-        )
+        try:
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                modelo_ia_ativo(settings, "ti"),
+                chamado,
+                cargas,
+                usar_ia,
+            )
+        except SemTecnicoNaArea as erro:
+            rotulo_area = _ROTULOS_AREA.get(erro.area, erro.area)
+            return JSONResponse(
+                {
+                    "erro": f'Nenhum técnico cadastrado pra área "{rotulo_area}" — cadastre um técnico '
+                    "dessa área em Usuários antes de verificar este chamado de novo."
+                },
+                status_code=422,
+                headers=CORS_HEADERS,
+            )
         duracao_ms = round((time.monotonic() - inicio) * 1000)
-        uso_ia_chamados.registrar(
-            chamado.id, resultado.avaliacao_suficiente, resultado.precisou_embedding, duracao_ms
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
         )
 
         chamado_final = await _cliente.buscar(chamado_id)
         if chamado_final is None:
             return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-        return JSONResponse(_chamado_para_json(chamado_final), headers=CORS_HEADERS)
+        # `embedding_indisponivel` é transiente (sobre ESTE processamento,
+        # não um atributo do chamado) — só entra aqui, na rota manual, não
+        # em `_chamado_para_json` (usado também pra listar vários chamados).
+        corpo_resposta = {**_chamado_para_json(chamado_final), "embedding_indisponivel": resultado.embedding_indisponivel}
+        return JSONResponse(corpo_resposta, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
@@ -564,3 +700,144 @@ def registrar(mcp) -> None:
         if documento is None:
             return Response(status_code=404, headers=CORS_HEADERS)
         return Response(documento.conteudo, media_type=documento.content_type, headers=CORS_HEADERS)
+
+
+async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
+    """Segunda perna do poller: chamado `novo` é coberto por
+    `verificar_chamados_pendentes`, chamado `aguardando_usuario` é coberto
+    aqui — só reavalia quando detecta uma resposta NOVA (Followup mais
+    recente que a última avaliação registrada, escrito por alguém que não
+    seja a nossa própria conta de serviço), pra não gastar IA (nem uma
+    chamada de rede) à toa a cada rodada num chamado que ninguém tocou.
+
+    Sem log de "última avaliação" (`uso_ia_chamados.ultima_avaliacao`), não
+    dá pra saber se há resposta nova nem qual o histórico — chamado nessa
+    situação é pulado (não deveria acontecer, `aguardando_usuario` só
+    existe depois de pelo menos 1 avaliação, mas mais vale pular do que
+    assumir errado).
+
+    Reaproveita `processar_chamado_novo` direto com o `chamado` original —
+    ele busca os `Followup`s sozinho (`_turnos_da_conversa`) e decide
+    perguntar de novo ou escalar a partir de quantas vezes o SOLICITANTE
+    já respondeu, então não precisa mais que este método pré-edite a
+    descrição. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres,
+    síncronos) rodam em thread separada a cada chamada; o resto do fluxo
+    (GLPI/Ollama) continua `await` genuíno.
+
+    `usuario_id=USUARIO_SISTEMA`: processa vários chamados de pessoas
+    diferentes num lote só — mesmo quando disparado pela rota manual (não
+    só pelo poller), atribuir o custo todo a quem clicou "Verificar" seria
+    enganoso (ver `tools/ia/cliente_protegido.py::USUARIO_SISTEMA`)."""
+    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+
+    for chamado in await _cliente.listar():
+        if chamado.status != "aguardando_usuario":
+            continue
+        try:
+            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
+            if registro_anterior is None:
+                continue
+            followups = await _cliente.buscar_followups(chamado.id)
+            respostas_novas = [
+                followup
+                for followup in followups
+                if followup.autor_nome != settings.glpi_username
+                and followup.criado_em > registro_anterior.criado_em
+            ]
+            if not respostas_novas:
+                continue
+
+            inicio = time.monotonic()
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                modelo_ia_ativo(settings, "ti"),
+                chamado,
+                cargas,
+                usar_ia,
+            )
+        except Exception:
+            _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
+            continue
+        duracao_ms = round((time.monotonic() - inicio) * 1000)
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
+        )
+
+
+async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
+    """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
+    também devolve `aguardando_usuario` (é o que a tela mostra), mas
+    reprocessar esses é trabalho de `verificar_chamados_aguardando_resposta`,
+    que só reavalia quando detecta resposta nova (ver docstring dela). O
+    GLPI também resolve sozinho depois de 3 dias sem resposta
+    (`PendingReason`, ver docstring do módulo). `cargas` é buscado uma
+    vez só no início do lote — cada chamado processado no meio do loop
+    já conta pro próximo, então o lote inteiro se equilibra entre si.
+
+    Mede o tempo de cada chamado e grava em `uso_ia_chamados` — dado
+    real de volume/duração pra decidir se a IA nessa etapa está pesando
+    (nunca em dinheiro por chamada, Ollama é local — ver docstring de
+    `tools/ti/uso_ia_chamados.py`). Chamada tanto pela rota manual
+    quanto pelo poller em background (`iniciar_poller_verificar_chamados`).
+
+    Chamado sem avaliação só é processado se entrar na amostra (`chamado_entra_na_amostra`).
+
+    Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
+    filtrar por status) — é o que alimenta a tela, mesmo os chamados que
+    este loop pulou de propósito.
+
+    Falha isolada num chamado (rede, um erro de validação do GLPI etc.)
+    não pode travar o lote inteiro — sem isolar por chamado, um problema
+    num único chamado (ex: já visto na prática — GLPI rejeitando
+    reatribuir o mesmo técnico) interrompe o `for` no meio, e todo
+    chamado que viria depois dele na lista nunca chega a ser processado
+    NAQUELE lote nem em nenhum dos seguintes, sempre travando no mesmo
+    ponto. `todos_os_tecnicos`/`uso_ia_chamados` (Postgres, síncronos)
+    rodam em thread separada a cada chamada; o resto do fluxo (GLPI/
+    Ollama) continua `await` genuíno.
+
+    `usuario_id=USUARIO_SISTEMA`: mesmo motivo de
+    `verificar_chamados_aguardando_resposta` — é um lote de vários
+    chamados de pessoas diferentes, não a ação de quem disparou."""
+    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+    cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
+
+    for chamado in await _cliente.listar():
+        if chamado.status != "novo":
+            continue
+        inicio = time.monotonic()
+        try:
+            registro_anterior = await to_thread.run_sync(_ultima_avaliacao_segura, chamado.id)
+            if registro_anterior is None and not await to_thread.run_sync(
+                chamado_entra_na_amostra, chamado.id, chamado.criado_em
+            ):
+                continue
+            resultado = await processar_chamado_novo(
+                _cliente,
+                ollama_client,
+                modelo_ia_ativo(settings, "ti"),
+                chamado,
+                cargas,
+                usar_ia,
+            )
+        except Exception:
+            _logger.exception("Falha processando o chamado %s", chamado.id)
+            continue
+        duracao_ms = round((time.monotonic() - inicio) * 1000)
+        await to_thread.run_sync(
+            uso_ia_chamados.registrar,
+            chamado.id,
+            resultado.avaliacao_suficiente,
+            resultado.precisou_embedding,
+            duracao_ms,
+        )
+
+    return await _cliente.listar()

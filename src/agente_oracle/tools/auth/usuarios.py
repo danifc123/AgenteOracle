@@ -19,7 +19,7 @@ from agente_oracle.tools.auth import eventos_seguranca, restricoes_filial
 
 _COLUNAS = (
     "id, usuario, senha_hash, nome, papeis, ativo, foto, tentativas_falhas, bloqueado, bloqueado_em, "
-    "tecnico_glpi_id, area_ti"
+    "tecnico_glpi_id, area_ti, email"
 )
 
 # A partir de 3 tentativas de login erradas seguidas, a conta bloqueia até o
@@ -70,6 +70,10 @@ def _garantir_tabela(cursor) -> None:
     # roster de técnicos, no lugar da tupla fixa que existia antes.
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS tecnico_glpi_id VARCHAR")
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS area_ti VARCHAR")
+    # E-mail corporativo — obrigatório só quando um técnico do GLPI é
+    # vinculado (`usuarios_route` confere contra o e-mail real da pessoa no
+    # GLPI antes de gravar), por isso a coluna em si continua opcional aqui.
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR")
     _tabela_garantida = True
 
 
@@ -87,6 +91,7 @@ def _linha_para_usuario(linha: tuple) -> dict:
         bloqueado_em,
         tecnico_glpi_id,
         area_ti,
+        email,
     ) = linha
     return {
         "id": id_,
@@ -101,6 +106,7 @@ def _linha_para_usuario(linha: tuple) -> dict:
         "bloqueado_em": bloqueado_em,
         "tecnico_glpi_id": tecnico_glpi_id,
         "area_ti": area_ti,
+        "email": email,
     }
 
 
@@ -198,11 +204,12 @@ def criar_usuario(
     papeis: list[str],
     tecnico_glpi_id: str | None = None,
     area_ti: str | None = None,
+    email: str | None = None,
 ) -> dict:
-    """`tecnico_glpi_id`/`area_ti` só gravam o que recebem — este módulo
-    não conhece GLPI de propósito (evita `tools/auth` depender de
+    """`tecnico_glpi_id`/`area_ti`/`email` só gravam o que recebem — este
+    módulo não conhece GLPI de propósito (evita `tools/auth` depender de
     `tools/ti`). É `usuarios_route` (`server/auth/rotas.py`) quem resolve
-    `area_ti` ao vivo contra o GLPI antes de chamar isto aqui."""
+    `area_ti` e confere `email` contra o GLPI antes de chamar isto aqui."""
     senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     try:
@@ -212,9 +219,10 @@ def criar_usuario(
             cursor.execute(
                 f"""
                 INSERT INTO usuarios
-                    (usuario, senha_hash, nome, papeis, ativo, criado_em, tecnico_glpi_id, area_ti)
+                    (usuario, senha_hash, nome, papeis, ativo, criado_em, tecnico_glpi_id, area_ti, email)
                 VALUES
-                    (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em, :tecnico_glpi_id, :area_ti)
+                    (:usuario, :senha_hash, :nome, :papeis::jsonb, TRUE, :criado_em, :tecnico_glpi_id,
+                     :area_ti, :email)
                 RETURNING {_COLUNAS}
                 """,
                 usuario=usuario,
@@ -224,6 +232,7 @@ def criar_usuario(
                 criado_em=datetime.now(UTC),
                 tecnico_glpi_id=tecnico_glpi_id,
                 area_ti=area_ti,
+                email=email,
             )
             linha = cursor.fetchone()
     except DatabaseError as erro:

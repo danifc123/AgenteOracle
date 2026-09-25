@@ -1,0 +1,41 @@
+@if (aberto() && passoAtual(); as passo) {
+  @if (destaque(); as pos) {
+    <div
+      class="destaque"
+      [class.destaque--animado]="emTransicao()"
+      [style.top.px]="pos.top"
+      [style.left.px]="pos.left"
+      [style.width.px]="pos.width"
+      [style.height.px]="pos.height"
+    ></div>
+  }
+
+  @if (balao(); as posBalao) {
+    <div
+      class="balao"
+      [class.balao--acima]="balaoAcima()"
+      [class.balao--animado]="emTransicao()"
+      [style.top.px]="posBalao.top"
+      [style.left.px]="posBalao.left"
+      role="dialog"
+      aria-modal="true"
+    >
+      <p class="balao-contador">Passo {{ passoIndice() + 1 }} de {{ passos().length }}</p>
+      <h3 class="balao-titulo">{{ passo.titulo }}</h3>
+      <p class="balao-descricao">{{ passo.descricao }}</p>
+      <div class="balao-acoes">
+        <div class="balao-acoes-esquerda">
+          @if (!ehPrimeiro()) {
+            <app-botao variant="contorno" (clicked)="voltar()">Voltar</app-botao>
+          }
+          @if (!ehUltimo()) {
+            <app-botao variant="contorno" (clicked)="pular()">Pular</app-botao>
+          }
+        </div>
+        <app-botao variant="primaria" (clicked)="avancar()">
+          {{ ehUltimo() ? 'Concluir' : 'Próximo' }}
+        </app-botao>
+      </div>
+    </div>
+  }
+}

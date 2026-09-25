@@ -3,8 +3,8 @@ import { EstoqueHome } from '../modulos/estoque/home/estoque-home';
 import { FinanceiroHome } from '../modulos/financeiro/home/financeiro-home';
 import { RhHome } from '../modulos/rh/home/rh-home';
 import { TiHome } from '../modulos/ti/home/ti-home';
-import { HomeSelecionada } from '../../servicos/home-selecionada';
-import { Sessao } from '../../servicos/sessao';
+import { HomeSelecionada } from '../../servicos/home-selecionada/home-selecionada';
+import { Sessao } from '../../servicos/sessao/sessao';
 
 /** Ordem de prioridade quando o usuário tem mais de um módulo liberado ao
  * mesmo tempo (hoje só desenvolvedor) — Financeiro continua primeiro pra

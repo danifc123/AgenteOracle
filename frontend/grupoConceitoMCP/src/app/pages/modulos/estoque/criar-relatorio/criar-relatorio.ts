@@ -7,10 +7,10 @@ import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-heade
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { TabelaDetalhe } from '../../../../componentes/tabela-detalhe/tabela-detalhe';
 import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
-import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts';
-import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras';
-import { MOCK_VIEWS_ESTOQUE } from '../../../../dadosRelatorios/views-estoque';
-import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views';
+import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
+import { ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras/views-financeiras';
+import { MOCK_VIEWS_ESTOQUE } from '../../../../dadosRelatorios/views-estoque/views-estoque';
+import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views/relacionamento-views';
 
 // Dado de mentira só pra construir/ajustar os componentes visuais — troca
 // pra dados reais assim que existir a consulta SQL desse módulo (ver

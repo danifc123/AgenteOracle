@@ -1,18 +1,20 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Botao } from '../../../../componentes/botao/botao';
+import { CartaoResultado } from '../../../../componentes/cartao-resultado/cartao-resultado';
 import { DetalheCandidato } from '../../../../componentes/detalhe-candidato/detalhe-candidato';
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { SeletorArquivoCurriculo } from '../../../../componentes/seletor-arquivo-curriculo/seletor-arquivo-curriculo';
+import { Selo } from '../../../../componentes/selo/selo';
 import {
   AnaliseCurriculo,
   Candidato,
   ROTULOS_SENIORIDADE,
   ROTULOS_STATUS,
   StatusCandidato,
-} from '../../../../servicos/analise-curriculo';
-import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos';
+} from '../../../../servicos/analise-curriculo/analise-curriculo';
+import { BuscaCandidatos, ResultadoBusca } from '../../../../servicos/busca-candidatos/busca-candidatos';
 
 const LIMITE_RESUMO_TRUNCADO = 140;
 
@@ -39,7 +41,16 @@ type ModoAnaliseCandidato = 'lista' | 'busca';
  */
 @Component({
   selector: 'app-analise-candidato',
-  imports: [Botao, DetalheCandidato, Dialog, EstadoVazio, ModuloHeader, SeletorArquivoCurriculo],
+  imports: [
+    Botao,
+    CartaoResultado,
+    DetalheCandidato,
+    Dialog,
+    EstadoVazio,
+    ModuloHeader,
+    SeletorArquivoCurriculo,
+    Selo,
+  ],
   templateUrl: './analise-candidato.html',
   styleUrl: './analise-candidato.scss',
 })

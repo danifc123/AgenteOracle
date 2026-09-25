@@ -45,6 +45,18 @@
   color: var(--color-text-muted);
 }
 
+// Gatilho estreito (ex: `.campo-moeda` em `provedores.html`, coluna de
+// ~100-150px) sem isso quebrava o rótulo em 2 linhas dentro do botão
+// (`display: flex` encolhe o span, mas `min-width` do flex item é `auto`
+// por padrão — sem zerar, o texto nunca chega a truncar) — corta com "…"
+// em vez de empilhar as palavras.
+.rotulo-selecionado {
+  overflow: hidden;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .chevron {
   flex-shrink: 0;
   color: var(--color-text-muted);
@@ -66,7 +78,7 @@
   width: 20px;
   height: 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: none;
   color: var(--color-text-muted);
   cursor: pointer;
@@ -149,7 +161,7 @@
   width: 14px;
   height: 14px;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   transition:
     background 0.15s ease,
     border-color 0.15s ease;

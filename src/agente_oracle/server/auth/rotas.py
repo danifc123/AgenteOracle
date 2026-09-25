@@ -1,3 +1,4 @@
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -47,12 +48,176 @@ def _resposta_limite_excedido(espera: int, mensagem: str) -> JSONResponse:
     )
 
 
+def _autenticar_e_responder(usuario: str, senha: str) -> Response:
+    """Parte síncrona do login (checagem de bloqueio, rate limit, consulta de
+    credenciais no banco, registro de evento de segurança) — chamada via
+    `anyio.to_thread.run_sync` por `login_route` pra não travar o event loop
+    enquanto consulta o Postgres (mesmo motivo documentado em
+    `server/auth/decorador_rota.py::rota_protegida`; login não passa por esse
+    decorator, então recebe o offload na mão aqui)."""
+    if usuario and esta_bloqueado(usuario):
+        return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
+
+    chave_bloqueio = usuario or "desconhecido"
+    espera = segundos_ate_liberar(chave_bloqueio)
+    if espera is not None:
+        return _resposta_limite_excedido(
+            espera,
+            f"Você errou a senha muitas vezes seguidas. Por segurança, tente de novo em {espera} segundos.",
+        )
+
+    dados = autenticar(usuario, senha) if usuario and senha else None
+    if dados is None:
+        registrar_falha(chave_bloqueio)
+        if usuario:
+            eventos_seguranca.registrar("login_falha", usuario_afetado=usuario)
+            if registrar_tentativa_falha(usuario):
+                return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
+        return JSONResponse({"erro": "Usuário ou senha inválidos."}, status_code=401, headers=CORS_HEADERS)
+
+    limpar(chave_bloqueio)
+    eventos_seguranca.registrar("login_sucesso", usuario_afetado=dados["usuario"])
+    token = gerar_token(dados["id"], dados["usuario"], dados["nome"], dados["papeis"])
+    return JSONResponse(
+        {
+            "token": token,
+            "usuario": dados["usuario"],
+            "nome": dados["nome"],
+            "foto": dados.get("foto"),
+            "papeis": dados["papeis"],
+            # Calculados aqui só pra UI decidir o que mostrar (sidebar) — a
+            # autorização de verdade em cada rota é sempre recalculada a
+            # partir de `papeis`, nunca confia num campo guardado no token.
+            "administrador": papeis.eh_administrador(dados["papeis"]),
+            "modulos": papeis.modulos_liberados(dados["papeis"]),
+        },
+        headers=CORS_HEADERS,
+    )
+
+
+def _alterar_senha(usuario: dict, chave_rate_limit: str, corpo: dict) -> Response:
+    senha_atual = str(corpo.get("senha_atual", ""))
+    senha_nova = str(corpo.get("senha_nova", ""))
+
+    if not senha_nova or senha_nova == senha_atual:
+        return JSONResponse(
+            {"erro": "Informe uma senha nova diferente da atual."}, status_code=400, headers=CORS_HEADERS
+        )
+
+    erro_senha = senha_fraca(senha_nova)
+    if erro_senha:
+        return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
+
+    sucesso = alterar_senha(usuario["usuario"], senha_atual, senha_nova)
+    if not sucesso:
+        registrar_falha(chave_rate_limit)
+        return JSONResponse({"erro": "Senha atual incorreta."}, status_code=400, headers=CORS_HEADERS)
+
+    limpar(chave_rate_limit)
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
+def _atualizar_perfil(usuario: dict, corpo: dict) -> Response:
+    nome = corpo.get("nome")
+    foto = corpo.get("foto")
+
+    nome = nome.strip() if isinstance(nome, str) else None
+    if nome == "":
+        return JSONResponse({"erro": "Nome não pode ficar em branco."}, status_code=400, headers=CORS_HEADERS)
+
+    if isinstance(foto, str) and len(foto) > _TAMANHO_MAXIMO_FOTO:
+        return JSONResponse({"erro": "Imagem muito grande."}, status_code=400, headers=CORS_HEADERS)
+    foto = foto if isinstance(foto, str) else None
+
+    if nome is None and foto is None:
+        return JSONResponse({"erro": "Nada pra atualizar."}, status_code=400, headers=CORS_HEADERS)
+
+    perfil = atualizar_perfil(usuario["usuario"], nome=nome, foto=foto)
+    return JSONResponse(
+        {"usuario": perfil["usuario"], "nome": perfil["nome"], "foto": perfil.get("foto")},
+        headers=CORS_HEADERS,
+    )
+
+
+def _filiais_bloqueadas(
+    metodo: str, usuario: dict, id_usuario_bruto: str, corpo: dict | None, modulo_query: str
+) -> Response:
+    try:
+        id_usuario = int(id_usuario_bruto)
+    except ValueError:
+        return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+    modulo = str(corpo.get("modulo", "") if corpo is not None else modulo_query).strip()
+
+    if modulo not in papeis.MODULOS_CONHECIDOS or not papeis.tem_acesso_modulo(
+        usuario.get("papeis", []), modulo
+    ):
+        return JSONResponse(
+            {"erro": "Módulo inválido ou fora do seu escopo."}, status_code=403, headers=CORS_HEADERS
+        )
+
+    if metodo == "GET":
+        filiais = restricoes_filial.filiais_bloqueadas(id_usuario, modulo)
+        return JSONResponse({"filiais": sorted(filiais)}, headers=CORS_HEADERS)
+
+    filiais_pedidas = (corpo or {}).get("filiais", [])
+    if not isinstance(filiais_pedidas, list) or not all(isinstance(item, str) for item in filiais_pedidas):
+        return JSONResponse({"erro": "Lista de filiais inválida."}, status_code=400, headers=CORS_HEADERS)
+
+    filiais = restricoes_filial.definir_bloqueadas(id_usuario, modulo, filiais_pedidas)
+    eventos_seguranca.registrar(
+        "filiais_bloqueadas_atualizadas",
+        usuario_afetado=str(id_usuario),
+        realizado_por=usuario["usuario"],
+        detalhes={"modulo": modulo, "filiais": filiais},
+    )
+    return JSONResponse({"filiais": filiais}, headers=CORS_HEADERS)
+
+
+def _criar_usuario_e_responder(
+    usuario_logado: dict,
+    usuario: str,
+    senha: str,
+    nome: str,
+    papeis_pedidos: list[str],
+    tecnico_glpi_id: str | None,
+    area_ti: str | None,
+    email: str | None,
+) -> Response:
+    try:
+        usuario_criado = criar_usuario(
+            usuario,
+            senha,
+            nome,
+            papeis_pedidos,
+            tecnico_glpi_id=tecnico_glpi_id,
+            area_ti=area_ti,
+            email=email,
+        )
+    except UsuarioJaExiste as erro:
+        return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+
+    eventos_seguranca.registrar(
+        "usuario_criado",
+        usuario_afetado=usuario,
+        realizado_por=usuario_logado["usuario"],
+        detalhes={"papeis": papeis_pedidos},
+    )
+    return JSONResponse(
+        {chave: valor for chave, valor in usuario_criado.items() if chave != "senha_hash"},
+        status_code=201,
+        headers=CORS_HEADERS,
+    )
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/auth/senha", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS")
     async def alterar_senha_route(request: Request, usuario: dict) -> Response:
         """Autoatendimento: usuário logado troca a própria senha, confirmando
-        a senha atual antes."""
+        a senha atual antes. Só o rate limit em memória e o parsing do
+        corpo ficam no event loop; a consulta/gravação ao Postgres roda em
+        thread separada, mesmo padrão de `login_route`."""
         # Namespace própria ("senha:") pra não compartilhar contador com o
         # rate limit do login — sem isso, alguém com um token roubado (ainda
         # válido) mas sem saber a senha atual podia tentar adivinhá-la à
@@ -65,29 +230,11 @@ def registrar(mcp) -> None:
             )
 
         corpo = await request.json()
-        senha_atual = str(corpo.get("senha_atual", ""))
-        senha_nova = str(corpo.get("senha_nova", ""))
-
-        if not senha_nova or senha_nova == senha_atual:
-            return JSONResponse(
-                {"erro": "Informe uma senha nova diferente da atual."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        erro_senha = senha_fraca(senha_nova)
-        if erro_senha:
-            return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
-
-        sucesso = alterar_senha(usuario["usuario"], senha_atual, senha_nova)
-        if not sucesso:
-            registrar_falha(chave_rate_limit)
-            return JSONResponse({"erro": "Senha atual incorreta."}, status_code=400, headers=CORS_HEADERS)
-
-        limpar(chave_rate_limit)
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return await to_thread.run_sync(_alterar_senha, usuario, chave_rate_limit, corpo)
 
     @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
     @rota_protegida("DELETE, OPTIONS", exigir=exigir_administrador)
-    async def apagar_usuario_route(request: Request, usuario: dict) -> Response:
+    def apagar_usuario_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários pra
         apagar um usuário — restrito a administradores."""
         id_usuario = request.path_params["id"]
@@ -114,33 +261,15 @@ def registrar(mcp) -> None:
     @rota_protegida("PATCH, OPTIONS")
     async def atualizar_perfil_route(request: Request, usuario: dict) -> Response:
         """Autoatendimento: usuário logado atualiza o próprio nome e/ou foto
-        — nunca o de outra pessoa (o alvo é sempre quem está no token)."""
+        — nunca o de outra pessoa (o alvo é sempre quem está no token). Só
+        o parsing do corpo é assíncrono de verdade; o resto roda em thread
+        separada, mesmo padrão de `login_route`."""
         corpo = await request.json()
-        nome = corpo.get("nome")
-        foto = corpo.get("foto")
-
-        nome = nome.strip() if isinstance(nome, str) else None
-        if nome == "":
-            return JSONResponse(
-                {"erro": "Nome não pode ficar em branco."}, status_code=400, headers=CORS_HEADERS
-            )
-
-        if isinstance(foto, str) and len(foto) > _TAMANHO_MAXIMO_FOTO:
-            return JSONResponse({"erro": "Imagem muito grande."}, status_code=400, headers=CORS_HEADERS)
-        foto = foto if isinstance(foto, str) else None
-
-        if nome is None and foto is None:
-            return JSONResponse({"erro": "Nada pra atualizar."}, status_code=400, headers=CORS_HEADERS)
-
-        perfil = atualizar_perfil(usuario["usuario"], nome=nome, foto=foto)
-        return JSONResponse(
-            {"usuario": perfil["usuario"], "nome": perfil["nome"], "foto": perfil.get("foto")},
-            headers=CORS_HEADERS,
-        )
+        return await to_thread.run_sync(_atualizar_perfil, usuario, corpo)
 
     @mcp.custom_route("/api/auth/usuarios/{id}/desbloquear", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS", exigir=exigir_desenvolvedor)
-    async def desbloquear_usuario_route(request: Request, usuario: dict) -> Response:
+    def desbloquear_usuario_route(request: Request, usuario: dict) -> Response:
         """Desbloqueia uma conta travada após 3 tentativas de login erradas
         seguidas — restrito ao time de TI (papel `desenvolvedor`)."""
         try:
@@ -161,7 +290,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/eventos-seguranca", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_desenvolvedor)
-    async def eventos_seguranca_route(request: Request, usuario: dict) -> Response:
+    def eventos_seguranca_route(request: Request, usuario: dict) -> Response:
         """Trilha de auditoria de login/administração de contas — restrita
         ao time de TI (papel `desenvolvedor`), pra investigar incidentes."""
         return JSONResponse(eventos_seguranca.listar(), headers=CORS_HEADERS)
@@ -173,46 +302,22 @@ def registrar(mcp) -> None:
         (GET) ou define (PUT) quais filiais um usuário do seu módulo não
         pode ver nos relatórios (`tools/auth/restricoes_filial.py`) —
         restrito a quem já tem acesso ao módulo informado, pra um admin de
-        um módulo não mexer em restrição de outro que não é o dele."""
-        try:
-            id_usuario = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
+        um módulo não mexer em restrição de outro que não é o dele. Só o
+        parsing do corpo (PUT) é assíncrono de verdade; o resto roda em
+        thread separada, mesmo padrão de `login_route`."""
         corpo = await request.json() if request.method == "PUT" else None
-        modulo = str(
-            corpo.get("modulo", "") if corpo is not None else request.query_params.get("modulo", "")
-        ).strip()
-
-        if modulo not in papeis.MODULOS_CONHECIDOS or not papeis.tem_acesso_modulo(
-            usuario.get("papeis", []), modulo
-        ):
-            return JSONResponse(
-                {"erro": "Módulo inválido ou fora do seu escopo."}, status_code=403, headers=CORS_HEADERS
-            )
-
-        if request.method == "GET":
-            filiais = restricoes_filial.filiais_bloqueadas(id_usuario, modulo)
-            return JSONResponse({"filiais": sorted(filiais)}, headers=CORS_HEADERS)
-
-        filiais_pedidas = corpo.get("filiais", [])
-        if not isinstance(filiais_pedidas, list) or not all(
-            isinstance(item, str) for item in filiais_pedidas
-        ):
-            return JSONResponse({"erro": "Lista de filiais inválida."}, status_code=400, headers=CORS_HEADERS)
-
-        filiais = restricoes_filial.definir_bloqueadas(id_usuario, modulo, filiais_pedidas)
-        eventos_seguranca.registrar(
-            "filiais_bloqueadas_atualizadas",
-            usuario_afetado=str(id_usuario),
-            realizado_por=usuario["usuario"],
-            detalhes={"modulo": modulo, "filiais": filiais},
+        return await to_thread.run_sync(
+            _filiais_bloqueadas,
+            request.method,
+            usuario,
+            request.path_params["id"],
+            corpo,
+            request.query_params.get("modulo", ""),
         )
-        return JSONResponse({"filiais": filiais}, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/auth/papeis", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_administrador)
-    async def listar_papeis_route(request: Request, usuario: dict) -> Response:
+    def listar_papeis_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários, pra
         popular o seletor de papéis do formulário de cadastro."""
         return JSONResponse(
@@ -222,66 +327,30 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/auth/login", methods=["POST", "OPTIONS"])
     async def login_route(request: Request) -> Response:
-        """Endpoint HTTP usado pela tela de login do frontend."""
+        """Endpoint HTTP usado pela tela de login do frontend. Só o parsing
+        do corpo é I/O assíncrono de verdade (`request.json()`) — o resto
+        (checagem de bloqueio, rate limit, consulta de credenciais) é
+        trabalho síncrono contra o Postgres, delegado a `_autenticar_e_responder`
+        rodando em thread separada pra não travar o event loop."""
         if request.method == "OPTIONS":
             return resposta_preflight()
 
         corpo = await request.json()
         usuario = str(corpo.get("usuario", "")).strip()
         senha = str(corpo.get("senha", ""))
-
-        # Checado antes até do rate limit: uma conta já bloqueada sempre
-        # devolve a mensagem específica, em vez de às vezes cair no 429
-        # genérico dependendo de qual dos dois contadores está mais "fresco"
-        # (o bloqueio persistente não expira sozinho; o rate limit sim).
-        if usuario and esta_bloqueado(usuario):
-            return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
-
-        chave_bloqueio = usuario or "desconhecido"
-        espera = segundos_ate_liberar(chave_bloqueio)
-        if espera is not None:
-            return _resposta_limite_excedido(
-                espera,
-                f"Você errou a senha muitas vezes seguidas. Por segurança, tente de novo em {espera} segundos.",
-            )
-
-        dados = autenticar(usuario, senha) if usuario and senha else None
-        if dados is None:
-            registrar_falha(chave_bloqueio)
-            if usuario:
-                eventos_seguranca.registrar("login_falha", usuario_afetado=usuario)
-                if registrar_tentativa_falha(usuario):
-                    return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
-            return JSONResponse(
-                {"erro": "Usuário ou senha inválidos."}, status_code=401, headers=CORS_HEADERS
-            )
-
-        limpar(chave_bloqueio)
-        eventos_seguranca.registrar("login_sucesso", usuario_afetado=dados["usuario"])
-        token = gerar_token(dados["id"], dados["usuario"], dados["nome"], dados["papeis"])
-        return JSONResponse(
-            {
-                "token": token,
-                "usuario": dados["usuario"],
-                "nome": dados["nome"],
-                "foto": dados.get("foto"),
-                "papeis": dados["papeis"],
-                # Calculados aqui só pra UI decidir o que mostrar (sidebar) — a
-                # autorização de verdade em cada rota é sempre recalculada a
-                # partir de `papeis`, nunca confia num campo guardado no token.
-                "administrador": papeis.eh_administrador(dados["papeis"]),
-                "modulos": papeis.modulos_liberados(dados["papeis"]),
-            },
-            headers=CORS_HEADERS,
-        )
+        return await to_thread.run_sync(_autenticar_e_responder, usuario, senha)
 
     @mcp.custom_route("/api/auth/usuarios", methods=["GET", "POST", "OPTIONS"])
     @rota_protegida("GET, POST, OPTIONS", exigir=exigir_administrador)
     async def usuarios_route(request: Request, usuario_logado: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários: lista
-        (GET) e cadastra (POST) usuários — restrito a administradores."""
+        (GET) e cadastra (POST) usuários — restrito a administradores.
+        Consultas/gravações síncronas rodam em thread separada; a busca
+        de área no GLPI (quando um técnico é vinculado) continua `await`
+        normal."""
         if request.method == "GET":
-            return JSONResponse(listar_usuarios(), headers=CORS_HEADERS)
+            usuarios_listados = await to_thread.run_sync(listar_usuarios)
+            return JSONResponse(usuarios_listados, headers=CORS_HEADERS)
 
         # Namespace própria ("criar_usuario:") pra não compartilhar contador
         # com o rate limit do login — limita quantas contas um mesmo admin
@@ -306,6 +375,7 @@ def registrar(mcp) -> None:
         # de checar isso.
         tecnico_glpi_id_bruto = corpo.get("tecnico_glpi_id") or None
         tecnico_glpi_id = str(tecnico_glpi_id_bruto).strip() if tecnico_glpi_id_bruto else None
+        email = str(corpo.get("email", "")).strip()
 
         if not usuario or not senha or not nome or not papeis_pedidos:
             return JSONResponse(
@@ -330,13 +400,23 @@ def registrar(mcp) -> None:
                 headers=CORS_HEADERS,
             )
 
+        # Papel de TI (qualquer um, `ti_admin` incluso) exige vínculo com um
+        # técnico real do GLPI — sem isso, alguém de outro departamento
+        # (qualquer administrador de módulo pode cadastrar usuário, não só
+        # TI) conseguiria criar um login de TI sem nenhum registro
+        # correspondente no GLPI, pulando toda validação abaixo.
+        papeis_ti_selecionados = set(papeis_pedidos) & papeis.PAPEIS_TI_EXIGEM_TECNICO_GLPI
+        if papeis_ti_selecionados and tecnico_glpi_id is None:
+            return JSONResponse(
+                {"erro": "Papel de TI exige um técnico do GLPI vinculado."},
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
         area_ti = None
         if tecnico_glpi_id is not None:
             # Área não é escolhida na mão — vem do grupo técnico manual da
             # pessoa no GLPI (ver `ClienteGLPIReal.buscar_area_do_tecnico`).
-            # Campo opcional pra QUALQUER papel (não só os de TI, não
-            # obrigatório nem pros de TI) — nem todo login do módulo TI é
-            # de alguém que atende chamado.
             area_ti = await criar_cliente(settings).buscar_area_do_tecnico(tecnico_glpi_id)
             if area_ti is None:
                 return JSONResponse(
@@ -348,21 +428,56 @@ def registrar(mcp) -> None:
                     headers=CORS_HEADERS,
                 )
 
-        try:
-            usuario_criado = criar_usuario(
-                usuario, senha, nome, papeis_pedidos, tecnico_glpi_id=tecnico_glpi_id, area_ti=area_ti
-            )
-        except UsuarioJaExiste as erro:
-            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+            # E-mail confirma que quem está sendo vinculado é de fato a
+            # pessoa que quem cadastra pensa que é — a lista de técnicos
+            # (`/api/ti/tecnicos-glpi`) é só nome, e nome sozinho não
+            # distingue duas pessoas parecidas (ex: dois "Carlos").
+            if not email:
+                return JSONResponse(
+                    {"erro": "Informe o e-mail dessa pessoa pra confirmar que é o técnico certo do GLPI."},
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
 
-        eventos_seguranca.registrar(
-            "usuario_criado",
-            usuario_afetado=usuario,
-            realizado_por=usuario_logado["usuario"],
-            detalhes={"papeis": papeis_pedidos},
-        )
-        return JSONResponse(
-            {chave: valor for chave, valor in usuario_criado.items() if chave != "senha_hash"},
-            status_code=201,
-            headers=CORS_HEADERS,
+            email_glpi = await criar_cliente(settings).buscar_email_do_tecnico(tecnico_glpi_id)
+            if email_glpi is None or email_glpi.strip().lower() != email.lower():
+                return JSONResponse(
+                    {
+                        "erro": "O e-mail informado não bate com o e-mail desse técnico no GLPI — "
+                        "confira se escolheu a pessoa certa na lista."
+                    },
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+
+            # Papel escolhido na tela e área descoberta no GLPI são
+            # independentes por padrão — sem essa checagem, dá pra cadastrar
+            # um técnico de "sistemas" com papel "Infraestrutura de TI" sem
+            # ninguém perceber (aconteceu de verdade: usuário "Carlos Teste",
+            # área real "sistemas", papel escolhido "ti_infraestrutura").
+            # `ti_admin` fica isento — acesso geral de TI, não amarrado a
+            # uma área específica.
+            if "ti_admin" not in papeis_pedidos:
+                papel_area = papeis.papel_da_area(area_ti)
+                if papel_area is not None and papel_area.slug not in papeis_pedidos:
+                    return JSONResponse(
+                        {
+                            "erro": f'Este técnico pertence à área "{papel_area.rotulo}" no GLPI — '
+                            f'selecione o papel "{papel_area.rotulo}" (ou "Administrador de TI") '
+                            "pra continuar."
+                        },
+                        status_code=400,
+                        headers=CORS_HEADERS,
+                    )
+
+        return await to_thread.run_sync(
+            _criar_usuario_e_responder,
+            usuario_logado,
+            usuario,
+            senha,
+            nome,
+            papeis_pedidos,
+            tecnico_glpi_id,
+            area_ti,
+            email or None,
         )

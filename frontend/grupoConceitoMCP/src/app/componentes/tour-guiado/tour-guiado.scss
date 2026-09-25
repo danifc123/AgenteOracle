@@ -1,0 +1,79 @@
+:host {
+  display: contents;
+}
+
+.destaque {
+  position: fixed;
+  z-index: 70;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 9999px var(--overlay-scrim);
+  pointer-events: none;
+
+  // Sem transição por padrão: o loop de posicionamento recalcula a cada
+  // quadro pra ACOMPANHAR rolagem/redimensionamento do alvo atual, e isso
+  // precisa ser instantâneo — só liga a animação (`--animado`) no momento
+  // exato de trocar de alvo (ver `animarTransicaoDePasso` no componente).
+  &--animado {
+    transition:
+      top var(--duration-base) var(--ease-out),
+      left var(--duration-base) var(--ease-out),
+      width var(--duration-base) var(--ease-out),
+      height var(--duration-base) var(--ease-out);
+  }
+}
+
+.balao {
+  position: fixed;
+  z-index: 71;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+
+  &--acima {
+    transform: translateY(-100%);
+  }
+
+  // Mesmo motivo do `.destaque--animado` acima.
+  &--animado {
+    transition:
+      top var(--duration-base) var(--ease-out),
+      left var(--duration-base) var(--ease-out);
+  }
+}
+
+.balao-contador {
+  margin: 0 0 var(--space-2);
+  font: var(--type-caption);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.balao-titulo {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.balao-descricao {
+  margin: 0 0 var(--space-4);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.balao-acoes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.balao-acoes-esquerda {
+  display: flex;
+  gap: var(--space-2);
+}

@@ -120,7 +120,7 @@ class ClienteGLPI(Protocol):
     async def buscar(self, chamado_id: int) -> Chamado | None: ...
 
     async def atualizar_avaliacao(
-        self, chamado_id: int, status: StatusChamado, mensagem: str | None
+        self, chamado_id: int, status: StatusChamado, mensagem: str | None, privado: bool = False
     ) -> None: ...
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None: ...
@@ -140,6 +140,8 @@ class ClienteGLPI(Protocol):
     async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]: ...
 
     async def buscar_area_do_tecnico(self, usuario_id: str) -> AreaChamado | None: ...
+
+    async def buscar_email_do_tecnico(self, usuario_id: str) -> str | None: ...
 
 
 # Códigos confirmados contra o schema `status` da instância real (campo
@@ -393,7 +395,9 @@ class ClienteGLPIReal:
         resposta.raise_for_status()
         return _chamado_do_json(resposta.json())
 
-    async def atualizar_avaliacao(self, chamado_id: int, status: StatusChamado, mensagem: str | None) -> None:
+    async def atualizar_avaliacao(
+        self, chamado_id: int, status: StatusChamado, mensagem: str | None, privado: bool = False
+    ) -> None:
         # Precisa saber o status ATUAL antes de trocar — vira `previous_status`
         # do `PendingReason_Item` lá embaixo (pra onde o GLPI volta o chamado
         # se o motivo for removido). Só busca quando faz diferença: reavaliar
@@ -412,10 +416,17 @@ class ClienteGLPIReal:
         )
         resposta.raise_for_status()
         if mensagem:
+            # `is_private` é campo real do Followup (confirmado no Swagger
+            # da instância — schema `Followup`) — usado pelo resumo de
+            # escalonamento (`server/ti/chamados.py::_escalar_para_tecnico`),
+            # que é anotação PRO TÉCNICO, não pergunta pro solicitante
+            # responder; a pergunta de esclarecimento em si continua
+            # pública (`privado=False`, o padrão), senão a pessoa nunca
+            # veria a pergunta que precisa responder.
             resposta_comentario = await self._requisicao(
                 "POST",
                 f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/Timeline/Followup",
-                json={"content": mensagem},
+                json={"content": mensagem, "is_private": privado},
             )
             resposta_comentario.raise_for_status()
 
@@ -563,6 +574,25 @@ class ClienteGLPIReal:
             if area is not None:
                 return area
         return None
+
+    async def buscar_email_do_tecnico(self, usuario_id: str) -> str | None:
+        """E-mail real do técnico no GLPI (`emails[]`, item com `is_default:
+        1`) — confirmado ao vivo contra a instância real. Usado por
+        `usuarios_route` pra confirmar que quem está sendo vinculado no
+        cadastro é de fato a mesma pessoa que quem cadastra pensa que é
+        (evita clicar no nome errado numa lista com gente parecida). Ao
+        contrário de `buscar_area_do_tecnico`, não depende da API Legada —
+        `emails` já vem no payload da v2.3."""
+        resposta = await self._requisicao(
+            "GET", "/api.php/v2.3/Administration/User", params={"filter": f"id=={usuario_id}"}
+        )
+        resposta.raise_for_status()
+        itens = resposta.json()
+        if not itens:
+            return None
+        emails = itens[0].get("emails") or []
+        padrao = next((item["email"] for item in emails if item.get("is_default")), None)
+        return padrao or (emails[0]["email"] if emails else None)
 
     async def atribuir(self, chamado_id: int, area: AreaChamado, tecnico_identificador: str) -> None:
         # `area` não tem onde ir no payload de TeamMember — se a instância

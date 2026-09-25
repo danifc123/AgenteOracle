@@ -4,12 +4,15 @@ import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { ConfirmacaoDialog } from '../../componentes/confirmacao-dialog/confirmacao-dialog';
 import { Dialog } from '../../componentes/dialog/dialog';
+import { EstadoVazio } from '../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
-import { mensagemErro } from '../../servicos/mensagens-erro';
-import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela';
-import { Sessao } from '../../servicos/sessao';
+import { Selo } from '../../componentes/selo/selo';
+import { SoDev } from '../../diretivas/so-dev/so-dev';
+import { SoModulo } from '../../diretivas/so-modulo/so-modulo';
+import { mensagemErro } from '../../servicos/mensagens-erro/mensagens-erro';
+import { compararValores, DirecaoOrdenacao, proximaDirecao } from '../../servicos/ordenacao-tabela/ordenacao-tabela';
 
 interface Usuario {
   id: number;
@@ -45,17 +48,27 @@ const PAPEIS_FINANCEIRO = ['financeiro', 'financeiro_admin'];
  * Controla quando mostrar o campo de vínculo com técnico do GLPI (nem todo
  * login de TI é de alguém que atende chamado, por isso o campo continua
  * opcional mesmo aparecendo). */
-const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'desenvolvedor'];
+const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'ti_sistemas', 'ti_processos', 'desenvolvedor'];
 
 @Component({
   selector: 'app-usuarios',
-  imports: [Botao, ConfirmacaoDialog, Dialog, IconeOrdenacao, ModuloHeader, SelectBusca],
+  imports: [
+    Botao,
+    ConfirmacaoDialog,
+    Dialog,
+    EstadoVazio,
+    IconeOrdenacao,
+    ModuloHeader,
+    SelectBusca,
+    Selo,
+    SoDev,
+    SoModulo,
+  ],
   templateUrl: './usuarios.html',
   styleUrl: './usuarios.scss',
 })
 export class Usuarios {
   private readonly http = inject(HttpClient);
-  protected readonly sessao = inject(Sessao);
 
   usuarios = signal<Usuario[]>([]);
   papeisDisponiveis = signal<Papel[]>([]);
@@ -81,6 +94,7 @@ export class Usuarios {
   formSenha = signal('');
   formPapeis = signal<string[]>([]);
   formTecnicoGlpiId = signal<string | null>(null);
+  formEmail = signal('');
 
   tecnicosGlpiDisponiveis = signal<TecnicoGlpi[]>([]);
 
@@ -116,9 +130,12 @@ export class Usuarios {
       }),
     );
 
-  /** Só aparece pra papel de TI — não é obrigatório mesmo aparecendo, nem
-   * todo login do módulo é de alguém que atende chamado. Mesmo padrão de
-   * `usuarioTemFinanceiro`. */
+  /** Só aparece pra papel de TI — e, diferente de antes, agora é
+   * obrigatório (junto com o e-mail) sempre que aparece: papel de TI sem
+   * técnico do GLPI vinculado é rejeitado pelo backend (`usuarios_route`),
+   * pra ninguém de outro módulo conseguir criar um login de TI sem
+   * registro correspondente no GLPI. Mesmo padrão de `usuarioTemFinanceiro`
+   * pra decidir quando mostrar. */
   protected readonly mostrarCampoTecnico = computed(() =>
     this.formPapeis().some((papel) => PAPEIS_TI.includes(papel)),
   );
@@ -188,6 +205,7 @@ export class Usuarios {
     this.formSenha.set('');
     this.formPapeis.set([]);
     this.formTecnicoGlpiId.set(null);
+    this.formEmail.set('');
     this.erroForm.set(null);
     this.dialogAberto.set(true);
     this.carregarTecnicosGlpiDisponiveis();
@@ -281,6 +299,14 @@ export class Usuarios {
       return;
     }
 
+    // Campo visível (papel de TI selecionado) = campo obrigatório — a regra
+    // de QUAL papel exige o quê mora só no backend (`usuarios_route`), aqui
+    // só evita a viagem ao servidor pra um erro óbvio.
+    if (this.mostrarCampoTecnico() && (!this.formTecnicoGlpiId() || !this.formEmail().trim())) {
+      this.erroForm.set('Papel de TI exige técnico do GLPI vinculado e o e-mail dessa pessoa.');
+      return;
+    }
+
     this.criando.set(true);
     this.erroForm.set(null);
 
@@ -291,6 +317,7 @@ export class Usuarios {
         senha: this.formSenha(),
         papeis: this.formPapeis(),
         tecnico_glpi_id: this.formTecnicoGlpiId(),
+        email: this.formEmail().trim() || null,
       })
       .subscribe({
         next: () => {

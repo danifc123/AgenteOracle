@@ -1,6 +1,10 @@
 <div class="pilha-flutuante">
   @for (item of toasts.itens(); track item.id) {
-    <div class="toast" [class.toast--erro]="item.tipo === 'erro'">
+    <div
+      class="toast"
+      [class.toast--erro]="item.tipo === 'erro'"
+      [class.toast--aviso]="item.tipo === 'aviso'"
+    >
       <span class="toast-icone" aria-hidden="true">
         @if (item.tipo === 'sucesso') {
           <svg

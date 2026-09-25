@@ -48,6 +48,14 @@ export class SelectBusca {
   protected readonly termo = signal('');
   protected readonly posicao = signal<PosicaoPainel>({ top: 0, left: 0, largura: 0 });
 
+  // Enquanto o painel está aberto, acompanha a posição do gatilho a cada
+  // frame — sem isso, o painel (`position: fixed`, coordenadas calculadas
+  // só na abertura) fica "preso" na posição antiga quando o layout muda por
+  // outro motivo que não scroll/resize da janela (ex: marcar um papel de TI
+  // faz aparecer campo novo embaixo no mesmo diálogo, empurrando o resto do
+  // formulário sem disparar scroll/resize nenhum).
+  private idAcompanhamento: number | null = null;
+
   protected readonly opcoesFiltradas = computed(() => {
     const termo = this.termo().trim().toLowerCase();
     const opcoes = this.opcoes();
@@ -118,7 +126,7 @@ export class SelectBusca {
       this.valor.set(null);
     }
 
-    this.aberto.set(false);
+    this.fechar();
   }
 
   selecionar(opcao: OpcaoSelectBusca): void {
@@ -132,62 +140,71 @@ export class SelectBusca {
     }
 
     this.valor.set(opcao.valor);
-    this.aberto.set(false);
+    this.fechar();
   }
 
   toggle(): void {
     if (this.aberto()) {
-      this.aberto.set(false);
+      this.fechar();
       return;
     }
 
     this.termo.set('');
-    this.posicionarPainel();
+    this.atualizarPosicao();
     this.aberto.set(true);
-    requestAnimationFrame(() => this.ajustarDirecao());
+    this.iniciarAcompanhamento();
   }
 
   @HostListener('document:click', ['$event'])
   aoClicarFora(event: MouseEvent): void {
     if (!this.elementRef.nativeElement.contains(event.target as Node)) {
-      this.aberto.set(false);
+      this.fechar();
     }
   }
 
   @HostListener('window:scroll')
   @HostListener('window:resize')
   aoRolarOuRedimensionar(): void {
-    if (this.aberto()) {
-      this.aberto.set(false);
+    this.fechar();
+  }
+
+  private fechar(): void {
+    this.aberto.set(false);
+    if (this.idAcompanhamento !== null) {
+      cancelAnimationFrame(this.idAcompanhamento);
+      this.idAcompanhamento = null;
     }
   }
 
-  /** Depois que o painel é renderizado (e sua altura real é conhecida), inverte
-   *  pra abrir para cima se não couber abaixo do gatilho mas couber acima. */
-  private ajustarDirecao(): void {
-    const painelEl = this.painelRef?.nativeElement;
-    if (!painelEl) {
-      return;
-    }
+  /** Reposiciona a cada frame enquanto o painel estiver aberto — pára
+   * sozinho (não agenda o próximo frame) assim que `aberto()` virar false,
+   * seja por `fechar()` ou por qualquer outro caminho que zere o signal. */
+  private iniciarAcompanhamento(): void {
+    const passo = (): void => {
+      if (!this.aberto()) {
+        this.idAcompanhamento = null;
+        return;
+      }
+      this.atualizarPosicao();
+      this.idAcompanhamento = requestAnimationFrame(passo);
+    };
+    this.idAcompanhamento = requestAnimationFrame(passo);
+  }
 
+  /** Recalcula a posição do painel a partir do gatilho AGORA — usada tanto
+   * na abertura quanto em todo frame de `iniciarAcompanhamento()`. Abre pra
+   * cima só quando não há espaço embaixo mas há espaço de sobra acima
+   * (altura real do painel, já renderizado — por isso o primeiro frame
+   * ainda pode abrir pra baixo e corrigir no seguinte, imperceptível). */
+  private atualizarPosicao(): void {
     const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
-    const alturaPainel = painelEl.offsetHeight;
+    const alturaPainel = this.painelRef?.nativeElement.offsetHeight ?? 0;
     const espacoAbaixo = window.innerHeight - retangulo.bottom;
     const espacoAcima = retangulo.top;
+    const abrirParaCima = alturaPainel > 0 && espacoAbaixo < alturaPainel + 4 && espacoAcima > espacoAbaixo;
 
-    if (espacoAbaixo < alturaPainel + 4 && espacoAcima > espacoAbaixo) {
-      this.posicao.set({
-        top: Math.max(4, retangulo.top - alturaPainel - 4),
-        left: retangulo.left,
-        largura: retangulo.width,
-      });
-    }
-  }
-
-  private posicionarPainel(): void {
-    const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
     this.posicao.set({
-      top: retangulo.bottom + 4,
+      top: abrirParaCima ? Math.max(4, retangulo.top - alturaPainel - 4) : retangulo.bottom + 4,
       left: retangulo.left,
       largura: retangulo.width,
     });

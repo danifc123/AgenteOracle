@@ -1,0 +1,23 @@
+<button
+  #gatilho
+  type="button"
+  class="gatilho"
+  [class.gatilho--ativo]="aberto()"
+  (click)="toggle()"
+  aria-label="Mais ações"
+  aria-haspopup="true"
+  [attr.aria-expanded]="aberto()"
+>
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+    <circle cx="12" cy="5" r="2" />
+    <circle cx="12" cy="12" r="2" />
+    <circle cx="12" cy="19" r="2" />
+  </svg>
+</button>
+
+@if (aberto()) {
+  <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+  <div #painel class="painel" role="menu" [style.top.px]="posicao().top" [style.left.px]="posicao().left" (click)="fecharAoClicarDentro()">
+    <ng-content />
+  </div>
+}

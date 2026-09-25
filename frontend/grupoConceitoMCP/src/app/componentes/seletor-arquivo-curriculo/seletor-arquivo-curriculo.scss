@@ -56,7 +56,7 @@
 .erro-seletor {
   margin: 0;
   font-size: 12px;
-  color: #9a2f2f;
+  color: var(--color-error);
   text-align: center;
 }
 
@@ -125,6 +125,6 @@
 
   &:hover {
     background: rgba(154, 47, 47, 0.14);
-    color: #9a2f2f;
+    color: var(--color-error);
   }
 }

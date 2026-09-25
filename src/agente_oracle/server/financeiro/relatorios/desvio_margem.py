@@ -4,11 +4,11 @@ IA do Financeiro ("Analisador de Desvio de Margem").
 
 Mesmo espírito de `agent/financeiro/projecoes.py` ("100% cálculo
 estatístico, sem IA"): margem é conta objetiva a partir de dado real
-(`valor_total`/`custo` já existem em `vw_faturamento`), não julgamento
+(`valor_total`/`custo` já existem em `vwia_faturamento`), não julgamento
 — então fica fora do agente de IA, puro SQL, número nunca depende do
 Ollama estar no ar.
 
-Usa a view curada `vw_faturamento` (`agent/financeiro/schema.py`) em vez
+Usa a view curada `vwia_faturamento` (`agent/financeiro/schema.py`) em vez
 das tabelas brutas do STAGE que o resto de `relatorios/*.py` usa — não
 há relatório ADVPL original pra manter fidelidade against, então não há
 motivo pra pagar a complexidade das tabelas brutas."""
@@ -31,7 +31,7 @@ WITH linhas AS (
     SELECT
         filial, nota_fiscal, serie, item_nota, cliente_nome, vendedor_nome,
         produto_codigo, produto_descricao, data_emissao, valor_total, custo
-    FROM vw_faturamento
+    FROM vwia_faturamento
     WHERE filial IN __FILIAL_IN__
       AND data_emissao BETWEEN TO_DATE(:emissao_ini, 'YYYYMMDD') AND TO_DATE(:emissao_fim, 'YYYYMMDD')
       AND __FILTRO_PRODUTO__
@@ -103,7 +103,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/desvio-margem/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_desvio_margem_route(request: Request, usuario: dict) -> Response:
+    def exportar_desvio_margem_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Desvio de Margem — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -125,7 +125,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/desvio-margem", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_desvio_margem_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_desvio_margem_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Desvio de Margem — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

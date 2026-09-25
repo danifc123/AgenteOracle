@@ -2,6 +2,7 @@ import re
 import unicodedata
 from datetime import datetime
 
+from anyio import to_thread
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from ollama import AsyncClient
@@ -86,7 +87,10 @@ def registrar(mcp) -> None:
         titulo = str(corpo.get("titulo", "")).strip()
 
         try:
-            conteudo_xlsx = exportar_consulta_financeira_xlsx(sql)
+            # Só a consulta ao Oracle roda em thread separada — o rate limit
+            # em memória e o parsing do corpo acima já são rápidos o
+            # bastante pra não precisar sair do event loop.
+            conteudo_xlsx = await to_thread.run_sync(exportar_consulta_financeira_xlsx, sql)
         except ConsultaFinanceiraInvalida as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 

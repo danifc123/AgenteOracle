@@ -7,8 +7,9 @@ import { Busca } from '../../../../componentes/busca/busca';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
-import { mensagemErro } from '../../../../servicos/mensagens-erro';
-import { Toasts } from '../../../../servicos/toasts';
+import { Selo } from '../../../../componentes/selo/selo';
+import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { Toasts } from '../../../../servicos/toasts/toasts';
 
 interface Filial {
   codigo: string;
@@ -51,7 +52,7 @@ interface ResumoPrecisao {
  * já revisado some da lista na próxima análise (filtrado no servidor). */
 @Component({
   selector: 'app-classificacao-contabil',
-  imports: [Botao, Busca, EstadoVazio, FormsModule, ModuloHeader, SelectBusca],
+  imports: [Botao, Busca, EstadoVazio, FormsModule, ModuloHeader, SelectBusca, Selo],
   templateUrl: './classificacao-contabil.html',
   styleUrl: './classificacao-contabil.scss',
 })
@@ -204,7 +205,7 @@ export class ClassificacaoContabil {
     return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
-  protected classeConfianca(confiancaPercentual: number): string {
-    return confiancaPercentual >= 99 ? 'badge-confianca--alta' : 'badge-confianca--media';
+  protected tomConfianca(confiancaPercentual: number): 'ok' | 'atencao' {
+    return confiancaPercentual >= 99 ? 'ok' : 'atencao';
   }
 }

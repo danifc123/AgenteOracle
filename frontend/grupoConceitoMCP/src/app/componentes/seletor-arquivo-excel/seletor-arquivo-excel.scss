@@ -32,7 +32,7 @@
   &--verde {
     background: #d9f2d9;
     border-color: #b6e3ba;
-    color: #1b4332;
+    color: var(--color-primary);
   }
 
   &--laranja {
@@ -87,7 +87,7 @@
 .erro-seletor {
   margin: 6px 0 0;
   font-size: 12px;
-  color: #9a2f2f;
+  color: var(--color-error);
   text-align: center;
 }
 

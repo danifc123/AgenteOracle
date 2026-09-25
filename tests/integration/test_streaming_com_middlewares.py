@@ -23,7 +23,7 @@ _FILIAL = "0101"
 def _requer_views_curadas():
     if not views_curadas_disponiveis():
         pytest.skip(
-            "Views curadas (vw_titulos_pagar etc.) não existem no banco de negócio/RAG "
+            "Views curadas (vwia_titulos_pagar etc.) não existem no banco de negócio/RAG "
             "configurado — rode db/views/financeiro_science.sql (Oracle) ou confira o Postgres de teste."
         )
 

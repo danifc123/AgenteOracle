@@ -41,7 +41,12 @@
 
 .toast--erro .toast-icone {
   background: rgba(154, 47, 47, 0.14);
-  color: #9a2f2f;
+  color: var(--color-error);
+}
+
+.toast--aviso .toast-icone {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
 }
 
 .toast-mensagem {

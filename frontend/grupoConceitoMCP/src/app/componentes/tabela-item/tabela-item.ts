@@ -1,5 +1,5 @@
 import { Component, input, output } from '@angular/core';
-import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras';
+import { ViewFinanceira } from '../../dadosRelatorios/views-financeiras/views-financeiras';
 
 @Component({
   selector: 'app-tabela-item',

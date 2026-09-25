@@ -119,7 +119,7 @@ def _parametros_da_query(request: Request) -> tuple[list[str], dict[str, str]] |
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/financeiro/duplicata-mercantil/exportar", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def exportar_duplicatas_route(request: Request, usuario: dict) -> Response:
+    def exportar_duplicatas_route(request: Request, usuario: dict) -> Response:
         """RELATÓRIO: Impressão de Duplicata Mercantil (FINR04) — exportação em Excel."""
         parametros = _parametros_da_query(request)
         if parametros is None:
@@ -141,7 +141,7 @@ def registrar(mcp) -> None:
 
     @mcp.custom_route("/api/financeiro/duplicata-mercantil", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=_comum.exigir_filiais_liberadas)
-    async def listar_duplicatas_route(request: Request, usuario: dict) -> JSONResponse:
+    def listar_duplicatas_route(request: Request, usuario: dict) -> JSONResponse:
         """RELATÓRIO: Impressão de Duplicata Mercantil (FINR04) — endpoint JSON usado pela tela."""
         parametros = _parametros_da_query(request)
         if parametros is None:

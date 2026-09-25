@@ -48,7 +48,7 @@ class TestCampoSeguroParaAuditoria:
 
 class TestPerfilCampoValidaCampo:
     def test_criacao_com_campo_seguro_funciona(self) -> None:
-        perfil = PerfilCampo(modulo="financeiro", view="vw_clientes", campo="estado", valores=(("SP", 10),))
+        perfil = PerfilCampo(modulo="financeiro", view="vwia_clientes", campo="estado", valores=(("SP", 10),))
         assert perfil.campo == "estado"
 
     def test_criacao_com_campo_sensivel_levanta_erro(self) -> None:

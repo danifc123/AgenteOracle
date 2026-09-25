@@ -6,7 +6,7 @@
   width: var(--sidebar-width);
   flex-shrink: 0;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   display: flex;
   flex-direction: column;
   padding: 20px 14px;
@@ -49,7 +49,7 @@
 
   &:hover {
     background: rgba(255, 255, 255, 0.16);
-    color: #fff;
+    color: var(--text-on-brand);
   }
 }
 
@@ -89,7 +89,7 @@
 
   &::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.22);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
 
   &::-webkit-scrollbar-thumb:hover {
@@ -118,18 +118,18 @@
 
 .nav-link:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .nav-link.active {
   background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 
 .nav-parent.aberto {
   background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 
@@ -225,12 +225,12 @@
 
 .nav-sublink:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .nav-sublink.active {
   background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 
@@ -313,7 +313,7 @@
 
   &:hover {
     background: rgba(255, 255, 255, 0.16);
-    color: #fff;
+    color: var(--text-on-brand);
   }
 }
 
@@ -388,7 +388,7 @@
     padding: 6px 10px;
     border-radius: var(--radius-sm);
     background: var(--color-primary-dark);
-    color: #fff;
+    color: var(--text-on-brand);
     font-size: 13px;
     font-weight: 500;
     box-shadow: var(--shadow-md);
@@ -460,7 +460,7 @@
   border-radius: var(--radius-sm);
   border: none;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   align-items: center;
   justify-content: center;
   cursor: pointer;

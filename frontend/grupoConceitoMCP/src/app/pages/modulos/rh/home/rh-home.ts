@@ -1,20 +1,7 @@
-import { Component, inject } from '@angular/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { RouterLink } from '@angular/router';
+import { Component } from '@angular/core';
+import { AtalhoModulo, HomeModulo } from '../../../../componentes/home-modulo/home-modulo';
 
-interface Atalho {
-  titulo: string;
-  texto: string;
-  /** Conteúdo interno do `<svg>` (paths/rects/circles), como HTML puro —
-   * confiável porque vem só deste arquivo estático, nunca de dado externo. */
-  iconeSvg: string;
-  /** Um dos dois deve ser informado: `rota` pra navegação interna
-   * (`routerLink`), `href` pra link externo (abre em nova aba). */
-  rota?: string;
-  href?: string;
-}
-
-const ATALHOS: Atalho[] = [
+const ATALHOS: AtalhoModulo[] = [
   {
     titulo: 'Análise de Candidato',
     texto:
@@ -46,21 +33,16 @@ const ATALHOS: Atalho[] = [
 
 /** Home do time de RH — mostrada em `/` pra quem só tem o módulo RH
  * liberado, e pra desenvolvedor quando troca pro RH no seletor do layout.
- * Mesmo padrão de `pages/modulos/financeiro/home/financeiro-home.ts`
- * (hero + atalhos), sem foto ilustrativa (nenhuma disponível pra RH
- * ainda) — usa o próprio ícone do grupo do menu (`itens-menu.ts`)
- * ampliado no lugar da imagem. */
+ * Casca (hero + atalhos) compartilhada com TI e Financeiro via
+ * `app-home-modulo` — RH não tem foto ilustrativa (nenhuma disponível
+ * ainda), usa o próprio ícone do grupo do menu (`itens-menu.ts`) ampliado
+ * no lugar da imagem. */
 @Component({
   selector: 'app-rh-home',
-  imports: [RouterLink],
+  imports: [HomeModulo],
   templateUrl: './rh-home.html',
   styleUrl: './rh-home.scss',
 })
 export class RhHome {
   protected readonly atalhos = ATALHOS;
-  private readonly sanitizer = inject(DomSanitizer);
-
-  protected iconeSeguro(svg: string): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(svg);
-  }
 }

@@ -1,6 +1,7 @@
 import { Component, input } from '@angular/core';
-import { PerfilEstruturado } from '../../servicos/analise-curriculo';
-import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-candidato';
+import { Selo } from '../selo/selo';
+import { PerfilEstruturado } from '../../servicos/analise-curriculo/analise-curriculo';
+import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-candidato/rotulos-candidato';
 
 /** Corpo do dialog de detalhe de candidato — usado tanto em "Análise de
  * Candidato" (`Candidato`) quanto em "Selecionar Candidato"
@@ -10,7 +11,7 @@ import { rotuloSenioridade, rotuloStatusFormacao } from '../../servicos/rotulos-
  * `<app-dialog>` que envolve ele. */
 @Component({
   selector: 'app-detalhe-candidato',
-  imports: [],
+  imports: [Selo],
   templateUrl: './detalhe-candidato.html',
   styleUrl: './detalhe-candidato.scss',
 })

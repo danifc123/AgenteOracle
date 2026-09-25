@@ -109,8 +109,8 @@
   height: 24px;
   border: 2px solid var(--color-surface);
   border-radius: 50%;
-  background: #9a2f2f;
-  color: #fff;
+  background: var(--color-error);
+  color: var(--text-on-brand);
   cursor: pointer;
   transition: background 0.15s ease;
 
@@ -125,7 +125,7 @@
   border: none;
   border-radius: 50%;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--text-on-brand);
   display: grid;
   place-items: center;
   font-weight: 700;
@@ -197,7 +197,7 @@
 
 .erro {
   margin: 0 0 12px;
-  color: #9a2f2f;
+  color: var(--color-error);
   font-size: 13px;
 }
 
@@ -398,7 +398,7 @@
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--text-on-brand);
   cursor: pointer;
   transition: background 0.15s ease;
 

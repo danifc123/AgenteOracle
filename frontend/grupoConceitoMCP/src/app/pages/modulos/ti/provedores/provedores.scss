@@ -77,6 +77,19 @@
     white-space: nowrap;
   }
 
+  // "Nome"/"Modelo" ficam bem mais longos com 3+ provedores cadastrados
+  // (ex: "meta.llama-4-scout-17b-16e-instruct", sem espaço nenhum pra
+  // quebrar sozinho) — sem isso, `white-space: nowrap` empurrava a
+  // tabela inteira mais larga que a tela, forçando scroll horizontal
+  // sempre visível. Só essas duas colunas quebram linha; o resto
+  // (preço, chave, status) continua curto o bastante pra 1 linha só.
+  td:nth-child(1),
+  td:nth-child(3) {
+    white-space: normal;
+    overflow-wrap: break-word;
+    max-width: 220px;
+  }
+
   .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
@@ -174,14 +187,19 @@ app-select-busca {
 }
 
 .campo-moeda {
-  // Dentro de `.linha-precos` — sem a margem inferior padrão de `.campo`,
-  // pra ficar alinhada com `app-campo-numerico` (que não tem essa margem).
+  // `app-select-busca` (não mais um `<input>` livre, ver `provedores.html`
+  // — só "R$"/"US$", pra `custo_brl` conseguir converter com segurança)
+  // dentro de `.linha-precos` — sem margem inferior própria, fica
+  // alinhada com os outros dois campos da mesma linha.
   margin-bottom: 0;
 }
 
 .linha-precos {
   display: grid;
-  grid-template-columns: 1fr 1fr minmax(88px, 110px);
+  // 3ª coluna era `minmax(88px, 110px)` — largura certa pro `<input>` de
+  // texto livre de antes (só "R$"/"US$" digitados), mas espremia o rótulo
+  // completo do `app-select-busca` de hoje ("R$ — Real", "US$ — Dólar").
+  grid-template-columns: 1fr 1fr minmax(140px, 180px);
   align-items: start;
   gap: 16px;
   margin-bottom: 4px;

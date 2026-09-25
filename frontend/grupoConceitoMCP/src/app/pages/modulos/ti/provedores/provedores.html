@@ -270,7 +270,7 @@
                 <td class="num">{{ linha.tokens_entrada }}</td>
                 <td class="num">{{ linha.tokens_saida }}</td>
                 <td class="num">{{ linha.tokens_raciocinio || '—' }}</td>
-                <td class="num">{{ rotuloCusto(linha.custo_estimado, linha.moeda) }}</td>
+                <td class="num">{{ rotuloCusto(linha.custo_estimado, linha.moeda, linha.custo_brl) }}</td>
               </tr>
             }
           </tbody>
@@ -491,16 +491,14 @@
           <span class="erro">Informe um número &gt;= 0.</span>
         }
       </label>
-      <label class="campo campo-moeda">
-        <span>Moeda</span>
-        <input
-          type="text"
-          [value]="formMoeda()"
-          (input)="formMoeda.set($any($event.target).value)"
-          autocomplete="off"
-          placeholder="R$"
-        />
-      </label>
+      <app-select-busca
+        class="campo-moeda"
+        rotulo="Moeda"
+        placeholder="Escolha"
+        [opcoes]="opcoesMoeda"
+        [valor]="formMoeda()"
+        (valorChange)="formMoeda.set($any($event))"
+      />
     </div>
 
     <p class="dica">

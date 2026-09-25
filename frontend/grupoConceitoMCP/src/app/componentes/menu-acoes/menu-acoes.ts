@@ -32,6 +32,13 @@ export class MenuAcoes {
   protected readonly aberto = signal(false);
   protected readonly posicao = signal<PosicaoPainel>({ top: 0, left: 0 });
 
+  // Só usada no 1º frame de cada abertura, antes do painel existir de
+  // verdade no DOM (`painelRef` ainda `undefined`) — sem um palpite, a
+  // borda direita alinharia contra largura 0 (painel nasce "vazado" pra
+  // fora do gatilho) até o loop de `requestAnimationFrame` medir a largura
+  // real. Mesmo valor do `min-width` em `menu-acoes.scss`.
+  private static readonly LARGURA_PAINEL_PADRAO = 160;
+
   private idAcompanhamento: number | null = null;
 
   constructor() {
@@ -99,7 +106,7 @@ export class MenuAcoes {
 
   private atualizarPosicao(): void {
     const retangulo = this.gatilhoRef.nativeElement.getBoundingClientRect();
-    const larguraPainel = this.painelRef?.nativeElement.offsetWidth ?? 0;
+    const larguraPainel = this.painelRef?.nativeElement.offsetWidth ?? MenuAcoes.LARGURA_PAINEL_PADRAO;
     const alturaPainel = this.painelRef?.nativeElement.offsetHeight ?? 0;
     const espacoAbaixo = window.innerHeight - retangulo.bottom;
     const abrirParaCima = alturaPainel > 0 && espacoAbaixo < alturaPainel + 4;

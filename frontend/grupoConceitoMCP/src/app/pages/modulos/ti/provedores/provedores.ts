@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { CampoNumerico } from '../../../../componentes/campo-numerico/campo-numerico';
@@ -49,7 +49,21 @@ const OPCOES_ESTILO_API: OpcaoSelectBusca[] = [
   { valor: 'responses', rotulo: 'Responses API — só se o provedor exigir' },
 ];
 
+// Fechado nessas duas de propósito (pedido do Daniel, 2026-09-25) — antes
+// era texto livre, e a conversão automática pra R$ (`custo_brl`, ver
+// `uso-ia.ts`) só sabe fazer conta com "US$" exatamente; deixar digitar
+// qualquer coisa quebraria essa conversão silenciosamente.
+const OPCOES_MOEDA: OpcaoSelectBusca[] = [
+  { valor: 'R$', rotulo: 'R$ — Real' },
+  { valor: 'US$', rotulo: 'US$ — Dólar' },
+];
+
 const URL_PROVEDORES = `${MCP_API_BASE_URL}/api/ti/provedores-llm`;
+
+// Consumo muda sozinho (poller de chamados a cada 5 min, chamadas reais
+// do dia a dia) — sem isso, quem deixa essa tela aberta só vê o número
+// congelado do momento em que entrou, precisando dar F5 pra atualizar.
+const INTERVALO_ATUALIZACAO_USO_IA_MS = 30_000;
 
 /** Tour guiado (`componentes/tour-guiado/`) de como cadastrar um provedor
  * — não é "o tour da OCI", é o tour do CADASTRO, que usa a OCI como
@@ -133,9 +147,17 @@ function formatarDiaCurto(dataIso: string): string {
 /** `custo` é sempre o preço CADASTRADO HOJE (não congelado por chamada) —
  * ver `server/ti/uso_ia.py::_custo_e_moeda` no backend. Até 4 casas: preço
  * por 1k tokens costuma ser bem pequeno (ex: R$ 0,0100), 2 casas some o
- * valor real. */
-function formatarCusto(custo: number, moeda: string): string {
-  return `${moeda} ${custo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+ * valor real. Quando o cadastro é em US$ e a cotação do dia veio
+ * (`custoBrl`), mostra a conversão ao lado — quem decide trocar de
+ * provedor enxerga o gasto na mesma moeda que a empresa usa pra decidir,
+ * sem misturar com o cálculo de custo em si (sempre na moeda original). */
+function formatarCusto(custo: number, moeda: string, custoBrl: number | null): string {
+  const valor = `${moeda} ${custo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+  if (custoBrl === null) {
+    return valor;
+  }
+  const convertido = custoBrl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  return `${valor} (≈ R$ ${convertido})`;
 }
 
 /** MÓDULO TI — TELA "IA" (`/ti/provedores`, só desenvolvedor)
@@ -224,6 +246,7 @@ export class ProvedoresLlm {
 
   protected readonly opcoesTipoConexao = OPCOES_TIPO_CONEXAO;
   protected readonly opcoesEstiloApi = OPCOES_ESTILO_API;
+  protected readonly opcoesMoeda = OPCOES_MOEDA;
 
   protected readonly ehOpenAiCompativel = computed(() => this.formTipoConexao() === 'openai_compativel');
 
@@ -313,6 +336,8 @@ export class ProvedoresLlm {
   constructor() {
     this.carregarProvedores();
     this.usoIa.carregar();
+    const intervalo = setInterval(() => this.usoIa.carregar(), INTERVALO_ATUALIZACAO_USO_IA_MS);
+    inject(DestroyRef).onDestroy(() => clearInterval(intervalo));
     this.configuracoes.carregar();
     // Semeia o rascunho do teto sempre que o valor real do servidor muda
     // (primeiro load, e depois de salvar) — mesmo espírito de
@@ -512,8 +537,8 @@ export class ProvedoresLlm {
     });
   }
 
-  protected rotuloCusto(custo: number | null, moeda: string | null): string {
-    return custo !== null && moeda !== null ? formatarCusto(custo, moeda) : '—';
+  protected rotuloCusto(custo: number | null, moeda: string | null, custoBrl: number | null): string {
+    return custo !== null && moeda !== null ? formatarCusto(custo, moeda, custoBrl) : '—';
   }
 
   protected rotuloTipoConexao(tipo: TipoConexaoLlm): string {

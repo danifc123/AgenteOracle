@@ -250,6 +250,19 @@ describe('ProvedoresLlm', () => {
       expect(linhasProvedores()[1].textContent).toContain('Ativo');
     });
 
+    it('clicar em Ativar fecha o menu de ações na hora, sem esperar a resposta do servidor', () => {
+      const { clicarAtivar, linhasProvedores, http } = criar();
+
+      clicarAtivar(1);
+
+      expect(linhasProvedores()[1].querySelector('.painel')).toBeNull();
+
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm/2/ativar') && req.method === 'POST').flush([
+        { ...PROVEDOR_OLLAMA, ativo: false },
+        { ...PROVEDOR_OCI, ativo: true },
+      ]);
+    });
+
     it('só o provedor ativo mostra o botão "Desativar" no menu de ações', () => {
       const { linhasProvedores, abrirMenuAcoes } = criar();
 
@@ -340,6 +353,14 @@ describe('ProvedoresLlm', () => {
       expect(texto()).toContain('Editar "OCI Generative AI — gpt-oss-120b"');
       expect(texto()).toContain('Deixe em branco pra manter a chave atual.');
     });
+
+    it('clicar em Editar fecha o menu de ações da linha, não deixa os dois abertos ao mesmo tempo', () => {
+      const { abrirEditar, linhasProvedores } = criar();
+
+      abrirEditar(1);
+
+      expect(linhasProvedores()[1].querySelector('.painel')).toBeNull();
+    });
   });
 
   describe('tour guiado', () => {
@@ -392,6 +413,23 @@ describe('ProvedoresLlm', () => {
       expect(usoIa.carregar).toHaveBeenCalled();
     });
 
+    it('consumo de IA atualiza sozinho, sem precisar de F5', () => {
+      vi.useFakeTimers();
+      const usoIa = usoIaFalso();
+
+      criar([], configuracoesFalso(), usoIa);
+
+      expect(usoIa.carregar).toHaveBeenCalledTimes(1); // carga inicial, ao entrar na tela
+
+      vi.advanceTimersByTime(30_000);
+      expect(usoIa.carregar).toHaveBeenCalledTimes(2);
+
+      vi.advanceTimersByTime(30_000);
+      expect(usoIa.carregar).toHaveBeenCalledTimes(3);
+
+      vi.useRealTimers();
+    });
+
     it('o diálogo de configurações de teto começa fechado', () => {
       const { texto } = criar([]);
 
@@ -426,6 +464,7 @@ describe('ProvedoresLlm', () => {
             tokens_total: 230,
             custo_estimado: null,
             moeda: null,
+            custo_brl: null,
           },
         ],
       });
@@ -450,6 +489,7 @@ describe('ProvedoresLlm', () => {
             tokens_total: 230,
             custo_estimado: null,
             moeda: null,
+            custo_brl: null,
           },
         ],
       });
@@ -471,12 +511,36 @@ describe('ProvedoresLlm', () => {
             tokens_total: 2000,
             custo_estimado: 0.03,
             moeda: 'R$',
+            custo_brl: null,
           },
         ],
       });
       const { texto } = criar([], configuracoesFalso(), usoIa);
 
       expect(texto()).toContain('R$ 0,03');
+    });
+
+    it('linha em dólar com cotação disponível mostra a conversão em R$', () => {
+      const usoIa = usoIaFalso({
+        consumo: [
+          {
+            provedor: 'OCI Generative AI — Llama 3.3',
+            modelo: 'meta.llama-3_3-70b-instruct',
+            chamadas: 5,
+            tokens_entrada: 1000,
+            tokens_saida: 1000,
+            tokens_raciocinio: 0,
+            tokens_total: 2000,
+            custo_estimado: 0.0002,
+            moeda: 'US$',
+            custo_brl: 0.001,
+          },
+        ],
+      });
+      const { texto } = criar([], configuracoesFalso(), usoIa);
+
+      expect(texto()).toContain('US$ 0,0002');
+      expect(texto()).toContain('≈ R$ 0,001');
     });
 
     it('mostra o donut de consumo por provedor quando há dado', () => {
@@ -492,6 +556,7 @@ describe('ProvedoresLlm', () => {
             tokens_total: 230,
             custo_estimado: null,
             moeda: null,
+            custo_brl: null,
           },
         ],
       });
@@ -525,6 +590,7 @@ describe('ProvedoresLlm', () => {
             tokens_total: 450,
             custo_estimado: null,
             moeda: null,
+            custo_brl: null,
           },
         ],
       });

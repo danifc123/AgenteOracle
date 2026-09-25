@@ -12,7 +12,7 @@
       (click)="toggle()"
       [attr.aria-expanded]="aberto()"
     >
-      <span [class.placeholder]="!rotuloSelecionado()">{{
+      <span class="rotulo-selecionado" [class.placeholder]="!rotuloSelecionado()">{{
         rotuloSelecionado() || placeholder()
       }}</span>
       <svg

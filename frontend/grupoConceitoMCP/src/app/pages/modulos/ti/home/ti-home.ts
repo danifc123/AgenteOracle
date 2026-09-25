@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { CartaoKpi } from '../../../../componentes/cartao-kpi/cartao-kpi';
@@ -48,6 +48,11 @@ const CORES_STATUS: Record<string, string> = {
 interface ChamadoResumo {
   status: string;
 }
+
+// Consumo de IA muda sozinho (poller de chamados a cada 5 min, chamadas
+// reais do dia a dia) — sem isso, quem deixa a aba aberta só vê o número
+// congelado do momento em que entrou, precisando dar F5 pra atualizar.
+const INTERVALO_ATUALIZACAO_USO_IA_MS = 30_000;
 
 /** Home do time de TI — mostrada em `/` pra quem só tem o módulo TI
  * liberado, e pra desenvolvedor quando troca pro TI no seletor do layout.
@@ -103,6 +108,8 @@ export class TiHome {
     });
     if (this.sessao.ehDesenvolvedor()) {
       this.usoIa.carregar();
+      const intervalo = setInterval(() => this.usoIa.carregar(), INTERVALO_ATUALIZACAO_USO_IA_MS);
+      inject(DestroyRef).onDestroy(() => clearInterval(intervalo));
     }
   }
 }

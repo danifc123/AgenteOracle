@@ -96,6 +96,22 @@ describe('TiHome', () => {
     expect(texto()).toContain('Ver detalhes em IA');
   });
 
+  it('desenvolvedor: consumo de IA atualiza sozinho, sem precisar de F5', () => {
+    vi.useFakeTimers();
+    const usoIa = usoIaFalso();
+    criar([], sessaoFalso(true), usoIa);
+
+    expect(usoIa.carregar).toHaveBeenCalledTimes(1); // carga inicial, ao entrar na tela
+
+    vi.advanceTimersByTime(30_000);
+    expect(usoIa.carregar).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(30_000);
+    expect(usoIa.carregar).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
   it('mostra quantos chamados ficaram sem correção automática de categoria por falta de embedding', () => {
     // Dado que já existia no backend/interface (`ChamadosIaResposta.
     // com_fallback_embedding`) mas nunca aparecia em lugar nenhum da tela

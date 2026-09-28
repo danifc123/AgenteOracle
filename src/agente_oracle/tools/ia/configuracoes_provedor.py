@@ -1,19 +1,22 @@
 """Configurações globais de IA que não são "qual LLM está cadastrado"
-(isso mora em `tools/ia/provedores_llm.py`) — hoje só o ponteiro de qual
-LLM cadastrado está ATIVO agora, e o teto diário de tokens. Editável sem
-reiniciar o servidor. Lida por `tools/ia/cliente_protegido.py` pra
-QUALQUER domínio que os chamar — hoje TI e RH (uma troca aqui afeta os
-dois juntos). Financeiro/Auditoria ainda não estão ligados nisso: tocam
-dado real do Oracle, e `config.py::validar_ollama_host_seguro` bloqueia
-esses dois domínios de IA remota até o fornecedor ser validado pra esse
-tipo de dado — não é TI-específico de propósito, por isso mora em
-`tools/ia/`, não em `tools/ti/`."""
+(isso mora em `tools/ia/provedores_llm.py`) — dois ponteiros de qual LLM
+cadastrado está ATIVO agora (um pra chat, outro pra embedding —
+independentes, porque nem todo provedor sabe fazer as duas coisas,
+`capacidades`), mais o teto diário de tokens. Editável sem reiniciar o
+servidor. Lido por `tools/ia/cliente_protegido.py` pra QUALQUER domínio
+que os chamar — hoje TI e RH (uma troca aqui afeta os dois juntos).
+Financeiro/Auditoria ainda não estão ligados nisso: tocam dado real do
+Oracle, e `config.py::validar_ollama_host_seguro` bloqueia esses dois
+domínios de IA remota até o fornecedor ser validado pra esse tipo de
+dado — não é TI-específico de propósito, por isso mora em `tools/ia/`,
+não em `tools/ti/`."""
 
 from agente_oracle.db.connection import get_postgres_connection
 
 _tabela_garantida = False
 
 _CHAVE_PROVEDOR_LLM_ATIVO_ID = "provedor_llm_ativo_id"
+_CHAVE_PROVEDOR_LLM_EMBEDDING_ATIVO_ID = "provedor_llm_embedding_ativo_id"
 _CHAVE_TETO_TOKENS_DIARIO = "teto_tokens_diario"
 
 
@@ -62,6 +65,22 @@ def definir_provedor_llm_ativo_id(valor: int | None) -> None:
 
 def provedor_llm_ativo_id() -> int | None:
     bruto = _ler_texto(_CHAVE_PROVEDOR_LLM_ATIVO_ID, padrao="")
+    return int(bruto) if bruto else None
+
+
+def definir_provedor_llm_embedding_ativo_id(valor: int | None) -> None:
+    """Ponteiro INDEPENDENTE de `definir_provedor_llm_ativo_id` (chat) —
+    nem todo provedor sabe fazer as duas coisas (`capacidades`), e travar
+    os dois no mesmo ponteiro impedia ter um modelo de chat e um de
+    embedding ativos ao mesmo tempo. `None` = nenhum embedding cadastrado
+    ativo — `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`
+    cai no provedor de CHAT ativo nesse caso (mesmo comportamento de antes
+    desse ponteiro existir)."""
+    _gravar_texto(_CHAVE_PROVEDOR_LLM_EMBEDDING_ATIVO_ID, "" if valor is None else str(valor))
+
+
+def provedor_llm_embedding_ativo_id() -> int | None:
+    bruto = _ler_texto(_CHAVE_PROVEDOR_LLM_EMBEDDING_ATIVO_ID, padrao="")
     return int(bruto) if bruto else None
 
 

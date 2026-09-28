@@ -161,8 +161,12 @@
               </td>
               <td>
                 @if (provedor.ativo) {
-                  <app-selo tom="ok" texto="Ativo" />
-                } @else {
+                  <app-selo tom="ok" texto="Ativo (chat)" />
+                }
+                @if (provedor.ativo_embedding) {
+                  <app-selo tom="ok" texto="Ativo (embedding)" />
+                }
+                @if (!provedor.ativo && !provedor.ativo_embedding) {
                   <app-selo tom="neutro" texto="Inativo" />
                 }
               </td>
@@ -175,7 +179,7 @@
                       loadingText="Ativando..."
                       (clicked)="ativar(provedor)"
                     >
-                      Ativar
+                      Ativar (chat)
                     </app-botao>
                   } @else if (provedor.ativo) {
                     <app-botao
@@ -184,8 +188,29 @@
                       loadingText="Desativando..."
                       (clicked)="desativar(provedor)"
                     >
-                      Desativar
+                      Desativar (chat)
                     </app-botao>
+                  }
+                  @if (provedor.capacidades.includes('embedding')) {
+                    @if (!provedor.ativo_embedding) {
+                      <app-botao
+                        variant="contorno"
+                        [loading]="ativandoEmbeddingId() === provedor.id"
+                        loadingText="Ativando..."
+                        (clicked)="ativarEmbedding(provedor)"
+                      >
+                        Ativar (embedding)
+                      </app-botao>
+                    } @else {
+                      <app-botao
+                        variant="contorno"
+                        [loading]="desativandoEmbeddingId() === provedor.id"
+                        loadingText="Desativando..."
+                        (clicked)="desativarEmbedding(provedor)"
+                      >
+                        Desativar (embedding)
+                      </app-botao>
+                    }
                   }
                   <app-botao
                     variant="contorno"
@@ -449,8 +474,9 @@
         <span>Embedding</span>
       </label>
       <span class="dica">
-        Só provedor com "Chat" marcado pode virar o provedor ativo do sistema — um provedor só de
-        embedding fica disponível pra testar, sem poder ser ativado.
+        Chat e embedding têm um "ativo" cada, independentes: só provedor com "Chat" marcado pode virar o
+        ativo de chat do sistema, e só provedor com "Embedding" marcado pode virar o ativo de embedding
+        (usado pra corrigir a categoria de chamados de TI).
       </span>
     </fieldset>
 

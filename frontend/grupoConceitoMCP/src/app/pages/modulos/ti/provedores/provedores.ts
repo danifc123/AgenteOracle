@@ -55,6 +55,10 @@ interface ProvedorLlm {
    * expira/bloqueia nada sozinho — ver `dataCredencialAntiga`. */
   credencial_atualizada_em: string;
   ativo: boolean;
+  /** Ponteiro de "ativo" independente de `ativo` (chat) — nem todo
+   * provedor sabe fazer as duas coisas (`capacidades`). Ver docstring de
+   * `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`. */
+  ativo_embedding: boolean;
   criado_em: string;
 }
 
@@ -281,6 +285,8 @@ export class ProvedoresLlm {
   apagandoId = signal<number | null>(null);
   ativandoId = signal<number | null>(null);
   desativandoId = signal<number | null>(null);
+  ativandoEmbeddingId = signal<number | null>(null);
+  desativandoEmbeddingId = signal<number | null>(null);
   testandoId = signal<number | null>(null);
 
   formNome = signal('');
@@ -632,6 +638,48 @@ export class ProvedoresLlm {
       error: (erro: HttpErrorResponse) => {
         this.erro.set(mensagemErro(erro, 'Não foi possível desativar o provedor.'));
         this.desativandoId.set(null);
+      },
+    });
+  }
+
+  /** Ponteiro de "ativo" independente do chat (`ativar`/`desativar` acima)
+   * — só provedores com capacidade "embedding" podem virar este ativo
+   * (mesmo espírito do guardrail de chat, ver `provedores.html`). Usado
+   * pela correção de categoria de chamado (`agent/ti/roteamento_chamado.py`). */
+  ativarEmbedding(provedor: ProvedorLlm): void {
+    if (this.ativandoEmbeddingId()) {
+      return;
+    }
+    this.ativandoEmbeddingId.set(provedor.id);
+    this.erro.set(null);
+
+    this.http.post<ProvedorLlm[]>(`${URL_PROVEDORES}/${provedor.id}/ativar-embedding`, {}).subscribe({
+      next: (provedores) => {
+        this.provedores.set(provedores);
+        this.ativandoEmbeddingId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erro.set(mensagemErro(erro, 'Não foi possível ativar o provedor pra embedding.'));
+        this.ativandoEmbeddingId.set(null);
+      },
+    });
+  }
+
+  desativarEmbedding(provedor: ProvedorLlm): void {
+    if (this.desativandoEmbeddingId()) {
+      return;
+    }
+    this.desativandoEmbeddingId.set(provedor.id);
+    this.erro.set(null);
+
+    this.http.post<ProvedorLlm[]>(`${URL_PROVEDORES}/desativar-embedding`, {}).subscribe({
+      next: (provedores) => {
+        this.provedores.set(provedores);
+        this.desativandoEmbeddingId.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erro.set(mensagemErro(erro, 'Não foi possível desativar o provedor de embedding.'));
+        this.desativandoEmbeddingId.set(null);
       },
     });
   }

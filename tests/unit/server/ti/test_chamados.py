@@ -136,6 +136,7 @@ class _OllamaClienteFake:
         self._mensagem = mensagem
         self._levantar_no_embed = levantar_no_embed
         self.chamadas_chat: list[dict] = []
+        self.chamadas_embed: list[dict] = []
 
     async def chat(self, **kwargs):
         self.chamadas_chat.append(kwargs)
@@ -146,7 +147,8 @@ class _OllamaClienteFake:
             json.dumps({"suficiente": self._suficiente, "pergunta": self._mensagem, "exemplo": ""})
         )
 
-    async def embed(self, **_kwargs):
+    async def embed(self, **kwargs):
+        self.chamadas_embed.append(kwargs)
         if self._levantar_no_embed:
             raise self._levantar_no_embed
         return _EmbedRespostaFake([1.0, 0.0])
@@ -757,6 +759,69 @@ class TestProcessarChamadoNovo:
         assert len(cliente.atribuicoes) == 1
         _chamado_id, area, _tecnico = cliente.atribuicoes[0]
         assert area == "sistemas"
+
+
+class TestProcessarChamadoNovoEmbeddingClient:
+    """`embedding_client` é o parâmetro que resolve o bug real de
+    2026-09-28: `classificar_categoria` usava sempre `ollama_client`
+    (o provedor de CHAT ativo) pro `.embed()`, que normalmente não sabe
+    fazer embedding — cai em `EmbeddingNaoSuportado` sempre. Ver
+    `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`."""
+
+    async def test_sem_embedding_client_reusa_o_ollama_client_pro_embed(self):
+        # Comportamento de antes desse parâmetro existir — mantido pra não
+        # quebrar nenhum call site que ainda não foi atualizado.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True)
+
+        # 2 chamadas: 1 pra cachear o embedding da (única) categoria fake,
+        # 1 pro texto do próprio chamado — ver docstring de
+        # `_cache_embeddings_categorias` em `roteamento_chamado.py`.
+        assert len(ollama.chamadas_embed) == 2
+
+    async def test_com_embedding_client_usa_ele_em_vez_do_ollama_client(self):
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        embedding = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999),
+            cargas,
+            True,
+            embedding_client=embedding,
+        )
+
+        assert len(ollama.chamadas_embed) == 0
+        assert len(embedding.chamadas_embed) == 2
+
+    async def test_embedding_client_nao_afeta_o_client_usado_pro_chat(self):
+        # `avaliar_chamado` (a checagem de "tem informação suficiente")
+        # continua sempre no `ollama_client` — só a correção de categoria
+        # (`classificar_categoria`) usa o `embedding_client`.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        embedding = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999),
+            cargas,
+            True,
+            embedding_client=embedding,
+        )
+
+        assert len(ollama.chamadas_chat) == 1
+        assert len(embedding.chamadas_chat) == 0
 
 
 class TestVerificarChamadosPendentes:

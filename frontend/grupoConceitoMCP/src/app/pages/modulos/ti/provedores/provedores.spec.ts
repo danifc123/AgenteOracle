@@ -35,6 +35,7 @@ const PROVEDOR_OLLAMA = {
   // nem chega a aparecer pra esse provedor, então o valor aqui não importa.
   credencial_atualizada_em: '2026-09-23T00:00:00Z',
   ativo: true,
+  ativo_embedding: false,
   criado_em: '2026-09-23T00:00:00Z',
 };
 
@@ -58,6 +59,7 @@ const PROVEDOR_OCI = {
   // quebraria testes que não são sobre idade de credencial.
   credencial_atualizada_em: new Date().toISOString(),
   ativo: false,
+  ativo_embedding: false,
   criado_em: '2026-09-23T00:00:00Z',
 };
 
@@ -168,7 +170,21 @@ function criar(
       (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
       fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
-      (botoes.find((b) => b.textContent?.includes('Ativar')) as HTMLButtonElement).click();
+      (botoes.find((b) => b.textContent?.trim() === 'Ativar (chat)') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    clicarAtivarEmbedding: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.trim() === 'Ativar (embedding)') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    clicarDesativarEmbedding: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.trim() === 'Desativar (embedding)') as HTMLButtonElement).click();
       fixture.detectChanges();
     },
     clicarTestar: (indice: number) => {
@@ -182,7 +198,7 @@ function criar(
       (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
       fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
-      (botoes.find((b) => b.textContent?.trim() === 'Desativar') as HTMLButtonElement).click();
+      (botoes.find((b) => b.textContent?.trim() === 'Desativar (chat)') as HTMLButtonElement).click();
       fixture.detectChanges();
     },
     clicarApagar: (indice: number) => {
@@ -304,17 +320,21 @@ describe('ProvedoresLlm', () => {
       ]);
     });
 
-    it('só o provedor ativo mostra o botão "Desativar" no menu de ações', () => {
+    it('só o provedor ativo mostra o botão "Desativar (chat)" no menu de ações', () => {
       const { linhasProvedores, abrirMenuAcoes } = criar();
 
       abrirMenuAcoes(0);
       expect(
-        Array.from(linhasProvedores()[0].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Desativar'),
+        Array.from(linhasProvedores()[0].querySelectorAll('button')).some(
+          (b) => b.textContent?.trim() === 'Desativar (chat)',
+        ),
       ).toBe(true);
 
       abrirMenuAcoes(1);
       expect(
-        Array.from(linhasProvedores()[1].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Desativar'),
+        Array.from(linhasProvedores()[1].querySelectorAll('button')).some(
+          (b) => b.textContent?.trim() === 'Desativar (chat)',
+        ),
       ).toBe(false);
     });
 
@@ -564,15 +584,48 @@ describe('ProvedoresLlm', () => {
       http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([]);
     });
 
-    it('provedor sem capacidade de chat e inativo não mostra o botão "Ativar"', () => {
+    it('provedor sem capacidade de chat e inativo não mostra o botão "Ativar (chat)", só "Ativar (embedding)"', () => {
       const provedorEmbedding = { ...PROVEDOR_OCI, ativo: false, capacidades: ['embedding'] };
       const { linhasProvedores, abrirMenuAcoes } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
 
       abrirMenuAcoes(1);
 
-      expect(
-        Array.from(linhasProvedores()[1].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Ativar'),
-      ).toBe(false);
+      const textosBotoes = Array.from(linhasProvedores()[1].querySelectorAll('button')).map((b) =>
+        b.textContent?.trim(),
+      );
+      expect(textosBotoes).not.toContain('Ativar (chat)');
+      expect(textosBotoes).toContain('Ativar (embedding)');
+    });
+
+    it('ativar um provedor pra embedding chama a rota certa e atualiza a lista', () => {
+      const provedorEmbedding = { ...PROVEDOR_OCI, id: 3, ativo: false, ativo_embedding: false, capacidades: ['embedding'] };
+      const { fixture, clicarAtivarEmbedding, http, linhasProvedores } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
+
+      clicarAtivarEmbedding(1);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/3/ativar-embedding') && req.method === 'POST',
+      );
+      requisicao.flush([PROVEDOR_OLLAMA, { ...provedorEmbedding, ativo_embedding: true }]);
+      fixture.detectChanges();
+
+      expect(linhasProvedores()[1].textContent).toContain('Ativo (embedding)');
+    });
+
+    it('desativar o embedding chama a rota certa, sem mexer no ativo de chat', () => {
+      const provedorEmbedding = { ...PROVEDOR_OCI, id: 3, ativo: false, ativo_embedding: true, capacidades: ['embedding'] };
+      const { fixture, clicarDesativarEmbedding, http, linhasProvedores } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
+
+      clicarDesativarEmbedding(1);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/desativar-embedding') && req.method === 'POST',
+      );
+      requisicao.flush([PROVEDOR_OLLAMA, { ...provedorEmbedding, ativo_embedding: false }]);
+      fixture.detectChanges();
+
+      expect(linhasProvedores()[1].textContent).toContain('Inativo');
+      expect(linhasProvedores()[0].textContent).toContain('Ativo (chat)'); // chat de outro provedor intacto
     });
 
     it('mostra um selo por capacidade na linha da tabela', () => {

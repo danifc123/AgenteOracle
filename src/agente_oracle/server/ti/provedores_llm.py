@@ -1,5 +1,7 @@
 """Rotas HTTP do cadastro de LLM (`tools/ia/provedores_llm.py`) — listar,
-criar, editar, apagar, ativar e testar. Listar (GET) é visualização e
+criar, editar, apagar, ativar (chat E/OU embedding, ponteiros
+independentes — ver docstring de `tools/ia/cliente_protegido.py`) e
+testar. Listar (GET) é visualização e
 libera pra todo o time de TI (`exigir_modulo_ti`, achado do usuário,
 2026-09-28: o time queria ACOMPANHAR o consumo sem depender de um
 desenvolvedor) — qualquer escrita (criar/editar/apagar/ativar/testar)
@@ -72,7 +74,7 @@ def _preco_valido(bruto) -> Decimal | None:
     return valor if valor.is_finite() and valor >= 0 else None
 
 
-def _provedor_para_json(provedor: ProvedorLLM, id_ativo: int | None) -> dict:
+def _provedor_para_json(provedor: ProvedorLLM, id_ativo: int | None, id_embedding_ativo: int | None) -> dict:
     return {
         "id": provedor.id,
         "nome": provedor.nome,
@@ -94,6 +96,9 @@ def _provedor_para_json(provedor: ProvedorLLM, id_ativo: int | None) -> dict:
         # tools/ia/provedores_llm.py).
         "credencial_atualizada_em": provedor.credencial_atualizada_em.isoformat(),
         "ativo": provedor.id == id_ativo,
+        # Ponteiro independente do "ativo" de chat — ver docstring do
+        # módulo e de `tools/ia/cliente_protegido.py`.
+        "ativo_embedding": provedor.id == id_embedding_ativo,
         "criado_em": provedor.criado_em.isoformat(),
     }
 
@@ -104,7 +109,10 @@ def _erro(mensagem: str, status_code: int) -> Response:
 
 def _listar() -> Response:
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
-    linhas = [_provedor_para_json(provedor, id_ativo) for provedor in provedores_llm.listar()]
+    id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    linhas = [
+        _provedor_para_json(provedor, id_ativo, id_embedding_ativo) for provedor in provedores_llm.listar()
+    ]
     return JSONResponse(linhas, headers=CORS_HEADERS)
 
 
@@ -173,7 +181,10 @@ def _criar(corpo: dict) -> Response:
         return _erro(str(erro), 400)
 
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
-    return JSONResponse(_provedor_para_json(provedor, id_ativo), status_code=201, headers=CORS_HEADERS)
+    id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    return JSONResponse(
+        _provedor_para_json(provedor, id_ativo, id_embedding_ativo), status_code=201, headers=CORS_HEADERS
+    )
 
 
 def _atualizar(id_provedor_bruto: str, corpo: dict) -> Response:
@@ -202,7 +213,8 @@ def _atualizar(id_provedor_bruto: str, corpo: dict) -> Response:
         return _erro("Provedor não encontrado.", 404)
 
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
-    return JSONResponse(_provedor_para_json(provedor, id_ativo), headers=CORS_HEADERS)
+    id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    return JSONResponse(_provedor_para_json(provedor, id_ativo, id_embedding_ativo), headers=CORS_HEADERS)
 
 
 def _remover(id_provedor_bruto: str) -> Response:
@@ -213,17 +225,21 @@ def _remover(id_provedor_bruto: str) -> Response:
 
     if not provedores_llm.remover(id_provedor):
         return _erro("Provedor não encontrado.", 404)
-    # Se era o ativo, ninguém fica ativo — cai no Ollama padrão do `.env`
+    # Se era o ativo (chat ou embedding — ponteiros independentes),
+    # ninguém fica ativo naquele ponto — cai no Ollama padrão do `.env`
     # (ver `tools/ia/cliente_protegido.py`), nunca aponta pra um id morto.
     if configuracoes_provedor.provedor_llm_ativo_id() == id_provedor:
         configuracoes_provedor.definir_provedor_llm_ativo_id(None)
+    if configuracoes_provedor.provedor_llm_embedding_ativo_id() == id_provedor:
+        configuracoes_provedor.definir_provedor_llm_embedding_ativo_id(None)
     return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
 
 def _desativar() -> Response:
-    """Volta o ponteiro pra `None` — mesmo estado de "nenhum LLM cadastrado
-    ativo" (`criar_cliente_protegido` cai no Ollama padrão do `.env`), sem
-    apagar nenhum provedor cadastrado."""
+    """Volta o ponteiro de CHAT pra `None` — mesmo estado de "nenhum LLM
+    cadastrado ativo" (`criar_cliente_protegido` cai no Ollama padrão do
+    `.env`), sem apagar nenhum provedor cadastrado. Não mexe no ponteiro
+    de embedding (`_desativar_embedding`), são independentes."""
     configuracoes_provedor.definir_provedor_llm_ativo_id(None)
     return _listar()
 
@@ -237,12 +253,40 @@ def _ativar(id_provedor_bruto: str) -> Response:
     provedor = provedores_llm.buscar(id_provedor)
     if provedor is None:
         return _erro("Provedor não encontrado.", 404)
-    # Só 1 provedor ativo por vez no sistema inteiro (chat + embedding
-    # juntos, ver docstring do módulo de tools) — ativar um sem capacidade
-    # de chat quebraria toda conversa do TI/RH sem aviso nenhum.
+    # Só 1 provedor ativo de CHAT por vez no sistema inteiro (o ponteiro de
+    # embedding é independente, ver `_ativar_embedding`) — ativar um sem
+    # capacidade de chat quebraria toda conversa do TI/RH sem aviso nenhum.
     if "chat" not in provedor.capacidades:
         return _erro("Esse provedor só serve pra embedding, não pode virar o provedor ativo do sistema.", 400)
     configuracoes_provedor.definir_provedor_llm_ativo_id(id_provedor)
+    return _listar()
+
+
+def _desativar_embedding() -> Response:
+    """Mesma ideia de `_desativar`, mas pro ponteiro de EMBEDDING — volta
+    a correção de categoria de chamado a usar o provedor de CHAT ativo pro
+    embedding (mesmo comportamento de antes desse ponteiro existir, ver
+    `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`)."""
+    configuracoes_provedor.definir_provedor_llm_embedding_ativo_id(None)
+    return _listar()
+
+
+def _ativar_embedding(id_provedor_bruto: str) -> Response:
+    try:
+        id_provedor = int(id_provedor_bruto)
+    except ValueError:
+        return _erro("Provedor não encontrado.", 404)
+
+    provedor = provedores_llm.buscar(id_provedor)
+    if provedor is None:
+        return _erro("Provedor não encontrado.", 404)
+    # Espelha o guardrail de `_ativar`, mas pra capacidade oposta — um
+    # provedor só-chat não sabe responder `.embed()`, ativá-lo aqui
+    # deixaria a correção de categoria sempre caindo em
+    # `EmbeddingNaoSuportado` de novo.
+    if "embedding" not in provedor.capacidades:
+        return _erro("Esse provedor não tem capacidade de embedding.", 400)
+    configuracoes_provedor.definir_provedor_llm_embedding_ativo_id(id_provedor)
     return _listar()
 
 
@@ -295,12 +339,18 @@ def registrar(mcp) -> None:
         corpo = await request.json()
         return await to_thread.run_sync(_criar, corpo)
 
-    # Registrada ANTES de `/{id}` de propósito — mesmo número de segmentos
-    # de path, "desativar" bateria com o padrão `{id}` se essa viesse depois.
+    # Registradas ANTES de `/{id}` de propósito — mesmo número de segmentos
+    # de path, "desativar"/"desativar-embedding" bateriam com o padrão
+    # `{id}` se viessem depois.
     @mcp.custom_route("/api/ti/provedores-llm/desativar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
     async def provedor_llm_desativar_route(request: Request, usuario: dict) -> Response:
         return await to_thread.run_sync(_desativar)
+
+    @mcp.custom_route("/api/ti/provedores-llm/desativar-embedding", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
+    async def provedor_llm_desativar_embedding_route(request: Request, usuario: dict) -> Response:
+        return await to_thread.run_sync(_desativar_embedding)
 
     @mcp.custom_route("/api/ti/provedores-llm/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
     @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_desenvolvedor)
@@ -315,6 +365,11 @@ def registrar(mcp) -> None:
     @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
     async def provedor_llm_ativar_route(request: Request, usuario: dict) -> Response:
         return await to_thread.run_sync(_ativar, request.path_params["id"])
+
+    @mcp.custom_route("/api/ti/provedores-llm/{id}/ativar-embedding", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
+    async def provedor_llm_ativar_embedding_route(request: Request, usuario: dict) -> Response:
+        return await to_thread.run_sync(_ativar_embedding, request.path_params["id"])
 
     @mcp.custom_route("/api/ti/provedores-llm/{id}/testar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)

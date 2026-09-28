@@ -54,55 +54,86 @@ class TestPrecoValido:
 class TestProvedorParaJson:
     def test_inclui_credencial_atualizada_em(self):
         corpo = mod._provedor_para_json(
-            _provedor_llm(credencial_atualizada_em=datetime(2026, 6, 1, tzinfo=UTC)), id_ativo=None
+            _provedor_llm(credencial_atualizada_em=datetime(2026, 6, 1, tzinfo=UTC)),
+            id_ativo=None,
+            id_embedding_ativo=None,
         )
 
         assert corpo["credencial_atualizada_em"] == "2026-06-01T00:00:00+00:00"
 
     def test_nunca_inclui_a_api_key_crua(self):
-        corpo = mod._provedor_para_json(_provedor_llm(api_key="sk-super-secreto"), id_ativo=None)
+        corpo = mod._provedor_para_json(
+            _provedor_llm(api_key="sk-super-secreto"), id_ativo=None, id_embedding_ativo=None
+        )
 
         assert "api_key" not in corpo
         assert corpo["api_key_configurada"] is True
 
     def test_sem_api_key_configurada_e_false(self):
-        corpo = mod._provedor_para_json(_provedor_llm(api_key=""), id_ativo=None)
+        corpo = mod._provedor_para_json(_provedor_llm(api_key=""), id_ativo=None, id_embedding_ativo=None)
 
         assert corpo["api_key_configurada"] is False
 
     def test_marca_ativo_quando_o_id_bate(self):
-        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=7)
+        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=7, id_embedding_ativo=None)
 
         assert corpo["ativo"] is True
 
     def test_nao_marca_ativo_quando_o_id_nao_bate(self):
-        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=8)
+        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=8, id_embedding_ativo=None)
 
         assert corpo["ativo"] is False
 
+    def test_marca_ativo_embedding_quando_o_id_bate(self):
+        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=None, id_embedding_ativo=7)
+
+        assert corpo["ativo_embedding"] is True
+
+    def test_nao_marca_ativo_embedding_quando_o_id_nao_bate(self):
+        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=None, id_embedding_ativo=8)
+
+        assert corpo["ativo_embedding"] is False
+
+    def test_ativo_e_ativo_embedding_sao_independentes(self):
+        # Mesmo provedor pode ser o ativo de chat E de embedding ao mesmo
+        # tempo (ex: um provedor com as duas capacidades) — ponteiros
+        # separados, não mutuamente exclusivos.
+        corpo = mod._provedor_para_json(_provedor_llm(id=7), id_ativo=7, id_embedding_ativo=7)
+
+        assert corpo["ativo"] is True
+        assert corpo["ativo_embedding"] is True
+
     def test_precos_viram_float(self):
         corpo = mod._provedor_para_json(
-            _provedor_llm(preco_entrada_por_1k=Decimal("0.01"), preco_saida_por_1k=Decimal("0.02")), id_ativo=None
+            _provedor_llm(preco_entrada_por_1k=Decimal("0.01"), preco_saida_por_1k=Decimal("0.02")),
+            id_ativo=None,
+            id_embedding_ativo=None,
         )
 
         assert corpo["preco_entrada_por_1k"] == 0.01
         assert corpo["preco_saida_por_1k"] == 0.02
 
     def test_inclui_capacidades(self):
-        corpo = mod._provedor_para_json(_provedor_llm(capacidades=["chat", "embedding"]), id_ativo=None)
+        corpo = mod._provedor_para_json(
+            _provedor_llm(capacidades=["chat", "embedding"]), id_ativo=None, id_embedding_ativo=None
+        )
 
         assert corpo["capacidades"] == ["chat", "embedding"]
 
     def test_nunca_inclui_credenciais_extra_cruas(self):
         corpo = mod._provedor_para_json(
-            _provedor_llm(credenciais_extra={"chave_privada": "segredo"}), id_ativo=None
+            _provedor_llm(credenciais_extra={"chave_privada": "segredo"}),
+            id_ativo=None,
+            id_embedding_ativo=None,
         )
 
         assert "credenciais_extra" not in corpo
         assert corpo["credenciais_configuradas"] is True
 
     def test_sem_credenciais_extra_e_false(self):
-        corpo = mod._provedor_para_json(_provedor_llm(credenciais_extra=None), id_ativo=None)
+        corpo = mod._provedor_para_json(
+            _provedor_llm(credenciais_extra=None), id_ativo=None, id_embedding_ativo=None
+        )
 
         assert corpo["credenciais_configuradas"] is False
 
@@ -348,6 +379,25 @@ class TestRemover:
 
         assert limpou == []
 
+    def test_remover_o_ativo_de_embedding_limpa_esse_ponteiro_tambem(self, monkeypatch):
+        # Ponteiros independentes (chat/embedding) — remover o provedor que
+        # era o ativo de EMBEDDING precisa limpar o ponteiro dele também,
+        # não só o de chat.
+        limpou_embedding = []
+        monkeypatch.setattr(mod.provedores_llm, "remover", lambda _id: True)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+        monkeypatch.setattr(mod.configuracoes_provedor, "definir_provedor_llm_ativo_id", lambda v: None)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: 1)
+        monkeypatch.setattr(
+            mod.configuracoes_provedor,
+            "definir_provedor_llm_embedding_ativo_id",
+            lambda v: limpou_embedding.append(v),
+        )
+
+        mod._remover("1")
+
+        assert limpou_embedding == [None]
+
 
 class TestDesativar:
     def test_limpa_o_ponteiro_e_devolve_a_lista(self, monkeypatch):
@@ -405,6 +455,78 @@ class TestAtivar:
         monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: 1)
 
         resposta = mod._ativar("1")
+
+        assert resposta.status_code == 200
+        assert definidos == [1]
+
+
+class TestDesativarEmbedding:
+    def test_limpa_o_ponteiro_de_embedding_sem_mexer_no_de_chat(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(
+            mod.configuracoes_provedor, "definir_provedor_llm_embedding_ativo_id", lambda v: definidos.append(v)
+        )
+        monkeypatch.setattr(mod.provedores_llm, "listar", lambda: [_provedor_llm(id=1)])
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: None)
+
+        resposta = mod._desativar_embedding()
+
+        assert definidos == [None]
+        assert resposta.status_code == 200
+
+
+class TestAtivarEmbedding:
+    def test_id_nao_numerico_devolve_404(self):
+        assert mod._ativar_embedding("abc").status_code == 404
+
+    def test_provedor_inexistente_devolve_404(self, monkeypatch):
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: None)
+
+        assert mod._ativar_embedding("999").status_code == 404
+
+    def test_provedor_existente_define_o_ponteiro_e_devolve_a_lista(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(
+            mod.provedores_llm, "buscar", lambda _id: _provedor_llm(id=1, capacidades=["embedding"])
+        )
+        monkeypatch.setattr(
+            mod.configuracoes_provedor, "definir_provedor_llm_embedding_ativo_id", lambda v: definidos.append(v)
+        )
+        monkeypatch.setattr(mod.provedores_llm, "listar", lambda: [_provedor_llm(id=1)])
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: 1)
+
+        resposta = mod._ativar_embedding("1")
+
+        assert definidos == [1]
+        assert resposta.status_code == 200
+
+    def test_provedor_sem_capacidade_de_embedding_nao_pode_ser_ativado(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: _provedor_llm(id=1, capacidades=["chat"]))
+        monkeypatch.setattr(
+            mod.configuracoes_provedor, "definir_provedor_llm_embedding_ativo_id", lambda v: definidos.append(v)
+        )
+
+        resposta = mod._ativar_embedding("1")
+
+        assert resposta.status_code == 400
+        assert definidos == []
+
+    def test_provedor_com_chat_e_embedding_pode_ser_ativado_pro_embedding(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(
+            mod.provedores_llm, "buscar", lambda _id: _provedor_llm(id=1, capacidades=["chat", "embedding"])
+        )
+        monkeypatch.setattr(
+            mod.configuracoes_provedor, "definir_provedor_llm_embedding_ativo_id", lambda v: definidos.append(v)
+        )
+        monkeypatch.setattr(mod.provedores_llm, "listar", lambda: [])
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: 1)
+
+        resposta = mod._ativar_embedding("1")
 
         assert resposta.status_code == 200
         assert definidos == [1]

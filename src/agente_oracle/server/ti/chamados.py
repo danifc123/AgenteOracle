@@ -94,7 +94,9 @@ from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_m
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ia.cliente_protegido import (
     USUARIO_SISTEMA,
+    criar_cliente_embedding_protegido,
     criar_cliente_protegido,
+    modelo_embedding_ativo,
     modelo_ia_ativo,
 )
 from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
@@ -399,6 +401,7 @@ async def processar_chamado_novo(
     chamado: Chamado,
     cargas: dict[str, int],
     usar_ia: bool,
+    embedding_client: AsyncClient | None = None,
 ) -> ResultadoProcessamento:
     """Avalia se o chamado tem informação suficiente, olhando a conversa
     de esclarecimento inteira (`cliente.buscar_followups`, mapeada pra
@@ -452,7 +455,15 @@ async def processar_chamado_novo(
 
     `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
     aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
-    Postgres fora das funções testáveis com fake)."""
+    Postgres fora das funções testáveis com fake).
+
+    `embedding_client` é OPCIONAL de propósito (`None` reaproveita
+    `ollama_client` pro `.embed()` de `classificar_categoria`, mesmo
+    comportamento de antes desse parâmetro existir) — os call sites reais
+    (poller/webhook/rota manual, mais abaixo neste arquivo) passam o
+    provedor de EMBEDDING ativo (`criar_cliente_embedding_protegido`,
+    ponteiro independente do chat), pra correção de categoria não
+    depender do provedor de chat também saber fazer embedding."""
     descricao_limpa = _texto_para_ia(chamado.descricao)
     followups = await cliente.buscar_followups(chamado.id)
     turnos = _turnos_da_conversa(followups)
@@ -475,8 +486,8 @@ async def processar_chamado_novo(
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
     resultado_classificacao = await classificar_categoria(
-        ollama_client,
-        settings.ollama_embedding_model,
+        embedding_client if embedding_client is not None else ollama_client,
+        modelo_embedding_ativo(settings, "ti"),
         chamado.titulo,
         descricao_limpa,
         chamado.categoria_id,
@@ -667,6 +678,7 @@ def registrar(mcp) -> None:
                 chamado,
                 cargas,
                 usar_ia,
+                embedding_client=embedding_client,
             )
         except SemTecnicoNaArea as erro:
             rotulo_area = _ROTULOS_AREA.get(erro.area, erro.area)
@@ -741,6 +753,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     só pelo poller), atribuir o custo todo a quem clicou "Verificar" seria
     enganoso (ver `tools/ia/cliente_protegido.py::USUARIO_SISTEMA`)."""
     ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    embedding_client = criar_cliente_embedding_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -769,6 +782,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
                 chamado,
                 cargas,
                 usar_ia,
+                embedding_client=embedding_client,
             )
         except Exception:
             _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
@@ -819,6 +833,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     `verificar_chamados_aguardando_resposta` — é um lote de vários
     chamados de pessoas diferentes, não a ação de quem disparou."""
     ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    embedding_client = criar_cliente_embedding_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 

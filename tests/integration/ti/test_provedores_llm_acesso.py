@@ -92,3 +92,13 @@ class TestEscritaContinuaRestritaADesenvolvedor:
     def test_time_de_ti_nao_consegue_testar_conexao(self, mcp_app, token_ti_admin):
         resposta = mcp_app.post(f"{_URL_LISTA}/1/testar", headers=_auth(token_ti_admin))
         assert resposta.status_code == 403
+
+    def test_time_de_ti_nao_consegue_ativar_embedding(self, mcp_app, token_ti_admin):
+        # Ponteiro independente do chat (`test_time_de_ti_nao_consegue_ativar`
+        # acima) — mesma trava de acesso, 2026-09-28.
+        resposta = mcp_app.post(f"{_URL_LISTA}/1/ativar-embedding", headers=_auth(token_ti_admin))
+        assert resposta.status_code == 403
+
+    def test_time_de_ti_nao_consegue_desativar_embedding(self, mcp_app, token_ti_admin):
+        resposta = mcp_app.post(f"{_URL_LISTA}/desativar-embedding", headers=_auth(token_ti_admin))
+        assert resposta.status_code == 403

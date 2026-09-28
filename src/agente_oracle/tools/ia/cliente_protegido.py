@@ -19,6 +19,16 @@ precisa reiniciar o servidor nem editar código. Sem nenhum LLM cadastrado
 ativo, cai no Ollama padrão do `.env` — mesmo comportamento de antes desse
 cadastro existir, pra nunca quebrar uma instalação nova/vazia.
 
+Chat e embedding têm ponteiros de "ativo" INDEPENDENTES
+(`configuracoes_provedor.provedor_llm_ativo_id`/`_embedding_ativo_id`) —
+`criar_cliente_protegido` resolve o de chat, `criar_cliente_embedding_protegido`
+o de embedding. Precisa disso porque nem todo provedor sabe fazer as duas
+coisas (ex: os modelos OCI de embedding puro cadastrados pra corrigir
+categoria de chamado não têm endpoint de chat, e o guardrail em
+`server/ti/provedores_llm.py::_ativar` nem deixa um provedor assim virar
+"o ativo" de chat) — sem os dois ponteiros, o time inteiro ficaria sem
+conversar toda vez que alguém ativasse um modelo só de embedding.
+
 Financeiro/Auditoria NUNCA olham o cadastro — tocam dado real do Oracle e
 continuam 100% no caminho antigo (Ollama do `.env`, por domínio), protegido
 por `config.py::validar_ollama_host_seguro`, até o fornecedor cadastrado
@@ -238,3 +248,48 @@ def modelo_ia_ativo(settings: Settings, dominio: DominioIA) -> str:
     if ativo is not None:
         return ativo.modelo
     return ollama_model_do_dominio(settings, dominio)
+
+
+def _provedor_llm_embedding_ativo(dominio: DominioIA) -> provedores_llm.ProvedorLLM | None:
+    """Mesma ideia de `_provedor_llm_ativo`, mas pro ponteiro de EMBEDDING
+    (`configuracoes_provedor.provedor_llm_embedding_ativo_id`) — os dois
+    são independentes de propósito, ver docstring do módulo de
+    configuração."""
+    if dominio not in _DOMINIOS_COM_CADASTRO:
+        return None
+    id_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    if id_ativo is None:
+        return None
+    return provedores_llm.buscar(id_ativo)
+
+
+def criar_cliente_embedding_protegido(
+    settings: Settings, dominio: DominioIA, sanitizar: bool, usuario_id: str
+) -> ClienteIAProtegido:
+    """Mesma ideia de `criar_cliente_protegido`, mas resolve o provedor de
+    EMBEDDING ativo — ponteiro independente do chat ativo, porque nem todo
+    provedor sabe fazer as duas coisas (`capacidades`; ex: os modelos OCI
+    de embedding puro, que não têm endpoint de chat). Sem embedding
+    cadastrado ativo, cai no MESMO client do chat ativo — mesmo
+    comportamento de antes desse ponteiro existir (`classificar_categoria`
+    tentava `.embed()` no client de chat e, salvo ele saber fazer as duas
+    coisas, caía em `EmbeddingNaoSuportado`; ver `agent/ti/roteamento_chamado.py`).
+    Usado só pela correção de categoria de chamado hoje
+    (`server/ti/chamados.py::processar_chamado_novo`)."""
+    ativo = _provedor_llm_embedding_ativo(dominio)
+    if ativo is None:
+        return criar_cliente_protegido(settings, dominio, sanitizar, usuario_id)
+    cliente_real, host = construir_cliente_llm(ativo)
+    return ClienteIAProtegido(
+        cliente_real, dominio, host, sanitizar, settings.teto_diario_ia_externa, ativo.nome, usuario_id
+    )
+
+
+def modelo_embedding_ativo(settings: Settings, dominio: DominioIA) -> str:
+    """O modelo do provedor de EMBEDDING cadastrado ativo; sem um
+    cadastrado (ou domínio sem cadastro), cai no modelo de embedding
+    padrão do `.env` — mesmo valor usado antes desse ponteiro existir."""
+    ativo = _provedor_llm_embedding_ativo(dominio)
+    if ativo is not None:
+        return ativo.modelo
+    return settings.ollama_embedding_model

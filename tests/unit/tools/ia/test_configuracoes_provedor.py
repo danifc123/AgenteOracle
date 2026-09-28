@@ -65,6 +65,41 @@ class TestProvedorLlmAtivoId:
         assert binds["valor"] == ""
 
 
+class TestProvedorLlmEmbeddingAtivoId:
+    # Ponteiro independente de TestProvedorLlmAtivoId (chave própria,
+    # `provedor_llm_embedding_ativo_id`) — mesmo comportamento, testado à
+    # parte pra deixar claro que os dois não se confundem.
+    def test_sem_configuracao_devolve_none(self, monkeypatch):
+        _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=None))
+
+        assert mod.provedor_llm_embedding_ativo_id() is None
+
+    def test_devolve_o_valor_gravado_como_inteiro(self, monkeypatch):
+        _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=("5",)))
+
+        assert mod.provedor_llm_embedding_ativo_id() == 5
+
+    def test_definir_grava_como_texto(self, monkeypatch):
+        cursor = _CursorFake(rowcount=0)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.definir_provedor_llm_embedding_ativo_id(5)
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["chave"] == "provedor_llm_embedding_ativo_id"
+        assert binds["valor"] == "5"
+
+    def test_definir_none_grava_vazio_e_volta_a_ler_none(self, monkeypatch):
+        cursor = _CursorFake(rowcount=0)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.definir_provedor_llm_embedding_ativo_id(None)
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["chave"] == "provedor_llm_embedding_ativo_id"
+        assert binds["valor"] == ""
+
+
 class TestTetoTokensDiario:
     def test_sem_configuracao_devolve_zero_sem_teto(self, monkeypatch):
         _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=None))

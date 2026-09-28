@@ -130,7 +130,7 @@ export class ChatFinanceiro {
         id,
         mensagem: mensagemErro(
           erro,
-          'Não foi possível falar com o agente. Verifique se o servidor e o Ollama estão em execução.',
+          'Não foi possível falar com o agente. Verifique se o servidor e o modelo de IA estão em execução.',
         ),
         vista: false,
       },

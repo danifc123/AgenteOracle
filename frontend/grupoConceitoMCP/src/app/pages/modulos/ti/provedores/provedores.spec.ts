@@ -346,12 +346,12 @@ describe('ProvedoresLlm', () => {
       http.expectNone((req) => req.method === 'DELETE');
     });
 
-    it('apagar o provedor ativo avisa que o sistema volta pro Ollama padrão', () => {
+    it('apagar o provedor ativo avisa que o sistema volta pro modelo de IA padrão', () => {
       const { clicarApagar, texto } = criar();
 
       clicarApagar(0); // PROVEDOR_OLLAMA está ativo
 
-      expect(texto()).toContain('sistema volta a usar o Ollama padrão do .env');
+      expect(texto()).toContain('sistema volta a usar o modelo de IA padrão configurado');
     });
 
     it('confirmar apagar chama DELETE e remove da lista', () => {
@@ -715,7 +715,7 @@ describe('ProvedoresLlm', () => {
       const usoIa = usoIaFalso({
         consumo: [
           {
-            provedor: 'Ollama (padrão)',
+            provedor: 'Modelo de IA (padrão)',
             modelo: 'qwen2.5-coder:7b',
             chamadas: 5,
             tokens_entrada: 134,

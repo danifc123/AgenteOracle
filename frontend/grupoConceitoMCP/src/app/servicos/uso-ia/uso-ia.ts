@@ -11,8 +11,8 @@ export interface LinhaUsoIa {
   tokens_raciocinio: number;
   tokens_total: number;
   /** `null` quando essa linha não bate com nenhum LLM cadastrado hoje —
-   * chamada antiga, provedor removido do cadastro, ou o fallback "Ollama
-   * (padrão)" (sem cadastro, nunca tem preço). Ver
+   * chamada antiga, provedor removido do cadastro, ou o fallback "Modelo
+   * de IA (padrão)" (sem cadastro, nunca tem preço). Ver
    * `server/ti/uso_ia.py::_custo_e_moeda` no backend. */
   custo_estimado: number | null;
   moeda: string | null;

@@ -34,5 +34,5 @@ async def gerar_embedding(ollama_client: AsyncClient, modelo_embedding: str, tex
     except Exception as erro:
         raise AnaliseIndisponivel(
             "Não foi possível gerar o embedding com a IA no momento (confira se o modelo de "
-            "embeddings está baixado no Ollama)."
+            "embeddings ativo está disponível)."
         ) from erro

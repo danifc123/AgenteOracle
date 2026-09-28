@@ -327,7 +327,7 @@ export class ProvedoresLlm {
       return '';
     }
     const aviso = provedor.ativo
-      ? ' Ele está ativo agora — depois de apagado, o sistema volta a usar o Ollama padrão do .env.'
+      ? ' Ele está ativo agora — depois de apagado, o sistema volta a usar o modelo de IA padrão configurado.'
       : '';
     return `Apagar o provedor "${provedor.nome}"? Essa ação não pode ser desfeita.${aviso}`;
   });

@@ -71,12 +71,12 @@ class TestCustoEMoeda:
         assert custo is None
         assert moeda is None
 
-    def test_fallback_ollama_padrao_nunca_bate_com_cadastro(self):
-        # "Ollama (padrão)" não é uma linha do cadastro — nunca aparece no
-        # mapa (nome, modelo), então nunca tem custo estimado.
+    def test_fallback_modelo_padrao_nunca_bate_com_cadastro(self):
+        # "Modelo de IA (padrão)" não é uma linha do cadastro — nunca
+        # aparece no mapa (nome, modelo), então nunca tem custo estimado.
         mapa = {("ollama", "qwen2.5-coder:7b"): _provedor_llm()}
 
-        custo, moeda = _custo_e_moeda("Ollama (padrão)", "qwen2.5-coder:7b", 1000, 1000, mapa)
+        custo, moeda = _custo_e_moeda("Modelo de IA (padrão)", "qwen2.5-coder:7b", 1000, 1000, mapa)
 
         assert custo is None
         assert moeda is None

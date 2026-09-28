@@ -54,8 +54,8 @@ def _custo_e_moeda(
     provedor_nome: str, modelo: str, tokens_entrada: int, tokens_saida: int, cadastro_por_nome_modelo: dict
 ) -> tuple[float | None, str | None]:
     """`None` quando essa linha não bate com nenhum LLM cadastrado hoje —
-    chamada antiga, provedor removido do cadastro, ou o fallback "Ollama
-    (padrão)" (que nunca tem preço, por não ser um cadastro de verdade).
+    chamada antiga, provedor removido do cadastro, ou o fallback "Modelo
+    de IA (padrão)" (que nunca tem preço, por não ser um cadastro de verdade).
     Casa por (nome, modelo) porque é isso que fica gravado em cada
     chamada (ver `tools/ia/cliente_protegido.py::criar_cliente_protegido`)
     — não por id, pra não quebrar se o cadastro for editado depois."""

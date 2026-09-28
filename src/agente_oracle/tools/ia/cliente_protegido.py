@@ -47,7 +47,13 @@ from agente_oracle.tools.ia.saneamento import sanitizar_dado_sensivel, sanitizar
 # auditoria) tocam dado real do Oracle, ver docstring do módulo.
 _DOMINIOS_COM_CADASTRO: tuple[DominioIA, ...] = ("ti", "rh")
 
-_PROVEDOR_OLLAMA_PADRAO = "Ollama (padrão)"
+# Nome genérico de propósito — nunca aparece pro usuário como "Ollama"
+# especificamente: o motor por trás desse fallback É o `ollama.AsyncClient`
+# (ver `criar_cliente_protegido` abaixo), mas o rótulo mostrado em "Uso de
+# IA"/auditoria não deve amarrar o usuário a um produto específico — a
+# empresa pode trocar de modelo/vendor sem essa label ficar desatualizada
+# (pedido do Daniel, 2026-09-28).
+_PROVEDOR_PADRAO = "Modelo de IA (padrão)"
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +222,7 @@ def criar_cliente_protegido(
         host = ollama_host_do_dominio(settings, dominio)
         chave = ollama_api_key_do_dominio(settings, dominio)
         cliente_real = AsyncClient(host=host, headers={"Authorization": f"Bearer {chave}"} if chave else {})
-        provedor = _PROVEDOR_OLLAMA_PADRAO
+        provedor = _PROVEDOR_PADRAO
     else:
         cliente_real, host = construir_cliente_llm(ativo)
         provedor = ativo.nome

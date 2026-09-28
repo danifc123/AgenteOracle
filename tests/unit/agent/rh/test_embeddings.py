@@ -37,5 +37,5 @@ class TestGerarEmbedding:
     async def test_falha_generica_mantem_a_mensagem_de_sempre(self):
         cliente = _ClienteFake(levantar=ConnectionError("Ollama fora do ar"))
 
-        with pytest.raises(AnaliseIndisponivel, match="baixado no Ollama"):
+        with pytest.raises(AnaliseIndisponivel, match="embeddings ativo está disponível"):
             await gerar_embedding(cliente, "modelo-embed", "texto qualquer")

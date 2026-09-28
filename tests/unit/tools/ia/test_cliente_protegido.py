@@ -421,7 +421,7 @@ class TestCriarClienteProtegido:
         cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
 
         assert len(chamadas) == 1
-        assert cliente._provedor == mod._PROVEDOR_OLLAMA_PADRAO
+        assert cliente._provedor == mod._PROVEDOR_PADRAO
 
     def test_dominio_financeiro_nunca_consulta_o_cadastro_mesmo_com_algo_ativo(self, monkeypatch):
         provedor = _provedor_llm()
@@ -432,7 +432,7 @@ class TestCriarClienteProtegido:
         cliente = criar_cliente_protegido(Settings(), "financeiro", sanitizar=True, usuario_id="usuario-teste")
 
         assert len(chamadas) == 1  # Ollama do .env, não a OpenAI do cadastro
-        assert cliente._provedor == mod._PROVEDOR_OLLAMA_PADRAO
+        assert cliente._provedor == mod._PROVEDOR_PADRAO
 
     async def test_repassa_o_usuario_id_recebido_pra_auditoria(self, monkeypatch):
         _sem_cadastro_ativo(monkeypatch)

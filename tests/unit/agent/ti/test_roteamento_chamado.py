@@ -92,6 +92,37 @@ class TestClassificarCategoria:
         assert resultado.categoria_id == 2
         assert resultado.precisou_embedding is True
 
+    async def test_categoria_atual_errada_mas_mesma_area_ainda_assim_corrige(self, monkeypatch):
+        # Regressão de bug real achado pelo usuário (2026-09-28): usuário
+        # escolheu manualmente uma categoria errada que por coincidência já
+        # está na área certa (ex: marcou "Sharepoint" — infra — pra um
+        # chamado de impressora — também infra). A comparação antiga era
+        # só `escolhida.area == area_atual`, então esse caso nunca era
+        # corrigido — a área batia, "parecia" já estar certo. Usa um
+        # catálogo local (2 categorias, mesma área) só pra este teste, em
+        # vez do `_categorias_fake` compartilhado (1 categoria por área,
+        # não dava pra testar esse cenário).
+        categorias_locais = (
+            CategoriaGlpi(1, "cat infra A", "infra"),
+            CategoriaGlpi(4, "cat infra B", "infra"),
+        )
+        monkeypatch.setattr(mod.categorias, "CATEGORIAS_ATRIBUIVEIS", categorias_locais)
+        monkeypatch.setattr(mod.categorias, "AREA_POR_CATEGORIA_ID", {c.id: c.area for c in categorias_locais})
+        monkeypatch.setattr(mod, "_cache_embeddings_categorias", None)
+
+        def resolver(texto: str) -> list[float]:
+            vetores = {"cat infra A": [1.0, 0.0], "cat infra B": [0.0, 1.0]}
+            return vetores.get(texto, [0.0, 1.0])  # texto do chamado — mais parecido com "cat infra B"
+
+        cliente = _OllamaEmbedFake(resolver=resolver)
+        # Usuário escolheu a categoria 1 ("cat infra A") — errada.
+        resultado = await mod.classificar_categoria(
+            cliente, "modelo-embed", "titulo", "descricao", 1, usar_ia=True
+        )
+
+        assert resultado.area == "infra"  # área já estava certa
+        assert resultado.categoria_id == 4  # mas corrige pra categoria B mesmo assim
+
     async def test_sem_categoria_atual_e_ia_escolhe_uma_sempre_corrige(self):
         def resolver(texto: str) -> list[float]:
             if texto in _VETOR_POR_NOME:

@@ -86,7 +86,14 @@ async def classificar_categoria(
             area=area_atual or _AREA_PADRAO, categoria_id=None, precisou_embedding=True
         )
 
-    if escolhida.area == area_atual:
+    # Compara pela categoria exata, não só pela área: usuário pode ter
+    # escolhido manualmente uma categoria errada que por coincidência já
+    # está na área certa (ex: marcou "Sharepoint" — infra — pra um
+    # problema de impressora — também infra). Bug real achado pelo
+    # usuário, 2026-09-28: a comparação antiga era só `escolhida.area ==
+    # area_atual`, então esse caso nunca era corrigido — a área batia,
+    # então "parecia" já estar certo.
+    if escolhida.id == categoria_atual_id:
         return ResultadoClassificacao(area=area_atual, categoria_id=None, precisou_embedding=True)
     return ResultadoClassificacao(area=escolhida.area, categoria_id=escolhida.id, precisou_embedding=True)
 

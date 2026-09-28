@@ -574,10 +574,22 @@ def registrar(mcp) -> None:
         """Nomes pro badge "Com {técnico}" na tela de Auditoria — o roster
         de verdade (`tools/ti/tecnicos.py`), aberto pra qualquer um do
         módulo TI. Diferente de `/api/ti/tecnicos-glpi` (candidatos crus
-        do GLPI, admin-only, usado só no cadastro de usuário)."""
+        do GLPI, admin-only, usado só no cadastro de usuário). `usuario`
+        (login do AgenteOracle, não do GLPI) vai junto desde 2026-09-28 —
+        o front usa pra descobrir a `area` do técnico logado (comparando
+        com `sessao.usuario()`) e alimentar o filtro "Meus chamados": como
+        `tecnico_atribuido` só é preenchido no instante em que o chamado
+        vira `fila_atendimento` — status que `_precisa_atencao` já exclui
+        desta tela — filtrar por atribuição literal nunca mostraria nada;
+        a área é o critério que de fato aparece aqui."""
         return JSONResponse(
             [
-                {"identificador": tecnico.identificador, "nome": tecnico.nome}
+                {
+                    "identificador": tecnico.identificador,
+                    "nome": tecnico.nome,
+                    "usuario": tecnico.usuario,
+                    "area": tecnico.area,
+                }
                 for tecnico in todos_os_tecnicos()
             ],
             headers=CORS_HEADERS,

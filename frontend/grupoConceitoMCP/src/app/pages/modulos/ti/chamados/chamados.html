@@ -51,7 +51,21 @@
 }
 
 <section class="cartao-secao">
-  <h2>Chamados</h2>
+  <div class="cabecalho-secao">
+    <h2>Chamados</h2>
+    <app-botao
+      [variant]="somenteMeusChamados() ? 'primaria' : 'contorno'"
+      [disabled]="!minhaArea()"
+      [title]="
+        minhaArea()
+          ? 'Mostrar só os chamados da sua área'
+          : 'Sua conta não tem técnico do GLPI vinculado'
+      "
+      (clicked)="alternarMeusChamados()"
+    >
+      {{ somenteMeusChamados() ? 'Meus chamados ✓' : 'Meus chamados' }}
+    </app-botao>
+  </div>
   @if (carregando()) {
     <p class="carregando">Carregando...</p>
   } @else if (chamados().length === 0) {
@@ -67,6 +81,20 @@
         <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <p>Nenhum chamado cadastrado ainda.</p>
+    </app-estado-vazio>
+  } @else if (chamadosFiltrados().length === 0) {
+    <app-estado-vazio titulo="Nenhum chamado da sua área" variante="simples">
+      <svg
+        viewBox="0 0 24 24"
+        width="40"
+        height="40"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <p>Nenhum chamado da sua área no momento.</p>
     </app-estado-vazio>
   } @else {
     <div class="tabela-scroll">

@@ -27,12 +27,19 @@ export interface Chamado {
   solicitante: string;
   avaliacao_mensagem: string | null;
   criado_em: string;
+  area: 'infra' | 'sistemas' | 'processos';
   tecnico_atribuido: string | null;
 }
 
 interface TecnicoNome {
   identificador: string;
   nome: string;
+  // Login do AgenteOracle (não do GLPI) — usado só pra achar "qual técnico
+  // sou eu" no filtro "Meus chamados" (compara com `sessao.usuario()`).
+  usuario: string;
+  // Área do técnico logado — o filtro "Meus chamados" usa ISSO, não
+  // `tecnico_atribuido` (ver comentário de `minhaArea` mais abaixo).
+  area: 'infra' | 'sistemas' | 'processos';
 }
 
 /** Resposta de `/verificar` — o chamado normal, mais um aviso transiente
@@ -119,14 +126,31 @@ export class ChamadosTi {
   // fixo aqui — um técnico novo cadastrado aparece certo sem precisar
   // editar o frontend.
   private readonly nomesTecnicos = signal<Record<string, string>>({});
+  // Área do técnico ligado à conta logada — `null` quando a conta não tem
+  // técnico do GLPI vinculado (ex: `ti_admin` sem atendimento). Alimenta o
+  // filtro "Meus chamados". NÃO usa `tecnico_atribuido`: esse campo só é
+  // preenchido no instante em que o chamado vira `fila_atendimento` — e
+  // `_precisa_atencao` (backend) já exclui esse status desta tela, então
+  // filtrar por atribuição literal nunca mostraria nada; a área é o que
+  // de fato indica "isso tende a cair pra mim".
+  protected readonly minhaArea = signal<'infra' | 'sistemas' | 'processos' | null>(null);
+  protected readonly somenteMeusChamados = signal(false);
+
+  protected readonly chamadosFiltrados = computed(() => {
+    const area = this.minhaArea();
+    if (!this.somenteMeusChamados() || !area) {
+      return this.chamados();
+    }
+    return this.chamados().filter((chamado) => chamado.area === area);
+  });
 
   protected readonly paginaAtual = signal(1);
   protected readonly totalPaginas = computed(() =>
-    Math.max(1, Math.ceil(this.chamados().length / this.ITENS_POR_PAGINA)),
+    Math.max(1, Math.ceil(this.chamadosFiltrados().length / this.ITENS_POR_PAGINA)),
   );
   protected readonly chamadosDaPagina = computed(() => {
     const inicio = (this.paginaAtual() - 1) * this.ITENS_POR_PAGINA;
-    return this.chamados().slice(inicio, inicio + this.ITENS_POR_PAGINA);
+    return this.chamadosFiltrados().slice(inicio, inicio + this.ITENS_POR_PAGINA);
   });
 
   constructor() {
@@ -164,13 +188,24 @@ export class ChamadosTi {
         this.nomesTecnicos.set(
           Object.fromEntries(tecnicos.map((tecnico) => [tecnico.identificador, tecnico.nome])),
         );
+        this.minhaArea.set(
+          tecnicos.find((tecnico) => tecnico.usuario === this.sessao.usuario())?.area ?? null,
+        );
       },
-      error: () => this.nomesTecnicos.set({}),
+      error: () => {
+        this.nomesTecnicos.set({});
+        this.minhaArea.set(null);
+      },
     });
   }
 
   protected abrirDetalhe(chamado: Chamado): void {
     this.chamadoAberto.set(chamado);
+  }
+
+  protected alternarMeusChamados(): void {
+    this.somenteMeusChamados.update((atual) => !atual);
+    this.paginaAtual.set(1);
   }
 
   protected fecharDetalhe(): void {

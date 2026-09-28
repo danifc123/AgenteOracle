@@ -1,0 +1,5 @@
+@if (chamados().length === 0) {
+  <p class="widget-vazio">Nenhum chamado em aberto agora — tudo em dia.</p>
+} @else {
+  <app-grafico-rosca titulo="Por status" unidade="numero" [fatias]="fatias()" />
+}

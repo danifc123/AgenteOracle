@@ -19,45 +19,94 @@
   </div>
 </app-home-modulo>
 
-<section class="cartao-secao">
-  <h2>Chamados em aberto</h2>
-  @if (totalChamadosAbertos() === 0) {
-    <p class="lista-vazia">Nenhum chamado em aberto agora — tudo em dia.</p>
-  } @else {
-    <div class="grade-chamados">
-      <app-cartao-kpi rotulo="Em aberto agora" tipo="numero" [valor]="totalChamadosAbertos()" />
-      <app-grafico-rosca titulo="Por status" unidade="numero" [fatias]="fatiasChamadosPorStatus()" />
+<section class="secao-dashboard">
+  <div class="cabecalho-dashboard">
+    <h2>Indicadores</h2>
+    <div class="acoes-dashboard">
+      @if (modoEdicao()) {
+        <button type="button" class="botao-adicionar" (click)="catalogoAberto.set(true)">Adicionar indicador</button>
+      }
+      <button type="button" class="botao-personalizar" (click)="modoEdicao.set(!modoEdicao())">
+        {{ modoEdicao() ? 'Concluir' : 'Personalizar' }}
+      </button>
     </div>
+  </div>
+
+  @if (widgetsVisiveis().length === 0) {
+    <p class="lista-vazia">Nenhum indicador escolhido — clique em "Personalizar" pra adicionar.</p>
   }
+
+  <div
+    class="grade-widgets"
+    cdkDropList
+    cdkDropListOrientation="mixed"
+    [cdkDropListDisabled]="!modoEdicao()"
+    (cdkDropListDropped)="onSoltar($event)"
+  >
+    @for (item of widgetsVisiveis(); track item.id) {
+      <div class="widget-arrastavel" [class.widget-grande]="item.tamanho === 'grande'" cdkDrag>
+        @if (modoEdicao()) {
+          <div class="barra-edicao-widget">
+            <span class="alca-arrastar" cdkDragHandle aria-label="Arrastar pra reordenar">⠿⠿</span>
+            <span class="espacador-barra-edicao"></span>
+            <button
+              type="button"
+              class="botao-alternar-tamanho"
+              [attr.aria-label]="item.tamanho === 'grande' ? 'Diminuir indicador' : 'Aumentar indicador'"
+              [attr.title]="item.tamanho === 'grande' ? 'Diminuir' : 'Aumentar'"
+              (click)="alternarTamanho(item.id)"
+            >
+              {{ item.tamanho === 'grande' ? '⤡' : '⤢' }}
+            </button>
+            <button
+              type="button"
+              class="botao-remover-widget"
+              aria-label="Remover indicador"
+              title="Remover"
+              (click)="removerWidget(item.id)"
+            >
+              ×
+            </button>
+          </div>
+        }
+        @switch (item.id) {
+          @case ('chamados_total') {
+            <app-widget-chamados-total />
+          }
+          @case ('chamados_por_status') {
+            <app-widget-chamados-por-status />
+          }
+          @case ('ia_tokens_hoje') {
+            <app-widget-ia-tokens-hoje />
+          }
+          @case ('ia_chamados_avaliados') {
+            <app-widget-ia-chamados-avaliados />
+          }
+          @case ('ia_chamados_escalados') {
+            <app-widget-ia-chamados-escalados />
+          }
+          @case ('ia_categoria_nao_corrigida') {
+            <app-widget-ia-categoria-nao-corrigida />
+          }
+          @case ('seguranca_achados_ativos') {
+            <app-widget-seguranca-achados-ativos />
+          }
+        }
+      </div>
+    }
+  </div>
 </section>
 
-<ng-container *appSoDev>
-  <section class="cartao-secao">
-    <div class="cabecalho-ia">
-      <h2>Consumo de IA</h2>
-      <app-selo tom="neutro" texto="Só você vê isso" />
-    </div>
-    <div class="grade-ia">
-      <app-cartao-kpi rotulo="Tokens hoje" tipo="numero" [valor]="tokensHojeTotal()" />
-      @if (usoIa.chamadosIa(); as chamadosIa) {
-        <app-cartao-kpi rotulo="Chamados avaliados pela IA (30d)" tipo="numero" [valor]="chamadosIa.total_chamados" />
-        <app-cartao-kpi
-          rotulo="Escalados pra humano (30d)"
-          tipo="numero"
-          [valor]="chamadosIa.avaliados_insuficientes"
-        />
-        <app-cartao-kpi
-          rotulo="Categoria não corrigida automaticamente (30d)"
-          tipo="numero"
-          [valor]="chamadosIa.com_fallback_embedding"
-        />
+<app-dialog [aberto]="catalogoAberto()" titulo="Adicionar indicador" (fechar)="catalogoAberto.set(false)">
+  @if (catalogoDisponivel().length === 0) {
+    <p class="lista-vazia">Todos os indicadores disponíveis já estão na sua tela.</p>
+  } @else {
+    <div class="opcoes-catalogo">
+      @for (definicao of catalogoDisponivel(); track definicao.id) {
+        <button type="button" class="botao-opcao-catalogo" (click)="adicionarWidget(definicao.id)">
+          + {{ definicao.titulo }}
+        </button>
       }
     </div>
-    <a class="link-detalhe" routerLink="/ti/provedores">
-      Ver detalhes em IA
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M5 12h14M13 6l6 6-6 6" />
-      </svg>
-    </a>
-  </section>
-</ng-container>
+  }
+</app-dialog>

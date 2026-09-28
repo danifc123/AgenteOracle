@@ -11,7 +11,10 @@ mantém a que já estava lá.
 cadastro específico sem tocar no ponteiro de "ativo" — deixa confirmar
 que uma credencial recém-cadastrada funciona antes de considerar ativá-la,
 sem arriscar derrubar o provedor que o resto do TI/RH já está usando (só
-1 fica ativo por vez, ver `tools/ia/provedores_llm.py`)."""
+1 fica ativo por vez, ver `tools/ia/provedores_llm.py`). Passa pelo mesmo
+`ClienteIAProtegido` de qualquer chamada real (`dominio="ti"`) — vira
+linha em `auditoria_ia_externa` como qualquer outra, aparece em "Detalhe
+do consumo"."""
 
 from decimal import Decimal, InvalidOperation
 
@@ -19,6 +22,7 @@ from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_desenvolvedor
 from agente_oracle.server.cors import CORS_HEADERS
@@ -237,12 +241,16 @@ def _ativar(id_provedor_bruto: str) -> Response:
     return _listar()
 
 
-async def _testar(id_provedor_bruto: str) -> Response:
+async def _testar(id_provedor_bruto: str, usuario_id: str) -> Response:
     """Dispara UMA chamada real e barata contra ESSE provedor
     especificamente — nunca mexe no ponteiro de ativo (`configuracoes_provedor`).
     Deixa confirmar que uma credencial recém-cadastrada funciona de
     verdade sem precisar ativar (e arriscar derrubar o provedor que o
-    resto do TI/RH já está usando)."""
+    resto do TI/RH já está usando). Passa pelo mesmo `ClienteIAProtegido`
+    de qualquer chamada real do TI (achado do usuário, 2026-09-28: era a
+    única chamada de IA do TI que não virava linha em
+    `auditoria_ia_externa`) — a intenção é ter todo gasto registrado,
+    então até essa chamadinha de teste aparece em "Detalhe do consumo"."""
     try:
         id_provedor = int(id_provedor_bruto)
     except ValueError:
@@ -252,12 +260,15 @@ async def _testar(id_provedor_bruto: str) -> Response:
     if provedor is None:
         return _erro("Provedor não encontrado.", 404)
 
-    cliente_real, _host = cliente_protegido.construir_cliente_llm(provedor)
+    cliente_real, host = cliente_protegido.construir_cliente_llm(provedor)
+    cliente = cliente_protegido.ClienteIAProtegido(
+        cliente_real, "ti", host, False, settings.teto_diario_ia_externa, provedor.nome, usuario_id
+    )
     try:
         if "embedding" in provedor.capacidades:
-            await cliente_real.embed(input="teste de conexão", model=provedor.modelo)
+            await cliente.embed(input="teste de conexão", model=provedor.modelo)
         else:
-            await cliente_real.chat(messages=[{"role": "user", "content": "oi"}], model=provedor.modelo)
+            await cliente.chat(messages=[{"role": "user", "content": "oi"}], model=provedor.modelo)
     except Exception as erro:
         return _erro(f"Falha ao testar a conexão: {erro}", 400)
     return JSONResponse({"ok": True}, headers=CORS_HEADERS)
@@ -296,4 +307,4 @@ def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/provedores-llm/{id}/testar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
     async def provedor_llm_testar_route(request: Request, usuario: dict) -> Response:
-        return await _testar(request.path_params["id"])
+        return await _testar(request.path_params["id"], usuario["sub"])

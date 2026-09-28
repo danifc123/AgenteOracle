@@ -411,17 +411,29 @@ class TestAtivar:
 
 
 class TestTestar:
+    """A chamada de teste passa pelo `ClienteIAProtegido` de verdade desde
+    2026-09-28 (achado do próprio usuário: "testar conexão" era a única
+    chamada de IA do TI que não virava linha em `auditoria_ia_externa`) —
+    por isso quase todo teste aqui mocka `auditoria_externa.registrar`/
+    `contagem_hoje`, mesmo padrão de `test_chamados.py::TestClienteProtegidoDeVerdade`,
+    pra não sujar o Postgres real com ruído de teste."""
+
+    def _sem_efeito_na_auditoria_real(self, monkeypatch):
+        monkeypatch.setattr(mod.cliente_protegido.auditoria_externa, "registrar", lambda *_args: None)
+        monkeypatch.setattr(mod.cliente_protegido.auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+
     async def test_id_nao_numerico_devolve_404(self):
-        assert (await mod._testar("abc")).status_code == 404
+        assert (await mod._testar("abc", "42")).status_code == 404
 
     async def test_provedor_inexistente_devolve_404(self, monkeypatch):
         monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: None)
 
-        assert (await mod._testar("999")).status_code == 404
+        assert (await mod._testar("999", "42")).status_code == 404
 
     async def test_capacidade_embedding_chama_embed_nao_chat(self, monkeypatch):
         provedor = _provedor_llm(capacidades=["embedding"], modelo="cohere.embed-v4.0")
         monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        self._sem_efeito_na_auditoria_real(monkeypatch)
         chamadas_embed = []
         chamadas_chat = []
 
@@ -434,7 +446,7 @@ class TestTestar:
 
         monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteFake(), "host"))
 
-        resposta = await mod._testar("1")
+        resposta = await mod._testar("1", "42")
 
         assert resposta.status_code == 200
         assert len(chamadas_embed) == 1
@@ -444,6 +456,7 @@ class TestTestar:
     async def test_capacidade_chat_chama_chat_nao_embed(self, monkeypatch):
         provedor = _provedor_llm(capacidades=["chat"])
         monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        self._sem_efeito_na_auditoria_real(monkeypatch)
         chamadas_embed = []
         chamadas_chat = []
 
@@ -456,7 +469,7 @@ class TestTestar:
 
         monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteFake(), "host"))
 
-        resposta = await mod._testar("1")
+        resposta = await mod._testar("1", "42")
 
         assert resposta.status_code == 200
         assert len(chamadas_chat) == 1
@@ -465,6 +478,7 @@ class TestTestar:
     async def test_falha_na_chamada_devolve_400_com_a_mensagem(self, monkeypatch):
         provedor = _provedor_llm(capacidades=["embedding"])
         monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        self._sem_efeito_na_auditoria_real(monkeypatch)
 
         class _ClienteQueFalha:
             async def embed(self, **kwargs):
@@ -474,13 +488,14 @@ class TestTestar:
             mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteQueFalha(), "host")
         )
 
-        resposta = await mod._testar("1")
+        resposta = await mod._testar("1", "42")
 
         assert resposta.status_code == 400
 
     async def test_nao_mexe_no_ponteiro_de_ativo(self, monkeypatch):
         provedor = _provedor_llm(capacidades=["embedding"])
         monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        self._sem_efeito_na_auditoria_real(monkeypatch)
 
         class _ClienteFake:
             async def embed(self, **kwargs):
@@ -492,6 +507,42 @@ class TestTestar:
             mod.configuracoes_provedor, "definir_provedor_llm_ativo_id", lambda v: chamou_definir.append(v)
         )
 
-        await mod._testar("1")
+        await mod._testar("1", "42")
 
         assert chamou_definir == []
+
+    async def test_chamada_bem_sucedida_vira_linha_de_auditoria(self, monkeypatch):
+        """A garantia central deste botão desde 2026-09-28: um teste de
+        conexão bem-sucedido tem que aparecer em "Detalhe do consumo" —
+        mesma auditoria de qualquer chamada real do TI, não um caminho à
+        parte."""
+        provedor = _provedor_llm(id=7, nome="OCI Generative AI — Cohere Embed v4", capacidades=["embedding"])
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        monkeypatch.setattr(mod.cliente_protegido.auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+
+        class _RespostaFake:
+            prompt_eval_count = 5
+
+        class _ClienteFake:
+            async def embed(self, **kwargs):
+                return _RespostaFake()
+
+        monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteFake(), "host-x"))
+        registros = []
+        monkeypatch.setattr(
+            mod.cliente_protegido.auditoria_externa,
+            "registrar",
+            lambda *args: registros.append(args),
+        )
+
+        resposta = await mod._testar("7", "usuario-42")
+
+        assert resposta.status_code == 200
+        assert len(registros) == 1
+        dominio, host, _texto, provedor_nome, modelo, tokens_entrada, _saida, _raciocinio, usuario_id = registros[0]
+        assert dominio == "ti"
+        assert host == "host-x"
+        assert provedor_nome == "OCI Generative AI — Cohere Embed v4"
+        assert modelo == provedor.modelo
+        assert tokens_entrada == 5
+        assert usuario_id == "usuario-42"

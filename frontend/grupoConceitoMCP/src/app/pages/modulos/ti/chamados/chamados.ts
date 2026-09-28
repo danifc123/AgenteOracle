@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
@@ -12,9 +12,7 @@ import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/sau
 import { Selo } from '../../../../componentes/selo/selo';
 import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
-import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { Sessao } from '../../../../servicos/sessao/sessao';
-import { Toasts } from '../../../../servicos/toasts/toasts';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -51,13 +49,6 @@ interface TecnicoNome {
   area: 'infra' | 'sistemas' | 'processos';
 }
 
-/** Resposta de `/verificar` — o chamado normal, mais um aviso transiente
- * sobre ESTE processamento (não um atributo do chamado em si, por isso
- * fora de `Chamado`). Ver `server/ti/chamados.py::chamado_verificar_route`. */
-interface RespostaVerificarChamado extends Chamado {
-  embedding_indisponivel: boolean;
-}
-
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
  * Item "Service Desk IA" da planilha de demandas — integração real com o
@@ -69,19 +60,24 @@ interface RespostaVerificarChamado extends Chamado {
  * resposta nova do solicitante (não gasta IA à toa num chamado parado).
  * Se a IA insistir que falta informação numa 2ª avaliação seguida, o
  * chamado é escalado pra um técnico humano (`tecnicoEscalado()` mostra
- * isso na tela — "Aguardando resposta" vira "Com {técnico}"). O botão
- * "Verificar" por linha força uma reavaliação na hora, sem esperar o
- * poller.
+ * isso na tela — "Aguardando resposta" vira "Com {técnico}").
  *
  * A engrenagem no cabeçalho (só desenvolvedor) abre as configurações da Auditoria (`ConfiguracoesChamados`).
  *
  * Sem botão de "reportar ao usuário" de propósito: o Followup que a IA
  * posta ao marcar `aguardando_usuario` já dispara a notificação nativa
  * do GLPI pro solicitante (mecanismo padrão dele pra mensagem em
- * chamado) — nenhum aviso extra é necessário da nossa parte. A tela em
- * si só carrega a lista uma vez, ao abrir — não se atualiza sozinha
- * enquanto o poller processa em background; recarregar a página mostra
- * o estado mais recente. */
+ * chamado) — nenhum aviso extra é necessário da nossa parte.
+ *
+ * Sem botão de "Verificar" individual de propósito (removido 2026-09-28):
+ * a régua de quando escalar pra um técnico (`_LIMITE_RODADAS_ESCLARECIMENTO`
+ * rodadas REAIS do solicitante, não reavaliações manuais — ver
+ * `server/ti/chamados.py::processar_chamado_novo`) nunca é alcançada só de
+ * clicar o botão repetidas vezes, então ele só empilhava Followups
+ * repetidos no GLPI de verdade sem nunca escalar — confundia mais do que
+ * ajudava. A tela em si só carrega a lista uma vez, ao abrir — não se
+ * atualiza sozinha enquanto o poller processa em background; recarregar
+ * a página mostra o estado mais recente. */
 @Component({
   selector: 'app-chamados-ti',
   imports: [
@@ -102,7 +98,6 @@ interface RespostaVerificarChamado extends Chamado {
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
-  private readonly toasts = inject(Toasts);
   protected readonly sessao = inject(Sessao);
   private readonly ITENS_POR_PAGINA = 10;
 
@@ -115,10 +110,6 @@ export class ChamadosTi {
 
   protected readonly chamados = signal<Chamado[]>([]);
   protected readonly carregando = signal(true);
-  // id do chamado sendo verificado individualmente — só aquele botão da
-  // linha mostra loading, o resto da tabela continua clicável.
-  protected readonly verificandoId = signal<number | null>(null);
-  protected readonly erro = signal<string | null>(null);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly configuracoesAbertas = signal(false);
   // Avisa de relance (só desenvolvedor) que há amostragem ativa.
@@ -239,55 +230,5 @@ export class ChamadosTi {
     return chamado.tecnico_atribuido
       ? (this.nomesTecnicos()[chamado.tecnico_atribuido] ?? null)
       : null;
-  }
-
-  protected verificarChamado(chamado: Chamado): void {
-    if (this.verificandoId() !== null) {
-      return;
-    }
-
-    this.verificandoId.set(chamado.id);
-    this.erro.set(null);
-
-    this.http
-      .post<RespostaVerificarChamado>(`${MCP_API_BASE_URL}/api/ti/chamados/${chamado.id}/verificar`, {})
-      .subscribe({
-        next: (atualizado) => {
-          // "fila_atendimento" já foi entregue ao GLPI — some da lista, mesmo
-          // critério de `_precisa_atencao` no backend.
-          if (atualizado.status === 'fila_atendimento') {
-            this.chamados.update((atual) => atual.filter((item) => item.id !== atualizado.id));
-            this.ajustarPaginaAtual();
-          } else {
-            this.chamados.update((atual) =>
-              atual.map((item) => (item.id === atualizado.id ? atualizado : item)),
-            );
-          }
-          if (this.chamadoAberto()?.id === atualizado.id) {
-            this.chamadoAberto.set(atualizado.status === 'fila_atendimento' ? null : atualizado);
-          }
-          if (atualizado.embedding_indisponivel) {
-            // Neutro de propósito: não sugere trocar de provedor — essa
-            // decisão é da empresa, o aviso só informa a limitação.
-            this.toasts.aviso(
-              'A categoria não foi corrigida automaticamente: o provedor de IA ativo não ' +
-                'suporta essa função. A triagem em si continua funcionando normal.',
-            );
-          }
-          this.verificandoId.set(null);
-        },
-        error: (erro: HttpErrorResponse) => {
-          this.erro.set(mensagemErro(erro, 'Não foi possível verificar este chamado.'));
-          this.verificandoId.set(null);
-        },
-      });
-  }
-
-  // Chamado removido da lista (foi pra fila) pode esvaziar a última
-  // página — sem isso, ficaria preso numa página vazia até recarregar.
-  private ajustarPaginaAtual(): void {
-    if (this.paginaAtual() > this.totalPaginas()) {
-      this.paginaAtual.set(this.totalPaginas());
-    }
   }
 }

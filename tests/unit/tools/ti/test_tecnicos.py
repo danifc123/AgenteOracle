@@ -66,9 +66,9 @@ class TestEscolherTecnico:
 
     def test_area_sem_ninguem_levanta_sem_tecnico_na_area(self, monkeypatch):
         # Antes disso, `min()` de uma lista vazia estourava `ValueError` cru
-        # — virava 500 sem mensagem útil em `chamado_verificar_route`. Mais
-        # raro agora que técnico é obrigatório pra papel de TI, mas ainda
-        # possível (ex: único técnico de uma área foi apagado).
+        # — virava 500 sem mensagem útil numa rota HTTP. Mais raro agora
+        # que técnico é obrigatório pra papel de TI, mas ainda possível
+        # (ex: único técnico de uma área foi apagado).
         _com_roster(monkeypatch, [_linha("Infra 1", "infra1", "infra")])
 
         with pytest.raises(SemTecnicoNaArea) as excinfo:

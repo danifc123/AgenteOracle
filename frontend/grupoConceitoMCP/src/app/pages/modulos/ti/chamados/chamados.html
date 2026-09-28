@@ -46,10 +46,6 @@
   }
 </ng-container>
 
-@if (erro()) {
-  <p class="erro">{{ erro() }}</p>
-}
-
 <section class="cartao-secao">
   <div class="cabecalho-secao">
     <h2>Chamados</h2>
@@ -123,15 +119,6 @@
               </td>
               <td class="coluna-acao">
                 <div class="acoes-linha">
-                  <app-botao
-                    variant="contorno"
-                    [loading]="verificandoId() === chamado.id"
-                    [disabled]="verificandoId() !== null && verificandoId() !== chamado.id"
-                    loadingText="Verificando..."
-                    (clicked)="verificarChamado(chamado)"
-                  >
-                    Verificar
-                  </app-botao>
                   <app-botao variant="contorno" (clicked)="abrirDetalhe(chamado)"
                     >Ver chamado</app-botao
                   >

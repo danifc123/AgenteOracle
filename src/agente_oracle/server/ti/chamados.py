@@ -106,10 +106,9 @@ from agente_oracle.tools.ti.glpi import (
     Chamado,
     ClienteGLPI,
     Followup,
-    chamado_e_alheio,
     criar_cliente,
 )
-from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico, escolher_tecnico, todos_os_tecnicos
+from agente_oracle.tools.ti.tecnicos import Tecnico, escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -634,80 +633,6 @@ def registrar(mcp) -> None:
         fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
         return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/ti/chamados/{id}/verificar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
-    async def chamado_verificar_route(request: Request, usuario: dict) -> Response:
-        """Mesma triagem de `chamados_verificar_route`, só que pra 1
-        chamado específico — dá suporte a testar manualmente contra o GLPI
-        real sem esperar o lote inteiro processar, ou sem depender do
-        chamado ainda estar `novo` (ao contrário do lote, roda de novo
-        mesmo em `aguardando_usuario`/`fila_atendimento` — útil pra
-        reavaliar um chamado depois de ajustar algo manualmente durante
-        teste). Mesma regra de rodadas de `processar_chamado_novo`: clicar
-        "Verificar" de novo num chamado que já esgotou as tentativas de
-        esclarecimento escala pro técnico em vez de gerar outra pergunta.
-        Recusa (409) chamado "alheio" (`chamado_e_alheio`) — já
-        gerenciado fora do nosso sistema, ver docstring dele."""
-        try:
-            chamado_id = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        chamado = await _cliente.buscar(chamado_id)
-        if chamado is None:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        if chamado_e_alheio(chamado, settings.glpi_conta_ia_id):
-            return JSONResponse(
-                {"erro": "Chamado gerenciado fora da Auditoria (já tem técnico atribuído no GLPI)."},
-                status_code=409,
-                headers=CORS_HEADERS,
-            )
-
-        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=usuario["sub"])
-        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
-        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
-        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
-
-        inicio = time.monotonic()
-        try:
-            resultado = await processar_chamado_novo(
-                _cliente,
-                ollama_client,
-                modelo_ia_ativo(settings, "ti"),
-                chamado,
-                cargas,
-                usar_ia,
-                embedding_client=embedding_client,
-            )
-        except SemTecnicoNaArea as erro:
-            rotulo_area = _ROTULOS_AREA.get(erro.area, erro.area)
-            return JSONResponse(
-                {
-                    "erro": f'Nenhum técnico cadastrado pra área "{rotulo_area}" — cadastre um técnico '
-                    "dessa área em Usuários antes de verificar este chamado de novo."
-                },
-                status_code=422,
-                headers=CORS_HEADERS,
-            )
-        duracao_ms = round((time.monotonic() - inicio) * 1000)
-        await to_thread.run_sync(
-            uso_ia_chamados.registrar,
-            chamado.id,
-            resultado.avaliacao_suficiente,
-            resultado.precisou_embedding,
-            duracao_ms,
-        )
-
-        chamado_final = await _cliente.buscar(chamado_id)
-        if chamado_final is None:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-        # `embedding_indisponivel` é transiente (sobre ESTE processamento,
-        # não um atributo do chamado) — só entra aqui, na rota manual, não
-        # em `_chamado_para_json` (usado também pra listar vários chamados).
-        corpo_resposta = {**_chamado_para_json(chamado_final), "embedding_indisponivel": resultado.embedding_indisponivel}
-        return JSONResponse(corpo_resposta, headers=CORS_HEADERS)
-
     @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def chamado_documento_route(request: Request, usuario: dict) -> Response:
@@ -854,6 +779,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
                 chamado,
                 cargas,
                 usar_ia,
+                embedding_client=embedding_client,
             )
         except Exception:
             _logger.exception("Falha processando o chamado %s", chamado.id)

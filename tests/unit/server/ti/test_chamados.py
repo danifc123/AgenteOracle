@@ -491,9 +491,9 @@ class TestProcessarChamadoNovo:
 
     async def test_chamado_suficiente_sem_tecnico_na_area_levanta_sem_tecnico_na_area(self, monkeypatch):
         # Antes disso, `escolher_tecnico` estourava `ValueError` cru — sem
-        # try/except em `chamado_verificar_route`, virava 500 sem mensagem
-        # útil (visto ao vivo). Sobrescreve a fixture `_roster_de_tecnicos_
-        # para_teste` (que sempre tem alguém em "infra") só pra este teste.
+        # try/except numa rota HTTP, virava 500 sem mensagem útil (visto ao
+        # vivo). Sobrescreve a fixture `_roster_de_tecnicos_para_teste`
+        # (que sempre tem alguém em "infra") só pra este teste.
         monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: [])
         cliente = _ClienteGLPIFake([_chamado(categoria_id=1)])
         ollama = _OllamaClienteFake(suficiente=True)

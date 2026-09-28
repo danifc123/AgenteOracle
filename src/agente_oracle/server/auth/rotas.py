@@ -10,9 +10,11 @@ from agente_oracle.server.cors import CORS_HEADERS, resposta_preflight
 from agente_oracle.tools.auth import eventos_seguranca, papeis, restricoes_filial
 from agente_oracle.tools.auth.token import gerar_token
 from agente_oracle.tools.auth.usuarios import (
+    EmailJaUsado,
     UsuarioJaExiste,
     alterar_senha,
     atualizar_perfil,
+    atualizar_usuario,
     autenticar,
     criar_usuario,
     deletar_usuario,
@@ -20,6 +22,7 @@ from agente_oracle.tools.auth.usuarios import (
     esta_bloqueado,
     listar_usuarios,
     registrar_tentativa_falha,
+    resolver_login,
     senha_fraca,
 )
 from agente_oracle.tools.ti.glpi import criar_cliente
@@ -48,17 +51,26 @@ def _resposta_limite_excedido(espera: int, mensagem: str) -> JSONResponse:
     )
 
 
-def _autenticar_e_responder(usuario: str, senha: str) -> Response:
+def _autenticar_e_responder(entrada: str, senha: str) -> Response:
     """Parte síncrona do login (checagem de bloqueio, rate limit, consulta de
     credenciais no banco, registro de evento de segurança) — chamada via
     `anyio.to_thread.run_sync` por `login_route` pra não travar o event loop
     enquanto consulta o Postgres (mesmo motivo documentado em
     `server/auth/decorador_rota.py::rota_protegida`; login não passa por esse
-    decorator, então recebe o offload na mão aqui)."""
+    decorator, então recebe o offload na mão aqui). `entrada` pode ser o
+    login OU o e-mail cadastrado (pedido do usuário, 2026-09-28) —
+    `resolver_login` resolve pro login de verdade ANTES de qualquer outra
+    checagem, pra bloqueio/rate-limit/tentativa-falha ficarem sempre
+    amarrados na MESMA conta, não importa qual identificador foi digitado.
+    Sem bater com nenhuma conta, `usuario` fica `None` e o rate-limit cai
+    de volta na string crua digitada — mesmo comportamento de sempre pra
+    login inexistente."""
+    usuario = resolver_login(entrada) if entrada else None
+
     if usuario and esta_bloqueado(usuario):
         return JSONResponse({"erro": _MENSAGEM_BLOQUEADO}, status_code=403, headers=CORS_HEADERS)
 
-    chave_bloqueio = usuario or "desconhecido"
+    chave_bloqueio = usuario or entrada or "desconhecido"
     espera = segundos_ate_liberar(chave_bloqueio)
     if espera is not None:
         return _resposta_limite_excedido(
@@ -174,6 +186,103 @@ def _filiais_bloqueadas(
     return JSONResponse({"filiais": filiais}, headers=CORS_HEADERS)
 
 
+async def _validar_papeis_e_glpi(
+    papeis_de_quem_altera: list[str], papeis_pedidos: list[str], tecnico_glpi_id: str | None, email: str
+) -> tuple[str | None, str | None] | JSONResponse:
+    """Valida os papéis pedidos (existem, e quem está criando/editando tem
+    permissão de atribuir cada um) e, se um técnico do GLPI foi vinculado,
+    resolve `area_ti`/confere `email` contra o GLPI de verdade — mesma
+    regra pro cadastro (POST) e a edição (PATCH) de `/api/auth/usuarios`,
+    daí viver numa função à parte em vez de duplicada nas duas rotas.
+    Devolve `(area_ti, email)` prontos pra gravar, ou a `JSONResponse` de
+    erro já pronta pra devolver direto pra quem chamou."""
+    slugs_validos = {papel.slug for papel in papeis.PAPEIS_DISPONIVEIS}
+    if not set(papeis_pedidos).issubset(slugs_validos):
+        return JSONResponse({"erro": "Papel inválido."}, status_code=400, headers=CORS_HEADERS)
+
+    if not all(papeis.pode_atribuir_papel(papeis_de_quem_altera, papel) for papel in papeis_pedidos):
+        return JSONResponse(
+            {"erro": "Você não tem permissão pra atribuir um dos papéis selecionados."},
+            status_code=403,
+            headers=CORS_HEADERS,
+        )
+
+    # Papel de TI (qualquer um, `ti_admin` incluso) exige vínculo com um
+    # técnico real do GLPI — sem isso, alguém de outro departamento
+    # (qualquer administrador de módulo pode cadastrar/editar usuário, não
+    # só TI) conseguiria criar/manter um login de TI sem nenhum registro
+    # correspondente no GLPI, pulando toda validação abaixo.
+    papeis_ti_selecionados = set(papeis_pedidos) & papeis.PAPEIS_TI_EXIGEM_TECNICO_GLPI
+    if papeis_ti_selecionados and tecnico_glpi_id is None:
+        return JSONResponse(
+            {"erro": "Papel de TI exige um técnico do GLPI vinculado."}, status_code=400, headers=CORS_HEADERS
+        )
+
+    if tecnico_glpi_id is None:
+        # `email` passa direto, sem mexer — mesmo sem técnico vinculado, um
+        # e-mail pode ter sido informado pra essa conta (agora também serve
+        # pra entrar, `resolver_login`) e não tem nada de GLPI pra validar
+        # aqui. Só `area_ti` fica `None` (não tem como resolver sem
+        # técnico).
+        return None, email
+
+    # Área não é escolhida na mão — vem do grupo técnico manual da pessoa
+    # no GLPI (ver `ClienteGLPIReal.buscar_area_do_tecnico`).
+    area_ti = await criar_cliente(settings).buscar_area_do_tecnico(tecnico_glpi_id)
+    if area_ti is None:
+        return JSONResponse(
+            {
+                "erro": "Não foi possível determinar a área desse técnico no GLPI — "
+                "confira se ele tem um grupo técnico específico atribuído."
+            },
+            status_code=400,
+            headers=CORS_HEADERS,
+        )
+
+    # E-mail confirma que quem está sendo vinculado é de fato a pessoa que
+    # quem cadastra/edita pensa que é — a lista de técnicos
+    # (`/api/ti/tecnicos-glpi`) é só nome, e nome sozinho não distingue duas
+    # pessoas parecidas (ex: dois "Carlos").
+    if not email:
+        return JSONResponse(
+            {"erro": "Informe o e-mail dessa pessoa pra confirmar que é o técnico certo do GLPI."},
+            status_code=400,
+            headers=CORS_HEADERS,
+        )
+
+    email_glpi = await criar_cliente(settings).buscar_email_do_tecnico(tecnico_glpi_id)
+    if email_glpi is None or email_glpi.strip().lower() != email.lower():
+        return JSONResponse(
+            {
+                "erro": "O e-mail informado não bate com o e-mail desse técnico no GLPI — "
+                "confira se escolheu a pessoa certa na lista."
+            },
+            status_code=400,
+            headers=CORS_HEADERS,
+        )
+
+    # Papel escolhido na tela e área descoberta no GLPI são independentes
+    # por padrão — sem essa checagem, dá pra cadastrar/manter um técnico de
+    # "sistemas" com papel "Infraestrutura de TI" sem ninguém perceber
+    # (aconteceu de verdade: usuário "Carlos Teste", área real "sistemas",
+    # papel escolhido "ti_infraestrutura"). `ti_admin` fica isento — acesso
+    # geral de TI, não amarrado a uma área específica.
+    if "ti_admin" not in papeis_pedidos:
+        papel_area = papeis.papel_da_area(area_ti)
+        if papel_area is not None and papel_area.slug not in papeis_pedidos:
+            return JSONResponse(
+                {
+                    "erro": f'Este técnico pertence à área "{papel_area.rotulo}" no GLPI — '
+                    f'selecione o papel "{papel_area.rotulo}" (ou "Administrador de TI") '
+                    "pra continuar."
+                },
+                status_code=400,
+                headers=CORS_HEADERS,
+            )
+
+    return area_ti, email
+
+
 def _criar_usuario_e_responder(
     usuario_logado: dict,
     usuario: str,
@@ -194,7 +303,7 @@ def _criar_usuario_e_responder(
             area_ti=area_ti,
             email=email,
         )
-    except UsuarioJaExiste as erro:
+    except (UsuarioJaExiste, EmailJaUsado) as erro:
         return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
 
     eventos_seguranca.registrar(
@@ -232,30 +341,88 @@ def registrar(mcp) -> None:
         corpo = await request.json()
         return await to_thread.run_sync(_alterar_senha, usuario, chave_rate_limit, corpo)
 
-    @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "OPTIONS"])
-    @rota_protegida("DELETE, OPTIONS", exigir=exigir_administrador)
-    def apagar_usuario_route(request: Request, usuario: dict) -> Response:
+    @mcp.custom_route("/api/auth/usuarios/{id}", methods=["DELETE", "PATCH", "OPTIONS"])
+    @rota_protegida("DELETE, PATCH, OPTIONS", exigir=exigir_administrador)
+    async def usuario_detalhe_route(request: Request, usuario: dict) -> Response:
         """Endpoint HTTP usado pela tela de administração de usuários pra
-        apagar um usuário — restrito a administradores."""
+        apagar (DELETE) ou editar (PATCH) um usuário já existente — restrito
+        a administradores. PATCH aceita os mesmos campos do cadastro (POST
+        `/api/auth/usuarios`) menos o login, que não muda depois de criado
+        (é referência em sessão/trilha de auditoria) — `senha` é o único
+        campo opcional (vazio mantém a atual). Reaproveita
+        `_validar_papeis_e_glpi`, a mesma checagem de papel/GLPI do
+        cadastro."""
         id_usuario = request.path_params["id"]
-        if id_usuario == usuario.get("sub"):
-            return JSONResponse(
-                {"erro": "Você não pode apagar o seu próprio usuário."}, status_code=400, headers=CORS_HEADERS
+
+        if request.method == "DELETE":
+            if id_usuario == usuario.get("sub"):
+                return JSONResponse(
+                    {"erro": "Você não pode apagar o seu próprio usuário."},
+                    status_code=400,
+                    headers=CORS_HEADERS,
+                )
+
+            try:
+                id_numerico = int(id_usuario)
+            except ValueError:
+                return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+            usuario_apagado = await to_thread.run_sync(deletar_usuario, id_numerico)
+            if usuario_apagado is None:
+                return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
+
+            eventos_seguranca.registrar(
+                "usuario_apagado", usuario_afetado=usuario_apagado, realizado_por=usuario["usuario"]
             )
+            return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
         try:
             id_numerico = int(id_usuario)
         except ValueError:
             return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
 
-        usuario_apagado = deletar_usuario(id_numerico)
-        if usuario_apagado is None:
+        corpo = await request.json()
+        nome = str(corpo.get("nome", "")).strip()
+        papeis_pedidos = [str(papel).strip() for papel in corpo.get("papeis", []) if str(papel).strip()]
+        tecnico_glpi_id_bruto = corpo.get("tecnico_glpi_id") or None
+        tecnico_glpi_id = str(tecnico_glpi_id_bruto).strip() if tecnico_glpi_id_bruto else None
+        email = str(corpo.get("email", "")).strip()
+        senha = str(corpo.get("senha", "")).strip()
+
+        if not nome or not papeis_pedidos:
+            return JSONResponse(
+                {"erro": "Preencha nome e ao menos um papel."}, status_code=400, headers=CORS_HEADERS
+            )
+
+        if senha:
+            erro_senha = senha_fraca(senha)
+            if erro_senha:
+                return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
+
+        resultado = await _validar_papeis_e_glpi(usuario.get("papeis", []), papeis_pedidos, tecnico_glpi_id, email)
+        if isinstance(resultado, JSONResponse):
+            return resultado
+        area_ti, email = resultado
+
+        try:
+            usuario_atualizado = await to_thread.run_sync(
+                atualizar_usuario, id_numerico, nome, papeis_pedidos, tecnico_glpi_id, area_ti, email, senha or None
+            )
+        except EmailJaUsado as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+        if usuario_atualizado is None:
             return JSONResponse({"erro": "Usuário não encontrado."}, status_code=404, headers=CORS_HEADERS)
 
         eventos_seguranca.registrar(
-            "usuario_apagado", usuario_afetado=usuario_apagado, realizado_por=usuario["usuario"]
+            "usuario_editado",
+            usuario_afetado=usuario_atualizado["usuario"],
+            realizado_por=usuario["usuario"],
+            detalhes={"papeis": papeis_pedidos},
         )
-        return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+        return JSONResponse(
+            {chave: valor for chave, valor in usuario_atualizado.items() if chave != "senha_hash"},
+            headers=CORS_HEADERS,
+        )
 
     @mcp.custom_route("/api/auth/perfil", methods=["PATCH", "OPTIONS"])
     @rota_protegida("PATCH, OPTIONS")
@@ -331,14 +498,18 @@ def registrar(mcp) -> None:
         do corpo é I/O assíncrono de verdade (`request.json()`) — o resto
         (checagem de bloqueio, rate limit, consulta de credenciais) é
         trabalho síncrono contra o Postgres, delegado a `_autenticar_e_responder`
-        rodando em thread separada pra não travar o event loop."""
+        rodando em thread separada pra não travar o event loop. O campo
+        `usuario` do corpo aceita tanto o login quanto o e-mail cadastrado
+        (`resolver_login`, dentro de `_autenticar_e_responder`) — nome do
+        campo mantido por compatibilidade com o corpo que o frontend já
+        manda."""
         if request.method == "OPTIONS":
             return resposta_preflight()
 
         corpo = await request.json()
-        usuario = str(corpo.get("usuario", "")).strip()
+        entrada = str(corpo.get("usuario", "")).strip()
         senha = str(corpo.get("senha", ""))
-        return await to_thread.run_sync(_autenticar_e_responder, usuario, senha)
+        return await to_thread.run_sync(_autenticar_e_responder, entrada, senha)
 
     @mcp.custom_route("/api/auth/usuarios", methods=["GET", "POST", "OPTIONS"])
     @rota_protegida("GET, POST, OPTIONS", exigir=exigir_administrador)
@@ -388,87 +559,12 @@ def registrar(mcp) -> None:
         if erro_senha:
             return JSONResponse({"erro": erro_senha}, status_code=400, headers=CORS_HEADERS)
 
-        slugs_validos = {papel.slug for papel in papeis.PAPEIS_DISPONIVEIS}
-        if not set(papeis_pedidos).issubset(slugs_validos):
-            return JSONResponse({"erro": "Papel inválido."}, status_code=400, headers=CORS_HEADERS)
-
-        papeis_de_quem_cria = usuario_logado.get("papeis", [])
-        if not all(papeis.pode_atribuir_papel(papeis_de_quem_cria, papel) for papel in papeis_pedidos):
-            return JSONResponse(
-                {"erro": "Você não tem permissão pra atribuir um dos papéis selecionados."},
-                status_code=403,
-                headers=CORS_HEADERS,
-            )
-
-        # Papel de TI (qualquer um, `ti_admin` incluso) exige vínculo com um
-        # técnico real do GLPI — sem isso, alguém de outro departamento
-        # (qualquer administrador de módulo pode cadastrar usuário, não só
-        # TI) conseguiria criar um login de TI sem nenhum registro
-        # correspondente no GLPI, pulando toda validação abaixo.
-        papeis_ti_selecionados = set(papeis_pedidos) & papeis.PAPEIS_TI_EXIGEM_TECNICO_GLPI
-        if papeis_ti_selecionados and tecnico_glpi_id is None:
-            return JSONResponse(
-                {"erro": "Papel de TI exige um técnico do GLPI vinculado."},
-                status_code=400,
-                headers=CORS_HEADERS,
-            )
-
-        area_ti = None
-        if tecnico_glpi_id is not None:
-            # Área não é escolhida na mão — vem do grupo técnico manual da
-            # pessoa no GLPI (ver `ClienteGLPIReal.buscar_area_do_tecnico`).
-            area_ti = await criar_cliente(settings).buscar_area_do_tecnico(tecnico_glpi_id)
-            if area_ti is None:
-                return JSONResponse(
-                    {
-                        "erro": "Não foi possível determinar a área desse técnico no GLPI — "
-                        "confira se ele tem um grupo técnico específico atribuído."
-                    },
-                    status_code=400,
-                    headers=CORS_HEADERS,
-                )
-
-            # E-mail confirma que quem está sendo vinculado é de fato a
-            # pessoa que quem cadastra pensa que é — a lista de técnicos
-            # (`/api/ti/tecnicos-glpi`) é só nome, e nome sozinho não
-            # distingue duas pessoas parecidas (ex: dois "Carlos").
-            if not email:
-                return JSONResponse(
-                    {"erro": "Informe o e-mail dessa pessoa pra confirmar que é o técnico certo do GLPI."},
-                    status_code=400,
-                    headers=CORS_HEADERS,
-                )
-
-            email_glpi = await criar_cliente(settings).buscar_email_do_tecnico(tecnico_glpi_id)
-            if email_glpi is None or email_glpi.strip().lower() != email.lower():
-                return JSONResponse(
-                    {
-                        "erro": "O e-mail informado não bate com o e-mail desse técnico no GLPI — "
-                        "confira se escolheu a pessoa certa na lista."
-                    },
-                    status_code=400,
-                    headers=CORS_HEADERS,
-                )
-
-            # Papel escolhido na tela e área descoberta no GLPI são
-            # independentes por padrão — sem essa checagem, dá pra cadastrar
-            # um técnico de "sistemas" com papel "Infraestrutura de TI" sem
-            # ninguém perceber (aconteceu de verdade: usuário "Carlos Teste",
-            # área real "sistemas", papel escolhido "ti_infraestrutura").
-            # `ti_admin` fica isento — acesso geral de TI, não amarrado a
-            # uma área específica.
-            if "ti_admin" not in papeis_pedidos:
-                papel_area = papeis.papel_da_area(area_ti)
-                if papel_area is not None and papel_area.slug not in papeis_pedidos:
-                    return JSONResponse(
-                        {
-                            "erro": f'Este técnico pertence à área "{papel_area.rotulo}" no GLPI — '
-                            f'selecione o papel "{papel_area.rotulo}" (ou "Administrador de TI") '
-                            "pra continuar."
-                        },
-                        status_code=400,
-                        headers=CORS_HEADERS,
-                    )
+        resultado = await _validar_papeis_e_glpi(
+            usuario_logado.get("papeis", []), papeis_pedidos, tecnico_glpi_id, email
+        )
+        if isinstance(resultado, JSONResponse):
+            return resultado
+        area_ti, email = resultado
 
         return await to_thread.run_sync(
             _criar_usuario_e_responder,

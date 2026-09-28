@@ -273,3 +273,36 @@ class TestVinculoTecnicoGlpi:
 
         assert resposta.status_code == 400
         assert "e-mail" in resposta.json()["erro"].lower()
+
+
+class TestEmailUnicoNoCadastro:
+    """E-mail agora também serve pra entrar (`resolver_login`, 2026-09-28)
+    — duas contas com o mesmo e-mail deixariam esse login ambíguo, por isso
+    virou único (índice parcial em `tools/auth/usuarios.py`)."""
+
+    def test_email_ja_usado_por_outra_conta_e_rejeitado(self, mcp_app, token_dev):
+        from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+        login_existente = f"teste_{uuid.uuid4().hex[:12]}"
+        email_existente = f"{login_existente}@grupoconceito.com"
+        criado = usuarios_tools.criar_usuario(
+            login_existente, "SenhaOk12", "Já Cadastrado", ["financeiro"], email=email_existente
+        )
+
+        login_novo = f"teste_{uuid.uuid4().hex[:12]}"
+        resposta = mcp_app.post(
+            "/api/auth/usuarios",
+            headers={"Authorization": f"Bearer {token_dev}"},
+            json={
+                "usuario": login_novo,
+                "senha": "SenhaOk12",
+                "nome": "Tentando o Mesmo E-mail",
+                "papeis": ["financeiro"],
+                "email": email_existente,
+            },
+        )
+
+        assert resposta.status_code == 400
+        assert "e-mail" in resposta.json()["erro"].lower()
+
+        usuarios_tools.deletar_usuario(criado["id"])

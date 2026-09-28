@@ -58,33 +58,36 @@
               }
             </td>
             <td class="acoes">
-              <ng-container *appSoModulo="'financeiro'">
-                @if (usuarioTemFinanceiro(usuario)) {
-                  <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
-                    Gerenciar filiais
-                  </app-botao>
-                }
-              </ng-container>
-              @if (usuario.bloqueado) {
-                <ng-container *appSoDev>
-                  <app-botao
-                    variant="contorno"
-                    [loading]="desbloqueandoId() === usuario.id"
-                    loadingText="Desbloqueando..."
-                    (clicked)="desbloquearUsuario(usuario)"
-                  >
-                    Desbloquear
-                  </app-botao>
+              <app-menu-acoes>
+                <app-botao variant="contorno" (clicked)="abrirDialogEditar(usuario)">Editar</app-botao>
+                <ng-container *appSoModulo="'financeiro'">
+                  @if (usuarioTemFinanceiro(usuario)) {
+                    <app-botao variant="contorno" (clicked)="abrirDialogFiliais(usuario)">
+                      Gerenciar filiais
+                    </app-botao>
+                  }
                 </ng-container>
-              }
-              <app-botao
-                variant="perigo"
-                [loading]="apagandoId() === usuario.id"
-                loadingText="Apagando..."
-                (clicked)="apagarUsuario(usuario)"
-              >
-                Apagar
-              </app-botao>
+                @if (usuario.bloqueado) {
+                  <ng-container *appSoDev>
+                    <app-botao
+                      variant="contorno"
+                      [loading]="desbloqueandoId() === usuario.id"
+                      loadingText="Desbloqueando..."
+                      (clicked)="desbloquearUsuario(usuario)"
+                    >
+                      Desbloquear
+                    </app-botao>
+                  </ng-container>
+                }
+                <app-botao
+                  variant="perigo"
+                  [loading]="apagandoId() === usuario.id"
+                  loadingText="Apagando..."
+                  (clicked)="apagarUsuario(usuario)"
+                >
+                  Apagar
+                </app-botao>
+              </app-menu-acoes>
             </td>
           </tr>
         }
@@ -95,11 +98,11 @@
 
 <app-dialog
   [aberto]="dialogAberto()"
-  titulo="Novo usuário"
+  [titulo]="dialogTitulo()"
   [temRodape]="true"
   (fechar)="fecharDialog()"
 >
-  <form class="form-usuario" (submit)="criarUsuario(); $event.preventDefault()">
+  <form class="form-usuario" (submit)="salvarUsuario(); $event.preventDefault()">
     <app-select-busca
       rotulo="Papéis"
       placeholder="Selecione os papéis"
@@ -140,9 +143,13 @@
         type="text"
         [value]="formUsuario()"
         (input)="formUsuario.set($any($event.target).value)"
+        [disabled]="!!editando()"
         autocomplete="off"
         placeholder="nome.sobrenome"
       />
+      @if (editando()) {
+        <span class="dica-campo">O login não muda depois de criado.</span>
+      }
     </label>
 
     <label class="campo">
@@ -162,7 +169,7 @@
         [value]="formSenha()"
         (input)="formSenha.set($any($event.target).value)"
         autocomplete="new-password"
-        placeholder="••••••••"
+        [placeholder]="editando() ? 'Deixe em branco pra manter a senha atual' : '••••••••'"
       />
     </label>
 
@@ -178,10 +185,10 @@
     <app-botao
       variant="primaria"
       [loading]="criando()"
-      loadingText="Criando..."
-      (clicked)="criarUsuario()"
+      [loadingText]="editando() ? 'Salvando...' : 'Criando...'"
+      (clicked)="salvarUsuario()"
     >
-      Criar usuário
+      {{ editando() ? 'Salvar alterações' : 'Criar usuário' }}
     </app-botao>
   </div>
 </app-dialog>

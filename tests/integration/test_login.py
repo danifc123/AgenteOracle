@@ -1,7 +1,10 @@
 """Testa `/api/auth/login` de ponta a ponta: credenciais reais contra o banco
 de teste, incluindo o rate limit temporário em memória (`rate_limit.py`) e o
 bloqueio persistente após 3 tentativas erradas (`tools/auth/usuarios.py`),
-que só o time de TI (papel `desenvolvedor`) consegue desbloquear."""
+que só o time de TI (papel `desenvolvedor`) consegue desbloquear. Também
+cobre entrar com e-mail em vez de login (`resolver_login`, 2026-09-28)."""
+
+import uuid
 
 import pytest
 
@@ -9,6 +12,22 @@ from agente_oracle.server.auth.rate_limit import LIMITE_TENTATIVAS
 from agente_oracle.tools.auth.usuarios import LIMITE_TENTATIVAS_BLOQUEIO
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture
+def usuario_com_email():
+    """Mesma ideia de `usuario_teste` (conftest), mas com e-mail cadastrado
+    — só assim dá pra testar login por e-mail (`usuario_teste` não tem)."""
+    from agente_oracle.tools.auth import usuarios as usuarios_tools
+
+    login = f"teste_email_{uuid.uuid4().hex[:12]}"
+    senha = "SenhaDeTeste!123"
+    email = f"{login}@grupoconceito.com"
+    criado = usuarios_tools.criar_usuario(login, senha, "Usuário Com E-mail (integração)", ["financeiro"], email=email)
+
+    yield {"usuario": login, "senha": senha, "id": criado["id"], "email": email}
+
+    usuarios_tools.deletar_usuario(criado["id"])
 
 
 def test_login_com_credenciais_validas(mcp_app, usuario_teste):
@@ -152,3 +171,55 @@ class TestDesbloquearUsuarioRota:
             headers={"Authorization": f"Bearer {token_dev}"},
         )
         assert resposta.status_code == 404
+
+
+class TestLoginPorEmail:
+    def test_login_com_email_cadastrado(self, mcp_app, usuario_com_email):
+        resposta = mcp_app.post(
+            "/api/auth/login", json={"usuario": usuario_com_email["email"], "senha": usuario_com_email["senha"]}
+        )
+        assert resposta.status_code == 200
+        # A resposta sempre devolve o LOGIN, não o e-mail digitado — é isso
+        # que vira `sub` do token e aparece na sessão do front.
+        assert resposta.json()["usuario"] == usuario_com_email["usuario"]
+
+    def test_login_com_email_e_case_insensitive(self, mcp_app, usuario_com_email):
+        resposta = mcp_app.post(
+            "/api/auth/login",
+            json={"usuario": usuario_com_email["email"].upper(), "senha": usuario_com_email["senha"]},
+        )
+        assert resposta.status_code == 200
+
+    def test_login_continua_funcionando_pelo_login_tambem(self, mcp_app, usuario_com_email):
+        resposta = mcp_app.post(
+            "/api/auth/login", json={"usuario": usuario_com_email["usuario"], "senha": usuario_com_email["senha"]}
+        )
+        assert resposta.status_code == 200
+
+    def test_email_com_senha_errada_e_401(self, mcp_app, usuario_com_email):
+        resposta = mcp_app.post(
+            "/api/auth/login", json={"usuario": usuario_com_email["email"], "senha": "senha-errada"}
+        )
+        assert resposta.status_code == 401
+
+    def test_email_inexistente_e_401(self, mcp_app):
+        resposta = mcp_app.post(
+            "/api/auth/login", json={"usuario": "ninguem-com-esse-email@grupoconceito.com", "senha": "qualquer"}
+        )
+        assert resposta.status_code == 401
+
+    def test_tentativas_erradas_por_login_e_por_email_se_somam_na_mesma_conta(self, mcp_app, usuario_com_email):
+        # Prova que `resolver_login` roda ANTES do controle de bloqueio —
+        # errar a senha uma vez pelo login e outra pelo e-mail tem que
+        # contar pra MESMA conta, não pra dois contadores separados.
+        mcp_app.post(
+            "/api/auth/login", json={"usuario": usuario_com_email["usuario"], "senha": "senha-errada"}
+        )
+        mcp_app.post("/api/auth/login", json={"usuario": usuario_com_email["email"], "senha": "senha-errada"})
+
+        resposta = mcp_app.post(
+            "/api/auth/login", json={"usuario": usuario_com_email["email"], "senha": "senha-errada"}
+        )
+
+        assert resposta.status_code == 403
+        assert "time de TI" in resposta.json()["erro"]

@@ -6,6 +6,7 @@ import { ConfirmacaoDialog } from '../../componentes/confirmacao-dialog/confirma
 import { Dialog } from '../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../componentes/icone-ordenacao/icone-ordenacao';
+import { MenuAcoes } from '../../componentes/menu-acoes/menu-acoes';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../componentes/select-busca/select-busca';
 import { Selo } from '../../componentes/selo/selo';
@@ -21,6 +22,8 @@ interface Usuario {
   papeis: string[];
   ativo: boolean;
   bloqueado: boolean;
+  tecnico_glpi_id: string | null;
+  email: string | null;
 }
 
 interface Papel {
@@ -58,6 +61,7 @@ const PAPEIS_TI = ['ti_admin', 'ti_infraestrutura', 'ti_sistemas', 'ti_processos
     Dialog,
     EstadoVazio,
     IconeOrdenacao,
+    MenuAcoes,
     ModuloHeader,
     SelectBusca,
     Selo,
@@ -77,6 +81,7 @@ export class Usuarios {
 
   dialogAberto = signal(false);
   criando = signal(false);
+  editando = signal<Usuario | null>(null);
   erroForm = signal<string | null>(null);
   usuarioParaApagar = signal<Usuario | null>(null);
   apagandoId = signal<number | null>(null);
@@ -88,6 +93,10 @@ export class Usuarios {
       ? `Apagar o usuário "${usuario.usuario}"? Essa ação não pode ser desfeita.`
       : '';
   });
+
+  protected readonly dialogTitulo = computed(() =>
+    this.editando() ? `Editar usuário — ${this.editando()!.usuario}` : 'Novo usuário',
+  );
 
   formUsuario = signal('');
   formNome = signal('');
@@ -200,12 +209,28 @@ export class Usuarios {
   }
 
   abrirDialog(): void {
+    this.editando.set(null);
     this.formUsuario.set('');
     this.formNome.set('');
     this.formSenha.set('');
     this.formPapeis.set([]);
     this.formTecnicoGlpiId.set(null);
     this.formEmail.set('');
+    this.erroForm.set(null);
+    this.dialogAberto.set(true);
+    this.carregarTecnicosGlpiDisponiveis();
+  }
+
+  abrirDialogEditar(usuario: Usuario): void {
+    this.editando.set(usuario);
+    this.formUsuario.set(usuario.usuario);
+    this.formNome.set(usuario.nome);
+    // Senha em branco mantém a atual — mesmo espírito de "editar sem
+    // re-digitar a chave" já usado no cadastro de Provedores de IA.
+    this.formSenha.set('');
+    this.formPapeis.set([...usuario.papeis]);
+    this.formTecnicoGlpiId.set(usuario.tecnico_glpi_id);
+    this.formEmail.set(usuario.email ?? '');
     this.erroForm.set(null);
     this.dialogAberto.set(true);
     this.carregarTecnicosGlpiDisponiveis();
@@ -286,50 +311,6 @@ export class Usuarios {
         this.apagandoId.set(null);
       },
     });
-  }
-
-  criarUsuario(): void {
-    if (
-      !this.formUsuario().trim() ||
-      !this.formNome().trim() ||
-      !this.formSenha().trim() ||
-      !this.formPapeis().length
-    ) {
-      this.erroForm.set('Preencha usuário, nome, senha e ao menos um papel.');
-      return;
-    }
-
-    // Campo visível (papel de TI selecionado) = campo obrigatório — a regra
-    // de QUAL papel exige o quê mora só no backend (`usuarios_route`), aqui
-    // só evita a viagem ao servidor pra um erro óbvio.
-    if (this.mostrarCampoTecnico() && (!this.formTecnicoGlpiId() || !this.formEmail().trim())) {
-      this.erroForm.set('Papel de TI exige técnico do GLPI vinculado e o e-mail dessa pessoa.');
-      return;
-    }
-
-    this.criando.set(true);
-    this.erroForm.set(null);
-
-    this.http
-      .post<Usuario>(`${MCP_API_BASE_URL}/api/auth/usuarios`, {
-        usuario: this.formUsuario().trim(),
-        nome: this.formNome().trim(),
-        senha: this.formSenha(),
-        papeis: this.formPapeis(),
-        tecnico_glpi_id: this.formTecnicoGlpiId(),
-        email: this.formEmail().trim() || null,
-      })
-      .subscribe({
-        next: () => {
-          this.criando.set(false);
-          this.dialogAberto.set(false);
-          this.carregarUsuarios();
-        },
-        error: (erro: HttpErrorResponse) => {
-          this.erroForm.set(mensagemErro(erro, 'Não foi possível criar o usuário.'));
-          this.criando.set(false);
-        },
-      });
   }
 
   desbloquearUsuario(usuario: Usuario): void {
@@ -414,6 +395,62 @@ export class Usuarios {
           this.salvandoFiliais.set(false);
         },
       });
+  }
+
+  salvarUsuario(): void {
+    const editando = this.editando();
+    // Senha só é obrigatória CRIANDO — editando, em branco mantém a atual.
+    const senhaObrigatoria = !editando && !this.formSenha().trim();
+    if (!this.formNome().trim() || senhaObrigatoria || !this.formPapeis().length) {
+      this.erroForm.set('Preencha nome, senha e ao menos um papel.');
+      return;
+    }
+    if (!editando && !this.formUsuario().trim()) {
+      this.erroForm.set('Preencha o usuário (login).');
+      return;
+    }
+
+    // Campo visível (papel de TI selecionado) = campo obrigatório — a regra
+    // de QUAL papel exige o quê mora só no backend (`usuarios_route`), aqui
+    // só evita a viagem ao servidor pra um erro óbvio.
+    if (this.mostrarCampoTecnico() && (!this.formTecnicoGlpiId() || !this.formEmail().trim())) {
+      this.erroForm.set('Papel de TI exige técnico do GLPI vinculado e o e-mail dessa pessoa.');
+      return;
+    }
+
+    this.criando.set(true);
+    this.erroForm.set(null);
+
+    const requisicao = editando
+      ? this.http.patch<Usuario>(`${MCP_API_BASE_URL}/api/auth/usuarios/${editando.id}`, {
+          nome: this.formNome().trim(),
+          papeis: this.formPapeis(),
+          tecnico_glpi_id: this.formTecnicoGlpiId(),
+          email: this.formEmail().trim() || null,
+          ...(this.formSenha().trim() ? { senha: this.formSenha() } : {}),
+        })
+      : this.http.post<Usuario>(`${MCP_API_BASE_URL}/api/auth/usuarios`, {
+          usuario: this.formUsuario().trim(),
+          nome: this.formNome().trim(),
+          senha: this.formSenha(),
+          papeis: this.formPapeis(),
+          tecnico_glpi_id: this.formTecnicoGlpiId(),
+          email: this.formEmail().trim() || null,
+        });
+
+    requisicao.subscribe({
+      next: () => {
+        this.criando.set(false);
+        this.dialogAberto.set(false);
+        this.carregarUsuarios();
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroForm.set(
+          mensagemErro(erro, editando ? 'Não foi possível salvar as alterações.' : 'Não foi possível criar o usuário.'),
+        );
+        this.criando.set(false);
+      },
+    });
   }
 
   /** Só usuários do Financeiro têm filial de verdade hoje — botão

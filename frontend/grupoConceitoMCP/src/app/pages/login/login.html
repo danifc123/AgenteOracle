@@ -15,13 +15,13 @@
 
         <form (submit)="entrar(); $event.preventDefault()">
           <label class="campo">
-            <span>Usuário</span>
+            <span>Usuário ou e-mail</span>
             <input
               type="text"
               [value]="usuario()"
               (input)="usuario.set($any($event.target).value)"
               autocomplete="username"
-              placeholder="seu.usuario"
+              placeholder="seu.usuario ou seu.usuario@grupoconceito.com"
             />
           </label>
 

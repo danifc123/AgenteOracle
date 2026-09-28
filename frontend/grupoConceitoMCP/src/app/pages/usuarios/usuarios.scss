@@ -91,11 +91,21 @@ app-select-busca {
   gap: 16px;
 }
 
+// Só o gatilho de `app-menu-acoes` mora aqui agora (as ações viraram itens
+// do menu) — sem `display: flex` no `<td>` de propósito: isso tira a
+// célula do modelo de tabela e desalinha a borda inferior dela com o
+// resto da linha (mesmo bug já corrigido em `chamados.scss`).
 .acoes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  text-align: right;
   white-space: nowrap;
+}
+
+.dica-campo {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--color-text-muted);
 }
 
 .sr-only {

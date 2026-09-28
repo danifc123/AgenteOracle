@@ -35,6 +35,8 @@ LIMITE_TENTATIVAS_BLOQUEIO = 3
 # não pune quem já usa uma frase-senha longa.
 TAMANHO_MINIMO_SENHA = 8
 
+_INDICE_EMAIL_UNICO = "usuarios_email_unico"
+
 _tabela_garantida = False
 
 
@@ -74,6 +76,15 @@ def _garantir_tabela(cursor) -> None:
     # vinculado (`usuarios_route` confere contra o e-mail real da pessoa no
     # GLPI antes de gravar), por isso a coluna em si continua opcional aqui.
     cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR")
+    # Único quando preenchido (`WHERE email IS NOT NULL` — vários `NULL` não
+    # violam unicidade no Postgres, mas seríamos explícitos mesmo assim) —
+    # passou a valer como segundo jeito de logar (`resolver_login`,
+    # 2026-09-28), então precisa apontar pra UMA conta só, sem ambiguidade.
+    # `LOWER(...)` porque e-mail não diferencia maiúscula de minúscula.
+    cursor.execute(
+        f"CREATE UNIQUE INDEX IF NOT EXISTS {_INDICE_EMAIL_UNICO} "
+        "ON usuarios (LOWER(email)) WHERE email IS NOT NULL"
+    )
     _tabela_garantida = True
 
 
@@ -118,6 +129,18 @@ class UsuarioJaExiste(Exception):
     """Levantada quando `criar_usuario` recebe um `usuario` que já existe
     (constraint única) — traduzida pra uma resposta HTTP amigável na rota,
     em vez de deixar o erro cru do banco subir como 500."""
+
+
+class EmailJaUsado(Exception):
+    """Levantada quando `criar_usuario`/`atualizar_usuario` recebem um
+    `email` que já está em uso por OUTRA conta (índice único de
+    `_INDICE_EMAIL_UNICO`) — duas contas com o mesmo e-mail deixariam
+    `resolver_login` ambíguo (login por e-mail não saberia qual delas
+    escolher)."""
+
+
+def _email_duplicado(erro: Exception) -> bool:
+    return getattr(getattr(erro, "diag", None), "constraint_name", None) == _INDICE_EMAIL_UNICO
 
 
 def alterar_senha(usuario: str, senha_atual: str, senha_nova: str) -> bool:
@@ -236,11 +259,87 @@ def criar_usuario(
             )
             linha = cursor.fetchone()
     except DatabaseError as erro:
+        # Checa o e-mail primeiro: `eh_erro_valor_duplicado` é genérico (só
+        # olha o sqlstate 23505), bateria também pro índice de e-mail.
+        if _email_duplicado(erro):
+            raise EmailJaUsado(f"Já existe uma conta usando o e-mail '{email}'.") from erro
         if eh_erro_valor_duplicado(erro):
             raise UsuarioJaExiste(f"Já existe um usuário com o login '{usuario}'.") from erro
         raise
 
     return _linha_para_usuario(linha)
+
+
+def atualizar_usuario(
+    id_usuario: int,
+    nome: str,
+    papeis: list[str],
+    tecnico_glpi_id: str | None,
+    area_ti: str | None,
+    email: str | None,
+    senha: str | None = None,
+) -> dict | None:
+    """Atualiza os dados administráveis de um usuário já existente — mesmos
+    campos de `criar_usuario` (menos o login, que não muda depois de criado:
+    é usado como referência em sessão/trilha de auditoria, renomear
+    quebraria as duas). `senha` é OPCIONAL: `None`/vazio mantém a senha
+    atual, só troca quando quem edita digita uma nova. Devolve o usuário
+    atualizado, ou `None` se o id não existir."""
+    campos_sql = [
+        "nome = :nome",
+        "papeis = :papeis::jsonb",
+        "tecnico_glpi_id = :tecnico_glpi_id",
+        "area_ti = :area_ti",
+        "email = :email",
+    ]
+    binds = {
+        "id": id_usuario,
+        "nome": nome,
+        "papeis": json.dumps(papeis),
+        "tecnico_glpi_id": tecnico_glpi_id,
+        "area_ti": area_ti,
+        "email": email,
+    }
+    if senha:
+        campos_sql.append("senha_hash = :senha_hash")
+        binds["senha_hash"] = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    try:
+        with get_postgres_connection() as connection:
+            cursor = connection.cursor()
+            _garantir_tabela(cursor)
+            cursor.execute(
+                f"UPDATE usuarios SET {', '.join(campos_sql)} WHERE id = :id RETURNING {_COLUNAS}",
+                **binds,
+            )
+            linha = cursor.fetchone()
+    except DatabaseError as erro:
+        if _email_duplicado(erro):
+            raise EmailJaUsado(f"Já existe uma conta usando o e-mail '{email}'.") from erro
+        raise
+
+    return _linha_para_usuario(linha) if linha else None
+
+
+def resolver_login(entrada: str) -> str | None:
+    """Devolve o LOGIN correspondente a `entrada`, aceitando tanto o
+    próprio login quanto o e-mail cadastrado (pedido do usuário,
+    2026-09-28: entrar com qualquer um dos dois) — `None` se não bater com
+    nenhuma conta. Comparação por e-mail é case-insensitive (mesmo motivo
+    do índice único em `_garantir_tabela`); login continua exato, como
+    sempre foi. Só resolve QUAL conta é — não confere senha nem
+    ativo/bloqueado, isso continua em `autenticar`/`esta_bloqueado`,
+    chamados depois com o login já resolvido."""
+    with get_postgres_connection() as connection:
+        cursor = connection.cursor()
+        _garantir_tabela(cursor)
+        cursor.execute(
+            "SELECT usuario FROM usuarios WHERE usuario = :entrada OR LOWER(email) = LOWER(:entrada)",
+            entrada=entrada,
+        )
+        linha = cursor.fetchone()
+
+    return linha[0] if linha else None
 
 
 def listar_tecnicos_ti() -> list[dict]:

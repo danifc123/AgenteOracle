@@ -27,6 +27,9 @@ def _provedor_llm(**overrides) -> ProvedorLLM:
         "preco_entrada_por_1k": Decimal("0"),
         "preco_saida_por_1k": Decimal("0"),
         "moeda": "R$",
+        "capacidades": ["chat"],
+        "credenciais_extra": None,
+        "credencial_atualizada_em": datetime.now(UTC),
         "criado_em": datetime.now(UTC),
     }
     campos.update(overrides)
@@ -365,6 +368,47 @@ class TestCriarClienteProtegido:
 
         assert chamadas[0]["host"] == "https://ollama-cadastrado.com"
         assert chamadas[0]["headers"] == {"Authorization": "Bearer chave"}
+        assert cliente._provedor == provedor.nome
+
+    def test_provedor_oci_nativo_monta_client_com_as_credenciais_do_cadastro(self, monkeypatch):
+        provedor = _provedor_llm(
+            tipo_conexao="oci_nativo",
+            capacidades=["embedding"],
+            credenciais_extra={
+                "user_ocid": "ocid1.user.oc1..abc",
+                "fingerprint": "aa:bb",
+                "tenancy_ocid": "ocid1.tenancy.oc1..xyz",
+                "regiao": "sa-saopaulo-1",
+                "compartment_id": "ocid1.compartment.oc1..def",
+                "chave_privada": "-----BEGIN PRIVATE KEY-----\nconteudo\n-----END PRIVATE KEY-----",
+            },
+        )
+        _com_cadastro_ativo(monkeypatch, provedor)
+        chamadas_client = []
+        monkeypatch.setattr(
+            mod.oci.generative_ai_inference,
+            "GenerativeAiInferenceClient",
+            lambda **kwargs: chamadas_client.append(kwargs) or "cliente-oci-fake",
+        )
+
+        cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
+
+        # `config` no formato que `oci.config.from_file` devolveria
+        # (`key_content` no lugar de `key_file`) — o SDK monta o signer
+        # sozinho a partir disso, sem precisar de um `oci.signer.Signer`
+        # explícito (ver docstring de `construir_cliente_llm`).
+        config = chamadas_client[0]["config"]
+        assert config["tenancy"] == "ocid1.tenancy.oc1..xyz"
+        assert config["user"] == "ocid1.user.oc1..abc"
+        assert config["fingerprint"] == "aa:bb"
+        assert config["region"] == "sa-saopaulo-1"
+        assert config["key_content"].startswith("-----BEGIN")
+        assert (
+            chamadas_client[0]["service_endpoint"]
+            == "https://inference.generativeai.sa-saopaulo-1.oci.oraclecloud.com"
+        )
+        assert isinstance(cliente._cliente, mod.ClienteOciNativo)
+        assert cliente._cliente._compartment_id == "ocid1.compartment.oc1..def"
         assert cliente._provedor == provedor.nome
 
     def test_registro_vazio_cai_no_ollama_padrao_como_antes_do_cadastro_existir(self, monkeypatch):

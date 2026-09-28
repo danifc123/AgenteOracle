@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
@@ -18,10 +18,21 @@ import {
   ConfiguracoesTi,
 } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { TOAST_MENSAGEM_SUCESSO } from '../../../../servicos/toast.interceptor/toast.interceptor';
 import { UsoIa } from '../../../../servicos/uso-ia/uso-ia';
 
-export type TipoConexaoLlm = 'ollama' | 'openai_compativel';
+export type TipoConexaoLlm = 'ollama' | 'openai_compativel' | 'oci_nativo';
 export type EstiloApiLlm = 'chat_completions' | 'responses';
+export type CapacidadeLlm = 'chat' | 'embedding';
+
+interface CredenciaisOciNativo {
+  user_ocid: string;
+  fingerprint: string;
+  tenancy_ocid: string;
+  regiao: string;
+  compartment_id: string;
+  chave_privada: string;
+}
 
 interface ProvedorLlm {
   id: number;
@@ -35,6 +46,13 @@ interface ProvedorLlm {
   preco_entrada_por_1k: number;
   preco_saida_por_1k: number;
   moeda: string;
+  capacidades: CapacidadeLlm[];
+  credenciais_configuradas: boolean;
+  /** Última vez que `api_key`/credenciais da OCI foram REALMENTE trocadas
+   * por um valor novo — não é a data de criação do cadastro (a menos que
+   * a credencial nunca tenha sido trocada). Só um aviso, o backend nunca
+   * expira/bloqueia nada sozinho — ver `dataCredencialAntiga`. */
+  credencial_atualizada_em: string;
   ativo: boolean;
   criado_em: string;
 }
@@ -42,7 +60,13 @@ interface ProvedorLlm {
 const OPCOES_TIPO_CONEXAO: OpcaoSelectBusca[] = [
   { valor: 'ollama', rotulo: 'Ollama' },
   { valor: 'openai_compativel', rotulo: 'Compatível com OpenAI' },
+  { valor: 'oci_nativo', rotulo: 'OCI (SDK nativo) — embedding' },
 ];
+
+const ROTULOS_CAPACIDADE: Record<CapacidadeLlm, string> = {
+  chat: 'Chat',
+  embedding: 'Embedding',
+};
 
 const OPCOES_ESTILO_API: OpcaoSelectBusca[] = [
   { valor: 'chat_completions', rotulo: 'Padrão (Chat Completions)' },
@@ -124,6 +148,28 @@ const PASSOS_TOUR_CADASTRO: PassoTour[] = [
 function precoValido(texto: string): number | null {
   const limpo = texto.trim().replace(',', '.');
   return /^\d+(\.\d+)?$/.test(limpo) ? Number(limpo) : null;
+}
+
+// Só um AVISO — nada expira/bloqueia sozinho (pedido do Daniel, 2026-09-25:
+// achou arriscado demais cortar o acesso do provedor ATIVO sem querer).
+// 90 dias é o ponto de partida, ajustável se não ficar bom na prática.
+const LIMITE_DIAS_CREDENCIAL = 90;
+
+const MS_POR_DIA = 24 * 60 * 60 * 1000;
+
+function diasDesdeCredencial(credencialAtualizadaEm: string): number {
+  const diferenca = Date.now() - new Date(credencialAtualizadaEm).getTime();
+  return Math.max(0, Math.floor(diferenca / MS_POR_DIA));
+}
+
+/** Só faz sentido avisar quando existe credencial de verdade pra renovar —
+ * um Ollama local sem chave nenhuma não tem "idade de credencial" que
+ * importe. */
+function credencialAntiga(provedor: ProvedorLlm): boolean {
+  if (!provedor.api_key_configurada && !provedor.credenciais_configuradas) {
+    return false;
+  }
+  return diasDesdeCredencial(provedor.credencial_atualizada_em) >= LIMITE_DIAS_CREDENCIAL;
 }
 
 /** Cores reais do design system (ver `styles.scss`) — o nome do provedor é
@@ -219,6 +265,10 @@ export class ProvedoresLlm {
   provedores = signal<ProvedorLlm[]>([]);
   carregando = signal(true);
   erro = signal<string | null>(null);
+  // Fechada por padrão (pedido do Daniel, 2026-09-25) — a lista de
+  // provedores não precisa ficar sempre aberta ocupando a tela; abrir é 1
+  // clique quando precisar mexer nela.
+  tabelaProvedoresAberta = signal(false);
 
   dialogAberto = signal(false);
   editando = signal<ProvedorLlm | null>(null);
@@ -229,6 +279,7 @@ export class ProvedoresLlm {
   apagandoId = signal<number | null>(null);
   ativandoId = signal<number | null>(null);
   desativandoId = signal<number | null>(null);
+  testandoId = signal<number | null>(null);
 
   formNome = signal('');
   formTipoConexao = signal<TipoConexaoLlm>('ollama');
@@ -240,6 +291,14 @@ export class ProvedoresLlm {
   formPrecoEntrada = signal('0');
   formPrecoSaida = signal('0');
   formMoeda = signal('R$');
+  formCapacidadeChat = signal(true);
+  formCapacidadeEmbedding = signal(false);
+  formUserOcid = signal('');
+  formFingerprint = signal('');
+  formTenancyOcid = signal('');
+  formRegiao = signal('');
+  formCompartmentId = signal('');
+  formChavePrivada = signal('');
 
   tourAberto = signal(false);
   protected readonly passosTourCadastro = PASSOS_TOUR_CADASTRO;
@@ -247,8 +306,10 @@ export class ProvedoresLlm {
   protected readonly opcoesTipoConexao = OPCOES_TIPO_CONEXAO;
   protected readonly opcoesEstiloApi = OPCOES_ESTILO_API;
   protected readonly opcoesMoeda = OPCOES_MOEDA;
+  protected readonly rotulosCapacidade = ROTULOS_CAPACIDADE;
 
   protected readonly ehOpenAiCompativel = computed(() => this.formTipoConexao() === 'openai_compativel');
+  protected readonly ehOciNativo = computed(() => this.formTipoConexao() === 'oci_nativo');
 
   protected readonly precoEntradaValido = computed(() => precoValido(this.formPrecoEntrada()));
   protected readonly precoSaidaValido = computed(() => precoValido(this.formPrecoSaida()));
@@ -373,6 +434,9 @@ export class ProvedoresLlm {
     this.formPrecoEntrada.set('0');
     this.formPrecoSaida.set('0');
     this.formMoeda.set('R$');
+    this.formCapacidadeChat.set(true);
+    this.formCapacidadeEmbedding.set(false);
+    this.limparCamposOciNativo();
     this.erroForm.set(null);
     this.dialogAberto.set(true);
   }
@@ -389,8 +453,48 @@ export class ProvedoresLlm {
     this.formPrecoEntrada.set(String(provedor.preco_entrada_por_1k));
     this.formPrecoSaida.set(String(provedor.preco_saida_por_1k));
     this.formMoeda.set(provedor.moeda);
+    this.formCapacidadeChat.set(provedor.capacidades.includes('chat'));
+    this.formCapacidadeEmbedding.set(provedor.capacidades.includes('embedding'));
+    // Credencial nunca volta do backend (`credenciais_configuradas` é só
+    // um booleano) — mesmo espírito de deixar a chave de API em branco:
+    // editar sem preencher de novo mantém a que já estava lá.
+    this.limparCamposOciNativo();
     this.erroForm.set(null);
     this.dialogAberto.set(true);
+  }
+
+  private limparCamposOciNativo(): void {
+    this.formUserOcid.set('');
+    this.formFingerprint.set('');
+    this.formTenancyOcid.set('');
+    this.formRegiao.set('');
+    this.formCompartmentId.set('');
+    this.formChavePrivada.set('');
+  }
+
+  /** `null` se ALGUM campo estiver vazio — não manda credencial pela
+   * metade. */
+  private credenciaisOciNativoPreenchidas(): CredenciaisOciNativo | null {
+    const credenciais: CredenciaisOciNativo = {
+      user_ocid: this.formUserOcid().trim(),
+      fingerprint: this.formFingerprint().trim(),
+      tenancy_ocid: this.formTenancyOcid().trim(),
+      regiao: this.formRegiao().trim(),
+      compartment_id: this.formCompartmentId().trim(),
+      chave_privada: this.formChavePrivada().trim(),
+    };
+    return Object.values(credenciais).every((valor) => valor) ? credenciais : null;
+  }
+
+  private algumCampoOciNativoPreenchido(): boolean {
+    return [
+      this.formUserOcid(),
+      this.formFingerprint(),
+      this.formTenancyOcid(),
+      this.formRegiao(),
+      this.formCompartmentId(),
+      this.formChavePrivada(),
+    ].some((valor) => valor.trim());
   }
 
   fecharDialog(): void {
@@ -409,8 +513,13 @@ export class ProvedoresLlm {
   }
 
   salvar(): void {
-    if (!this.formNome().trim() || !this.formBaseUrl().trim() || !this.formModelo().trim()) {
+    const ociNativo = this.ehOciNativo();
+    if (!this.formNome().trim() || !this.formModelo().trim() || (!ociNativo && !this.formBaseUrl().trim())) {
       this.erroForm.set('Preencha nome, endereço e modelo.');
+      return;
+    }
+    if (!this.formCapacidadeChat() && !this.formCapacidadeEmbedding()) {
+      this.erroForm.set('Marque ao menos uma capacidade (Chat ou Embedding).');
       return;
     }
 
@@ -420,6 +529,11 @@ export class ProvedoresLlm {
       this.erroForm.set('Informe os preços como números maiores ou iguais a 0.');
       return;
     }
+
+    const capacidades: CapacidadeLlm[] = [
+      ...(this.formCapacidadeChat() ? (['chat'] as const) : []),
+      ...(this.formCapacidadeEmbedding() ? (['embedding'] as const) : []),
+    ];
 
     const corpo: Record<string, unknown> = {
       nome: this.formNome().trim(),
@@ -431,6 +545,7 @@ export class ProvedoresLlm {
       preco_entrada_por_1k: precoEntrada,
       preco_saida_por_1k: precoSaida,
       moeda: this.formMoeda().trim() || 'R$',
+      capacidades,
     };
 
     const editando = this.editando();
@@ -439,6 +554,24 @@ export class ProvedoresLlm {
     // chave vazia mesmo (alguns Ollama locais não pedem autenticação).
     if (!editando || this.formApiKey()) {
       corpo['api_key'] = this.formApiKey();
+    }
+
+    if (ociNativo) {
+      const credenciais = this.credenciaisOciNativoPreenchidas();
+      // Mesmo espírito do `api_key`: em branco na edição mantém a
+      // credencial que já estava lá; na criação, sempre exige tudo
+      // preenchido (validado abaixo).
+      if (credenciais) {
+        corpo['credenciais_extra'] = credenciais;
+      } else if (!editando) {
+        this.erroForm.set(
+          'Preencha user OCID, fingerprint, tenancy OCID, região, compartment ID e a chave privada.',
+        );
+        return;
+      } else if (this.algumCampoOciNativoPreenchido()) {
+        this.erroForm.set('Preencha todos os campos da OCI nativa, ou deixe todos em branco pra manter os atuais.');
+        return;
+      }
     }
 
     this.salvando.set(true);
@@ -542,7 +675,45 @@ export class ProvedoresLlm {
   }
 
   protected rotuloTipoConexao(tipo: TipoConexaoLlm): string {
-    return tipo === 'ollama' ? 'Ollama' : 'Compatível com OpenAI';
+    if (tipo === 'ollama') {
+      return 'Ollama';
+    }
+    return tipo === 'oci_nativo' ? 'OCI (SDK nativo)' : 'Compatível com OpenAI';
+  }
+
+  protected rotuloIdadeCredencial(provedor: ProvedorLlm): string {
+    const dias = diasDesdeCredencial(provedor.credencial_atualizada_em);
+    if (dias === 0) {
+      return 'há menos de 1 dia';
+    }
+    return dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
+  }
+
+  protected mostrarAvisoCredencial(provedor: ProvedorLlm): boolean {
+    return credencialAntiga(provedor);
+  }
+
+  /** Dispara uma chamada real contra ESSE provedor (embedding ou chat,
+   * conforme `capacidades`) sem ativá-lo — deixa confirmar que uma
+   * credencial recém-cadastrada funciona antes de considerar ativá-la.
+   * Sucesso/erro aparecem sozinhos via toast automático (ver
+   * `toast.interceptor.ts`), só troca a mensagem de sucesso padrão. */
+  testarConexao(provedor: ProvedorLlm): void {
+    if (this.testandoId()) {
+      return;
+    }
+    this.testandoId.set(provedor.id);
+
+    this.http
+      .post(
+        `${URL_PROVEDORES}/${provedor.id}/testar`,
+        {},
+        { context: new HttpContext().set(TOAST_MENSAGEM_SUCESSO, 'Conexão testada com sucesso.') },
+      )
+      .subscribe({
+        next: () => this.testandoId.set(null),
+        error: () => this.testandoId.set(null),
+      });
   }
 
   protected salvarTeto(): void {

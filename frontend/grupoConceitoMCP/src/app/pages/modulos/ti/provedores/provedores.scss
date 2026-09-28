@@ -44,6 +44,17 @@
   }
 }
 
+.acoes-secao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icone-fechado {
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
 .erro-carregamento {
   margin: -12px 0 16px;
   color: #9a2f2f;
@@ -81,10 +92,11 @@
   // (ex: "meta.llama-4-scout-17b-16e-instruct", sem espaço nenhum pra
   // quebrar sozinho) — sem isso, `white-space: nowrap` empurrava a
   // tabela inteira mais larga que a tela, forçando scroll horizontal
-  // sempre visível. Só essas duas colunas quebram linha; o resto
-  // (preço, chave, status) continua curto o bastante pra 1 linha só.
-  td:nth-child(1),
-  td:nth-child(3) {
+  // sempre visível. Classe explícita (não `nth-child`) de propósito: uma
+  // coluna nova inserida no meio (ex: "Capacidades") não deveria conseguir
+  // silenciosamente roubar essa regra de quem ela foi pensada pra —
+  // bug real que já aconteceu aqui uma vez.
+  td.col-quebra {
     white-space: normal;
     overflow-wrap: break-word;
     max-width: 220px;
@@ -93,6 +105,17 @@
   .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+
+  .celula-chave {
+    white-space: normal;
+  }
+
+  .idade-credencial {
+    display: block;
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--color-text-muted);
   }
 
   thead th {
@@ -171,7 +194,8 @@ app-select-busca {
   font-weight: 600;
   color: var(--color-text);
 
-  input {
+  input,
+  textarea {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     padding: 10px 12px;
@@ -183,6 +207,62 @@ app-select-busca {
       outline: none;
       border-color: var(--color-primary-light);
     }
+  }
+
+  textarea {
+    resize: vertical;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12.5px;
+  }
+}
+
+.campo-capacidades {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: none;
+
+  legend {
+    width: 100%;
+    margin-bottom: 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .dica {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+  }
+}
+
+.opcao-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.campo-oci-nativo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+// `app-selo` já é `inline-flex` sozinho — sem precisar de `display: flex`
+// aqui (quebraria o `<td>` como célula de tabela), só um respiro entre
+// os selos quando o provedor tem as duas capacidades.
+.capacidades app-selo {
+  margin-right: 4px;
+
+  &:last-child {
+    margin-right: 0;
   }
 }
 

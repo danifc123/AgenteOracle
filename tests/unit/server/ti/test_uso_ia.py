@@ -36,6 +36,9 @@ def _provedor_llm(**overrides) -> ProvedorLLM:
         "preco_entrada_por_1k": Decimal("0.01"),
         "preco_saida_por_1k": Decimal("0.02"),
         "moeda": "R$",
+        "capacidades": ["chat"],
+        "credenciais_extra": None,
+        "credencial_atualizada_em": datetime.now(UTC),
         "criado_em": datetime.now(UTC),
     }
     campos.update(overrides)

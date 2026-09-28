@@ -18,6 +18,9 @@ def _provedor_llm(**overrides) -> ProvedorLLM:
         "preco_entrada_por_1k": Decimal("0.01"),
         "preco_saida_por_1k": Decimal("0.02"),
         "moeda": "R$",
+        "capacidades": ["chat"],
+        "credenciais_extra": None,
+        "credencial_atualizada_em": datetime(2026, 9, 23, tzinfo=UTC),
         "criado_em": datetime(2026, 9, 23, tzinfo=UTC),
     }
     campos.update(overrides)
@@ -49,6 +52,13 @@ class TestPrecoValido:
 
 
 class TestProvedorParaJson:
+    def test_inclui_credencial_atualizada_em(self):
+        corpo = mod._provedor_para_json(
+            _provedor_llm(credencial_atualizada_em=datetime(2026, 6, 1, tzinfo=UTC)), id_ativo=None
+        )
+
+        assert corpo["credencial_atualizada_em"] == "2026-06-01T00:00:00+00:00"
+
     def test_nunca_inclui_a_api_key_crua(self):
         corpo = mod._provedor_para_json(_provedor_llm(api_key="sk-super-secreto"), id_ativo=None)
 
@@ -78,6 +88,24 @@ class TestProvedorParaJson:
         assert corpo["preco_entrada_por_1k"] == 0.01
         assert corpo["preco_saida_por_1k"] == 0.02
 
+    def test_inclui_capacidades(self):
+        corpo = mod._provedor_para_json(_provedor_llm(capacidades=["chat", "embedding"]), id_ativo=None)
+
+        assert corpo["capacidades"] == ["chat", "embedding"]
+
+    def test_nunca_inclui_credenciais_extra_cruas(self):
+        corpo = mod._provedor_para_json(
+            _provedor_llm(credenciais_extra={"chave_privada": "segredo"}), id_ativo=None
+        )
+
+        assert "credenciais_extra" not in corpo
+        assert corpo["credenciais_configuradas"] is True
+
+    def test_sem_credenciais_extra_e_false(self):
+        corpo = mod._provedor_para_json(_provedor_llm(credenciais_extra=None), id_ativo=None)
+
+        assert corpo["credenciais_configuradas"] is False
+
 
 class TestValidarCamposComuns:
     def test_criacao_sem_nome_e_rejeitada(self):
@@ -101,6 +129,48 @@ class TestValidarCamposComuns:
     def test_preco_negativo_e_rejeitado(self):
         corpo = {"nome": "n", "base_url": "x", "modelo": "y", "preco_entrada_por_1k": -1}
         assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=True) is not None
+
+    def test_capacidades_invalidas_sao_rejeitadas(self):
+        corpo = {"nome": "n", "base_url": "x", "modelo": "y", "capacidades": ["voo"]}
+        assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=True) is not None
+
+    def test_capacidades_validas_passam(self):
+        corpo = {"nome": "n", "base_url": "x", "modelo": "y", "capacidades": ["chat", "embedding"]}
+        assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=True) is None
+
+    def test_oci_nativo_nao_exige_base_url(self):
+        corpo = {
+            "nome": "n",
+            "modelo": "cohere.embed-v4.0",
+            "tipo_conexao": "oci_nativo",
+            "credenciais_extra": {
+                "user_ocid": "u",
+                "fingerprint": "f",
+                "tenancy_ocid": "t",
+                "regiao": "sa-saopaulo-1",
+                "compartment_id": "c",
+                "chave_privada": "k",
+            },
+        }
+        assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=True) is None
+
+    def test_oci_nativo_sem_credenciais_extra_e_rejeitado(self):
+        corpo = {"nome": "n", "modelo": "m", "tipo_conexao": "oci_nativo"}
+        assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=True) is not None
+
+    def test_oci_nativo_com_credencial_faltando_e_rejeitado(self):
+        corpo = {
+            "nome": "n",
+            "modelo": "m",
+            "tipo_conexao": "oci_nativo",
+            "credenciais_extra": {"user_ocid": "u"},  # faltam os outros campos
+        }
+        assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=True) is not None
+
+    def test_oci_nativo_na_edicao_sem_credenciais_nao_exige_nada(self):
+        # Edição (exigir_obrigatorios=False) não força recadastrar credencial.
+        corpo = {"tipo_conexao": "oci_nativo", "nome": "novo nome"}
+        assert mod._validar_campos_comuns(corpo, exigir_obrigatorios=False) is None
 
 
 class TestCriar:
@@ -130,6 +200,72 @@ class TestCriar:
         resposta = mod._criar({"nome": "n", "base_url": "x", "modelo": "y"})
 
         assert resposta.status_code == 400
+
+    def test_capacidades_omitida_usa_padrao_chat(self, monkeypatch):
+        campos_recebidos = {}
+
+        def _criar_fake(**campos):
+            campos_recebidos.update(campos)
+            return _provedor_llm()
+
+        monkeypatch.setattr(mod.provedores_llm, "criar", _criar_fake)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+
+        mod._criar({"nome": "n", "base_url": "x", "modelo": "y"})
+
+        assert campos_recebidos["capacidades"] == ["chat"]
+
+    def test_oci_nativo_calcula_base_url_pela_regiao_e_repassa_credenciais(self, monkeypatch):
+        campos_recebidos = {}
+
+        def _criar_fake(**campos):
+            campos_recebidos.update(campos)
+            return _provedor_llm()
+
+        monkeypatch.setattr(mod.provedores_llm, "criar", _criar_fake)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+        credenciais = {
+            "user_ocid": "u",
+            "fingerprint": "f",
+            "tenancy_ocid": "t",
+            "regiao": "sa-saopaulo-1",
+            "compartment_id": "c",
+            "chave_privada": "k",
+        }
+
+        mod._criar(
+            {
+                "nome": "n",
+                "modelo": "cohere.embed-v4.0",
+                "tipo_conexao": "oci_nativo",
+                "capacidades": ["embedding"],
+                "credenciais_extra": credenciais,
+            }
+        )
+
+        assert campos_recebidos["base_url"] == "https://inference.generativeai.sa-saopaulo-1.oci.oraclecloud.com"
+        assert campos_recebidos["credenciais_extra"] == credenciais
+
+    def test_credenciais_extra_ignorada_pra_tipo_que_nao_e_oci_nativo(self, monkeypatch):
+        campos_recebidos = {}
+
+        def _criar_fake(**campos):
+            campos_recebidos.update(campos)
+            return _provedor_llm()
+
+        monkeypatch.setattr(mod.provedores_llm, "criar", _criar_fake)
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: None)
+
+        mod._criar(
+            {
+                "nome": "n",
+                "base_url": "x",
+                "modelo": "y",
+                "credenciais_extra": {"algo": "que nao deveria ir"},
+            }
+        )
+
+        assert campos_recebidos["credenciais_extra"] is None
 
 
 class TestAtualizar:
@@ -246,3 +382,116 @@ class TestAtivar:
 
         assert definidos == [1]
         assert resposta.status_code == 200
+
+    def test_provedor_sem_capacidade_de_chat_nao_pode_ser_ativado(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(
+            mod.provedores_llm, "buscar", lambda _id: _provedor_llm(id=1, capacidades=["embedding"])
+        )
+        monkeypatch.setattr(mod.configuracoes_provedor, "definir_provedor_llm_ativo_id", lambda v: definidos.append(v))
+
+        resposta = mod._ativar("1")
+
+        assert resposta.status_code == 400
+        assert definidos == []
+
+    def test_provedor_com_chat_e_embedding_pode_ser_ativado(self, monkeypatch):
+        definidos = []
+        monkeypatch.setattr(
+            mod.provedores_llm, "buscar", lambda _id: _provedor_llm(id=1, capacidades=["chat", "embedding"])
+        )
+        monkeypatch.setattr(mod.configuracoes_provedor, "definir_provedor_llm_ativo_id", lambda v: definidos.append(v))
+        monkeypatch.setattr(mod.provedores_llm, "listar", lambda: [])
+        monkeypatch.setattr(mod.configuracoes_provedor, "provedor_llm_ativo_id", lambda: 1)
+
+        resposta = mod._ativar("1")
+
+        assert resposta.status_code == 200
+        assert definidos == [1]
+
+
+class TestTestar:
+    async def test_id_nao_numerico_devolve_404(self):
+        assert (await mod._testar("abc")).status_code == 404
+
+    async def test_provedor_inexistente_devolve_404(self, monkeypatch):
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: None)
+
+        assert (await mod._testar("999")).status_code == 404
+
+    async def test_capacidade_embedding_chama_embed_nao_chat(self, monkeypatch):
+        provedor = _provedor_llm(capacidades=["embedding"], modelo="cohere.embed-v4.0")
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        chamadas_embed = []
+        chamadas_chat = []
+
+        class _ClienteFake:
+            async def embed(self, **kwargs):
+                chamadas_embed.append(kwargs)
+
+            async def chat(self, **kwargs):
+                chamadas_chat.append(kwargs)
+
+        monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteFake(), "host"))
+
+        resposta = await mod._testar("1")
+
+        assert resposta.status_code == 200
+        assert len(chamadas_embed) == 1
+        assert chamadas_embed[0]["model"] == "cohere.embed-v4.0"
+        assert chamadas_chat == []
+
+    async def test_capacidade_chat_chama_chat_nao_embed(self, monkeypatch):
+        provedor = _provedor_llm(capacidades=["chat"])
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        chamadas_embed = []
+        chamadas_chat = []
+
+        class _ClienteFake:
+            async def embed(self, **kwargs):
+                chamadas_embed.append(kwargs)
+
+            async def chat(self, **kwargs):
+                chamadas_chat.append(kwargs)
+
+        monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteFake(), "host"))
+
+        resposta = await mod._testar("1")
+
+        assert resposta.status_code == 200
+        assert len(chamadas_chat) == 1
+        assert chamadas_embed == []
+
+    async def test_falha_na_chamada_devolve_400_com_a_mensagem(self, monkeypatch):
+        provedor = _provedor_llm(capacidades=["embedding"])
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+
+        class _ClienteQueFalha:
+            async def embed(self, **kwargs):
+                raise RuntimeError("chave inválida")
+
+        monkeypatch.setattr(
+            mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteQueFalha(), "host")
+        )
+
+        resposta = await mod._testar("1")
+
+        assert resposta.status_code == 400
+
+    async def test_nao_mexe_no_ponteiro_de_ativo(self, monkeypatch):
+        provedor = _provedor_llm(capacidades=["embedding"])
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+
+        class _ClienteFake:
+            async def embed(self, **kwargs):
+                return None
+
+        monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteFake(), "host"))
+        chamou_definir = []
+        monkeypatch.setattr(
+            mod.configuracoes_provedor, "definir_provedor_llm_ativo_id", lambda v: chamou_definir.append(v)
+        )
+
+        await mod._testar("1")
+
+        assert chamou_definir == []

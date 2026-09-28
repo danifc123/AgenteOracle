@@ -27,6 +27,12 @@ const PROVEDOR_OLLAMA = {
   preco_entrada_por_1k: 0,
   preco_saida_por_1k: 0,
   moeda: 'R$',
+  capacidades: ['chat'],
+  credenciais_configuradas: false,
+  // Sem chave nenhuma configurada (`api_key_configurada`/
+  // `credenciais_configuradas` os dois `false`) — a idade da credencial
+  // nem chega a aparecer pra esse provedor, então o valor aqui não importa.
+  credencial_atualizada_em: '2026-09-23T00:00:00Z',
   ativo: true,
   criado_em: '2026-09-23T00:00:00Z',
 };
@@ -43,6 +49,13 @@ const PROVEDOR_OCI = {
   preco_entrada_por_1k: 0.01,
   preco_saida_por_1k: 0.02,
   moeda: 'R$',
+  capacidades: ['chat'],
+  credenciais_configuradas: false,
+  // Dinâmico (não fixo) de propósito: este provedor TEM chave configurada
+  // (`api_key_configurada: true`), então a idade dela aparece na tela —
+  // fixo, esse valor viraria "credencial velha" sozinho com o tempo e
+  // quebraria testes que não são sobre idade de credencial.
+  credencial_atualizada_em: new Date().toISOString(),
   ativo: false,
   criado_em: '2026-09-23T00:00:00Z',
 };
@@ -104,6 +117,10 @@ function criar(
   const fixture = TestBed.createComponent(ProvedoresLlm);
   const http = TestBed.inject(HttpTestingController);
   http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush(provedoresIniciais);
+  // A tabela começa fechada por padrão (ver `TestTabelaColapsavel` mais
+  // abaixo, que testa esse padrão especificamente) — os outros testes
+  // deste arquivo assumem a lista já visível, então abre aqui.
+  fixture.componentInstance.tabelaProvedoresAberta.set(true);
   fixture.detectChanges();
 
   const el: HTMLElement = fixture.nativeElement;
@@ -139,6 +156,13 @@ function criar(
       fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
       (botoes.find((b) => b.textContent?.includes('Ativar')) as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    clicarTestar: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.includes('Testar conexão')) as HTMLButtonElement).click();
       fixture.detectChanges();
     },
     clicarDesativar: (indice: number) => {
@@ -188,6 +212,10 @@ function criar(
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Veja um exemplo guiado')) as
         | HTMLButtonElement
         | undefined,
+    botaoAbrirFecharTabela: () =>
+      Array.from(el.querySelectorAll('.cabecalho-secao button')).find(
+        (b) => b.getAttribute('aria-label')?.includes('lista de provedores'),
+      ) as HTMLButtonElement,
   };
 }
 
@@ -360,6 +388,200 @@ describe('ProvedoresLlm', () => {
       abrirEditar(1);
 
       expect(linhasProvedores()[1].querySelector('.painel')).toBeNull();
+    });
+  });
+
+  describe('tabela de provedores colapsável', () => {
+    it('começa fechada por padrão', () => {
+      TestBed.configureTestingModule({
+        imports: [ProvedoresLlm],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: ConfiguracoesTi, useValue: configuracoesFalso() },
+          { provide: UsoIa, useValue: usoIaFalso() },
+        ],
+      });
+      const fixture = TestBed.createComponent(ProvedoresLlm);
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([PROVEDOR_OLLAMA]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.tabela-provedores')).toBeNull();
+    });
+
+    it('clicar no botão de abrir/fechar mostra e esconde a lista', () => {
+      const { fixture, botaoAbrirFecharTabela } = criar();
+
+      // `criar()` já abre a tabela pra não quebrar o resto dos testes —
+      // fecha primeiro pra testar o toggle de verdade.
+      botaoAbrirFecharTabela().click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tabela-provedores')).toBeNull();
+
+      botaoAbrirFecharTabela().click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tabela-provedores')).not.toBeNull();
+    });
+  });
+
+  describe('idade da credencial', () => {
+    it('mostra há quantos dias a credencial foi configurada', () => {
+      const dezDiasAtras = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const provedor = { ...PROVEDOR_OCI, credencial_atualizada_em: dezDiasAtras };
+      const { texto } = criar([PROVEDOR_OLLAMA, provedor]);
+
+      expect(texto()).toContain('há 10 dias');
+    });
+
+    it('credencial com mais de 90 dias mostra aviso pra renovar, não o selo "Configurada"', () => {
+      const noventaEUmDiasAtras = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
+      const provedor = { ...PROVEDOR_OCI, credencial_atualizada_em: noventaEUmDiasAtras };
+      const { texto, linhasProvedores } = criar([PROVEDOR_OLLAMA, provedor]);
+
+      expect(texto()).toContain('Renovar');
+      expect(linhasProvedores()[1].textContent).not.toContain('Configurada');
+    });
+
+    it('credencial recente não mostra aviso', () => {
+      const { texto } = criar([PROVEDOR_OLLAMA, PROVEDOR_OCI]);
+
+      expect(texto()).not.toContain('Renovar');
+    });
+
+    it('provedor sem chave nenhuma não mostra idade de credencial', () => {
+      const { linhasProvedores } = criar([PROVEDOR_OLLAMA, PROVEDOR_OCI]);
+
+      expect(linhasProvedores()[0].textContent).not.toContain('há ');
+    });
+  });
+
+  describe('OCI nativo e capacidades', () => {
+    it('escolher "OCI (SDK nativo)" esconde endereço/chave de API e mostra os campos da OCI', () => {
+      const { fixture, abrirCriar, texto } = criar();
+
+      abrirCriar();
+      fixture.componentInstance.formTipoConexao.set('oci_nativo');
+      fixture.detectChanges();
+
+      expect(texto()).not.toContain('Endereço (URL base)');
+      expect(texto()).not.toContain('Chave de API');
+      expect(texto()).toContain('User OCID');
+      expect(texto()).toContain('Chave privada');
+    });
+
+    it('abrir o diálogo de criação já vem com "Chat" marcado e "Embedding" desmarcado', () => {
+      const { fixture, abrirCriar } = criar();
+
+      abrirCriar();
+
+      expect(fixture.componentInstance.formCapacidadeChat()).toBe(true);
+      expect(fixture.componentInstance.formCapacidadeEmbedding()).toBe(false);
+    });
+
+    it('desmarcar as duas capacidades impede salvar e mostra o erro', () => {
+      const { fixture, abrirCriar, botaoSalvarProvedor, texto, http } = criar();
+
+      abrirCriar();
+      fixture.componentInstance.formNome.set('n');
+      fixture.componentInstance.formBaseUrl.set('http://x');
+      fixture.componentInstance.formModelo.set('m');
+      fixture.componentInstance.formCapacidadeChat.set(false);
+      fixture.componentInstance.formCapacidadeEmbedding.set(false);
+      fixture.detectChanges();
+
+      botaoSalvarProvedor().click();
+      fixture.detectChanges();
+
+      expect(texto()).toContain('Marque ao menos uma capacidade');
+      http.expectNone((req) => req.method === 'POST');
+    });
+
+    it('criar provedor oci_nativo manda credenciais_extra preenchidas e capacidades certas', () => {
+      const { fixture, abrirCriar, botaoSalvarProvedor, http } = criar();
+
+      abrirCriar();
+      const c = fixture.componentInstance;
+      c.formNome.set('Cohere embed');
+      c.formModelo.set('cohere.embed-v4.0');
+      c.formTipoConexao.set('oci_nativo');
+      c.formCapacidadeChat.set(false);
+      c.formCapacidadeEmbedding.set(true);
+      c.formUserOcid.set('ocid1.user.oc1..u');
+      c.formFingerprint.set('aa:bb');
+      c.formTenancyOcid.set('ocid1.tenancy.oc1..t');
+      c.formRegiao.set('sa-saopaulo-1');
+      c.formCompartmentId.set('ocid1.compartment.oc1..c');
+      c.formChavePrivada.set('chave-privada-de-teste');
+      fixture.detectChanges();
+
+      botaoSalvarProvedor().click();
+      fixture.detectChanges();
+
+      const requisicao = http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'POST');
+      expect(requisicao.request.body.capacidades).toEqual(['embedding']);
+      expect(requisicao.request.body.credenciais_extra).toEqual({
+        user_ocid: 'ocid1.user.oc1..u',
+        fingerprint: 'aa:bb',
+        tenancy_ocid: 'ocid1.tenancy.oc1..t',
+        regiao: 'sa-saopaulo-1',
+        compartment_id: 'ocid1.compartment.oc1..c',
+        chave_privada: 'chave-privada-de-teste',
+      });
+      requisicao.flush(PROVEDOR_OCI);
+      // `salvar()` bem-sucedido recarrega a lista — libera esse GET a mais
+      // pra não sobrar requisição presa pro `afterEach` reclamar.
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([]);
+    });
+
+    it('editar oci_nativo sem preencher os campos de credencial não manda credenciais_extra', () => {
+      const provedorOci = { ...PROVEDOR_OCI, tipo_conexao: 'oci_nativo', capacidades: ['embedding'] };
+      const { fixture, abrirEditar, botaoSalvarProvedor, http } = criar([PROVEDOR_OLLAMA, provedorOci]);
+
+      abrirEditar(1);
+      botaoSalvarProvedor().click();
+      fixture.detectChanges();
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith(`/api/ti/provedores-llm/${provedorOci.id}`) && req.method === 'PATCH',
+      );
+      expect(requisicao.request.body.credenciais_extra).toBeUndefined();
+      requisicao.flush(provedorOci);
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([]);
+    });
+
+    it('provedor sem capacidade de chat e inativo não mostra o botão "Ativar"', () => {
+      const provedorEmbedding = { ...PROVEDOR_OCI, ativo: false, capacidades: ['embedding'] };
+      const { linhasProvedores, abrirMenuAcoes } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
+
+      abrirMenuAcoes(1);
+
+      expect(
+        Array.from(linhasProvedores()[1].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Ativar'),
+      ).toBe(false);
+    });
+
+    it('mostra um selo por capacidade na linha da tabela', () => {
+      const provedorDuasCapacidades = { ...PROVEDOR_OCI, capacidades: ['chat', 'embedding'] };
+      const { linhasProvedores } = criar([PROVEDOR_OLLAMA, provedorDuasCapacidades]);
+
+      const texto = linhasProvedores()[1].textContent ?? '';
+      expect(texto).toContain('Chat');
+      expect(texto).toContain('Embedding');
+    });
+  });
+
+  describe('testar conexão', () => {
+    it('clicar em "Testar conexão" chama a rota certa', () => {
+      const { clicarTestar, http } = criar();
+
+      clicarTestar(0);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/1/testar') && req.method === 'POST',
+      );
+      requisicao.flush({ ok: true });
     });
   });
 

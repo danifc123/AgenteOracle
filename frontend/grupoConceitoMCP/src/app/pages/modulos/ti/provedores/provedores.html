@@ -80,29 +80,52 @@
 <section class="cartao-secao">
   <div class="cabecalho-secao">
     <h2>Provedores cadastrados</h2>
-    <app-botao variant="primaria" (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
+    <div class="acoes-secao">
+      <app-botao variant="primaria" (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
+      <app-botao
+        variant="icone"
+        [ariaLabel]="tabelaProvedoresAberta() ? 'Fechar lista de provedores' : 'Abrir lista de provedores'"
+        [title]="tabelaProvedoresAberta() ? 'Fechar' : 'Abrir'"
+        (clicked)="tabelaProvedoresAberta.set(!tabelaProvedoresAberta())"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          [class.icone-fechado]="!tabelaProvedoresAberta()"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </app-botao>
+    </div>
   </div>
 
-  @if (erro()) {
-    <p class="erro-carregamento">{{ erro() }}</p>
-  }
+  @if (tabelaProvedoresAberta()) {
+    @if (erro()) {
+      <p class="erro-carregamento">{{ erro() }}</p>
+    }
 
-  @if (carregando()) {
-    <p class="carregando">Carregando provedores...</p>
-  } @else if (provedores().length === 0) {
-    <app-estado-vazio titulo="Nenhum provedor cadastrado" variante="simples">
-      <p>
-        Sem nada cadastrado, o sistema usa o Ollama padrão do <code>.env</code>. Use o botão "Novo
-        provedor" pra cadastrar o primeiro.
-      </p>
-    </app-estado-vazio>
-  } @else {
-    <div class="table-wrapper">
+    @if (carregando()) {
+      <p class="carregando">Carregando provedores...</p>
+    } @else if (provedores().length === 0) {
+      <app-estado-vazio titulo="Nenhum provedor cadastrado" variante="simples">
+        <p>
+          Sem nada cadastrado, o sistema usa o Ollama padrão do <code>.env</code>. Use o botão "Novo
+          provedor" pra cadastrar o primeiro.
+        </p>
+      </app-estado-vazio>
+    } @else {
+      <div class="table-wrapper">
       <table class="tabela-provedores">
         <thead>
           <tr>
             <th>Nome</th>
             <th>Tipo</th>
+            <th>Capacidades</th>
             <th>Modelo</th>
             <th class="num">Preço entrada /1k</th>
             <th class="num">Preço saída /1k</th>
@@ -114,14 +137,24 @@
         <tbody>
           @for (provedor of provedores(); track provedor.id) {
             <tr>
-              <td>{{ provedor.nome }}</td>
+              <td class="col-quebra">{{ provedor.nome }}</td>
               <td>{{ rotuloTipoConexao(provedor.tipo_conexao) }}</td>
-              <td>{{ provedor.modelo }}</td>
+              <td class="capacidades">
+                @for (capacidade of provedor.capacidades; track capacidade) {
+                  <app-selo tom="neutro" [texto]="rotulosCapacidade[capacidade]" />
+                }
+              </td>
+              <td class="col-quebra">{{ provedor.modelo }}</td>
               <td class="num">{{ provedor.moeda }} {{ provedor.preco_entrada_por_1k }}</td>
               <td class="num">{{ provedor.moeda }} {{ provedor.preco_saida_por_1k }}</td>
-              <td>
-                @if (provedor.api_key_configurada) {
-                  <app-selo tom="ok" texto="Configurada" />
+              <td class="celula-chave">
+                @if (provedor.api_key_configurada || provedor.credenciais_configuradas) {
+                  @if (mostrarAvisoCredencial(provedor)) {
+                    <app-selo tom="atencao" [texto]="'Renovar — ' + rotuloIdadeCredencial(provedor)" />
+                  } @else {
+                    <app-selo tom="ok" texto="Configurada" />
+                    <span class="idade-credencial">{{ rotuloIdadeCredencial(provedor) }}</span>
+                  }
                 } @else {
                   <app-selo tom="neutro" texto="Sem chave" />
                 }
@@ -135,7 +168,7 @@
               </td>
               <td class="acoes">
                 <app-menu-acoes>
-                  @if (!provedor.ativo) {
+                  @if (!provedor.ativo && provedor.capacidades.includes('chat')) {
                     <app-botao
                       variant="contorno"
                       [loading]="ativandoId() === provedor.id"
@@ -144,7 +177,7 @@
                     >
                       Ativar
                     </app-botao>
-                  } @else {
+                  } @else if (provedor.ativo) {
                     <app-botao
                       variant="contorno"
                       [loading]="desativandoId() === provedor.id"
@@ -154,6 +187,14 @@
                       Desativar
                     </app-botao>
                   }
+                  <app-botao
+                    variant="contorno"
+                    [loading]="testandoId() === provedor.id"
+                    loadingText="Testando..."
+                    (clicked)="testarConexao(provedor)"
+                  >
+                    Testar conexão
+                  </app-botao>
                   <app-botao variant="contorno" (clicked)="abrirDialogEditar(provedor)">Editar</app-botao>
                   <app-botao
                     variant="perigo"
@@ -170,6 +211,7 @@
         </tbody>
       </table>
     </div>
+    }
   }
 </section>
 
@@ -387,27 +429,51 @@
     />
     <p class="dica">
       Ollama roda local ou numa instalação própria; "Compatível com OpenAI" cobre qualquer serviço que
-      fale a API da OpenAI — como a OCI Generative AI.
+      fale a API da OpenAI — como a OCI Generative AI; "OCI (SDK nativo)" é só pra quem não tem
+      endpoint compatível com OpenAI, como os modelos de embedding da OCI (autenticação por chave
+      privada, não por token simples).
     </p>
 
-    <label class="campo" data-tour-alvo="endereco">
-      <span>Endereço (URL base)</span>
-      <input
-        type="text"
-        [value]="formBaseUrl()"
-        (input)="formBaseUrl.set($any($event.target).value)"
-        autocomplete="off"
-        [placeholder]="ehOpenAiCompativel() ? 'https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1' : 'http://127.0.0.1:11434'"
-      />
-      @if (ehOpenAiCompativel()) {
-        <span class="dica">
-          Formato da OCI Generative AI, sem colar o rótulo — só o endereço:
-          <code>https://inference.generativeai.&lt;região&gt;.oci.oraclecloud.com/openai/v1</code>
-        </span>
-      } @else {
-        <span class="dica">Formato local do Ollama, sem colar o rótulo — só o endereço: <code>http://127.0.0.1:11434</code></span>
-      }
-    </label>
+    <fieldset class="campo-capacidades">
+      <legend>Capacidades</legend>
+      <label class="opcao-checkbox">
+        <input type="checkbox" [checked]="formCapacidadeChat()" (change)="formCapacidadeChat.set($any($event.target).checked)" />
+        <span>Chat</span>
+      </label>
+      <label class="opcao-checkbox">
+        <input
+          type="checkbox"
+          [checked]="formCapacidadeEmbedding()"
+          (change)="formCapacidadeEmbedding.set($any($event.target).checked)"
+        />
+        <span>Embedding</span>
+      </label>
+      <span class="dica">
+        Só provedor com "Chat" marcado pode virar o provedor ativo do sistema — um provedor só de
+        embedding fica disponível pra testar, sem poder ser ativado.
+      </span>
+    </fieldset>
+
+    @if (!ehOciNativo()) {
+      <label class="campo" data-tour-alvo="endereco">
+        <span>Endereço (URL base)</span>
+        <input
+          type="text"
+          [value]="formBaseUrl()"
+          (input)="formBaseUrl.set($any($event.target).value)"
+          autocomplete="off"
+          [placeholder]="ehOpenAiCompativel() ? 'https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1' : 'http://127.0.0.1:11434'"
+        />
+        @if (ehOpenAiCompativel()) {
+          <span class="dica">
+            Formato da OCI Generative AI, sem colar o rótulo — só o endereço:
+            <code>https://inference.generativeai.&lt;região&gt;.oci.oraclecloud.com/openai/v1</code>
+          </span>
+        } @else {
+          <span class="dica">Formato local do Ollama, sem colar o rótulo — só o endereço: <code>http://127.0.0.1:11434</code></span>
+        }
+      </label>
+    }
 
     <label class="campo" data-tour-alvo="modelo">
       <span>Modelo</span>
@@ -450,19 +516,87 @@
       </label>
     }
 
-    <label class="campo" data-tour-alvo="chave-api">
-      <span>Chave de API{{ editando() ? '' : ' (opcional)' }}</span>
-      <input
-        type="password"
-        [value]="formApiKey()"
-        (input)="formApiKey.set($any($event.target).value)"
-        autocomplete="new-password"
-        placeholder="••••••••"
-      />
-      @if (editando()) {
-        <span class="dica">Deixe em branco pra manter a chave atual.</span>
-      }
-    </label>
+    @if (!ehOciNativo()) {
+      <label class="campo" data-tour-alvo="chave-api">
+        <span>Chave de API{{ editando() ? '' : ' (opcional)' }}</span>
+        <input
+          type="password"
+          [value]="formApiKey()"
+          (input)="formApiKey.set($any($event.target).value)"
+          autocomplete="new-password"
+          placeholder="••••••••"
+        />
+        @if (editando()) {
+          <span class="dica">Deixe em branco pra manter a chave atual.</span>
+        }
+      </label>
+    } @else {
+      <div class="campo-oci-nativo">
+        <label class="campo">
+          <span>User OCID</span>
+          <input
+            type="text"
+            [value]="formUserOcid()"
+            (input)="formUserOcid.set($any($event.target).value)"
+            autocomplete="off"
+            placeholder="ocid1.user.oc1..."
+          />
+        </label>
+        <label class="campo">
+          <span>Fingerprint</span>
+          <input
+            type="text"
+            [value]="formFingerprint()"
+            (input)="formFingerprint.set($any($event.target).value)"
+            autocomplete="off"
+            placeholder="aa:bb:cc:dd:..."
+          />
+        </label>
+        <label class="campo">
+          <span>Tenancy OCID</span>
+          <input
+            type="text"
+            [value]="formTenancyOcid()"
+            (input)="formTenancyOcid.set($any($event.target).value)"
+            autocomplete="off"
+            placeholder="ocid1.tenancy.oc1..."
+          />
+        </label>
+        <label class="campo">
+          <span>Região</span>
+          <input
+            type="text"
+            [value]="formRegiao()"
+            (input)="formRegiao.set($any($event.target).value)"
+            autocomplete="off"
+            placeholder="sa-saopaulo-1"
+          />
+        </label>
+        <label class="campo">
+          <span>Compartment ID</span>
+          <input
+            type="text"
+            [value]="formCompartmentId()"
+            (input)="formCompartmentId.set($any($event.target).value)"
+            autocomplete="off"
+            placeholder="ocid1.compartment.oc1..."
+          />
+        </label>
+        <label class="campo">
+          <span>Chave privada (.pem)</span>
+          <textarea
+            [value]="formChavePrivada()"
+            (input)="formChavePrivada.set($any($event.target).value)"
+            autocomplete="off"
+            rows="4"
+            placeholder="-----BEGIN PRIVATE KEY-----"
+          ></textarea>
+          @if (editando()) {
+            <span class="dica">Deixe todos os campos desta seção em branco pra manter a credencial atual.</span>
+          }
+        </label>
+      </div>
+    }
 
     <div class="linha-precos" data-tour-alvo="precos">
       <label class="campo">

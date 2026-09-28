@@ -70,6 +70,9 @@ _LINHA_CRUA = (
     Decimal("0.01"),
     Decimal("0.02"),
     "R$",
+    '["chat"]',
+    None,
+    datetime(2026, 9, 23, tzinfo=UTC),
     datetime(2026, 9, 23, tzinfo=UTC),
 )
 
@@ -93,6 +96,9 @@ class TestListar:
             preco_entrada_por_1k=Decimal("0.01"),
             preco_saida_por_1k=Decimal("0.02"),
             moeda="R$",
+            capacidades=["chat"],
+            credenciais_extra=None,
+            credencial_atualizada_em=datetime(2026, 9, 23, tzinfo=UTC),
             criado_em=datetime(2026, 9, 23, tzinfo=UTC),
         )
 
@@ -111,6 +117,33 @@ class TestListar:
 
         assert provedor.api_key == ""
         assert provedor.projeto_id == ""
+
+    def test_capacidades_e_credenciais_extra_vem_como_string_json(self, monkeypatch):
+        linha = list(_LINHA_CRUA)
+        linha[11] = '["chat", "embedding"]'  # capacidades
+        linha[12] = '{"user_ocid": "ocid1.user...."}'  # credenciais_extra
+        _conexao_fake_para(monkeypatch, _CursorFake(linhas_fetchall=[tuple(linha)]))
+
+        provedor = mod.listar()[0]
+
+        assert provedor.capacidades == ["chat", "embedding"]
+        assert provedor.credenciais_extra == {"user_ocid": "ocid1.user...."}
+
+    def test_capacidades_e_credenciais_extra_ja_vem_parseados_pelo_driver(self, monkeypatch):
+        linha = list(_LINHA_CRUA)
+        linha[11] = ["chat", "embedding"]  # capacidades já como list
+        linha[12] = {"user_ocid": "ocid1.user...."}  # credenciais_extra já como dict
+        _conexao_fake_para(monkeypatch, _CursorFake(linhas_fetchall=[tuple(linha)]))
+
+        provedor = mod.listar()[0]
+
+        assert provedor.capacidades == ["chat", "embedding"]
+        assert provedor.credenciais_extra == {"user_ocid": "ocid1.user...."}
+
+    def test_credenciais_extra_ausente_vira_none(self, monkeypatch):
+        _conexao_fake_para(monkeypatch, _CursorFake(linhas_fetchall=[_LINHA_CRUA]))
+
+        assert mod.listar()[0].credenciais_extra is None
 
 
 class TestBuscar:
@@ -138,6 +171,8 @@ class TestCriar:
             "preco_entrada_por_1k": Decimal("0"),
             "preco_saida_por_1k": Decimal("0"),
             "moeda": "R$",
+            "capacidades": ["chat"],
+            "credenciais_extra": None,
         }
         campos.update(overrides)
         return campos
@@ -161,6 +196,46 @@ class TestCriar:
         _sql, binds = cursor.execucoes[-1]
         assert binds["api_key"] is None
 
+    def test_capacidades_e_gravado_como_json(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.criar(**self._campos(capacidades=["chat", "embedding"]))
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["capacidades"] == '["chat", "embedding"]'
+
+    def test_credenciais_extra_ausente_grava_none(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.criar(**self._campos(credenciais_extra=None))
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["credenciais_extra"] is None
+
+    def test_credenciais_extra_preenchido_e_gravado_como_json(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.criar(**self._campos(credenciais_extra={"user_ocid": "ocid1.user...."}))
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["credenciais_extra"] == '{"user_ocid": "ocid1.user...."}'
+
+    def test_credencial_atualizada_em_comeca_igual_a_criado_em(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.criar(**self._campos())
+
+        sql, binds = cursor.execucoes[-1]
+        # Mesmo bind `:agora` usado nas duas colunas — por construção, os
+        # dois valores saem idênticos (só 1 timestamp gerado).
+        assert "credencial_atualizada_em" in sql
+        assert sql.count(":agora") == 2
+        assert binds["agora"] is not None
+
     def test_nome_duplicado_levanta_provedorllmjaexiste(self, monkeypatch):
         cursor = _CursorFake(erro_ao_executar=_erro_postgres("23505"))
         _conexao_fake_para(monkeypatch, cursor)
@@ -174,6 +249,29 @@ class TestCriar:
 
         with pytest.raises(psycopg.Error):
             mod.criar(**self._campos())
+
+
+class TestDeveRenovarCredencial:
+    def test_api_key_preenchida_renova(self):
+        assert mod._deve_renovar_credencial({"api_key": "chave-nova"}) is True
+
+    def test_credenciais_extra_preenchido_renova(self):
+        assert mod._deve_renovar_credencial({"credenciais_extra": {"user_ocid": "u"}}) is True
+
+    def test_campo_sem_relacao_com_credencial_nao_renova(self):
+        assert mod._deve_renovar_credencial({"nome": "Novo nome"}) is False
+
+    def test_api_key_vazia_nao_renova(self):
+        assert mod._deve_renovar_credencial({"api_key": ""}) is False
+
+    def test_credenciais_extra_vazio_nao_renova(self):
+        assert mod._deve_renovar_credencial({"credenciais_extra": {}}) is False
+
+    def test_credenciais_extra_none_nao_renova(self):
+        assert mod._deve_renovar_credencial({"credenciais_extra": None}) is False
+
+    def test_campos_vazio_nao_renova(self):
+        assert mod._deve_renovar_credencial({}) is False
 
 
 class TestAtualizar:
@@ -199,11 +297,60 @@ class TestAtualizar:
         assert binds["nome"] == "Novo nome"
         assert binds["preco_entrada_por_1k"] == Decimal("0.05")
         assert "base_url" not in binds
+        assert "credencial_atualizada_em" not in binds
+
+    def test_trocar_api_key_bate_credencial_atualizada_em(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, api_key="chave-nova")
+
+        sql, binds = cursor.execucoes[-1]
+        assert "credencial_atualizada_em = :credencial_atualizada_em" in sql
+        assert binds["credencial_atualizada_em"] is not None
+
+    def test_trocar_credenciais_extra_bate_credencial_atualizada_em(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, credenciais_extra={"user_ocid": "ocid1.user...."})
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["credencial_atualizada_em"] is not None
+
+    def test_mudar_so_o_preco_nao_bate_credencial_atualizada_em(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, preco_entrada_por_1k=Decimal("0.05"))
+
+        _sql, binds = cursor.execucoes[-1]
+        assert "credencial_atualizada_em" not in binds
 
     def test_id_inexistente_devolve_none(self, monkeypatch):
         _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=None))
 
         assert mod.atualizar(999, nome="qualquer") is None
+
+    def test_capacidades_recebe_cast_jsonb_e_e_serializado(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, capacidades=["embedding"])
+
+        sql, binds = cursor.execucoes[-1]
+        assert "capacidades = :capacidades::jsonb" in sql
+        assert binds["capacidades"] == '["embedding"]'
+
+    def test_credenciais_extra_recebe_cast_jsonb_e_e_serializado(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, credenciais_extra={"regiao": "sa-saopaulo-1"})
+
+        sql, binds = cursor.execucoes[-1]
+        assert "credenciais_extra = :credenciais_extra::jsonb" in sql
+        assert binds["credenciais_extra"] == '{"regiao": "sa-saopaulo-1"}'
 
     def test_nome_duplicado_levanta_provedorllmjaexiste(self, monkeypatch):
         cursor = _CursorFake(erro_ao_executar=_erro_postgres("23505"))
@@ -239,6 +386,9 @@ class TestCustoEstimado:
             preco_entrada_por_1k=Decimal("0.01"),
             preco_saida_por_1k=Decimal("0.02"),
             moeda="R$",
+            capacidades=["chat"],
+            credenciais_extra=None,
+            credencial_atualizada_em=datetime.now(UTC),
             criado_em=datetime.now(UTC),
         )
 
@@ -259,6 +409,9 @@ class TestCustoEstimado:
             preco_entrada_por_1k=Decimal("1"),
             preco_saida_por_1k=Decimal("1"),
             moeda="R$",
+            capacidades=["chat"],
+            credenciais_extra=None,
+            credencial_atualizada_em=datetime.now(UTC),
             criado_em=datetime.now(UTC),
         )
 
@@ -266,13 +419,33 @@ class TestCustoEstimado:
 
 
 class TestTipoConexaoValido:
-    @pytest.mark.parametrize("valor", ["ollama", "openai_compativel"])
+    @pytest.mark.parametrize("valor", ["ollama", "openai_compativel", "oci_nativo"])
     def test_valores_validos_sao_aceitos(self, valor):
         assert mod.tipo_conexao_valido(valor) is True
 
     @pytest.mark.parametrize("valor", ["", "oci", "OLLAMA", "openai"])
     def test_valores_invalidos_sao_rejeitados(self, valor):
         assert mod.tipo_conexao_valido(valor) is False
+
+
+class TestCapacidadesValidas:
+    @pytest.mark.parametrize("valor", [["chat"], ["embedding"], ["chat", "embedding"]])
+    def test_valores_validos_sao_aceitos(self, valor):
+        assert mod.capacidades_validas(valor) is True
+
+    @pytest.mark.parametrize(
+        "valor",
+        [
+            [],
+            ["invalido"],
+            ["chat", "chat"],
+            ["chat", "invalido"],
+            "chat",
+            None,
+        ],
+    )
+    def test_valores_invalidos_sao_rejeitados(self, valor):
+        assert mod.capacidades_validas(valor) is False
 
 
 class TestEstiloApiValido:

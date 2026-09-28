@@ -26,6 +26,7 @@ ser validado pra esse tipo de dado."""
 
 import logging
 
+import oci
 from ollama import AsyncClient
 from openai import AsyncOpenAI
 
@@ -37,7 +38,9 @@ from agente_oracle.config import (
     ollama_model_do_dominio,
 )
 from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor, provedores_llm
+from agente_oracle.tools.ia.cliente_oci_nativo import ClienteOciNativo
 from agente_oracle.tools.ia.cliente_openai_compativel import ClienteOpenAICompativel
+from agente_oracle.tools.ia.provedores_llm import ProvedorLLM
 from agente_oracle.tools.ia.saneamento import sanitizar_dado_sensivel, sanitizar_mensagens
 
 # Domínios que podem usar o cadastro de LLM — os outros dois (financeiro,
@@ -150,15 +153,61 @@ def _provedor_llm_ativo(dominio: DominioIA) -> provedores_llm.ProvedorLLM | None
     return provedores_llm.buscar(id_ativo)
 
 
+def construir_cliente_llm(provedor: ProvedorLLM) -> tuple[object, str]:
+    """Dado um `ProvedorLLM` QUALQUER — ativo ou não —, monta o client
+    real certo e devolve junto o `host` (só pra log/auditoria). Usado
+    tanto pelo provedor ATIVO (`criar_cliente_protegido` abaixo) quanto
+    pela rota de testar um cadastro sem ativar
+    (`server/ti/provedores_llm.py::_testar`) — não sabe nada sobre "qual
+    é o ativo", isso é responsabilidade de quem chama."""
+    if provedor.tipo_conexao == "ollama":
+        cliente_real = AsyncClient(
+            host=provedor.base_url,
+            headers={"Authorization": f"Bearer {provedor.api_key}"} if provedor.api_key else {},
+        )
+        return cliente_real, provedor.base_url
+    if provedor.tipo_conexao == "openai_compativel":
+        cliente_real = ClienteOpenAICompativel(
+            AsyncOpenAI(base_url=provedor.base_url, api_key=provedor.api_key, project=provedor.projeto_id or None),
+            provedor.estilo_api,
+        )
+        return cliente_real, provedor.base_url
+    # "oci_nativo" — autenticação por assinatura RSA, não bearer token; a
+    # chave privada vem do cadastro (`credenciais_extra`) e nunca é escrita
+    # em disco, só usada em memória. `key_content` no lugar de `key_file`
+    # (mesmo dict que `oci.config.from_file` devolveria) — o SDK monta o
+    # signer sozinho a partir disso, mesmo padrão do exemplo oficial da
+    # Oracle (ticket #1834414), sem precisar instanciar `oci.signer.Signer`
+    # à mão.
+    credenciais = provedor.credenciais_extra or {}
+    config = {
+        "tenancy": credenciais.get("tenancy_ocid", ""),
+        "user": credenciais.get("user_ocid", ""),
+        "fingerprint": credenciais.get("fingerprint", ""),
+        "key_content": credenciais.get("chave_privada", ""),
+        "region": credenciais.get("regiao", ""),
+    }
+    endpoint = f"https://inference.generativeai.{credenciais.get('regiao', '')}.oci.oraclecloud.com"
+    cliente_oci = oci.generative_ai_inference.GenerativeAiInferenceClient(
+        config=config,
+        service_endpoint=endpoint,
+        retry_strategy=oci.retry.NoneRetryStrategy(),
+        timeout=(10, 240),
+    )
+    cliente_real = ClienteOciNativo(cliente_oci, credenciais.get("compartment_id", ""))
+    return cliente_real, endpoint
+
+
 def criar_cliente_protegido(
     settings: Settings, dominio: DominioIA, sanitizar: bool, usuario_id: str
 ) -> ClienteIAProtegido:
     """Substitui `AsyncClient(host=settings.ollama_host)` direto — olha o
     LLM cadastrado ativo (`tools/ia/provedores_llm.py`, só pra TI/RH) e
-    monta o client real certo, já envolto na proteção. O modelo continua
-    vindo de fora (`modelo_ia_ativo`), exatamente como já era passado hoje
-    pra `avaliar_chamado`/`classificar_categoria` — este client só cuida
-    de onde a chamada vai, não de qual modelo pedir nela. `usuario_id` é
+    monta o client real certo (`construir_cliente_llm`), já envolto na
+    proteção. O modelo continua vindo de fora (`modelo_ia_ativo`),
+    exatamente como já era passado hoje pra
+    `avaliar_chamado`/`classificar_categoria` — este client só cuida de
+    onde a chamada vai, não de qual modelo pedir nela. `usuario_id` é
     `usuario["sub"]` de quem chamou, ou `USUARIO_SISTEMA` quando não tem
     sessão por trás (poller, webhook do GLPI) — vai pro relatório "por
     usuário" da página Tokens do TI."""
@@ -168,18 +217,8 @@ def criar_cliente_protegido(
         chave = ollama_api_key_do_dominio(settings, dominio)
         cliente_real = AsyncClient(host=host, headers={"Authorization": f"Bearer {chave}"} if chave else {})
         provedor = _PROVEDOR_OLLAMA_PADRAO
-    elif ativo.tipo_conexao == "ollama":
-        host = ativo.base_url
-        cliente_real = AsyncClient(
-            host=host, headers={"Authorization": f"Bearer {ativo.api_key}"} if ativo.api_key else {}
-        )
-        provedor = ativo.nome
     else:
-        cliente_real = ClienteOpenAICompativel(
-            AsyncOpenAI(base_url=ativo.base_url, api_key=ativo.api_key, project=ativo.projeto_id or None),
-            ativo.estilo_api,
-        )
-        host = ativo.base_url
+        cliente_real, host = construir_cliente_llm(ativo)
         provedor = ativo.nome
     return ClienteIAProtegido(
         cliente_real, dominio, host, sanitizar, settings.teto_diario_ia_externa, provedor, usuario_id

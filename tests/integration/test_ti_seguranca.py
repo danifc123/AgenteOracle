@@ -1,9 +1,11 @@
 """Testa `/api/ti/seguranca` de ponta a ponta contra o Postgres de teste —
 RBAC (só quem tem acesso ao módulo TI), histórico e dispensar. A detecção
-em si depende do Ollama estar disponível no ambiente — `detectar` já cai
-em lista vazia nesse caso (mesmo fallback usado nos testes de auditoria),
-então os testes aqui cobrem shape/autorização, não o conteúdo exato dos
-achados."""
+em si é sempre trocada por um fake (`_sem_deteccao_real`) — os testes aqui
+cobrem shape/autorização, não o conteúdo exato dos achados, então não faz
+sentido gastar chamada de IA de verdade (e, desde que um provedor real
+pode ficar ativo em `provedores_llm`, isso deixou de cair sozinho no
+fallback do Ollama indisponível: sem o fake, bateria na API paga de
+verdade a cada rodada de teste)."""
 
 import uuid
 
@@ -17,6 +19,21 @@ pytestmark = pytest.mark.integration
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _sem_deteccao_real(monkeypatch):
+    """Troca `detectar` por um fake que nunca sai da máquina — nenhum
+    teste deste arquivo precisa do CONTEÚDO de um achado de verdade, só do
+    shape da resposta (RBAC, histórico, dispensar). Sem isso, os 3 testes
+    de `TestRotaSeguranca` bateriam no provedor de IA ATIVO de verdade
+    (gasto real, e deixa achado de auditoria órfão pra usuário de teste
+    que já foi apagado — achado real, 2026-09-25)."""
+
+    async def _fake(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("agente_oracle.server.ti.seguranca.detectar", _fake)
 
 
 @pytest.fixture

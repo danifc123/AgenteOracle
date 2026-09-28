@@ -57,11 +57,20 @@ table {
   }
 }
 
+// `display: flex` direto no `<td>` (versão anterior) tirava a célula do
+// modelo de tabela — a borda inferior dela parava de bater com a altura
+// das outras células da mesma linha (achado do usuário, 2026-09-28,
+// print mostrando as linhas desalinhadas). O flex agora vive só no `<div>`
+// interno; o `<td>` continua uma célula normal.
 .coluna-acao {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.acoes-linha {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  white-space: nowrap;
 }
 
 .paginacao {

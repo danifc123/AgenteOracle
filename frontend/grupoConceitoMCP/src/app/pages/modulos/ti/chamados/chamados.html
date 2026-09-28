@@ -94,18 +94,20 @@
                 }
               </td>
               <td class="coluna-acao">
-                <app-botao
-                  variant="contorno"
-                  [loading]="verificandoId() === chamado.id"
-                  [disabled]="verificandoId() !== null && verificandoId() !== chamado.id"
-                  loadingText="Verificando..."
-                  (clicked)="verificarChamado(chamado)"
-                >
-                  Verificar
-                </app-botao>
-                <app-botao variant="contorno" (clicked)="abrirDetalhe(chamado)"
-                  >Ver chamado</app-botao
-                >
+                <div class="acoes-linha">
+                  <app-botao
+                    variant="contorno"
+                    [loading]="verificandoId() === chamado.id"
+                    [disabled]="verificandoId() !== null && verificandoId() !== chamado.id"
+                    loadingText="Verificando..."
+                    (clicked)="verificarChamado(chamado)"
+                  >
+                    Verificar
+                  </app-botao>
+                  <app-botao variant="contorno" (clicked)="abrirDetalhe(chamado)"
+                    >Ver chamado</app-botao
+                  >
+                </div>
               </td>
             </tr>
           }

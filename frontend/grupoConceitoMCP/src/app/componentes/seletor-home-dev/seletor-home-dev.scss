@@ -2,19 +2,19 @@
   display: contents;
 }
 
-.seletor-home {
+.seletor-home-wrapper {
   position: fixed;
   top: 16px;
   right: 68px;
   z-index: 35;
+}
+
+.seletor-home {
   height: 40px;
-  padding: 0 30px 0 14px;
+  padding: 0 34px 0 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  background-color: var(--color-surface);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6b62' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
+  background: var(--color-surface);
   color: var(--color-text);
   font-family: inherit;
   font-size: 13px;
@@ -31,13 +31,30 @@
     border-color: var(--color-primary-light);
   }
 
+  // Mesmo `var(--focus-ring)` de todo outro controle focável do design
+  // system (`styles.scss`) — antes era uma cor mágica quase igual, mas
+  // com opacidade diferente (0.18 em vez de 0.28), que ficava sutilmente
+  // fora do padrão do resto do app.
   &:focus-visible {
     outline: none;
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(47, 158, 88, 0.18);
+    box-shadow: var(--focus-ring);
   }
 
   &::-ms-expand {
     display: none;
   }
+}
+
+// SVG inline em vez de `background-image` com uma cor fixa embutida no
+// data URI (era o jeito antigo aqui) — mesmo ícone/traço de
+// `select-busca.html` (`stroke="currentColor"`), então segue o tema junto
+// com o resto do app em vez de ficar preso num hex fixo.
+.chevron {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
 }

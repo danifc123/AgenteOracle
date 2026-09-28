@@ -1,4 +1,5 @@
 import { Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { SoDev } from '../../diretivas/so-dev/so-dev';
 import { HomeSelecionada } from '../../servicos/home-selecionada/home-selecionada';
 import { Sessao, rotuloModulo } from '../../servicos/sessao/sessao';
@@ -15,6 +16,7 @@ import { Sessao, rotuloModulo } from '../../servicos/sessao/sessao';
   styleUrl: './seletor-home-dev.scss',
 })
 export class SeletorHomeDev {
+  private readonly router = inject(Router);
   protected readonly sessao = inject(Sessao);
   protected readonly homeSelecionada = inject(HomeSelecionada);
   protected readonly rotuloModulo = rotuloModulo;
@@ -22,5 +24,10 @@ export class SeletorHomeDev {
   protected selecionar(evento: Event): void {
     const modulo = (evento.target as HTMLSelectElement).value;
     this.homeSelecionada.selecionar(modulo);
+    // O `HomeRoteador` (que de fato troca a tela pelo valor acima) só vive
+    // na rota `/` — sem isso, trocar o select em qualquer outra página
+    // (ex: `/ti/chamados`) mudava o estado mas não navegava pra lugar
+    // nenhum visível, parecendo que o select "não funcionava".
+    this.router.navigateByUrl('/');
   }
 }

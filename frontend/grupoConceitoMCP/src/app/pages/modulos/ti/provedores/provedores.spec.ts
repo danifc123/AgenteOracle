@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { ConfiguracoesTi, ConfiguracoesTiResposta } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
+import { Sessao } from '../../../../servicos/sessao/sessao';
 import {
   ChamadosIaResposta,
   LinhaUsoIa,
@@ -99,10 +100,20 @@ function usoIaFalso(opcoes: {
   };
 }
 
+// A tela inteira era só-desenvolvedor até 2026-09-28 (agora o time de TI
+// também acessa, em modo leitura — ver `TestSomenteLeituraParaTime` mais
+// abaixo) — os testes existentes assumem acesso de escrita, então o padrão
+// aqui é `true`; sem essa fake, o `Sessao` real injetado (sem sessão
+// nenhuma) devolveria `false` e esconderia botão nenhum dos testes acham.
+function sessaoFalso(ehDesenvolvedor = true) {
+  return { ehDesenvolvedor: () => ehDesenvolvedor };
+}
+
 function criar(
   provedoresIniciais: unknown[] = [PROVEDOR_OLLAMA, PROVEDOR_OCI],
   configuracoes = configuracoesFalso(),
   usoIa = usoIaFalso(),
+  sessao = sessaoFalso(),
 ) {
   TestBed.configureTestingModule({
     imports: [ProvedoresLlm],
@@ -112,6 +123,7 @@ function criar(
       provideHttpClientTesting(),
       { provide: ConfiguracoesTi, useValue: configuracoes },
       { provide: UsoIa, useValue: usoIa },
+      { provide: Sessao, useValue: sessao },
     ],
   });
   const fixture = TestBed.createComponent(ProvedoresLlm);
@@ -128,6 +140,7 @@ function criar(
   return {
     fixture,
     http,
+    el,
     configuracoes,
     usoIa,
     texto: () => el.textContent ?? '',
@@ -936,6 +949,37 @@ describe('ProvedoresLlm', () => {
       abrirAba('Por usuário');
 
       expect(texto()).toContain('Nenhum consumo ainda');
+    });
+  });
+
+  describe('modo leitura pro time de TI (2026-09-28)', () => {
+    it('quem não é desenvolvedor vê a lista de provedores, mas sem nenhum botão de escrita', () => {
+      const { texto, el } = criar(
+        [PROVEDOR_OLLAMA, PROVEDOR_OCI],
+        configuracoesFalso(),
+        usoIaFalso(),
+        sessaoFalso(false),
+      );
+
+      // Continua vendo os dados — só não pode mexer.
+      expect(texto()).toContain('Ollama local');
+      expect(texto()).toContain('OCI Generative AI — gpt-oss-120b');
+
+      expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
+        false,
+      );
+      expect(el.querySelector('button[aria-label="Configurações de tokens"]')).toBeNull();
+      expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBe(0);
+    });
+
+    it('desenvolvedor continua vendo os botões de escrita normalmente', () => {
+      const { el } = criar([PROVEDOR_OLLAMA], configuracoesFalso(), usoIaFalso(), sessaoFalso(true));
+
+      expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
+        true,
+      );
+      expect(el.querySelector('button[aria-label="Configurações de tokens"]')).not.toBeNull();
+      expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBeGreaterThan(0);
     });
   });
 });

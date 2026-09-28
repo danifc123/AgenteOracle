@@ -13,6 +13,7 @@ import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-heade
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
 import { PassoTour, TourGuiado } from '../../../../componentes/tour-guiado/tour-guiado';
+import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import {
   AlteracoesConfiguracoesTi,
   ConfiguracoesTi,
@@ -251,6 +252,7 @@ function formatarCusto(custo: number, moeda: string, custoBrl: number | null): s
     ModuloHeader,
     SelectBusca,
     Selo,
+    SoDev,
     TourGuiado,
   ],
   templateUrl: './provedores.html',

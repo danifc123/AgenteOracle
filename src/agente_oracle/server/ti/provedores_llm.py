@@ -1,11 +1,15 @@
 """Rotas HTTP do cadastro de LLM (`tools/ia/provedores_llm.py`) — listar,
-criar, editar, apagar, ativar e testar. Só desenvolvedor acessa, travado no
-DECORATOR de cada rota (não só checado dentro da função, como o resto do
-TI) — aqui tem chave de API/chave privada de verdade, então o fechamento
-tem que ser mais rígido desde a entrada. A credencial nunca volta pro
-navegador depois de salva: GET devolve só `api_key_configurada`/
-`credenciais_configuradas: bool`; editar sem mandar uma credencial nova
-mantém a que já estava lá.
+criar, editar, apagar, ativar e testar. Listar (GET) é visualização e
+libera pra todo o time de TI (`exigir_modulo_ti`, achado do usuário,
+2026-09-28: o time queria ACOMPANHAR o consumo sem depender de um
+desenvolvedor) — qualquer escrita (criar/editar/apagar/ativar/testar)
+continua travada a desenvolvedor, a maioria delas no DECORATOR da própria
+rota; a exceção é o POST de `/api/ti/provedores-llm` (mesmo endpoint do
+GET liberado), checado dentro da função. Aqui tem chave de API/chave
+privada de verdade, então o fechamento das rotas de escrita é rígido de
+propósito. A credencial nunca volta pro navegador depois de salva: GET
+devolve só `api_key_configurada`/`credenciais_configuradas: bool`; editar
+sem mandar uma credencial nova mantém a que já estava lá.
 
 `testar` (`POST .../{id}/testar`) dispara uma chamada real contra UM
 cadastro específico sem tocar no ponteiro de "ativo" — deixa confirmar
@@ -24,8 +28,9 @@ from starlette.responses import JSONResponse, Response
 
 from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_desenvolvedor
+from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
+from agente_oracle.tools.auth import papeis
 from agente_oracle.tools.ia import cliente_protegido, configuracoes_provedor, provedores_llm
 from agente_oracle.tools.ia.provedores_llm import ProvedorLLM, ProvedorLlmJaExiste
 
@@ -276,10 +281,17 @@ async def _testar(id_provedor_bruto: str, usuario_id: str) -> Response:
 
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/provedores-llm", methods=["GET", "POST", "OPTIONS"])
-    @rota_protegida("GET, POST, OPTIONS", exigir=exigir_desenvolvedor)
+    @rota_protegida("GET, POST, OPTIONS", exigir=exigir_modulo_ti)
     async def provedores_llm_route(request: Request, usuario: dict) -> Response:
+        """Listar (GET) é visualização — todo o time de TI vê os provedores
+        cadastrados e o consumo, mesmo espírito de `server/ti/uso_ia.py`.
+        Cadastrar um provedor novo (POST) mexe em credencial de verdade —
+        continua travado a desenvolvedor, só que checado aqui dentro (não
+        no decorator) já que o GET do mesmo endpoint precisa ficar aberto."""
         if request.method == "GET":
             return await to_thread.run_sync(_listar)
+        if not papeis.eh_desenvolvedor(usuario.get("papeis", [])):
+            return _erro("Acesso restrito a desenvolvedores.", 403)
         corpo = await request.json()
         return await to_thread.run_sync(_criar, corpo)
 

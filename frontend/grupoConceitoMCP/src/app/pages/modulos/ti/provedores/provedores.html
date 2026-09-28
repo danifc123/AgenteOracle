@@ -1,9 +1,9 @@
 <app-modulo-header
   breadcrumb="TI"
   titulo="IA"
-  descricao="Cadastro dos LLMs que TI e RH podem usar, e quanto cada um está custando. Visível só pra desenvolvedores."
+  descricao="Cadastro dos LLMs que TI e RH podem usar, e quanto cada um está custando. Cadastrar, editar, ativar e apagar um provedor é só pra desenvolvedores — o time de TI acompanha em modo leitura."
 >
-  <div acoes class="acoes-config">
+  <div acoes class="acoes-config" *appSoDev>
     <app-botao
       variant="icone"
       ariaLabel="Configurações de tokens"
@@ -81,7 +81,7 @@
   <div class="cabecalho-secao">
     <h2>Provedores cadastrados</h2>
     <div class="acoes-secao">
-      <app-botao variant="primaria" (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
+      <app-botao variant="primaria" *appSoDev (clicked)="abrirDialogCriar()">Novo provedor</app-botao>
       <app-botao
         variant="icone"
         [ariaLabel]="tabelaProvedoresAberta() ? 'Fechar lista de provedores' : 'Abrir lista de provedores'"
@@ -131,7 +131,7 @@
             <th class="num">Preço saída /1k</th>
             <th>Chave</th>
             <th>Status</th>
-            <th><span class="sr-only">Ações</span></th>
+            <th *appSoDev><span class="sr-only">Ações</span></th>
           </tr>
         </thead>
         <tbody>
@@ -166,7 +166,7 @@
                   <app-selo tom="neutro" texto="Inativo" />
                 }
               </td>
-              <td class="acoes">
+              <td class="acoes" *appSoDev>
                 <app-menu-acoes>
                   @if (!provedor.ativo && provedor.capacidades.includes('chat')) {
                     <app-botao

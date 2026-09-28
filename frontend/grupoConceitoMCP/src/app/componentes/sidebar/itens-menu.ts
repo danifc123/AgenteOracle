@@ -133,6 +133,10 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       {
         rota: '/ti/seguranca',
         rotulo: 'Segurança de TI',
+        // Só desenvolvedor por enquanto (pedido do usuário, 2026-09-28) —
+        // o time de TI comum fica só com Auditoria de Chamados e IA
+        // (essa última em modo leitura, ver `provedores.ts`).
+        soDev: true,
         iconeSvg: `<path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M12 8v5M12 16.5h.01" stroke-linecap="round" />`,
       },
       {
@@ -143,7 +147,9 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       {
         rota: '/ti/provedores',
         rotulo: 'IA',
-        soDev: true,
+        // Visível pro time inteiro desde 2026-09-28 — a tela em si decide
+        // o que cada um pode fazer (visualizar pra todo mundo, mexer só
+        // desenvolvedor, ver `provedores.ts`/`provedores.html`).
         iconeSvg: `<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h10M7 13h6" stroke-linecap="round" /><circle cx="17" cy="16" r="1.3" />`,
       },
     ],

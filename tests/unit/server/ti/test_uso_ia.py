@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from agente_oracle.server.ti import uso_ia as uso_ia_module
 from agente_oracle.server.ti.uso_ia import (
-    _acesso_negado,
     _chamados_ia_para_json,
     _corpo_uso_ia,
     _custo_convertido_brl,
@@ -276,14 +275,3 @@ class TestCorpoUsoIa:
             "com_fallback_embedding": 1,
             "duracao_media_ms": 500.0,
         }
-
-
-class TestAcessoNegado:
-    def test_desenvolvedor_pode_acessar(self):
-        assert _acesso_negado({"papeis": ["desenvolvedor"]}) is None
-
-    def test_usuario_de_ti_comum_e_barrado(self):
-        assert _acesso_negado({"papeis": ["ti_admin"]}) == "Acesso restrito a desenvolvedores."
-
-    def test_sem_papeis_e_barrado(self):
-        assert _acesso_negado({}) == "Acesso restrito a desenvolvedores."

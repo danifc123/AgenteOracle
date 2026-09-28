@@ -27,7 +27,6 @@ import { Historico } from './pages/relatorios/historico/historico';
 import { Usuarios } from './pages/usuarios/usuarios';
 import { adminGuard } from './servicos/admin.guard/admin.guard';
 import { authGuard } from './servicos/auth.guard/auth.guard';
-import { devGuard } from './servicos/dev.guard/dev.guard';
 
 export const routes: Routes = [
   { path: 'login', component: Login },
@@ -63,7 +62,12 @@ export const routes: Routes = [
       { path: 'rh/colaboradores', component: Colaboradores },
       { path: 'ti/seguranca', component: SegurancaTi },
       { path: 'ti/chamados', component: ChamadosTi },
-      { path: 'ti/provedores', component: ProvedoresLlm, canActivate: [devGuard] },
+      // Sem guard de rota (mesmo padrão de `ti/seguranca`/`ti/chamados`
+      // acima): visível pro time de TI inteiro desde 2026-09-28, em modo
+      // leitura — a própria tela decide o que cada um pode fazer
+      // (`provedores.ts`), o backend barra escrita de quem não é
+      // desenvolvedor.
+      { path: 'ti/provedores', component: ProvedoresLlm },
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },

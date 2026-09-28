@@ -1,7 +1,6 @@
 from agente_oracle.server.ti import (
     chamados,
     configuracoes,
-    dashboard,
     provedores_llm,
     seguranca,
     tecnicos_glpi,
@@ -13,7 +12,6 @@ from agente_oracle.server.ti import (
 def registrar(mcp) -> None:
     chamados.registrar(mcp)
     configuracoes.registrar(mcp)
-    dashboard.registrar(mcp)
     provedores_llm.registrar(mcp)
     seguranca.registrar(mcp)
     tecnicos_glpi.registrar(mcp)

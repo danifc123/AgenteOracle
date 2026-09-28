@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { Layout } from './layout/layout';
-import { HomeRoteador } from './pages/home-roteador/home-roteador';
+import { Home } from './pages/home/home';
 import { Financeiro } from './pages/modulos/financeiro/financeiro';
 import { CriarRelatorio } from './pages/modulos/financeiro/criar-relatorio/criar-relatorio';
 import { FluxoCaixa } from './pages/modulos/financeiro/fluxo-caixa/fluxo-caixa';
@@ -35,7 +35,7 @@ export const routes: Routes = [
     component: Layout,
     canActivate: [authGuard],
     children: [
-      { path: '', component: HomeRoteador },
+      { path: '', component: Home },
       { path: 'financeiro/criar-relatorio', component: CriarRelatorio },
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },
@@ -49,11 +49,10 @@ export const routes: Routes = [
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },
       { path: 'estoque/chat', component: EstoqueChat },
       { path: 'estoque', component: Estoque },
-      // A home de cada módulo mora só na rota '' (`HomeRoteador`, que
-      // escolhe qual mostrar pelo módulo liberado do usuário ou, pra
-      // desenvolvedor, pelo `SeletorHomeDev`) — sem link nenhum na
-      // sidebar apontando pra cá mais, só redireciona quem ainda tiver
-      // um favorito antigo salvo pra essas URLs.
+      // A Home é única e mora só na rota '' (`Home` — personalizável por
+      // usuário, com indicadores filtrados pelos módulos liberados) — sem
+      // link nenhum na sidebar apontando pra cá mais, só redireciona quem
+      // ainda tiver um favorito antigo salvo pra essas URLs.
       { path: 'rh', redirectTo: '' },
       { path: 'ti', redirectTo: '' },
       { path: 'rh/analise-candidato', component: AnaliseCandidato },

@@ -2,7 +2,7 @@
 `relatorio_customizado_sql.py`) — resolução de JOIN por BFS e validação de
 coluna, sem precisar de HTTP nem de banco (`_montar_sql`/`buscar_*` que
 tocam banco não entram aqui, cobertos via integração em
-`tests/integration/test_relatorio_customizado.py`)."""
+`tests/integration/financeiro/test_relatorio_customizado.py`)."""
 
 import psycopg
 import pytest

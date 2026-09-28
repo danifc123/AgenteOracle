@@ -26,12 +26,26 @@ export class ConfiguracoesUsuario {
 
   protected readonly aberto = signal(false);
   protected readonly secaoAtiva = signal<'perfil' | 'senha' | 'layouts' | 'cores'>('perfil');
-  protected readonly ABAS = [
-    { id: 'perfil', rotulo: 'Perfil' },
-    { id: 'senha', rotulo: 'Senha' },
-    { id: 'layouts', rotulo: 'Layouts salvos' },
-    { id: 'cores', rotulo: 'Cores das categorias' },
-  ] as const;
+  // "Layouts salvos" e "Cores das categorias" são só do Financeiro
+  // (`exigir_modulo_financeiro` nas duas rotas por trás) — apareciam pra
+  // qualquer usuário e a aba "Cores" carregava sozinha ao abrir o diálogo
+  // (`CoresCategoria`, provider raiz), gerando um toast de "Acesso
+  // restrito ao módulo Financeiro" pra quem não é do Financeiro (achado
+  // do usuário, 2026-09-28, testando como time de TI).
+  protected readonly ABAS = computed(() => {
+    const abas = [
+      { id: 'perfil', rotulo: 'Perfil' },
+      { id: 'senha', rotulo: 'Senha' },
+    ] as const;
+    if (!this.sessao.modulos().includes('financeiro')) {
+      return abas;
+    }
+    return [
+      ...abas,
+      { id: 'layouts', rotulo: 'Layouts salvos' },
+      { id: 'cores', rotulo: 'Cores das categorias' },
+    ] as const;
+  });
 
   protected readonly nome = signal('');
   protected readonly fotoPreview = signal<string | null>(null);
@@ -75,7 +89,13 @@ export class ConfiguracoesUsuario {
     this.erroSenha.set(null);
     this.senhaAlterada.set(false);
     this.aberto.set(true);
-    this.carregarLayouts();
+    // Só carrega se a aba "Layouts salvos" de fato existe pra esse usuário
+    // (ver `ABAS`) — a rota é `exigir_modulo_financeiro`, chamar sem
+    // precisar só gerava um toast de erro sem nenhuma aba pra mostrar o
+    // resultado.
+    if (this.sessao.modulos().includes('financeiro')) {
+      this.carregarLayouts();
+    }
   }
 
   private carregarLayouts(): void {

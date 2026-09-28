@@ -47,9 +47,13 @@ export class CoresCategoria {
   constructor() {
     // Reage a login/logout: como a troca de usuário é só navegação de rota
     // (sem recarregar a página), sem isso o serviço ficaria com as cores do
-    // usuário anterior em memória depois de logar com outra conta na mesma aba.
+    // usuário anterior em memória depois de logar com outra conta na mesma
+    // aba. A rota por trás é `exigir_modulo_financeiro` — sem o módulo, nem
+    // vale chamar (só gerava um toast de "Acesso restrito" sozinho, pra
+    // qualquer login, sem o usuário nem ter aberto nada — achado do
+    // usuário, 2026-09-28, testando como time de TI).
     effect(() => {
-      if (this.sessao.token()) {
+      if (this.sessao.token() && this.sessao.modulos().includes('financeiro')) {
         this.carregar();
       } else {
         this.personalizadas.set({});

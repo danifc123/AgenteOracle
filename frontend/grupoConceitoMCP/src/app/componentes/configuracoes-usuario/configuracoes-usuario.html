@@ -1,7 +1,7 @@
 <app-dialog [aberto]="aberto()" titulo="Configurações" tamanho="compacto" (fechar)="fechar()">
   <div class="config-layout">
     <div class="config-tabs" role="tablist" aria-label="Seções de configuração">
-      @for (aba of ABAS; track aba.id) {
+      @for (aba of ABAS(); track aba.id) {
         <button
           type="button"
           role="tab"

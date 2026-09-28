@@ -10,7 +10,7 @@ import { Chamado, ChamadosTi } from './chamados';
 // `tecnico_atribuido` fica `null` nos três de propósito: na tela real ele só
 // é preenchido no instante em que o chamado vira `fila_atendimento` — status
 // que o backend já filtra fora daqui (`_precisa_atencao`) — então nunca
-// aparece atribuído nesta lista. O filtro "Meus chamados" usa `area`.
+// aparece atribuído nesta lista. O filtro "Minha área" usa `area`.
 const CHAMADO_AREA_SISTEMAS: Chamado = {
   id: 1,
   titulo: 'Impressora não liga',
@@ -97,13 +97,13 @@ function criar(sessao = sessaoFalso()) {
     http,
     el,
     linhas: () => Array.from(el.querySelectorAll('table tbody tr')) as HTMLElement[],
-    botaoMeusChamados: () =>
-      Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Meus chamados')) as
+    botaoMinhaArea: () =>
+      Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Minha área')) as
         | HTMLButtonElement
         | undefined,
-    clicarMeusChamados: () => {
+    clicarMinhaArea: () => {
       (
-        Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Meus chamados')) as HTMLButtonElement
+        Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Minha área')) as HTMLButtonElement
       ).click();
       fixture.detectChanges();
     },
@@ -121,43 +121,44 @@ describe('ChamadosTi', () => {
     expect(linhas().length).toBe(3);
   });
 
-  it('o botão "Meus chamados" fica habilitado quando a conta logada tem técnico do GLPI vinculado', () => {
-    const { botaoMeusChamados } = criar(sessaoFalso('rafa.teste'));
+  it('o botão "Minha área" mostra o rótulo da área e fica habilitado quando a conta logada tem técnico do GLPI vinculado', () => {
+    const { botaoMinhaArea } = criar(sessaoFalso('rafa.teste'));
 
-    expect(botaoMeusChamados()?.disabled).toBe(false);
+    expect(botaoMinhaArea()?.disabled).toBe(false);
+    expect(botaoMinhaArea()?.textContent).toContain('Infraestrutura');
   });
 
-  it('o botão "Meus chamados" fica desabilitado quando a conta logada não tem técnico vinculado', () => {
-    const { botaoMeusChamados } = criar(sessaoFalso('ninguem.sem.tecnico'));
+  it('o botão "Minha área" fica desabilitado quando a conta logada não tem técnico vinculado', () => {
+    const { botaoMinhaArea } = criar(sessaoFalso('ninguem.sem.tecnico'));
 
-    expect(botaoMeusChamados()?.disabled).toBe(true);
+    expect(botaoMinhaArea()?.disabled).toBe(true);
   });
 
-  it('clicar em "Meus chamados" mostra só os chamados da área do técnico logado', () => {
-    const { clicarMeusChamados, linhas } = criar(sessaoFalso('rafa.teste'));
+  it('clicar em "Minha área" mostra só os chamados da área do técnico logado', () => {
+    const { clicarMinhaArea, linhas } = criar(sessaoFalso('rafa.teste'));
 
-    clicarMeusChamados();
+    clicarMinhaArea();
 
     const restantes = linhas();
     expect(restantes.length).toBe(1);
     expect(restantes[0].textContent).toContain('VPN não conecta');
   });
 
-  it('clicar de novo em "Meus chamados" volta a mostrar todos', () => {
-    const { clicarMeusChamados, linhas } = criar(sessaoFalso('rafa.teste'));
+  it('clicar de novo em "Minha área" volta a mostrar todos', () => {
+    const { clicarMinhaArea, linhas } = criar(sessaoFalso('rafa.teste'));
 
-    clicarMeusChamados();
-    clicarMeusChamados();
+    clicarMinhaArea();
+    clicarMinhaArea();
 
     expect(linhas().length).toBe(3);
   });
 
   it('conta logada com técnico cuja área não tem nenhum chamado mostra o estado vazio do filtro, não a tabela', () => {
-    const { clicarMeusChamados, linhas, el } = criar(sessaoFalso('sem.chamado'));
+    const { clicarMinhaArea, linhas, el } = criar(sessaoFalso('sem.chamado'));
 
-    clicarMeusChamados();
+    clicarMinhaArea();
 
     expect(linhas().length).toBe(0);
-    expect(el.textContent).toContain('Nenhum chamado da sua área no momento.');
+    expect(el.textContent).toContain('Nenhum chamado da área Processos no momento.');
   });
 });

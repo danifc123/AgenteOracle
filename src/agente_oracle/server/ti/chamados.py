@@ -577,7 +577,7 @@ def registrar(mcp) -> None:
         do GLPI, admin-only, usado só no cadastro de usuário). `usuario`
         (login do AgenteOracle, não do GLPI) vai junto desde 2026-09-28 —
         o front usa pra descobrir a `area` do técnico logado (comparando
-        com `sessao.usuario()`) e alimentar o filtro "Meus chamados": como
+        com `sessao.usuario()`) e alimentar o filtro "Minha área": como
         `tecnico_atribuido` só é preenchido no instante em que o chamado
         vira `fila_atendimento` — status que `_precisa_atencao` já exclui
         desta tela — filtrar por atribuição literal nunca mostraria nada;

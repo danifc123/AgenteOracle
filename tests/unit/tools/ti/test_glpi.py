@@ -116,9 +116,29 @@ class TestChamadoDoJson:
     def test_avaliacao_mensagem_sempre_none(self):
         # Não tem equivalente nativo no GLPI — só existe no nosso modelo.
         item = {"id": 1, "name": "T", "content": "D", "status": {"id": 1}, "team": []}
-        chamado = _chamado_do_json(item)
-        assert chamado.avaliacao_mensagem is None
-        assert chamado.area is None
+        assert _chamado_do_json(item).avaliacao_mensagem is None
+
+    def test_area_vem_da_categoria_via_area_por_categoria_id(self):
+        # Categoria 173 é real (`tools/ti/categorias.py`): "Tecnologia da
+        # Informação > Meu Computador e Periféricos" -> área "infra". Bug
+        # de regressão real (2026-09-28): `area` ficava sempre `None` aqui,
+        # o que fazia o filtro "Minha área" do frontend nunca bater com
+        # nenhum chamado de verdade.
+        item = {
+            "id": 1,
+            "name": "T",
+            "content": "D",
+            "status": {"id": 1},
+            "category": {"id": 173, "name": "Meu Computador e Periféricos"},
+            "team": [],
+        }
+        assert _chamado_do_json(item).area == "infra"
+
+    def test_sem_categoria_cai_pra_area_padrao_sistemas(self):
+        # Chamado aberto por e-mail não tem categoria nenhuma — mesma
+        # área-padrão de `agent/ti/roteamento_chamado.py::_AREA_PADRAO`.
+        item = {"id": 1, "name": "T", "content": "D", "status": {"id": 1}, "category": None, "team": []}
+        assert _chamado_do_json(item).area == "sistemas"
 
 
 class TestChamadoEAlheio:

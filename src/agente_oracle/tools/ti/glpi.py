@@ -69,6 +69,12 @@ _TAMANHO_PAGINA_SOLICITADO = 999
 # a escala atual (milhares de chamados) com folga, mesmo a ~100 por
 # página.
 _MAX_PAGINAS_LISTAR = 50
+# Mesma escolha de `agent/ti/roteamento_chamado.py::_AREA_PADRAO` e
+# `server/ti/chamados.py::_AREA_PADRAO_ESCALONAMENTO` — duplicada de
+# propósito (é 1 linha, não compensa acoplar os módulos por isso). Só
+# entra em jogo quando o chamado não tem categoria nenhuma (aberto por
+# e-mail).
+_AREA_PADRAO_SEM_CATEGORIA: AreaChamado = "sistemas"
 
 
 @dataclass(frozen=True)
@@ -110,6 +116,10 @@ class Chamado:
     email: str
     avaliacao_mensagem: str | None
     criado_em: datetime
+    # Derivada de `categoria_id` (`AREA_POR_CATEGORIA_ID`) por
+    # `_chamado_do_json` — usada pelo filtro "Minha área" do frontend
+    # (compara com a área do técnico logado). `None` só em `Chamado`
+    # montado manualmente (teste, etc.), nunca no que vem do GLPI real.
     area: AreaChamado | None
     tecnico_atribuido: str | None
 
@@ -271,7 +281,13 @@ def _chamado_do_json(item: dict) -> Chamado:
     `user_recipient` só traz `id`/`name` (login), o e-mail exigiria uma
     chamada extra a `/User/{id}`, fora do escopo desta rodada.
     `avaliacao_mensagem` não tem equivalente nativo no GLPI — só existe
-    no nosso modelo, fica sempre `None` vindo de lá."""
+    no nosso modelo, fica sempre `None` vindo de lá. `area` vem de
+    `AREA_POR_CATEGORIA_ID` (import local — `categorias.py` importa
+    `AreaChamado` daqui, ciclo evitado adiando o import pro momento da
+    chamada); sem categoria (chamado aberto por e-mail) cai em
+    `_AREA_PADRAO_SEM_CATEGORIA`."""
+    from agente_oracle.tools.ti import categorias
+
     status = item.get("status") or {}
     categoria = item.get("category")
     categoria_id = categoria["id"] if categoria else None
@@ -287,7 +303,7 @@ def _chamado_do_json(item: dict) -> Chamado:
         email="",
         avaliacao_mensagem=None,
         criado_em=_data_do_glpi(item.get("date_creation")),
-        area=None,
+        area=categorias.AREA_POR_CATEGORIA_ID.get(categoria_id, _AREA_PADRAO_SEM_CATEGORIA),
         tecnico_atribuido=_tecnico_atribuido_do_time(item.get("team") or []),
     )
 

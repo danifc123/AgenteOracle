@@ -30,7 +30,7 @@ def tecnico_de_ti():
 
 def test_inclui_o_login_e_a_area_do_agenteoracle_de_cada_tecnico(mcp_app, token_dev, tecnico_de_ti):
     # `usuario` (login do AgenteOracle, não do GLPI) e `area` são o que o
-    # front usa pro filtro "Meus chamados" — acha a área do técnico logado
+    # front usa pro filtro "Minha área" — acha a área do técnico logado
     # (compara com `sessao.usuario()`) e filtra os chamados por ela, já que
     # `tecnico_atribuido` nunca aparece preenchido nesta tela — 2026-09-28.
     resposta = mcp_app.get("/api/ti/tecnicos", headers={"Authorization": f"Bearer {token_dev}"})

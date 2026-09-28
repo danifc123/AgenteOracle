@@ -18,6 +18,15 @@ import { Toasts } from '../../../../servicos/toasts/toasts';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
+// Mesmos 3 valores/rótulos de `server/ti/chamados.py::_ROTULOS_AREA` —
+// duplicado de propósito (é uma constante de exibição, não vale acoplar
+// front/back só por isso). Usado no botão/tooltip do filtro por área.
+const ROTULOS_AREA: Record<'infra' | 'sistemas' | 'processos', string> = {
+  infra: 'Infraestrutura',
+  sistemas: 'Sistemas',
+  processos: 'Processos',
+};
+
 export interface Chamado {
   id: number;
   titulo: string;
@@ -35,9 +44,9 @@ interface TecnicoNome {
   identificador: string;
   nome: string;
   // Login do AgenteOracle (não do GLPI) — usado só pra achar "qual técnico
-  // sou eu" no filtro "Meus chamados" (compara com `sessao.usuario()`).
+  // sou eu" no filtro "Minha área" (compara com `sessao.usuario()`).
   usuario: string;
-  // Área do técnico logado — o filtro "Meus chamados" usa ISSO, não
+  // Área do técnico logado — o filtro "Minha área" usa ISSO, não
   // `tecnico_atribuido` (ver comentário de `minhaArea` mais abaixo).
   area: 'infra' | 'sistemas' | 'processos';
 }
@@ -128,17 +137,21 @@ export class ChamadosTi {
   private readonly nomesTecnicos = signal<Record<string, string>>({});
   // Área do técnico ligado à conta logada — `null` quando a conta não tem
   // técnico do GLPI vinculado (ex: `ti_admin` sem atendimento). Alimenta o
-  // filtro "Meus chamados". NÃO usa `tecnico_atribuido`: esse campo só é
+  // filtro por área. NÃO usa `tecnico_atribuido`: esse campo só é
   // preenchido no instante em que o chamado vira `fila_atendimento` — e
   // `_precisa_atencao` (backend) já exclui esse status desta tela, então
   // filtrar por atribuição literal nunca mostraria nada; a área é o que
   // de fato indica "isso tende a cair pra mim".
   protected readonly minhaArea = signal<'infra' | 'sistemas' | 'processos' | null>(null);
-  protected readonly somenteMeusChamados = signal(false);
+  protected readonly rotuloMinhaArea = computed(() => {
+    const area = this.minhaArea();
+    return area ? ROTULOS_AREA[area] : null;
+  });
+  protected readonly somenteMinhaArea = signal(false);
 
   protected readonly chamadosFiltrados = computed(() => {
     const area = this.minhaArea();
-    if (!this.somenteMeusChamados() || !area) {
+    if (!this.somenteMinhaArea() || !area) {
       return this.chamados();
     }
     return this.chamados().filter((chamado) => chamado.area === area);
@@ -203,8 +216,8 @@ export class ChamadosTi {
     this.chamadoAberto.set(chamado);
   }
 
-  protected alternarMeusChamados(): void {
-    this.somenteMeusChamados.update((atual) => !atual);
+  protected alternarMinhaArea(): void {
+    this.somenteMinhaArea.update((atual) => !atual);
     this.paginaAtual.set(1);
   }
 

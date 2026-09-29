@@ -4,7 +4,7 @@ import { MCP_API_BASE_URL } from '../../app-config';
 import { Botao } from '../../componentes/botao/botao';
 import { ModuloHeader } from '../../componentes/modulo-header/modulo-header';
 import { SeletorArquivoExcel } from '../../componentes/seletor-arquivo-excel/seletor-arquivo-excel';
-import { baixarBlob, extrairNomeArquivo } from '../../servicos/download-arquivo/download-arquivo';
+import { DownloadArquivo, extrairNomeArquivo } from '../../servicos/download-arquivo/download-arquivo';
 
 type TipoAnaliseColunas = 'identicas' | 'parcial' | 'nenhuma';
 
@@ -23,6 +23,7 @@ interface AnaliseColunas {
 })
 export class JuntarExcel {
   private readonly http = inject(HttpClient);
+  private readonly downloadArquivo = inject(DownloadArquivo);
 
   private readonly seletor1 = viewChild.required<SeletorArquivoExcel>('seletor1');
   private readonly seletor2 = viewChild.required<SeletorArquivoExcel>('seletor2');
@@ -113,7 +114,7 @@ export class JuntarExcel {
             resposta.headers.get('content-disposition'),
             'planilhas_combinadas.xlsx',
           );
-          baixarBlob(blob, nomeArquivo);
+          this.downloadArquivo.baixar(blob, nomeArquivo);
           this.concluido.set(true);
         },
         error: () => {

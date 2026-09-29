@@ -65,29 +65,9 @@
   }
 }
 
-.aviso {
-  margin-top: 20px;
-  padding: 18px 24px;
-  background: rgba(232, 135, 30, 0.1);
-  border: 1px solid rgba(232, 135, 30, 0.4);
-  border-radius: var(--radius-md);
-  text-align: center;
-
-  p {
-    margin: 0;
-    color: var(--color-text);
-    font-size: 13.5px;
-    line-height: 1.5;
-  }
-
-  strong {
-    color: #a85c12;
-  }
-}
-
-// É o corpo principal da tela (só o hero e o aviso do Financeiro ficam
-// fora) — sem borda/fundo próprio como o antigo `.cartao-secao`, só
-// respiro em relação ao que vem acima.
+// É o corpo principal da tela (só o hero fica fora) — sem borda/fundo
+// próprio como o antigo `.cartao-secao`, só respiro em relação ao hero
+// acima.
 .secao-dashboard {
   margin-top: 20px;
 

@@ -107,20 +107,6 @@ describe('Home', () => {
     expect(texto()).toContain('Nenhum widget escolhido');
   });
 
-  describe('aviso da Área de Trabalho', () => {
-    it('não aparece pra quem não tem o módulo financeiro', () => {
-      const { texto } = criar(sessaoFalso(['ti']));
-
-      expect(texto()).not.toContain('Área de Trabalho');
-    });
-
-    it('aparece pra quem tem o módulo financeiro', () => {
-      const { texto } = criar(sessaoFalso(['financeiro']));
-
-      expect(texto()).toContain('Área de Trabalho');
-    });
-  });
-
   describe('widgets filtrados por módulo liberado (indicador de dado OU atalho, mesmo filtro)', () => {
     it('usuário só-financeiro não vê widget de TI mesmo que o layout salvo contenha um', () => {
       const { fixture } = criar(

@@ -23,7 +23,7 @@ import {
   RotinaFinanceira,
 } from '../../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { CoresCategoria } from '../../../servicos/cores-categoria/cores-categoria';
-import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo/download-arquivo';
+import { DownloadArquivo, extrairNomeArquivo } from '../../../servicos/download-arquivo/download-arquivo';
 import { RelatoriosFixados } from '../../../servicos/relatorios-fixados/relatorios-fixados';
 
 const LIMITE_FIXADOS = 3;
@@ -62,6 +62,7 @@ export class Financeiro {
   private readonly http = inject(HttpClient);
   private readonly coresCategoria = inject(CoresCategoria);
   private readonly relatoriosFixados = inject(RelatoriosFixados);
+  private readonly downloadArquivo = inject(DownloadArquivo);
 
   private readonly moduloId = toSignal(
     this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
@@ -280,7 +281,7 @@ export class Financeiro {
             resposta.headers.get('content-disposition'),
             `${rotina.apiEndpoint}.xlsx`,
           );
-          baixarBlob(blob, nomeArquivo);
+          this.downloadArquivo.baixar(blob, nomeArquivo);
           this.baixandoRelatorio.set(false);
         },
         error: () => {

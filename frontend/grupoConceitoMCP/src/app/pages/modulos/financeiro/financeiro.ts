@@ -24,6 +24,7 @@ import {
 } from '../../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { CoresCategoria } from '../../../servicos/cores-categoria/cores-categoria';
 import { baixarBlob, extrairNomeArquivo } from '../../../servicos/download-arquivo/download-arquivo';
+import { RelatoriosFixados } from '../../../servicos/relatorios-fixados/relatorios-fixados';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';
@@ -60,6 +61,7 @@ export class Financeiro {
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
   private readonly coresCategoria = inject(CoresCategoria);
+  private readonly relatoriosFixados = inject(RelatoriosFixados);
 
   private readonly moduloId = toSignal(
     this.route.paramMap.pipe(map((params) => params.get('moduloId') ?? '')),
@@ -77,7 +79,6 @@ export class Financeiro {
   protected readonly relatorioErro = signal<string | null>(null);
   protected readonly relatorioDados = signal<Record<string, unknown>[] | null>(null);
   protected readonly baixandoRelatorio = signal(false);
-  private readonly fixados = signal<string[]>([]);
 
   protected readonly rotinaSelecionada = signal<RotinaFinanceira | null>(null);
   protected readonly filiais = signal<OpcaoSelectBusca[]>([]);
@@ -91,7 +92,7 @@ export class Financeiro {
     const vistas = new Set<string>();
     const categorias: OpcaoCategoria[] = [];
 
-    if (this.fixados().length) {
+    if (this.relatoriosFixados.nomes().length) {
       categorias.push({ nome: CATEGORIA_FIXADOS, cor: COR_FIXADOS });
     }
 
@@ -112,7 +113,7 @@ export class Financeiro {
     const rotinas = this.modulo()?.rotinas ?? [];
     const termo = this.termoBusca().trim().toLowerCase();
     const categoria = this.categoriaSelecionada();
-    const fixados = this.fixados();
+    const fixados = this.relatoriosFixados.nomes();
 
     return rotinas.filter((rotina) => {
       const combinaTermo = !termo || rotina.nome.toLowerCase().includes(termo);
@@ -124,7 +125,7 @@ export class Financeiro {
   });
 
   protected readonly gruposFiltrados = computed<GrupoRotinas[]>(() => {
-    const fixados = this.fixados();
+    const fixados = this.relatoriosFixados.nomes();
     const filtradas = this.rotinasFiltradas();
 
     if (this.categoriaSelecionada() === CATEGORIA_FIXADOS) {
@@ -172,13 +173,8 @@ export class Financeiro {
       this.rotinaSelecionada.set(null);
       this.filiaisSelecionadas.set([]);
       this.valoresFiltros.set({});
-      this.carregarFixados();
+      this.relatoriosFixados.carregar(this.chaveFixados());
     });
-  }
-
-  private carregarFixados(): void {
-    const salvos = localStorage.getItem(this.chaveFixados());
-    this.fixados.set(salvos ? (JSON.parse(salvos) as string[]) : []);
   }
 
   private chaveFixados(): string {
@@ -230,10 +226,13 @@ export class Financeiro {
   }
 
   private alternarFixado(rotina: RotinaFinanceira): void {
-    const atual = this.fixados();
+    const atual = this.relatoriosFixados.nomes();
 
     if (atual.includes(rotina.nome)) {
-      this.salvarFixados(atual.filter((nome) => nome !== rotina.nome));
+      this.relatoriosFixados.salvar(
+        this.chaveFixados(),
+        atual.filter((nome) => nome !== rotina.nome),
+      );
       return;
     }
 
@@ -241,12 +240,7 @@ export class Financeiro {
       return;
     }
 
-    this.salvarFixados([rotina.nome, ...atual]);
-  }
-
-  private salvarFixados(nomes: string[]): void {
-    this.fixados.set(nomes);
-    localStorage.setItem(this.chaveFixados(), JSON.stringify(nomes));
+    this.relatoriosFixados.salvar(this.chaveFixados(), [rotina.nome, ...atual]);
   }
 
   protected baixarRotinaEmVisualizacao(): void {
@@ -349,7 +343,7 @@ export class Financeiro {
   }
 
   protected estaFixado(rotina: RotinaFinanceira | null): boolean {
-    return !!rotina && this.fixados().includes(rotina.nome);
+    return !!rotina && this.relatoriosFixados.nomes().includes(rotina.nome);
   }
 
   protected fecharVisualizacao(): void {
@@ -360,7 +354,7 @@ export class Financeiro {
   }
 
   protected limiteFixadosAtingido(): boolean {
-    return this.fixados().length >= LIMITE_FIXADOS;
+    return this.relatoriosFixados.nomes().length >= LIMITE_FIXADOS;
   }
 
   protected limparFiltrosSelecionados(): void {

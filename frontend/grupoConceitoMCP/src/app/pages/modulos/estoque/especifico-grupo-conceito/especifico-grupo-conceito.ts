@@ -13,6 +13,7 @@ import { OpcaoSelectBusca } from '../../../../componentes/select-busca/select-bu
 import { CampoFiltro, RotinaFinanceira } from '../../../../dadosRelatorios/modulos-financeiro/modulos-financeiro';
 import { ROTINAS_ESTOQUE } from '../../../../dadosRelatorios/modulos-estoque/modulos-estoque';
 import { CoresCategoria } from '../../../../servicos/cores-categoria/cores-categoria';
+import { RelatoriosFixados } from '../../../../servicos/relatorios-fixados/relatorios-fixados';
 
 const LIMITE_FIXADOS = 3;
 const CATEGORIA_FIXADOS = 'Fixados';
@@ -40,11 +41,11 @@ interface GrupoRotinas {
 })
 export class EstoqueEspecificoGrupoConceito {
   private readonly coresCategoria = inject(CoresCategoria);
+  private readonly relatoriosFixados = inject(RelatoriosFixados);
 
   protected readonly termoBusca = signal('');
   protected readonly categoriaSelecionada = signal<string | null>(null);
   protected readonly rotinaEmVisualizacao = signal<RotinaFinanceira | null>(null);
-  private readonly fixados = signal<string[]>(this.lerFixadosSalvos());
 
   protected readonly rotinaSelecionada = signal<RotinaFinanceira | null>(null);
   protected readonly filiais = signal<OpcaoSelectBusca[]>(MOCK_FILIAIS);
@@ -52,11 +53,15 @@ export class EstoqueEspecificoGrupoConceito {
   protected readonly valoresFiltros = signal<Record<string, string>>({});
   protected readonly filtroInvalido = signal(false);
 
+  constructor() {
+    this.relatoriosFixados.carregar(CHAVE_FIXADOS);
+  }
+
   protected readonly categoriasDisponiveis = computed<OpcaoCategoria[]>(() => {
     const vistas = new Set<string>();
     const categorias: OpcaoCategoria[] = [];
 
-    if (this.fixados().length) {
+    if (this.relatoriosFixados.nomes().length) {
       categorias.push({ nome: CATEGORIA_FIXADOS, cor: COR_FIXADOS });
     }
 
@@ -76,7 +81,7 @@ export class EstoqueEspecificoGrupoConceito {
   protected readonly rotinasFiltradas = computed(() => {
     const termo = this.termoBusca().trim().toLowerCase();
     const categoria = this.categoriaSelecionada();
-    const fixados = this.fixados();
+    const fixados = this.relatoriosFixados.nomes();
 
     return ROTINAS_ESTOQUE.filter((rotina) => {
       const combinaTermo = !termo || rotina.nome.toLowerCase().includes(termo);
@@ -88,7 +93,7 @@ export class EstoqueEspecificoGrupoConceito {
   });
 
   protected readonly gruposFiltrados = computed<GrupoRotinas[]>(() => {
-    const fixados = this.fixados();
+    const fixados = this.relatoriosFixados.nomes();
     const filtradas = this.rotinasFiltradas();
 
     if (this.categoriaSelecionada() === CATEGORIA_FIXADOS) {
@@ -127,11 +132,6 @@ export class EstoqueEspecificoGrupoConceito {
     return grupos;
   });
 
-  private lerFixadosSalvos(): string[] {
-    const salvos = localStorage.getItem(CHAVE_FIXADOS);
-    return salvos ? (JSON.parse(salvos) as string[]) : [];
-  }
-
   protected alternarFixadoSelecionada(): void {
     const rotina = this.rotinaSelecionada();
     if (rotina) {
@@ -140,10 +140,13 @@ export class EstoqueEspecificoGrupoConceito {
   }
 
   private alternarFixado(rotina: RotinaFinanceira): void {
-    const atual = this.fixados();
+    const atual = this.relatoriosFixados.nomes();
 
     if (atual.includes(rotina.nome)) {
-      this.salvarFixados(atual.filter((nome) => nome !== rotina.nome));
+      this.relatoriosFixados.salvar(
+        CHAVE_FIXADOS,
+        atual.filter((nome) => nome !== rotina.nome),
+      );
       return;
     }
 
@@ -151,12 +154,7 @@ export class EstoqueEspecificoGrupoConceito {
       return;
     }
 
-    this.salvarFixados([rotina.nome, ...atual]);
-  }
-
-  private salvarFixados(nomes: string[]): void {
-    this.fixados.set(nomes);
-    localStorage.setItem(CHAVE_FIXADOS, JSON.stringify(nomes));
+    this.relatoriosFixados.salvar(CHAVE_FIXADOS, [rotina.nome, ...atual]);
   }
 
   protected confirmarFiltroSelecionada(): void {
@@ -199,7 +197,7 @@ export class EstoqueEspecificoGrupoConceito {
   }
 
   protected estaFixado(rotina: RotinaFinanceira | null): boolean {
-    return !!rotina && this.fixados().includes(rotina.nome);
+    return !!rotina && this.relatoriosFixados.nomes().includes(rotina.nome);
   }
 
   protected fecharVisualizacao(): void {
@@ -207,7 +205,7 @@ export class EstoqueEspecificoGrupoConceito {
   }
 
   protected limiteFixadosAtingido(): boolean {
-    return this.fixados().length >= LIMITE_FIXADOS;
+    return this.relatoriosFixados.nomes().length >= LIMITE_FIXADOS;
   }
 
   protected limparFiltrosSelecionados(): void {

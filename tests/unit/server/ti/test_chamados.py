@@ -11,7 +11,10 @@ from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
     _chamados_da_tela,
+    _contagem_por_tecnico,
+    _resumo_indicadores_tecnico,
     _saude_por_area,
+    _tempo_gasto_por_tecnico,
     _texto_para_ia,
     chamado_entra_na_amostra,
     processar_chamado_novo,
@@ -73,6 +76,7 @@ def _chamado(
     categoria: str = "Hardware",
     categoria_id: int | None = None,
     tecnico_atribuido: str | None = None,
+    tempo_gasto_segundos: int = 0,
 ) -> Chamado:
     return Chamado(
         id=id_,
@@ -87,6 +91,7 @@ def _chamado(
         criado_em=datetime(2026, 1, 1, tzinfo=UTC),
         area=None,
         tecnico_atribuido=tecnico_atribuido,
+        tempo_gasto_segundos=tempo_gasto_segundos,
     )
 
 
@@ -203,6 +208,9 @@ class _ClienteGLPIFake:
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]:
         return dict.fromkeys(tecnicos_identificadores, 0)
+
+    async def chamados_criados_desde(self, desde: datetime) -> list[Chamado]:
+        return [chamado for chamado in self._chamados.values() if chamado.criado_em >= desde]
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         return self.followups_por_chamado.get(chamado_id, [])
@@ -1195,3 +1203,135 @@ class TestSaudePorArea:
         resultado = _saude_por_area(tecnicos, cargas={})
 
         assert resultado[0]["tecnicos"] == [{"nome": "Denner", "usuario": "denner", "chamados_abertos": 0}]
+
+
+class TestContagemPorTecnico:
+    def test_conta_um_chamado_por_tecnico_atribuido(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+        )
+        chamados = [
+            _chamado(id_=1, tecnico_atribuido="1"),
+            _chamado(id_=2, tecnico_atribuido="1"),
+            _chamado(id_=3, tecnico_atribuido="2"),
+        ]
+
+        resultado = _contagem_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 2, "2": 1}
+
+    def test_tecnico_sem_nenhum_chamado_no_periodo_conta_zero(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+
+        resultado = _contagem_por_tecnico(tecnicos, chamados=[])
+
+        assert resultado == {"1": 0}
+
+    def test_chamado_sem_tecnico_ou_de_tecnico_desconhecido_e_ignorado(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        chamados = [
+            _chamado(id_=1, tecnico_atribuido=None),
+            _chamado(id_=2, tecnico_atribuido="999"),
+        ]
+
+        resultado = _contagem_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 0}
+
+
+class TestTempoGastoPorTecnico:
+    def test_soma_o_tempo_gasto_por_tecnico_atribuido(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+        )
+        chamados = [
+            _chamado(id_=1, tecnico_atribuido="1", tempo_gasto_segundos=3600),
+            _chamado(id_=2, tecnico_atribuido="1", tempo_gasto_segundos=1800),
+            _chamado(id_=3, tecnico_atribuido="2", tempo_gasto_segundos=7200),
+        ]
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 5400, "2": 7200}
+
+    def test_tecnico_sem_chamado_no_periodo_soma_zero(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados=[])
+
+        assert resultado == {"1": 0}
+
+    def test_chamado_sem_tempo_registrado_soma_zero(self):
+        # Confirmado ao vivo: `actiontime` fica 0 quando ninguém aponta
+        # hora no chamado (todo o ambiente de homologação hoje) — não pode
+        # virar erro nem `None` aqui.
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        chamados = [_chamado(id_=1, tecnico_atribuido="1", tempo_gasto_segundos=0)]
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 0}
+
+    def test_chamado_de_tecnico_desconhecido_e_ignorado(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        chamados = [_chamado(id_=1, tecnico_atribuido="999", tempo_gasto_segundos=3600)]
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 0}
+
+
+class TestResumoIndicadoresTecnico:
+    def test_calcula_as_duas_medias_entre_todos_os_tecnicos_incluindo_quem_tem_zero(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+            Tecnico(nome="Carlos", identificador="3", area="processos", usuario="carlos"),
+        )
+        contagens = {"1": 6, "2": 3, "3": 0}
+        tempos = {"1": 3600 * 6, "2": 3600 * 3, "3": 0}
+
+        resultado = _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario_logado="denner")
+
+        assert resultado == {
+            "meus_chamados": 6,
+            "media_chamados_equipe": 3.0,
+            "meu_tempo_gasto_horas": 6.0,
+            "media_tempo_gasto_equipe_horas": 3.0,
+        }
+
+    def test_arredonda_as_duas_medias_pra_1_casa_decimal(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+            Tecnico(nome="Carlos", identificador="3", area="processos", usuario="carlos"),
+        )
+        contagens = {"1": 7, "2": 9, "3": 0}
+        tempos = {"1": 3600, "2": 1800, "3": 0}
+
+        resultado = _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario_logado="denner")
+
+        assert resultado["media_chamados_equipe"] == round(16 / 3, 1)
+        assert resultado["media_tempo_gasto_equipe_horas"] == round((3600 + 1800) / 3 / 3600, 1)
+
+    def test_usuario_logado_sem_tecnico_vinculado_devolve_os_dois_campos_meu_como_none(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        contagens = {"1": 4}
+        tempos = {"1": 3600}
+
+        resultado = _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario_logado="nao_e_tecnico")
+
+        assert resultado["meus_chamados"] is None
+        assert resultado["meu_tempo_gasto_horas"] is None
+
+    def test_roster_vazio_devolve_medias_zero(self):
+        resultado = _resumo_indicadores_tecnico((), contagens={}, tempos_segundos={}, usuario_logado="ninguem")
+
+        assert resultado == {
+            "meus_chamados": None,
+            "media_chamados_equipe": 0.0,
+            "meu_tempo_gasto_horas": None,
+            "media_tempo_gasto_equipe_horas": 0.0,
+        }

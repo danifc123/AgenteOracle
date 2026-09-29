@@ -77,7 +77,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from anyio import to_thread
 from bs4 import BeautifulSoup
@@ -345,6 +345,64 @@ def _saude_por_area(tecnicos: tuple[Tecnico, ...], cargas: dict[str, int]) -> li
         }
         for area, rotulo in _ROTULOS_AREA.items()
     ]
+
+
+# Janela dos indicadores "meus chamados vs média da equipe" (`chamados_
+# meus_indicadores_route`) — 30 dias é uma janela curta o bastante pra
+# não pesar a consulta (38 chamados/mês na empresa toda, confirmado ao
+# vivo) e longa o bastante pra não oscilar demais dia a dia.
+_DIAS_JANELA_INDICADORES_CHAMADOS = 30
+
+
+def _contagem_por_tecnico(tecnicos: tuple[Tecnico, ...], chamados: list[Chamado]) -> dict[str, int]:
+    """Quantos chamados de `chamados` foram atribuídos a cada técnico —
+    mesmo espírito de `ClienteGLPI.carga_atual_por_tecnico`, só que
+    contando no Python em vez de filtrar no servidor (o GLPI não filtra
+    `team.id` direto, ver `chamados_criados_desde`). Técnico sem nenhum
+    chamado no período conta como 0, não fica de fora do dict — dele
+    depender pra não distorcer a média pra cima."""
+    contagens = dict.fromkeys((tecnico.identificador for tecnico in tecnicos), 0)
+    for chamado in chamados:
+        if chamado.tecnico_atribuido in contagens:
+            contagens[chamado.tecnico_atribuido] += 1
+    return contagens
+
+
+def _tempo_gasto_por_tecnico(tecnicos: tuple[Tecnico, ...], chamados: list[Chamado]) -> dict[str, int]:
+    """Soma de `tempo_gasto_segundos` (campo `actiontime` do GLPI) por
+    técnico, mesmo espírito de `_contagem_por_tecnico` — técnico sem
+    chamado no período (ou que nunca registrou hora) entra como 0."""
+    tempos = dict.fromkeys((tecnico.identificador for tecnico in tecnicos), 0)
+    for chamado in chamados:
+        if chamado.tecnico_atribuido in tempos:
+            tempos[chamado.tecnico_atribuido] += chamado.tempo_gasto_segundos
+    return tempos
+
+
+def _resumo_indicadores_tecnico(
+    tecnicos: tuple[Tecnico, ...],
+    contagens: dict[str, int],
+    tempos_segundos: dict[str, int],
+    usuario_logado: str,
+) -> dict:
+    """Extraída de `chamados_meus_indicadores_route` só pra ser testável
+    sem request/auth/GLPI (mesmo espírito de `_saude_por_area` acima).
+    `usuario_logado` é o login do AgenteOracle (JWT), comparado contra
+    `Tecnico.usuario` — mesmo campo que `tecnicos_route` já expõe pro
+    front hoje. Sem técnico vinculado a esse login, os dois campos "meu"
+    saem `None` — quem chama (o componente do front) decide esconder a
+    seção inteira nesse caso."""
+    tecnico_atual = next((tecnico for tecnico in tecnicos if tecnico.usuario == usuario_logado), None)
+    media_chamados = sum(contagens.values()) / len(contagens) if contagens else 0.0
+    media_tempo_horas = (sum(tempos_segundos.values()) / len(tempos_segundos) / 3600) if tempos_segundos else 0.0
+    return {
+        "meus_chamados": contagens.get(tecnico_atual.identificador) if tecnico_atual else None,
+        "media_chamados_equipe": round(media_chamados, 1),
+        "meu_tempo_gasto_horas": (
+            round(tempos_segundos.get(tecnico_atual.identificador, 0) / 3600, 1) if tecnico_atual else None
+        ),
+        "media_tempo_gasto_equipe_horas": round(media_tempo_horas, 1),
+    }
 
 
 def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None) -> bool:
@@ -632,6 +690,28 @@ def registrar(mcp) -> None:
         chamados = await _cliente.listar()
         fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
         return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/ti/chamados/meus-indicadores", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def chamados_meus_indicadores_route(request: Request, usuario: dict) -> Response:
+        """Área de indicadores da Auditoria de Chamados: quantos chamados
+        caíram pro técnico logado nos últimos `_DIAS_JANELA_INDICADORES_
+        CHAMADOS` dias e quanto tempo ele registrou neles (`actiontime` do
+        GLPI), comparado com a média entre TODOS os técnicos de TI (não só
+        a área dele) — pra ele saber se está indo bem sem abrir o GLPI.
+        Conta todo chamado do período, não só "resolvido" (esse conceito
+        não existe no sistema — nem os status GLPI de Solucionado/Fechado
+        são mapeados, ver `tools/ti/glpi.py::_STATUS_GLPI_PARA_NOSSO`).
+        Os dois campos "meu" saem `null` quando o usuário logado não tem
+        técnico vinculado (ex: `desenvolvedor` sem `tecnico_glpi_id`)."""
+        tecnicos = await to_thread.run_sync(todos_os_tecnicos)
+        desde = datetime.now(UTC) - timedelta(days=_DIAS_JANELA_INDICADORES_CHAMADOS)
+        chamados = await _cliente.chamados_criados_desde(desde)
+        contagens = _contagem_por_tecnico(tecnicos, chamados)
+        tempos = _tempo_gasto_por_tecnico(tecnicos, chamados)
+        return JSONResponse(
+            _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario["usuario"]), headers=CORS_HEADERS
+        )
 
     @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)

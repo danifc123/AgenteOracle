@@ -122,6 +122,15 @@ class Chamado:
     # montado manualmente (teste, etc.), nunca no que vem do GLPI real.
     area: AreaChamado | None
     tecnico_atribuido: str | None
+    # `actiontime` do GLPI — soma do tempo (segundos) que o técnico
+    # registrou nas tarefas do chamado. Default `0` pra não quebrar
+    # nenhuma construção manual já existente (testes). Usado pelo KPI
+    # "meus indicadores" (`server/ti/chamados.py::
+    # chamados_meus_indicadores_route`) — confirmado ao vivo que está
+    # zerado em 100% dos chamados recentes no ambiente de homologação
+    # (ninguém aponta hora lá); a expectativa é que produção tenha dado
+    # real.
+    tempo_gasto_segundos: int = 0
 
 
 class ClienteGLPI(Protocol):
@@ -142,6 +151,8 @@ class ClienteGLPI(Protocol):
     async def atualizar_categoria(self, chamado_id: int, categoria_id: int) -> None: ...
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
+
+    async def chamados_criados_desde(self, desde: datetime) -> list[Chamado]: ...
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
 
@@ -305,6 +316,7 @@ def _chamado_do_json(item: dict) -> Chamado:
         criado_em=_data_do_glpi(item.get("date_creation")),
         area=categorias.AREA_POR_CATEGORIA_ID.get(categoria_id, _AREA_PADRAO_SEM_CATEGORIA),
         tecnico_atribuido=_tecnico_atribuido_do_time(item.get("team") or []),
+        tempo_gasto_segundos=item.get("actiontime") or 0,
     )
 
 
@@ -675,6 +687,25 @@ class ClienteGLPIReal:
             if chamado.tecnico_atribuido in cargas:
                 cargas[chamado.tecnico_atribuido] += 1
         return cargas
+
+    async def chamados_criados_desde(self, desde: datetime) -> list[Chamado]:
+        """Todo chamado criado a partir de `desde` (qualquer status,
+        qualquer categoria, de toda a empresa) — usado pelo KPI "meus
+        indicadores" (`server/ti/chamados.py::
+        chamados_meus_indicadores_route`), que agrupa por
+        `tecnico_atribuido` no Python depois de buscar (soma tanto
+        quantidade quanto `tempo_gasto_segundos`).
+
+        `date_creation=ge=<AAAA-MM-DD>` é o filtro RSQL confirmado ao vivo
+        contra a instância real — `>=` literal devolve 400
+        (`ERROR_INVALID_PARAMETER`, RSQL exige o operador por extenso).
+        Filtrar por `team.id==<id>` direto no servidor (pra já vir só do
+        técnico certo) também foi testado ao vivo e devolve 500 — `team`
+        é array aninhado no Ticket, RSQL não filtra nele; é por isso que
+        quem chama precisa agrupar no Python, mesmo padrão de
+        `carga_atual_por_tecnico`."""
+        filtro = f"date_creation=ge={desde.strftime('%Y-%m-%d')}"
+        return await self._listar_com_filtro(filtro)
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         """Formato confirmado contra a instância real: uma lista de

@@ -88,6 +88,16 @@ function criar(sessao = sessaoFalso()) {
     // nenhum, que já desabilita o botão antes de chegar aqui).
     { identificador: '333', nome: 'Sem Chamado', usuario: 'sem.chamado', area: 'processos' },
   ]);
+  // `app-indicadores-tecnico` (área de indicadores embutida nesta tela)
+  // busca o próprio dado sozinho — sem flush aqui a request ficaria
+  // pendente e `HttpTestingController.verify()` reclamaria em todo teste
+  // desta tela, mesmo os que não têm nada a ver com esses indicadores.
+  http.expectOne((req) => req.url.endsWith('/api/ti/chamados/meus-indicadores')).flush({
+    meus_chamados: null,
+    media_chamados_equipe: 0,
+    meu_tempo_gasto_horas: null,
+    media_tempo_gasto_equipe_horas: 0,
+  });
   fixture.detectChanges();
 
   const el: HTMLElement = fixture.nativeElement;

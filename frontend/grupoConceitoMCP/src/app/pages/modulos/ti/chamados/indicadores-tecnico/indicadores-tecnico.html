@@ -1,0 +1,23 @@
+@if (meusChamados() !== null && meuTempoGastoHoras() !== null) {
+  <section class="secao-indicadores">
+    <h2>Indicadores</h2>
+    <div class="grade-indicadores">
+      <app-cartao-kpi rotulo="Seus chamados (30d)" tipo="numero" [valor]="meusChamados()!" />
+      <app-cartao-kpi rotulo="Média da equipe (chamados)" tipo="numero" [valor]="mediaChamadosEquipe()!" />
+      <app-cartao-kpi rotulo="Seu tempo gasto (30d, em horas)" tipo="numero" [valor]="meuTempoGastoHoras()!" />
+      <app-cartao-kpi
+        rotulo="Média da equipe (tempo, em horas)"
+        tipo="numero"
+        [valor]="mediaTempoGastoEquipeHoras()!"
+      />
+    </div>
+    <div class="destaques">
+      <span class="destaque" [class.destaque-abaixo]="abaixoDaMediaChamados()">
+        Chamados: {{ abaixoDaMediaChamados() ? 'Abaixo da média' : 'Dentro da média' }}
+      </span>
+      <span class="destaque" [class.destaque-abaixo]="abaixoDaMediaTempo()">
+        Tempo gasto: {{ abaixoDaMediaTempo() ? 'Abaixo da média' : 'Dentro da média' }}
+      </span>
+    </div>
+  </section>
+}

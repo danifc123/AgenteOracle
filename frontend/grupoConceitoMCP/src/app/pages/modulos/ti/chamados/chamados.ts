@@ -13,6 +13,7 @@ import { Selo } from '../../../../componentes/selo/selo';
 import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
 import { Sessao } from '../../../../servicos/sessao/sessao';
+import { IndicadoresTecnico } from './indicadores-tecnico/indicadores-tecnico';
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -87,6 +88,7 @@ interface TecnicoNome {
     DatePipe,
     Dialog,
     EstadoVazio,
+    IndicadoresTecnico,
     ModuloHeader,
     SaudeRoster,
     Selo,

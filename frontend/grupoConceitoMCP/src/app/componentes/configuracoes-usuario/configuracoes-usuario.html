@@ -160,10 +160,24 @@
 
         @case ('ambiente') {
           <section class="secao-painel">
-            <h3>Cores de ambiente</h3>
-            <p class="secao-ajuda">
-              Personalize a aparência do sistema só pra sua conta — não afeta outros usuários.
-            </p>
+            <div class="cabecalho-secao-painel">
+              <div>
+                <h3>Cores de ambiente</h3>
+                <p class="secao-ajuda">
+                  Personalize a aparência do sistema só pra sua conta — não afeta outros usuários.
+                </p>
+              </div>
+              @if (algumaCorAmbientePersonalizada()) {
+                <button
+                  type="button"
+                  class="cor-categoria-redefinir"
+                  [disabled]="redefinindoTodasCoresAmbiente()"
+                  (click)="redefinirTodasCoresAmbiente()"
+                >
+                  {{ redefinindoTodasCoresAmbiente() ? 'Redefinindo...' : 'Redefinir todas' }}
+                </button>
+              }
+            </div>
 
             <ul class="lista-cores-categoria">
               @for (item of coresAmbiente.listaParaExibir(); track item.token) {

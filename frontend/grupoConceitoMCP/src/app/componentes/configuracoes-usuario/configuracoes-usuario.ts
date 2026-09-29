@@ -1,5 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
 import { CoresAmbiente } from '../../servicos/cores-ambiente/cores-ambiente';
@@ -84,7 +85,11 @@ export class ConfiguracoesUsuario {
   protected readonly erroCores = signal<string | null>(null);
 
   protected readonly salvandoCorAmbiente = signal<string | null>(null);
+  protected readonly redefinindoTodasCoresAmbiente = signal(false);
   protected readonly erroCoresAmbiente = signal<string | null>(null);
+  protected readonly algumaCorAmbientePersonalizada = computed(() =>
+    this.coresAmbiente.listaParaExibir().some((item) => item.personalizada),
+  );
 
   abrir(): void {
     this.secaoAtiva.set('perfil');
@@ -301,6 +306,32 @@ export class ConfiguracoesUsuario {
       error: (erro: HttpErrorResponse) => {
         this.erroCoresAmbiente.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
         this.salvandoCorAmbiente.set(null);
+      },
+    });
+  }
+
+  protected redefinirTodasCoresAmbiente(): void {
+    const tokensPersonalizados = this.coresAmbiente
+      .listaParaExibir()
+      .filter((item) => item.personalizada)
+      .map((item) => item.token);
+    if (!tokensPersonalizados.length) {
+      return;
+    }
+
+    this.redefinindoTodasCoresAmbiente.set(true);
+    this.erroCoresAmbiente.set(null);
+
+    forkJoin(tokensPersonalizados.map((token) => this.coresAmbiente.redefinirCor(token))).subscribe({
+      next: () => {
+        for (const token of tokensPersonalizados) {
+          this.coresAmbiente.removerCorLocal(token);
+        }
+        this.redefinindoTodasCoresAmbiente.set(false);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCoresAmbiente.set(mensagemErro(erro, 'Não foi possível redefinir todas as cores.'));
+        this.redefinindoTodasCoresAmbiente.set(false);
       },
     });
   }

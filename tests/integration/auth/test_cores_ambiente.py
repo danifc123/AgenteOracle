@@ -47,7 +47,17 @@ class TestRotaCoresAmbiente:
 
     def test_token_fora_da_lista_permitida_e_rejeitado(self, mcp_app, token_teste):
         resposta = mcp_app.put(
-            "/api/auth/cores-ambiente/--color-error", json={"cor": "#ff0000"}, headers=_auth(token_teste)
+            "/api/auth/cores-ambiente/--color-nao-existe", json={"cor": "#ff0000"}, headers=_auth(token_teste)
+        )
+        assert resposta.status_code == 400
+
+    def test_token_rgba_com_transparencia_e_rejeitado(self, mcp_app, token_teste):
+        # `--color-error-soft`/`--color-warning-soft`/`--color-success-soft`
+        # ficam de fora de propósito — são `rgba(...)` (ou alias de um que
+        # é), o `<input type="color">` do frontend não representa
+        # transparência (ver `_TOKENS_VALIDOS`).
+        resposta = mcp_app.put(
+            "/api/auth/cores-ambiente/--color-error-soft", json={"cor": "#ff0000"}, headers=_auth(token_teste)
         )
         assert resposta.status_code == 400
 

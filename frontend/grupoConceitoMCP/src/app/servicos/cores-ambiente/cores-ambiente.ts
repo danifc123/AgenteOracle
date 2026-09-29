@@ -19,14 +19,47 @@ interface CorAmbiente {
   cor: string;
 }
 
-// Só as variáveis CSS que fazem sentido personalizar por usuário (visual
-// pessoal, ver `styles.scss` pro valor padrão de cada uma) — duplicado de
-// propósito em `server/auth/cores_ambiente.py::_TOKENS_VALIDOS` (mesma
-// decisão de `CoresCategoria`/backend: são 2 linhas, não compensa acoplar
-// front/back só por isso).
+// Todas as variáveis CSS de COR do sistema que são um hex sólido (ver
+// `styles.scss` pro valor padrão de cada uma — `padrao` aqui precisa
+// ficar em sincronia manual com lá, é só o hex de referência pro
+// color-picker antes de o usuário personalizar) — duplicado de propósito
+// em `server/auth/cores_ambiente.py::_TOKENS_VALIDOS` (mesma decisão de
+// `CoresCategoria`/backend: é uma lista de dado, não compensa acoplar
+// front/back só por isso). De fora, de propósito:
+// - Tipografia/espaçamento (`--font-*`, `--text-*` etc.) — não é cor, não
+//   faz sentido nesta tela.
+// - `--color-error-soft`/`--color-warning-soft` — são `rgba(...)` com
+//   transparência (fundo suave de aviso/erro), não hex sólido; o
+//   `<input type="color">` nativo (`configuracoes-usuario.html`) só
+//   aceita/devolve `#rrggbb`, perderia a transparência se deixasse
+//   personalizar por aqui. `--color-success-soft` fica de fora do mesmo
+//   jeito mesmo sendo hex (referencia `--color-primary-soft`), pra não
+//   editar sozinho um alias que os outros dois "-soft" não conseguem
+//   acompanhar — os três ficam de fora juntos, por consistência.
 export const TOKENS_AMBIENTE: readonly TokenAmbiente[] = [
   { token: '--color-primary', rotulo: 'Cor primária (barra lateral e botões)', padrao: '#1b4332' },
+  { token: '--color-primary-dark', rotulo: 'Cor primária escura (hover, estados ativos)', padrao: '#123024' },
+  {
+    token: '--color-primary-light',
+    rotulo: 'Cor primária clara (ícones, indicadores positivos)',
+    padrao: '#2f9e58',
+  },
+  { token: '--color-bg', rotulo: 'Cor de fundo da página', padrao: '#eef6f0' },
+  { token: '--color-surface', rotulo: 'Cor de fundo dos cartões', padrao: '#ffffff' },
+  { token: '--color-border', rotulo: 'Cor das bordas', padrao: '#dbe7de' },
+  { token: '--color-text', rotulo: 'Cor do texto principal', padrao: '#1f2a24' },
+  { token: '--color-text-muted', rotulo: 'Cor do texto secundário', padrao: '#5b6b62' },
   { token: '--color-accent', rotulo: 'Cor de destaque', padrao: '#e8871e' },
+  { token: '--color-accent-dark', rotulo: 'Cor de destaque escura (hover)', padrao: '#c96f12' },
+  { token: '--color-primary-soft', rotulo: 'Cor primária suave (fundos leves)', padrao: '#e3efe7' },
+  {
+    token: '--color-primary-softer',
+    rotulo: 'Cor primária bem suave (fundos muito leves)',
+    padrao: '#f2f8f4',
+  },
+  { token: '--color-error', rotulo: 'Cor de erro', padrao: '#9a2f2f' },
+  { token: '--color-warning', rotulo: 'Cor de aviso', padrao: '#b5620a' },
+  { token: '--color-success', rotulo: 'Cor de sucesso', padrao: '#2f9e58' },
 ];
 
 /** Cores de ambiente personalizáveis por usuário (Configurações → "Cores de

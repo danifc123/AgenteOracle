@@ -19,7 +19,32 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import cores_ambiente as cores_ambiente_tools
 
-_TOKENS_VALIDOS = frozenset({"--color-primary", "--color-accent"})
+_TOKENS_VALIDOS = frozenset(
+    {
+        "--color-primary",
+        "--color-primary-dark",
+        "--color-primary-light",
+        "--color-bg",
+        "--color-surface",
+        "--color-border",
+        "--color-text",
+        "--color-text-muted",
+        "--color-accent",
+        "--color-accent-dark",
+        "--color-primary-soft",
+        "--color-primary-softer",
+        "--color-error",
+        "--color-warning",
+        "--color-success",
+        # `--color-error-soft`/`--color-warning-soft`/`--color-success-soft`
+        # ficam de fora — os dois primeiros são `rgba(...)` com
+        # transparência, o `<input type="color">` do frontend só
+        # aceita/devolve `#rrggbb` (perderia a transparência); o terceiro
+        # fica de fora junto, por consistência, mesmo sendo hex (ver
+        # `servicos/cores-ambiente/cores-ambiente.ts`, mesma lista
+        # duplicada lá).
+    }
+)
 
 
 def _cor_ambiente_detalhe(metodo: str, token: str, usuario_id: int, corpo: dict | None) -> Response:

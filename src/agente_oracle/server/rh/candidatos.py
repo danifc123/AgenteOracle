@@ -78,11 +78,11 @@ def registrar(mcp) -> None:
                 {"erro": "Arquivo muito grande (máx. 15MB)."}, status_code=400, headers=CORS_HEADERS
             )
 
-        ollama_client = criar_cliente_protegido(settings, "rh", sanitizar=True, usuario_id=usuario["sub"])
+        cliente_ia = criar_cliente_protegido(settings, "rh", sanitizar=True, usuario_id=usuario["sub"])
 
         try:
             candidato = await candidatos_tools.criar_candidato(
-                ollama_client,
+                cliente_ia,
                 modelo_ia_ativo(settings, "rh"),
                 settings.ollama_embedding_model,
                 arquivo.filename or "curriculo",

@@ -35,6 +35,7 @@ por `config.py::validar_ollama_host_seguro`, até o fornecedor cadastrado
 ser validado pra esse tipo de dado."""
 
 import logging
+from typing import Protocol
 
 import oci
 from ollama import AsyncClient
@@ -93,6 +94,30 @@ class TetoTokensExcedidoError(Exception):
             f'Teto diário de tokens do departamento "{dominio}" foi atingido. '
             "Tente novamente amanhã, ou peça pro administrador do módulo ajustar o teto."
         )
+
+
+class ClienteChatIA(Protocol):
+    """Contrato de quem sabe `.chat()` — `ClienteIAProtegido` (qualquer
+    domínio com cadastro) ou o `ollama.AsyncClient` puro (financeiro/
+    auditoria, que nunca passam por aqui, ver docstring do módulo).
+    Mesmo padrão de `tools/ti/glpi.py::ClienteGLPI`: quem chama tipa contra
+    isto, não contra um motor específico — real ou fake de teste, os dois
+    servem, desde que respondam a essa forma."""
+
+    async def chat(self, *, model: str, messages: list[dict], **kwargs: object) -> object: ...
+
+
+class ClienteEmbedIA(Protocol):
+    """Mesma ideia de `ClienteChatIA`, pra quem só usa `.embed()` (correção
+    de categoria de chamado, busca de candidato por currículo)."""
+
+    async def embed(self, *, model: str, input: str, **kwargs: object) -> object: ...
+
+
+class ClienteChatEmbedIA(ClienteChatIA, ClienteEmbedIA, Protocol):
+    """Pra quem precisa dos dois na mesma função (ex:
+    `agent/rh/busca_candidatos.py`, que gera o embedding da busca E manda
+    o shortlist pra IA rankear)."""
 
 
 class ClienteIAProtegido:

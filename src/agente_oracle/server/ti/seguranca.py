@@ -110,10 +110,10 @@ def registrar(mcp) -> None:
         # `sanitizar=False`: `usuario`/`usuario_id` é o próprio objeto do
         # achado de segurança — mascarar tornaria o achado inacionável (ver
         # tools/ia/cliente_protegido.py e o plano de guardrails de IA).
-        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=False, usuario_id=usuario["sub"])
+        cliente_ia = criar_cliente_protegido(settings, "ti", sanitizar=False, usuario_id=usuario["sub"])
         try:
             achados_novos = await detectar(
-                ollama_client, modelo_ia_ativo(settings, "ti"), perfis_login, perfis_login_protheus, perfis_acesso
+                cliente_ia, modelo_ia_ativo(settings, "ti"), perfis_login, perfis_login_protheus, perfis_acesso
             )
         except TetoTokensExcedidoError as erro:
             return JSONResponse({"erro": str(erro)}, status_code=429, headers=CORS_HEADERS)

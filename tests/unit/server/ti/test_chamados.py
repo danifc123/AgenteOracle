@@ -771,12 +771,12 @@ class TestProcessarChamadoNovo:
 
 class TestProcessarChamadoNovoEmbeddingClient:
     """`embedding_client` é o parâmetro que resolve o bug real de
-    2026-09-28: `classificar_categoria` usava sempre `ollama_client`
+    2026-09-28: `classificar_categoria` usava sempre `cliente_ia`
     (o provedor de CHAT ativo) pro `.embed()`, que normalmente não sabe
     fazer embedding — cai em `EmbeddingNaoSuportado` sempre. Ver
     `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`."""
 
-    async def test_sem_embedding_client_reusa_o_ollama_client_pro_embed(self):
+    async def test_sem_embedding_client_reusa_o_cliente_ia_pro_embed(self):
         # Comportamento de antes desse parâmetro existir — mantido pra não
         # quebrar nenhum call site que ainda não foi atualizado.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
@@ -790,7 +790,7 @@ class TestProcessarChamadoNovoEmbeddingClient:
         # `_cache_embeddings_categorias` em `roteamento_chamado.py`.
         assert len(ollama.chamadas_embed) == 2
 
-    async def test_com_embedding_client_usa_ele_em_vez_do_ollama_client(self):
+    async def test_com_embedding_client_usa_ele_em_vez_do_cliente_ia(self):
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
         ollama = _OllamaClienteFake(suficiente=True)
         embedding = _OllamaClienteFake(suficiente=True)
@@ -811,7 +811,7 @@ class TestProcessarChamadoNovoEmbeddingClient:
 
     async def test_embedding_client_nao_afeta_o_client_usado_pro_chat(self):
         # `avaliar_chamado` (a checagem de "tem informação suficiente")
-        # continua sempre no `ollama_client` — só a correção de categoria
+        # continua sempre no `cliente_ia` — só a correção de categoria
         # (`classificar_categoria`) usa o `embedding_client`.
         cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
         ollama = _OllamaClienteFake(suficiente=True)

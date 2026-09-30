@@ -63,11 +63,11 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": "Status inválido pra busca."}, status_code=400, headers=CORS_HEADERS)
 
         candidatos = await to_thread.run_sync(candidatos_tools.listar_para_busca, status)
-        ollama_client = criar_cliente_protegido(settings, "rh", sanitizar=True, usuario_id=usuario["sub"])
+        cliente_ia = criar_cliente_protegido(settings, "rh", sanitizar=True, usuario_id=usuario["sub"])
 
         try:
             resultados = await buscar_candidatos(
-                ollama_client,
+                cliente_ia,
                 modelo_ia_ativo(settings, "rh"),
                 settings.ollama_embedding_model,
                 descricao,

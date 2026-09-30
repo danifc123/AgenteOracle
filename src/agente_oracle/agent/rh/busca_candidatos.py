@@ -13,11 +13,9 @@ shortlist que foi realmente enviado, nunca aceita um id inventado."""
 
 from dataclasses import dataclass
 
-from ollama import AsyncClient
-
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embedding
-from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
+from agente_oracle.tools.ia.cliente_protegido import ClienteChatEmbedIA, TetoTokensExcedidoError
 from agente_oracle.tools.rh.similaridade import similaridade_cosseno
 
 # Quantos candidatos (dos mais similares por embedding) vão pro shortlist
@@ -98,7 +96,7 @@ class ResultadoBusca:
 
 
 async def buscar_candidatos(
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteChatEmbedIA,
     modelo: str,
     modelo_embedding: str,
     descricao_vaga: str,
@@ -107,7 +105,7 @@ async def buscar_candidatos(
     if not candidatos:
         raise AnaliseIndisponivel("Não há candidatos ativos cadastrados pra buscar.")
 
-    embedding_busca = await gerar_embedding(ollama_client, modelo_embedding, descricao_vaga)
+    embedding_busca = await gerar_embedding(cliente_ia, modelo_embedding, descricao_vaga)
 
     candidatos_ordenados = sorted(
         (
@@ -122,7 +120,7 @@ async def buscar_candidatos(
     similaridade_por_id = {candidato["id"]: similaridade for candidato, similaridade in shortlist}
 
     try:
-        resposta = await ollama_client.chat(
+        resposta = await cliente_ia.chat(
             model=modelo,
             messages=[
                 {"role": "system", "content": _PROMPT_SISTEMA},
@@ -133,7 +131,7 @@ async def buscar_candidatos(
         )
     except TetoTokensExcedidoError:
         # Bloqueio deliberado (teto de tokens do RH) não é indisponibilidade
-        # do Ollama — deixa subir pra `server/rh/busca.py` tratar como erro
+        # do provedor — deixa subir pra `server/rh/busca.py` tratar como erro
         # de verdade (429), não um 503 genérico de "IA fora do ar".
         raise
     except Exception as erro:

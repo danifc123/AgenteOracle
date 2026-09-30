@@ -9,8 +9,8 @@ orquestra isso é `server/ti/chamados.py`, em cima do resultado.
 diferente de outros agentes do projeto), então não tem o mesmo tipo de
 checagem de fundamentação — a rede de segurança aqui é outra: `usar_ia`
 desligado (decisão do time de TI, ver `tools/ti/configuracoes.py`) ou a
-IA não devolvendo um julgamento confiável (Ollama fora do ar, resposta
-mal formada, ou "insuficiente" sem pergunta de verdade) nunca trava o
+IA não devolvendo um julgamento confiável (provedor de IA ativo fora do
+ar, resposta mal formada, ou "insuficiente" sem pergunta de verdade) nunca trava o
 chamado nem deixa passar às cegas — cai em `_avaliar_por_regra`, uma
 contagem de palavras (do texto ORIGINAL + o que a pessoa já respondeu em
 todas as rodadas) que nunca depende de rede. A IA continua sendo a
@@ -32,9 +32,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from ollama import AsyncClient
-
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
+from agente_oracle.tools.ia.cliente_protegido import ClienteChatIA
 
 # Baixado de 15 pra 5 (decisão do Daniel, 2026-09-24, depois de ver o
 # texto fixo repetindo em chamados de teste bem curtos) — ainda pega
@@ -45,7 +44,7 @@ _MINIMO_PALAVRAS_DESCRICAO = 5
 
 # Genérica de propósito — cobre chamado de qualquer categoria, não só
 # sistema/TI. Mesma mensagem tanto pra descrição sem conteúdo real quanto
-# pra falha do Ollama numa descrição igualmente curta (ver `avaliar_chamado`),
+# pra falha do provedor de IA numa descrição igualmente curta (ver `avaliar_chamado`),
 # e também pra quando a regra dispara numa rodada além da 1ª (ver docstring
 # de `server/ti/chamados.py::processar_chamado_novo` — nesse caso quem
 # decide o que fazer com a repetição é quem chama, não este módulo).
@@ -180,7 +179,7 @@ def _mensagens_para_ia(titulo: str, descricao: str, categoria: str, turnos: Sequ
 
 
 async def avaliar_chamado(
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteChatIA,
     modelo: str,
     titulo: str,
     descricao: str,
@@ -188,8 +187,8 @@ async def avaliar_chamado(
     turnos: Sequence[TurnoConversa] = (),
     usar_ia: bool = True,
 ) -> AvaliacaoChamado:
-    """Nunca levanta. `usar_ia=False` pula o Ollama e usa só a regra de
-    palavras. Com `usar_ia=True` (padrão), tenta o Ollama primeiro — toda
+    """Nunca levanta. `usar_ia=False` pula a IA e usa só a regra de
+    palavras. Com `usar_ia=True` (padrão), tenta a IA primeiro — toda
     vez que a resposta não for um julgamento confiável (erro na chamada,
     JSON mal formado, tipo errado, ou "insuficiente" sem pergunta) cai na
     regra em vez de assumir `suficiente=True` às cegas. Descrição (+
@@ -201,7 +200,7 @@ async def avaliar_chamado(
         return _avaliar_por_regra(texto_combinado)
 
     try:
-        resposta = await ollama_client.chat(
+        resposta = await cliente_ia.chat(
             model=modelo,
             messages=_mensagens_para_ia(titulo, descricao, categoria, turnos),
             format=_SCHEMA,

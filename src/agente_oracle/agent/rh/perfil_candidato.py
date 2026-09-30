@@ -1,6 +1,7 @@
 """Geração do perfil estruturado de um candidato a partir do texto do
 currículo (já extraído — ver `tools/rh/extracao_curriculo.py`) via IA
-(Ollama). Mesmo padrão de chamada já usado no resto do projeto
+(provedor ativo do RH, ver `tools/ia/cliente_protegido.py`). Mesmo padrão
+de chamada já usado no resto do projeto
 (`agent/auditoria/analise.py`, `agent/financeiro/financeiro.py`): `format=`
 JSON schema, nunca texto livre.
 
@@ -29,11 +30,9 @@ zero."""
 
 from dataclasses import dataclass, field
 
-from ollama import AsyncClient
-
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel
-from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
+from agente_oracle.tools.ia.cliente_protegido import ClienteChatIA, TetoTokensExcedidoError
 
 _NIVEIS_SENIORIDADE = ("estagiario", "junior", "pleno", "senior", "especialista", "nao_identificado")
 _STATUS_FORMACAO = ("concluido", "cursando", "nao_identificado")
@@ -189,9 +188,9 @@ class PerfilCandidato:
         }
 
 
-async def gerar_perfil(ollama_client: AsyncClient, modelo: str, texto_curriculo: str) -> PerfilCandidato:
+async def gerar_perfil(cliente_ia: ClienteChatIA, modelo: str, texto_curriculo: str) -> PerfilCandidato:
     try:
-        resposta = await ollama_client.chat(
+        resposta = await cliente_ia.chat(
             model=modelo,
             messages=[
                 {"role": "system", "content": _PROMPT_SISTEMA},
@@ -202,8 +201,8 @@ async def gerar_perfil(ollama_client: AsyncClient, modelo: str, texto_curriculo:
         )
     except TetoTokensExcedidoError:
         # Bloqueio deliberado (teto de tokens do RH) não é indisponibilidade
-        # do Ollama — deixa subir pro chamador tratar como erro de verdade
-        # (429), não um 503 genérico de "IA fora do ar".
+        # do provedor — deixa subir pro chamador tratar como erro de
+        # verdade (429), não um 503 genérico de "IA fora do ar".
         raise
     except Exception as erro:
         raise AnaliseIndisponivel("Não foi possível analisar o currículo com a IA no momento.") from erro

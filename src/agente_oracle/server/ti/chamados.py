@@ -81,7 +81,6 @@ from datetime import UTC, datetime, timedelta
 
 from anyio import to_thread
 from bs4 import BeautifulSoup
-from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -94,6 +93,8 @@ from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_m
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ia.cliente_protegido import (
     USUARIO_SISTEMA,
+    ClienteChatEmbedIA,
+    ClienteEmbedIA,
     criar_cliente_embedding_protegido,
     criar_cliente_protegido,
     modelo_embedding_ativo,
@@ -453,12 +454,12 @@ async def iniciar_poller_verificar_chamados() -> None:
 
 async def processar_chamado_novo(
     cliente: ClienteGLPI,
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteChatEmbedIA,
     modelo: str,
     chamado: Chamado,
     cargas: dict[str, int],
     usar_ia: bool,
-    embedding_client: AsyncClient | None = None,
+    embedding_client: ClienteEmbedIA | None = None,
 ) -> ResultadoProcessamento:
     """Avalia se o chamado tem informação suficiente, olhando a conversa
     de esclarecimento inteira (`cliente.buscar_followups`, mapeada pra
@@ -515,7 +516,7 @@ async def processar_chamado_novo(
     Postgres fora das funções testáveis com fake).
 
     `embedding_client` é OPCIONAL de propósito (`None` reaproveita
-    `ollama_client` pro `.embed()` de `classificar_categoria`, mesmo
+    `cliente_ia` pro `.embed()` de `classificar_categoria`, mesmo
     comportamento de antes desse parâmetro existir) — os call sites reais
     (poller/webhook/rota manual, mais abaixo neste arquivo) passam o
     provedor de EMBEDDING ativo (`criar_cliente_embedding_protegido`,
@@ -526,7 +527,7 @@ async def processar_chamado_novo(
     turnos = _turnos_da_conversa(followups)
     rodadas_do_usuario = sum(1 for turno in turnos if turno.papel == "usuario")
     avaliacao = await avaliar_chamado(
-        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
+        cliente_ia, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
     )
     if not avaliacao.suficiente:
         bateu_limite = rodadas_do_usuario >= _LIMITE_RODADAS_ESCLARECIMENTO
@@ -543,7 +544,7 @@ async def processar_chamado_novo(
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
     resultado_classificacao = await classificar_categoria(
-        embedding_client if embedding_client is not None else ollama_client,
+        embedding_client if embedding_client is not None else cliente_ia,
         modelo_embedding_ativo(settings, "ti"),
         chamado.titulo,
         descricao_limpa,
@@ -757,7 +758,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     diferentes num lote só — mesmo quando disparado pela rota manual (não
     só pelo poller), atribuir o custo todo a quem clicou "Verificar" seria
     enganoso (ver `tools/ia/cliente_protegido.py::USUARIO_SISTEMA`)."""
-    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    cliente_ia = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     embedding_client = criar_cliente_embedding_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
@@ -782,7 +783,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             inicio = time.monotonic()
             resultado = await processar_chamado_novo(
                 _cliente,
-                ollama_client,
+                cliente_ia,
                 modelo_ia_ativo(settings, "ti"),
                 chamado,
                 cargas,
@@ -837,7 +838,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     `usuario_id=USUARIO_SISTEMA`: mesmo motivo de
     `verificar_chamados_aguardando_resposta` — é um lote de vários
     chamados de pessoas diferentes, não a ação de quem disparou."""
-    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    cliente_ia = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     embedding_client = criar_cliente_embedding_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
@@ -854,7 +855,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
                 continue
             resultado = await processar_chamado_novo(
                 _cliente,
-                ollama_client,
+                cliente_ia,
                 modelo_ia_ativo(settings, "ti"),
                 chamado,
                 cargas,

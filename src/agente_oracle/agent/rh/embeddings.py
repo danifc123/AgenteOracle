@@ -6,6 +6,7 @@ desses vetores (similaridade de cosseno, sem IA) mora em
 from ollama import AsyncClient
 
 from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 
 
 class AnaliseIndisponivel(Exception):
@@ -31,6 +32,11 @@ async def gerar_embedding(ollama_client: AsyncClient, modelo_embedding: str, tex
             "O provedor de IA ativo não suporta a busca de candidato por currículo (sem "
             "embedding). Troque o provedor nas Configurações do TI pra reativar essa função."
         ) from erro
+    except TetoTokensExcedidoError:
+        # Bloqueio deliberado (teto de tokens do RH) não é indisponibilidade
+        # do Ollama — deixa subir pro chamador tratar como erro de verdade
+        # (429), não um "IA fora do ar" genérico.
+        raise
     except Exception as erro:
         raise AnaliseIndisponivel(
             "Não foi possível gerar o embedding com a IA no momento (confira se o modelo de "

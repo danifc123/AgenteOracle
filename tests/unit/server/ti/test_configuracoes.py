@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from agente_oracle.server.ti.configuracoes import _percentual_valido, _teto_tokens_valido
+from agente_oracle.server.ti.configuracoes import _percentual_valido
 
 
 class TestPercentualValido:
@@ -43,17 +43,3 @@ class TestPercentualValido:
     def test_tipo_invalido_e_rejeitado_inclusive_bool(self, bruto):
         # `True` é `int` em Python — sem a checagem explícita viraria 1%.
         assert _percentual_valido(bruto) is None
-
-
-class TestTetoTokensValido:
-    @pytest.mark.parametrize("bruto", [0, 1, 50000])
-    def test_inteiro_maior_ou_igual_a_zero_e_aceito(self, bruto):
-        assert _teto_tokens_valido(bruto) is True
-
-    def test_negativo_e_rejeitado(self):
-        assert _teto_tokens_valido(-1) is False
-
-    @pytest.mark.parametrize("bruto", [True, False, None, "50000", 12.5, [50000]])
-    def test_nao_inteiro_e_rejeitado_inclusive_bool(self, bruto):
-        # `True` é `int` em Python — sem a checagem explícita viraria 1.
-        assert _teto_tokens_valido(bruto) is False

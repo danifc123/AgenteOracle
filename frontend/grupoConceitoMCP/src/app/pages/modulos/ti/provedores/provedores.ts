@@ -8,17 +8,16 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { FatiaRosca, GraficoRosca } from '../../../../componentes/grafico-rosca/grafico-rosca';
 import { GraficoSerie, SerieGrafico } from '../../../../componentes/grafico-serie/grafico-serie';
+import { Interruptor } from '../../../../componentes/interruptor/interruptor';
 import { MenuAcoes } from '../../../../componentes/menu-acoes/menu-acoes';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
 import { PassoTour, TourGuiado } from '../../../../componentes/tour-guiado/tour-guiado';
 import { SoDev } from '../../../../diretivas/so-dev/so-dev';
-import {
-  AlteracoesConfiguracoesTi,
-  ConfiguracoesTi,
-} from '../../../../servicos/configuracoes-ti/configuracoes-ti';
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
+import { Sessao } from '../../../../servicos/sessao/sessao';
+import { TetoTokensIa } from '../../../../servicos/teto-tokens-ia/teto-tokens-ia';
 import { TOAST_MENSAGEM_SUCESSO } from '../../../../servicos/toast.interceptor/toast.interceptor';
 import { UsoIa } from '../../../../servicos/uso-ia/uso-ia';
 
@@ -234,14 +233,17 @@ function formatarCusto(custo: number, moeda: string, custoBrl: number | null): s
  * Consumo: dois gráficos (`GraficoRosca`/`GraficoSerie`, já usados em
  * Estoque/Financeiro, nenhuma lib nova) — donut de consumo por provedor e
  * tendência diária — mais a tabela detalhada com abas "Geral"/"Por
- * usuário". O teto diário de tokens fica atrás da engrenagem no
+ * usuário". O teto diário de tokens (por departamento, ver `servicos/
+ * teto-tokens-ia/teto-tokens-ia.ts`) fica atrás da engrenagem no
  * cabeçalho, mesmo padrão que `chamados.html` já usa pras próprias
  * configurações.
  *
- * Só desenvolvedor acessa (rota protegida por `devGuard`, item do menu
- * escondido de quem não é desenvolvedor via `ItemMenu.soDev`) — o backend
- * também exige isso em cada rota que essa tela chama, então não é
- * proteção só de aparência. */
+ * A TELA em si só é acessada por desenvolvedor (rota protegida por
+ * `devGuard`, item do menu escondido via `ItemMenu.soDev`). DENTRO dela,
+ * porém, o CRUD de provedores continua exclusivo de desenvolvedor
+ * (`*appSoDev`), mas a engrenagem de teto (`podeConfigurarTeto`) também
+ * abre pro `ti_admin` — o backend espelha essa mesma distinção em cada
+ * rota, então não é proteção só de aparência. */
 @Component({
   selector: 'app-provedores-llm',
   imports: [
@@ -252,6 +254,7 @@ function formatarCusto(custo: number, moeda: string, custoBrl: number | null): s
     EstadoVazio,
     GraficoRosca,
     GraficoSerie,
+    Interruptor,
     MenuAcoes,
     ModuloHeader,
     SelectBusca,
@@ -265,7 +268,8 @@ function formatarCusto(custo: number, moeda: string, custoBrl: number | null): s
 export class ProvedoresLlm {
   private readonly http = inject(HttpClient);
   private readonly usoIa = inject(UsoIa);
-  protected readonly configuracoes = inject(ConfiguracoesTi);
+  private readonly tetoTokensIa = inject(TetoTokensIa);
+  protected readonly sessao = inject(Sessao);
 
   // Cadastro: lista + diálogo de criar/editar + apagar
   provedores = signal<ProvedorLlm[]>([]);
@@ -349,6 +353,7 @@ export class ProvedoresLlm {
   protected readonly abaAtiva = signal<'geral' | 'usuario'>('geral');
 
   protected readonly configuracoesAbertas = signal(false);
+  protected readonly tetoAtivo = signal(false);
   protected readonly tetoTexto = signal('0');
   protected readonly salvandoTeto = signal(false);
   protected readonly erroTeto = signal<string | null>(null);
@@ -381,17 +386,34 @@ export class ProvedoresLlm {
   ]);
 
   protected readonly tetoValido = computed<number | null>(() => {
+    // Desativado = sempre salva "sem teto" (0), não importa o que estiver
+    // digitado no campo (que fica desabilitado nesse estado) — é o
+    // gestor decidindo explicitamente "sem controle de custo" pro
+    // departamento, não um valor esquecido no campo.
+    if (!this.tetoAtivo()) {
+      return 0;
+    }
     const numero = Number(this.tetoTexto());
-    return Number.isInteger(numero) && numero >= 0 ? numero : null;
+    return Number.isInteger(numero) && numero > 0 ? numero : null;
   });
 
-  /** `null` = sem teto configurado (0), não mostra a barra de progresso. */
+  /** Admin do próprio módulo (`ti_admin`) também configura o teto de TI
+   * agora, não só desenvolvedor — o resto do diálogo/CRUD de provedores
+   * continua exclusivo de desenvolvedor (ver `*appSoDev` no template). */
+  protected readonly podeConfigurarTeto = computed(
+    () => this.sessao.ehDesenvolvedor() || this.sessao.ehAdminDoModulo('ti'),
+  );
+
+  /** `null` = sem teto configurado (0), não mostra a barra de progresso.
+   * Teto e consumo aqui são só do domínio `ti` (`tetoTokensIa`) — diferente
+   * de `tokensHojeTotal` abaixo, que soma TI+RH só pro card informativo
+   * de consumo geral. */
   protected readonly percentualTeto = computed<number | null>(() => {
-    const teto = this.configuracoes.tetoTokensDiario();
-    if (teto <= 0) {
+    const teto = this.tetoTokensIa.teto();
+    if (teto === null || teto <= 0) {
       return null;
     }
-    return Math.min(100, Math.round((this.tokensHojeTotal() / teto) * 100));
+    return Math.min(100, Math.round((this.tetoTokensIa.tokensHoje() / teto) * 100));
   });
 
   protected readonly tomTeto = computed<'ok' | 'atencao' | 'erro'>(() => {
@@ -407,11 +429,18 @@ export class ProvedoresLlm {
     this.usoIa.carregar();
     const intervalo = setInterval(() => this.usoIa.carregar(), INTERVALO_ATUALIZACAO_USO_IA_MS);
     inject(DestroyRef).onDestroy(() => clearInterval(intervalo));
-    this.configuracoes.carregar();
+    this.tetoTokensIa.carregar('ti');
     // Semeia o rascunho do teto sempre que o valor real do servidor muda
     // (primeiro load, e depois de salvar) — mesmo espírito de
-    // `iniciarRascunho` em `configuracoes-chamados.ts`.
-    effect(() => this.tetoTexto.set(String(this.configuracoes.tetoTokensDiario())));
+    // `iniciarRascunho` em `configuracoes-chamados.ts`. `null` = ainda não
+    // carregou, mantém o rascunho como está (não zera a UI antes da hora).
+    effect(() => {
+      const teto = this.tetoTokensIa.teto();
+      if (teto !== null) {
+        this.tetoTexto.set(String(teto));
+        this.tetoAtivo.set(teto > 0);
+      }
+    });
   }
 
   carregarProvedores(): void {
@@ -774,8 +803,7 @@ export class ProvedoresLlm {
 
     this.salvandoTeto.set(true);
     this.erroTeto.set(null);
-    const alteracoes: AlteracoesConfiguracoesTi = { teto_tokens_diario: teto };
-    this.configuracoes.salvar(alteracoes).subscribe({
+    this.tetoTokensIa.salvar('ti', teto).subscribe({
       next: () => {
         this.salvandoTeto.set(false);
         this.configuracoesAbertas.set(false);

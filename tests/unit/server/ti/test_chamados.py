@@ -960,6 +960,10 @@ class TestClienteProtegidoDeVerdade:
         monkeypatch.setattr(cliente_protegido_module, "AsyncClient", lambda **_kwargs: cliente_ollama_fake)
         monkeypatch.setattr(auditoria_externa, "registrar", lambda *_args: None)
         monkeypatch.setattr(auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+        # `_verificar_teto_tokens` roda ANTES de toda chamada real — sem
+        # mockar isso, o teste tentaria consultar o teto no Postgres de
+        # verdade (0 = sem teto, nunca bloqueia; ver `cliente_protegido.py`).
+        monkeypatch.setattr(configuracoes_provedor, "teto_tokens_diario", lambda _dominio: 0)
         # Isola do banco real: este teste quer especificamente o caminho
         # `ollama.AsyncClient` (nenhum provedor cadastrado ativo) — sem
         # isso, ele passa a depender do que estiver ativado no Postgres de

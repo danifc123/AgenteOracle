@@ -2,6 +2,7 @@ import pytest
 
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embedding
 from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 
 
 class _EmbedRespostaFake:
@@ -38,4 +39,10 @@ class TestGerarEmbedding:
         cliente = _ClienteFake(levantar=ConnectionError("Ollama fora do ar"))
 
         with pytest.raises(AnaliseIndisponivel, match="embeddings ativo está disponível"):
+            await gerar_embedding(cliente, "modelo-embed", "texto qualquer")
+
+    async def test_teto_de_tokens_excedido_nao_vira_indisponivel_sobe_o_erro(self):
+        cliente = _ClienteFake(levantar=TetoTokensExcedidoError("rh"))
+
+        with pytest.raises(TetoTokensExcedidoError):
             await gerar_embedding(cliente, "modelo-embed", "texto qualquer")

@@ -22,6 +22,32 @@
   <div class="cabecalho-dashboard">
     <h2>Widgets</h2>
     <div class="acoes-dashboard">
+      @if (dominioConfiguravel()) {
+        <button
+          type="button"
+          class="botao-personalizar botao-config-ia"
+          aria-label="Configurações de tokens de IA"
+          title="Configurações de tokens de IA"
+          (click)="configuracoesIaAbertas.set(true)"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+        </button>
+      }
       @if (modoEdicao()) {
         <button type="button" class="botao-adicionar" (click)="catalogoAberto.set(true)">Adicionar widget</button>
       }
@@ -86,4 +112,57 @@
       }
     </div>
   }
+</app-dialog>
+
+<app-dialog
+  [aberto]="configuracoesIaAbertas()"
+  titulo="Configurações de tokens de IA"
+  tamanho="compacto"
+  [temRodape]="true"
+  (fechar)="configuracoesIaAbertas.set(false)"
+>
+  <p class="apoio">Visível só pra quem administra esse departamento.</p>
+
+  <app-interruptor
+    rotulo="Ativar teto de tokens"
+    descricao="Desativado, o departamento não tem limite de gasto — ative pra digitar um teto e travar o custo."
+    [marcado]="tetoIaAtivo()"
+    (alterado)="tetoIaAtivo.set($event)"
+  />
+
+  <app-campo-numerico
+    [rotulo]="'Teto diário de tokens do ' + (dominioConfiguravel() === 'rh' ? 'RH' : dominioConfiguravel())"
+    descricao="Ao passar do teto, a próxima chamada de IA desse departamento é bloqueada até o dia seguinte."
+    [valor]="tetoIaTexto()"
+    [desabilitado]="!tetoIaAtivo()"
+    [erro]="tetoIaAtivo() && tetoIaValido() === null ? 'Informe um número inteiro maior que 0.' : null"
+    (valorChange)="tetoIaTexto.set($event)"
+  />
+
+  @if (erroTetoIa()) {
+    <p class="erro">{{ erroTetoIa() }}</p>
+  }
+
+  @if (tetoTokensIa.teto(); as teto) {
+    @if (teto > 0) {
+      <p class="status-teto">
+        <app-selo
+          [tom]="tetoTokensIa.tokensHoje() >= teto ? 'erro' : tetoTokensIa.tokensHoje() >= teto * 0.8 ? 'atencao' : 'ok'"
+          [texto]="tetoTokensIa.tokensHoje() + ' de ' + teto + ' tokens usados hoje'"
+        />
+      </p>
+    }
+  }
+
+  <div rodape class="botoes-rodape">
+    <button type="button" class="botao-personalizar" (click)="configuracoesIaAbertas.set(false)">Cancelar</button>
+    <button
+      type="button"
+      class="botao-personalizar botao-salvar-teto-ia"
+      [disabled]="tetoIaValido() === null || salvandoTetoIa()"
+      (click)="salvarTetoIa()"
+    >
+      {{ salvandoTetoIa() ? 'Salvando...' : 'Salvar teto' }}
+    </button>
+  </div>
 </app-dialog>

@@ -16,7 +16,11 @@ from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_rh
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.ia.cliente_protegido import criar_cliente_protegido, modelo_ia_ativo
+from agente_oracle.tools.ia.cliente_protegido import (
+    TetoTokensExcedidoError,
+    criar_cliente_protegido,
+    modelo_ia_ativo,
+)
 from agente_oracle.tools.rh import candidatos as candidatos_tools
 from agente_oracle.tools.ti import acessos_dados
 
@@ -73,6 +77,8 @@ def registrar(mcp) -> None:
             return JSONResponse({"erro": str(erro)}, status_code=503, headers=CORS_HEADERS)
         except DescricaoVagaInsuficiente as erro:
             return JSONResponse({"erro": str(erro)}, status_code=400, headers=CORS_HEADERS)
+        except TetoTokensExcedidoError as erro:
+            return JSONResponse({"erro": str(erro)}, status_code=429, headers=CORS_HEADERS)
 
         await to_thread.run_sync(
             acessos_dados.registrar, usuario["sub"], "rh", "busca:candidatos", len(resultados)

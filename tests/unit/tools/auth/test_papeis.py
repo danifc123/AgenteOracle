@@ -2,6 +2,7 @@ from agente_oracle.tools.auth.papeis import (
     MODULOS_CONHECIDOS,
     PAPEIS_TI_EXIGEM_TECNICO_GLPI,
     eh_administrador,
+    eh_administrador_do_modulo,
     modulos_liberados,
     papel_da_area,
     pode_atribuir_papel,
@@ -41,6 +42,24 @@ class TestEhAdministrador:
 
     def test_lista_vazia_nao_e_administrador(self):
         assert eh_administrador([]) is False
+
+
+class TestEhAdministradorDoModulo:
+    def test_admin_do_proprio_modulo_passa(self):
+        assert eh_administrador_do_modulo(["financeiro_admin"], "financeiro") is True
+
+    def test_admin_de_outro_modulo_nao_passa(self):
+        assert eh_administrador_do_modulo(["financeiro_admin"], "ti") is False
+
+    def test_desenvolvedor_passa_em_qualquer_modulo(self):
+        assert eh_administrador_do_modulo(["desenvolvedor"], "financeiro") is True
+        assert eh_administrador_do_modulo(["desenvolvedor"], "ti") is True
+
+    def test_papel_nao_admin_nao_passa_mesmo_tendo_o_modulo(self):
+        assert eh_administrador_do_modulo(["financeiro"], "financeiro") is False
+
+    def test_lista_vazia_nao_passa(self):
+        assert eh_administrador_do_modulo([], "financeiro") is False
 
 
 class TestModulosLiberados:

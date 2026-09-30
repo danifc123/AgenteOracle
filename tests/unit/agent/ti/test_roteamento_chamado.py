@@ -1,6 +1,7 @@
 import pytest
 
 from agente_oracle.agent.ti import roteamento_chamado as mod
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 
 _CATEGORIAS_FAKE = (
@@ -151,6 +152,18 @@ class TestClassificarCategoria:
             cliente, "modelo-embed", "titulo", "descricao", None, usar_ia=True
         )
         assert resultado.area == mod._AREA_PADRAO
+        assert resultado.categoria_id is None
+
+    async def test_teto_de_tokens_excedido_tambem_cai_pro_mesmo_fallback_decisao_deliberada(self):
+        # Mesma decisão de `qualidade_chamado.py` — corrigir categoria é
+        # "melhor esforço"; um teto excedido aqui só mantém a categoria
+        # atual, sem propagar erro (ver teste equivalente lá pro raciocínio
+        # completo).
+        cliente = _OllamaEmbedFake(levantar=TetoTokensExcedidoError("ti"))
+        resultado = await mod.classificar_categoria(
+            cliente, "modelo-embed", "titulo", "descricao", 2, usar_ia=True
+        )
+        assert resultado.area == "sistemas"
         assert resultado.categoria_id is None
 
     async def test_falha_de_rede_nao_marca_embedding_indisponivel(self):

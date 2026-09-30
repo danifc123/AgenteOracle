@@ -33,6 +33,7 @@ from ollama import AsyncClient
 
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 
 _NIVEIS_SENIORIDADE = ("estagiario", "junior", "pleno", "senior", "especialista", "nao_identificado")
 _STATUS_FORMACAO = ("concluido", "cursando", "nao_identificado")
@@ -199,6 +200,11 @@ async def gerar_perfil(ollama_client: AsyncClient, modelo: str, texto_curriculo:
             format=_SCHEMA,
             options=OPCOES_OLLAMA_PADRAO,
         )
+    except TetoTokensExcedidoError:
+        # Bloqueio deliberado (teto de tokens do RH) não é indisponibilidade
+        # do Ollama — deixa subir pro chamador tratar como erro de verdade
+        # (429), não um 503 genérico de "IA fora do ar".
+        raise
     except Exception as erro:
         raise AnaliseIndisponivel("Não foi possível analisar o currículo com a IA no momento.") from erro
 

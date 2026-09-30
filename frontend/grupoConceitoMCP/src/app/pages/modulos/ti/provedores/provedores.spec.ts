@@ -5,8 +5,8 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { ConfiguracoesTi, ConfiguracoesTiResposta } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
 import { Sessao } from '../../../../servicos/sessao/sessao';
+import { RespostaTetoTokensIa, TetoTokensIa } from '../../../../servicos/teto-tokens-ia/teto-tokens-ia';
 import {
   ChamadosIaResposta,
   LinhaUsoIa,
@@ -63,14 +63,6 @@ const PROVEDOR_OCI = {
   criado_em: '2026-09-23T00:00:00Z',
 };
 
-const CONFIGURACOES_RESPOSTA: ConfiguracoesTiResposta = {
-  usar_ia_avaliacao_chamado: true,
-  percentual_amostragem_chamados: 100,
-  percentual_alterado_em: null,
-  ler_chamados_antigos: false,
-  teto_tokens_diario: 1000,
-};
-
 const CHAMADOS_IA_VAZIO: ChamadosIaResposta = {
   total_chamados: 0,
   avaliados_insuficientes: 0,
@@ -78,9 +70,12 @@ const CHAMADOS_IA_VAZIO: ChamadosIaResposta = {
   duracao_media_ms: 0,
 };
 
-function configuracoesFalso(salvar = vi.fn(() => of(CONFIGURACOES_RESPOSTA))) {
+function tetoTokensIaFalso(
+  salvar = vi.fn(() => of<RespostaTetoTokensIa>({ dominio: 'ti', teto_tokens_diario: 5000, tokens_hoje: 0 })),
+) {
   return {
-    tetoTokensDiario: signal(1000),
+    teto: signal<number | null>(1000),
+    tokensHoje: signal(0),
     carregar: vi.fn(),
     salvar,
   };
@@ -107,13 +102,13 @@ function usoIaFalso(opcoes: {
 // abaixo) — os testes existentes assumem acesso de escrita, então o padrão
 // aqui é `true`; sem essa fake, o `Sessao` real injetado (sem sessão
 // nenhuma) devolveria `false` e esconderia botão nenhum dos testes acham.
-function sessaoFalso(ehDesenvolvedor = true) {
-  return { ehDesenvolvedor: () => ehDesenvolvedor };
+function sessaoFalso(ehDesenvolvedor = true, ehAdminDoModulo = false) {
+  return { ehDesenvolvedor: () => ehDesenvolvedor, ehAdminDoModulo: () => ehAdminDoModulo };
 }
 
 function criar(
   provedoresIniciais: unknown[] = [PROVEDOR_OLLAMA, PROVEDOR_OCI],
-  configuracoes = configuracoesFalso(),
+  tetoTokensIa = tetoTokensIaFalso(),
   usoIa = usoIaFalso(),
   sessao = sessaoFalso(),
 ) {
@@ -123,7 +118,7 @@ function criar(
       provideRouter([]),
       provideHttpClient(),
       provideHttpClientTesting(),
-      { provide: ConfiguracoesTi, useValue: configuracoes },
+      { provide: TetoTokensIa, useValue: tetoTokensIa },
       { provide: UsoIa, useValue: usoIa },
       { provide: Sessao, useValue: sessao },
     ],
@@ -143,7 +138,7 @@ function criar(
     fixture,
     http,
     el,
-    configuracoes,
+    tetoTokensIa,
     usoIa,
     texto: () => el.textContent ?? '',
     linhasProvedores: () => Array.from(el.querySelectorAll('.tabela-provedores tbody tr')) as HTMLElement[],
@@ -222,6 +217,11 @@ function criar(
       fixture.detectChanges();
     },
     campoTeto: () => el.querySelector('.linha-teto input') as HTMLInputElement,
+    interruptorTeto: () => el.querySelector('app-interruptor .interruptor') as HTMLButtonElement,
+    ativarTeto: () => {
+      (el.querySelector('app-interruptor .interruptor') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
     botaoSalvarTeto: () =>
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Salvar teto')) as HTMLButtonElement,
     digitarTeto: (valorTexto: string) => {
@@ -432,7 +432,7 @@ describe('ProvedoresLlm', () => {
           provideRouter([]),
           provideHttpClient(),
           provideHttpClientTesting(),
-          { provide: ConfiguracoesTi, useValue: configuracoesFalso() },
+          { provide: TetoTokensIa, useValue: tetoTokensIaFalso() },
           { provide: UsoIa, useValue: usoIaFalso() },
         ],
       });
@@ -692,7 +692,7 @@ describe('ProvedoresLlm', () => {
 
   describe('consumo e custo', () => {
     it('carrega o consumo e o teto ao abrir a página', () => {
-      const configuracoes = configuracoesFalso();
+      const configuracoes = tetoTokensIaFalso();
       const usoIa = usoIaFalso();
 
       criar([], configuracoes, usoIa);
@@ -705,7 +705,7 @@ describe('ProvedoresLlm', () => {
       vi.useFakeTimers();
       const usoIa = usoIaFalso();
 
-      criar([], configuracoesFalso(), usoIa);
+      criar([], tetoTokensIaFalso(), usoIa);
 
       expect(usoIa.carregar).toHaveBeenCalledTimes(1); // carga inicial, ao entrar na tela
 
@@ -756,7 +756,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { linhasConsumo } = criar([], configuracoesFalso(), usoIa);
+      const { linhasConsumo } = criar([], tetoTokensIaFalso(), usoIa);
 
       const texto = linhasConsumo()[0].textContent ?? '';
       expect(texto).toContain('134');
@@ -781,7 +781,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { linhasConsumo } = criar([], configuracoesFalso(), usoIa);
+      const { linhasConsumo } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(linhasConsumo()[0].textContent).toContain('—');
     });
@@ -803,7 +803,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).toContain('R$ 0,03');
     });
@@ -825,7 +825,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).toContain('US$ 0,0002');
       expect(texto()).toContain('≈ R$ 0,001');
@@ -848,7 +848,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { fixture } = criar([], configuracoesFalso(), usoIa);
+      const { fixture } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(fixture.nativeElement.querySelector('app-grafico-rosca')).not.toBeNull();
     });
@@ -860,7 +860,7 @@ describe('ProvedoresLlm', () => {
           { data: '2026-09-23', chamadas: 5, tokens_entrada: 500, tokens_saida: 250, tokens_total: 750 },
         ],
       });
-      const { fixture } = criar([], configuracoesFalso(), usoIa);
+      const { fixture } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(fixture.nativeElement.querySelector('app-grafico-serie')).not.toBeNull();
     });
@@ -882,28 +882,79 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).toContain('(padrão do provedor)');
     });
 
     it('mostra o percentual do teto consumido hoje', () => {
+      // `tokensHojePorDominio` (soma TI+RH) alimenta só o card informativo
+      // geral de consumo — o percentual do teto usa `tetoTokensIa.tokensHoje`,
+      // que é só do domínio `ti` (teto agora é por departamento).
       const usoIa = usoIaFalso({ tokensHojePorDominio: { ti: 300, rh: 200 } });
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.tokensHoje.set(500);
 
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIa, usoIa);
 
-      expect(texto()).toContain('500'); // soma ti + rh
+      expect(texto()).toContain('500'); // soma ti + rh, no card geral de consumo
       expect(texto()).toContain('50% do teto');
     });
 
     it('sem teto configurado, mostra aviso de "sem teto" em vez de percentual', () => {
-      const configuracoes = configuracoesFalso();
-      configuracoes.tetoTokensDiario.set(0);
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.teto.set(0);
 
-      const { texto, abrirConfiguracoesTeto } = criar([], configuracoes);
+      const { texto, abrirConfiguracoesTeto } = criar([], tetoTokensIa);
       abrirConfiguracoesTeto();
 
       expect(texto()).toContain('Sem teto configurado');
+    });
+
+    it('com teto desativado (0), o campo do valor começa desabilitado', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.teto.set(0);
+
+      const { campoTeto, abrirConfiguracoesTeto } = criar([], tetoTokensIa);
+      abrirConfiguracoesTeto();
+
+      expect(campoTeto().disabled).toBe(true);
+    });
+
+    it('com teto já ativo (> 0), o campo do valor começa habilitado', () => {
+      const { campoTeto, abrirConfiguracoesTeto } = criar([]); // fake padrão já carrega teto = 1000
+      abrirConfiguracoesTeto();
+
+      expect(campoTeto().disabled).toBe(false);
+    });
+
+    it('ativar o interruptor habilita o campo pra digitar o teto', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.teto.set(0);
+
+      const { campoTeto, ativarTeto, abrirConfiguracoesTeto } = criar([], tetoTokensIa);
+      abrirConfiguracoesTeto();
+      expect(campoTeto().disabled).toBe(true);
+
+      ativarTeto();
+
+      expect(campoTeto().disabled).toBe(false);
+    });
+
+    it('salvar com o teto desativado sempre manda 0, mesmo com número digitado antes de desativar', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { abrirConfiguracoesTeto, digitarTeto, ativarTeto, botaoSalvarTeto, fixture } = criar(
+        [],
+        tetoTokensIa,
+      );
+      abrirConfiguracoesTeto();
+      digitarTeto('5000'); // teto já vem ativo no fake padrão (1000) — digita um novo valor
+      ativarTeto(); // desativa de novo (alterna o interruptor que já estava ligado)
+
+      botaoSalvarTeto().click();
+      fixture.detectChanges();
+
+      expect(tetoTokensIa.salvar).toHaveBeenCalledWith('ti', 0);
     });
 
     it('teto inválido (negativo) desabilita "Salvar teto" e mostra o erro', () => {
@@ -913,26 +964,26 @@ describe('ProvedoresLlm', () => {
       digitarTeto('-5');
 
       expect(botaoSalvarTeto().disabled).toBe(true);
-      expect(texto()).toContain('número inteiro maior ou igual a 0');
+      expect(texto()).toContain('número inteiro maior que 0');
     });
 
-    it('salvar teto válido chama o serviço com o valor certo e fecha o diálogo', () => {
-      const configuracoes = configuracoesFalso();
-      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], configuracoes);
+    it('salvar teto válido chama o serviço com o domínio "ti" e o valor certo, fecha o diálogo', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], tetoTokensIa);
       abrirConfiguracoesTeto();
 
       digitarTeto('5000');
       botaoSalvarTeto().click();
       fixture.detectChanges();
 
-      expect(configuracoes.salvar).toHaveBeenCalledWith({ teto_tokens_diario: 5000 });
+      expect(tetoTokensIa.salvar).toHaveBeenCalledWith('ti', 5000);
       expect(texto()).not.toContain('Salvar teto');
     });
 
     it('erro do servidor ao salvar teto mostra o motivo e mantém o diálogo aberto', () => {
       const erro = new HttpErrorResponse({ status: 400, error: { erro: 'Valor inválido.' } });
-      const configuracoes = configuracoesFalso(vi.fn(() => throwError(() => erro)));
-      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], configuracoes);
+      const tetoTokensIa = tetoTokensIaFalso(vi.fn(() => throwError(() => erro)));
+      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], tetoTokensIa);
       abrirConfiguracoesTeto();
 
       digitarTeto('5000');
@@ -958,7 +1009,7 @@ describe('ProvedoresLlm', () => {
         ],
       });
 
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).not.toContain('Daniel Faria');
     });
@@ -987,7 +1038,7 @@ describe('ProvedoresLlm', () => {
         ],
       });
 
-      const { texto, abrirAba, linhasConsumo } = criar([], configuracoesFalso(), usoIa);
+      const { texto, abrirAba, linhasConsumo } = criar([], tetoTokensIaFalso(), usoIa);
       abrirAba('Por usuário');
 
       const linhas = linhasConsumo();
@@ -1009,7 +1060,7 @@ describe('ProvedoresLlm', () => {
     it('quem não é desenvolvedor vê a lista de provedores, mas sem nenhum botão de escrita', () => {
       const { texto, el } = criar(
         [PROVEDOR_OLLAMA, PROVEDOR_OCI],
-        configuracoesFalso(),
+        tetoTokensIaFalso(),
         usoIaFalso(),
         sessaoFalso(false),
       );
@@ -1026,13 +1077,23 @@ describe('ProvedoresLlm', () => {
     });
 
     it('desenvolvedor continua vendo os botões de escrita normalmente', () => {
-      const { el } = criar([PROVEDOR_OLLAMA], configuracoesFalso(), usoIaFalso(), sessaoFalso(true));
+      const { el } = criar([PROVEDOR_OLLAMA], tetoTokensIaFalso(), usoIaFalso(), sessaoFalso(true));
 
       expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
         true,
       );
       expect(el.querySelector('button[aria-label="Configurações de tokens"]')).not.toBeNull();
       expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBeGreaterThan(0);
+    });
+
+    it('ti_admin (não desenvolvedor) vê a engrenagem de teto, mas não o CRUD de provedores', () => {
+      const { el } = criar([PROVEDOR_OLLAMA], tetoTokensIaFalso(), usoIaFalso(), sessaoFalso(false, true));
+
+      expect(el.querySelector('button[aria-label="Configurações de tokens"]')).not.toBeNull();
+      expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
+        false,
+      );
+      expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBe(0);
     });
   });
 });

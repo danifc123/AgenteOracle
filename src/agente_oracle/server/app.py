@@ -9,7 +9,7 @@ from agente_oracle.config import (
     validar_glpi_configurado,
     validar_ollama_host_seguro,
 )
-from agente_oracle.server import auditoria, auth, ferramentas, financeiro, home, rh, ti
+from agente_oracle.server import auditoria, auth, ferramentas, financeiro, home, ia, rh, ti
 from agente_oracle.server.security_headers import HeadersDeSegurancaMiddleware
 
 mcp = FastMCP("agente-oracle", host=settings.mcp_host, port=settings.mcp_port)
@@ -21,6 +21,7 @@ auditoria.registrar(mcp)
 ferramentas.registrar(mcp)
 ti.registrar(mcp)
 home.registrar(mcp)
+ia.registrar(mcp)
 
 
 def criar_app():

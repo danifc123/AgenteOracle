@@ -3,9 +3,11 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { LayoutHome } from '../../servicos/layout-home/layout-home';
 import { Sessao } from '../../servicos/sessao/sessao';
+import { TetoTokensIa } from '../../servicos/teto-tokens-ia/teto-tokens-ia';
 import { ChamadosIaResposta, UsoIa } from '../../servicos/uso-ia/uso-ia';
 import { ItemLayoutHome } from './catalogo-widgets-home';
 import { Home } from './home';
@@ -14,12 +16,27 @@ function item(id: string, tamanho: ItemLayoutHome['tamanho'] = 'pequeno'): ItemL
   return { id, tamanho };
 }
 
-function sessaoFalso(modulos: string[] = ['ti'], ehDesenvolvedor = false, administrador = false) {
+function sessaoFalso(
+  modulos: string[] = ['ti'],
+  ehDesenvolvedor = false,
+  administrador = false,
+  ehAdminDoModulo: (modulo: string) => boolean = () => false,
+) {
   return {
     modulos: () => modulos,
     ehDesenvolvedor: () => ehDesenvolvedor,
     administrador: () => administrador,
+    ehAdminDoModulo,
     nome: () => 'Daniel',
+  };
+}
+
+function tetoTokensIaFalso() {
+  return {
+    teto: signal<number | null>(0),
+    tokensHoje: signal(0),
+    carregar: vi.fn(),
+    salvar: vi.fn(() => of({ dominio: 'rh', teto_tokens_diario: 7000, tokens_hoje: 0 })),
   };
 }
 
@@ -49,6 +66,7 @@ function criar(
   sessao = sessaoFalso(),
   usoIa = usoIaFalso(),
   layoutHome = layoutHomeFalso([item('ti:chamados_total'), item('ti:chamados_por_status', 'grande')]),
+  tetoTokensIa = tetoTokensIaFalso(),
 ) {
   TestBed.configureTestingModule({
     imports: [Home],
@@ -59,6 +77,7 @@ function criar(
       { provide: Sessao, useValue: sessao },
       { provide: UsoIa, useValue: usoIa },
       { provide: LayoutHome, useValue: layoutHome },
+      { provide: TetoTokensIa, useValue: tetoTokensIa },
     ],
   });
   const fixture = TestBed.createComponent(Home);
@@ -70,6 +89,7 @@ function criar(
     fixture,
     usoIa,
     layoutHome,
+    tetoTokensIa,
     http,
     texto: () => el.textContent ?? '',
     ligarPersonalizar: () => {
@@ -80,6 +100,25 @@ function criar(
       (el.querySelector('.botao-adicionar') as HTMLButtonElement).click();
       fixture.detectChanges();
     },
+    botaoConfigIa: () => el.querySelector('.botao-config-ia') as HTMLButtonElement | null,
+    abrirConfiguracoesIa: () => {
+      (el.querySelector('.botao-config-ia') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    ativarTetoIa: () => {
+      (el.querySelector('.interruptor') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    digitarTetoIa: (valorTexto: string) => {
+      const campo = el.querySelector('app-campo-numerico input') as HTMLInputElement;
+      campo.value = valorTexto;
+      campo.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    },
+    botaoSalvarTetoIa: () =>
+      Array.from(el.querySelectorAll('.botoes-rodape button')).find((b) =>
+        b.textContent?.includes('Salvar teto'),
+      ) as HTMLButtonElement,
   };
 }
 
@@ -367,6 +406,95 @@ describe('Home', () => {
       });
 
       expect(layoutHome.agendarSalvar).toHaveBeenCalledWith([item('ti:chamados_por_status'), item('ti:chamados_total')]);
+    });
+  });
+
+  describe('engrenagem de teto de tokens de IA (admin de módulo sem tela própria)', () => {
+    it('não aparece pra quem não administra nenhum dos módulos configuráveis', () => {
+      const { botaoConfigIa } = criar(sessaoFalso(['rh'], false, false));
+
+      expect(botaoConfigIa()).toBeNull();
+    });
+
+    it('não aparece pro admin do TI (já tem tela própria em /ti/provedores)', () => {
+      const { botaoConfigIa } = criar(sessaoFalso(['ti'], false, true, (modulo) => modulo === 'ti'));
+
+      expect(botaoConfigIa()).toBeNull();
+    });
+
+    it('aparece pro admin do RH e carrega o teto/consumo do domínio "rh"', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { botaoConfigIa } = criar(
+        sessaoFalso(['rh'], false, true, (modulo) => modulo === 'rh'),
+        usoIaFalso(),
+        undefined,
+        tetoTokensIa,
+      );
+
+      expect(botaoConfigIa()).not.toBeNull();
+      expect(tetoTokensIa.carregar).toHaveBeenCalledWith('rh');
+    });
+
+    it('com teto desativado (0, padrão do fake), o campo do valor começa desabilitado', () => {
+      const { abrirConfiguracoesIa, fixture } = criar(
+        sessaoFalso(['rh'], false, true, (modulo) => modulo === 'rh'),
+      );
+      abrirConfiguracoesIa();
+
+      const campo = fixture.nativeElement.querySelector('app-campo-numerico input') as HTMLInputElement;
+      expect(campo.disabled).toBe(true);
+    });
+
+    it('ativar o interruptor habilita o campo pro admin digitar o teto', () => {
+      const { abrirConfiguracoesIa, ativarTetoIa, fixture } = criar(
+        sessaoFalso(['rh'], false, true, (modulo) => modulo === 'rh'),
+      );
+      abrirConfiguracoesIa();
+      const campo = fixture.nativeElement.querySelector('app-campo-numerico input') as HTMLInputElement;
+      expect(campo.disabled).toBe(true);
+
+      ativarTetoIa();
+
+      expect(campo.disabled).toBe(false);
+    });
+
+    it('salvar com o teto desativado sempre manda 0, mesmo com número digitado antes de desativar', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { abrirConfiguracoesIa, ativarTetoIa, digitarTetoIa, botaoSalvarTetoIa, fixture } = criar(
+        sessaoFalso(['rh'], false, true, (modulo) => modulo === 'rh'),
+        usoIaFalso(),
+        undefined,
+        tetoTokensIa,
+      );
+
+      abrirConfiguracoesIa();
+      ativarTetoIa();
+      digitarTetoIa('7000');
+      ativarTetoIa(); // desativa de novo
+
+      botaoSalvarTetoIa().click();
+      fixture.detectChanges();
+
+      expect(tetoTokensIa.salvar).toHaveBeenCalledWith('rh', 0);
+    });
+
+    it('salvar teto válido chama o serviço com o domínio "rh" e fecha o diálogo', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { abrirConfiguracoesIa, ativarTetoIa, digitarTetoIa, botaoSalvarTetoIa, texto, fixture } = criar(
+        sessaoFalso(['rh'], false, true, (modulo) => modulo === 'rh'),
+        usoIaFalso(),
+        undefined,
+        tetoTokensIa,
+      );
+
+      abrirConfiguracoesIa();
+      ativarTetoIa();
+      digitarTetoIa('7000');
+      botaoSalvarTetoIa().click();
+      fixture.detectChanges();
+
+      expect(tetoTokensIa.salvar).toHaveBeenCalledWith('rh', 7000);
+      expect(texto()).not.toContain('Salvar teto');
     });
   });
 });

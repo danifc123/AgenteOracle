@@ -129,6 +129,10 @@ export class Sessao {
    * `financeiro_admin`), aqui é só o papel `desenvolvedor` especificamente —
    * espelha `eh_desenvolvedor` do backend (`tools/auth/papeis.py`). */
   readonly ehDesenvolvedor = () => this._dados()?.papeis.includes('desenvolvedor') ?? false;
+  /** Admin ESPECIFICAMENTE desse módulo (ex: `financeiro_admin` pra
+   * `modulo="financeiro"`), não qualquer admin de qualquer módulo —
+   * espelha `eh_administrador_do_modulo` do backend (`tools/auth/papeis.py`). */
+  readonly ehAdminDoModulo = (modulo: string) => this.administrador() && this.modulos().includes(modulo);
 
   /** Autoatendimento: mescla nome/foto atualizados na sessão já logada, sem
    * precisar relogar (usado depois de um PATCH /api/auth/perfil). */

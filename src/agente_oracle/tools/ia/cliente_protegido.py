@@ -76,6 +76,25 @@ logger = logging.getLogger(__name__)
 USUARIO_SISTEMA = "sistema"
 
 
+class TetoTokensExcedidoError(Exception):
+    """Levantada ANTES da chamada de rede sair (ver `ClienteIAProtegido.
+    chat`/`.embed`), quando o domínio já gastou hoje >= o teto configurado
+    pra ele (`server/ia/teto_tokens.py`) — trava de verdade, não só aviso.
+    O poller de Chamados (`server/ti/chamados.py`) já isola falha por
+    chamado num `except Exception` genérico, então cai nesse guarda-chuva
+    sem precisar de tratamento novo lá; rotas interativas (`server/ti/
+    seguranca.py`, `server/rh/busca.py`, `server/rh/candidatos.py`)
+    tratam explicitamente pra devolver um 429 amigável em vez de deixar
+    estourar como 500 cru."""
+
+    def __init__(self, dominio: str):
+        self.dominio = dominio
+        super().__init__(
+            f'Teto diário de tokens do departamento "{dominio}" foi atingido. '
+            "Tente novamente amanhã, ou peça pro administrador do módulo ajustar o teto."
+        )
+
+
 class ClienteIAProtegido:
     def __init__(
         self,
@@ -96,16 +115,33 @@ class ClienteIAProtegido:
         self._usuario_id = usuario_id
 
     async def chat(self, *, messages, **kwargs):
+        self._verificar_teto_tokens()
         mensagens = sanitizar_mensagens(messages) if self._sanitizar else messages
         resposta = await self._cliente.chat(messages=mensagens, **kwargs)
         self._registrar_e_avisar(_texto_das_mensagens(mensagens), kwargs.get("model", ""), resposta)
         return resposta
 
     async def embed(self, *, input, **kwargs):
+        self._verificar_teto_tokens()
         texto = sanitizar_dado_sensivel(input) if self._sanitizar else input
         resposta = await self._cliente.embed(input=texto, **kwargs)
         self._registrar_e_avisar(texto, kwargs.get("model", ""), resposta)
         return resposta
+
+    def _verificar_teto_tokens(self) -> None:
+        """Roda ANTES de qualquer chamada de rede (ver `chat`/`embed`
+        acima) — compara o que o domínio já gastou HOJE (`auditoria_
+        externa.tokens_hoje`, soma de chamadas já concluídas e
+        registradas) contra o teto cadastrado pra ele. `0`/sem
+        configuração significa sem teto, nunca bloqueia. Não estima o
+        custo da chamada que está prestes a sair — só olha o acumulado
+        até aqui, então uma última chamada grande ainda pode, na
+        prática, fazer o dia terminar um pouco acima do teto."""
+        teto = configuracoes_provedor.teto_tokens_diario(self._dominio)
+        if teto <= 0:
+            return
+        if auditoria_externa.tokens_hoje(self._dominio) >= teto:
+            raise TetoTokensExcedidoError(self._dominio)
 
     def _registrar_e_avisar(self, texto: str, modelo: str, resposta) -> None:
         # `getattr` porque nem toda resposta traz os três — Ollama pode
@@ -132,24 +168,6 @@ class ClienteIAProtegido:
                 self._dominio,
                 contagem,
                 self._teto_diario,
-            )
-        self._avisar_teto_tokens()
-
-    def _avisar_teto_tokens(self) -> None:
-        """Mesmo espírito do aviso de chamadas acima, só que por volume de
-        tokens — `0`/sem configuração (`configuracoes_provedor.teto_tokens_diario`)
-        significa sem teto, não avisa nunca."""
-        teto = configuracoes_provedor.teto_tokens_diario()
-        if teto <= 0:
-            return
-        tokens_hoje = auditoria_externa.tokens_hoje(self._dominio)
-        if tokens_hoje > teto:
-            logger.warning(
-                "Domínio de IA '%s' passou do teto diário de tokens (%d > %d) — "
-                "só um alerta, nada foi bloqueado.",
-                self._dominio,
-                tokens_hoje,
-                teto,
             )
 
 

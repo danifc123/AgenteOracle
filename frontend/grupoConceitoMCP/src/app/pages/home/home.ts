@@ -1,11 +1,25 @@
 import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList, moveItemInArray } from '@angular/cdk/drag-drop';
 import { NgComponentOutlet } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { CampoNumerico } from '../../componentes/campo-numerico/campo-numerico';
 import { Dialog } from '../../componentes/dialog/dialog';
+import { Interruptor } from '../../componentes/interruptor/interruptor';
+import { Selo } from '../../componentes/selo/selo';
 import { LayoutHome } from '../../servicos/layout-home/layout-home';
+import { mensagemErro } from '../../servicos/mensagens-erro/mensagens-erro';
 import { Sessao } from '../../servicos/sessao/sessao';
+import { TetoTokensIa } from '../../servicos/teto-tokens-ia/teto-tokens-ia';
 import { UsoIa } from '../../servicos/uso-ia/uso-ia';
 import { CATALOGO_WIDGETS_HOME, DefinicaoWidgetHome, ItemLayoutHome, definicaoWidgetHome } from './catalogo-widgets-home';
+
+// Departamentos que ainda não têm uma tela própria de administração de IA
+// (diferente do TI, que já tem `/ti/provedores`) — o admin desses módulos
+// configura o teto de tokens por uma engrenagem aqui na Home mesmo,
+// enquanto não existir uma tela dedicada (ver plano de
+// 2026-09-29: "teto diário de tokens por departamento"). Somar um módulo
+// aqui é o único passo pra ele ganhar a mesma engrenagem.
+const DOMINIOS_COM_ENGRENAGEM_NA_HOME = ['rh'] as const;
 
 // Consumo de IA muda sozinho (poller de chamados a cada 5 min, chamadas
 // reais do dia a dia) — sem isso, quem deixa a aba aberta só vê o número
@@ -44,7 +58,7 @@ const INTERVALO_ATUALIZACAO_USO_IA_MS = 30_000;
  * requests redundantes. */
 @Component({
   selector: 'app-home',
-  imports: [CdkDrag, CdkDragHandle, CdkDropList, Dialog, NgComponentOutlet],
+  imports: [CampoNumerico, CdkDrag, CdkDragHandle, CdkDropList, Dialog, Interruptor, NgComponentOutlet, Selo],
   templateUrl: './home.html',
   styleUrl: './home.scss',
 })
@@ -52,9 +66,35 @@ export class Home {
   protected readonly sessao = inject(Sessao);
   protected readonly usoIa = inject(UsoIa);
   protected readonly layoutHome = inject(LayoutHome);
+  protected readonly tetoTokensIa = inject(TetoTokensIa);
 
   protected readonly modoEdicao = signal(false);
   protected readonly catalogoAberto = signal(false);
+
+  /** Primeiro (e único, por enquanto) domínio de `DOMINIOS_COM_ENGRENAGEM_
+   * NA_HOME` que o usuário logado administra — `null` esconde a
+   * engrenagem inteira. Sem tela própria de administração ainda (ver
+   * constante acima), então só suporta o usuário ser admin de UM desses
+   * domínios de cada vez; suficiente pro escopo atual (só RH). */
+  protected readonly dominioConfiguravel = computed<string | null>(
+    () => DOMINIOS_COM_ENGRENAGEM_NA_HOME.find((dominio) => this.sessao.ehAdminDoModulo(dominio)) ?? null,
+  );
+
+  protected readonly configuracoesIaAbertas = signal(false);
+  protected readonly tetoIaAtivo = signal(false);
+  protected readonly tetoIaTexto = signal('0');
+  protected readonly salvandoTetoIa = signal(false);
+  protected readonly erroTetoIa = signal<string | null>(null);
+
+  protected readonly tetoIaValido = computed<number | null>(() => {
+    // Desativado = sempre salva "sem teto" (0) — mesma regra de
+    // `pages/modulos/ti/provedores/provedores.ts::tetoValido`.
+    if (!this.tetoIaAtivo()) {
+      return 0;
+    }
+    const numero = Number(this.tetoIaTexto());
+    return Number.isInteger(numero) && numero > 0 ? numero : null;
+  });
 
   private readonly acessoLiberado = (definicao: DefinicaoWidgetHome): boolean =>
     (definicao.modulo === null || this.sessao.modulos().includes(definicao.modulo)) &&
@@ -89,6 +129,42 @@ export class Home {
       const intervalo = setInterval(() => this.usoIa.carregar(), INTERVALO_ATUALIZACAO_USO_IA_MS);
       inject(DestroyRef).onDestroy(() => clearInterval(intervalo));
     }
+
+    const dominio = this.dominioConfiguravel();
+    if (dominio) {
+      this.tetoTokensIa.carregar(dominio);
+      // Semeia o rascunho do teto sempre que o valor real do servidor muda
+      // (primeiro load, e depois de salvar) — mesmo espírito do dialog de
+      // teto em `pages/modulos/ti/provedores/provedores.ts`.
+      effect(() => {
+        const teto = this.tetoTokensIa.teto();
+        if (teto !== null) {
+          this.tetoIaTexto.set(String(teto));
+          this.tetoIaAtivo.set(teto > 0);
+        }
+      });
+    }
+  }
+
+  protected salvarTetoIa(): void {
+    const dominio = this.dominioConfiguravel();
+    const teto = this.tetoIaValido();
+    if (!dominio || teto === null || this.salvandoTetoIa()) {
+      return;
+    }
+
+    this.salvandoTetoIa.set(true);
+    this.erroTetoIa.set(null);
+    this.tetoTokensIa.salvar(dominio, teto).subscribe({
+      next: () => {
+        this.salvandoTetoIa.set(false);
+        this.configuracoesIaAbertas.set(false);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroTetoIa.set(mensagemErro(erro, 'Não foi possível salvar o teto de tokens.'));
+        this.salvandoTetoIa.set(false);
+      },
+    });
   }
 
   protected componenteDoWidget(id: string) {

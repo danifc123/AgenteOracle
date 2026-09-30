@@ -543,6 +543,9 @@ class TestTestar:
     def _sem_efeito_na_auditoria_real(self, monkeypatch):
         monkeypatch.setattr(mod.cliente_protegido.auditoria_externa, "registrar", lambda *_args: None)
         monkeypatch.setattr(mod.cliente_protegido.auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+        # `_verificar_teto_tokens` roda ANTES de toda chamada real — 0 =
+        # sem teto, nunca bloqueia (ver `cliente_protegido.py`).
+        monkeypatch.setattr(mod.cliente_protegido.configuracoes_provedor, "teto_tokens_diario", lambda _dominio: 0)
 
     async def test_id_nao_numerico_devolve_404(self):
         assert (await mod._testar("abc", "42")).status_code == 404
@@ -641,6 +644,7 @@ class TestTestar:
         provedor = _provedor_llm(id=7, nome="OCI Generative AI — Cohere Embed v4", capacidades=["embedding"])
         monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
         monkeypatch.setattr(mod.cliente_protegido.auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+        monkeypatch.setattr(mod.cliente_protegido.configuracoes_provedor, "teto_tokens_diario", lambda _dominio: 0)
 
         class _RespostaFake:
             prompt_eval_count = 5

@@ -19,6 +19,7 @@ from ollama import AsyncClient
 
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.ti.perfil_login import PerfilLogin, PerfilLoginProtheus
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 from agente_oracle.tools.ti.acessos_dados import PerfilAcesso
 
 _TIPOS_ACHADO = ("tentativa_invasao", "acesso_dados_suspeito")
@@ -106,6 +107,12 @@ async def detectar(
             format=_ACHADOS_SCHEMA,
             options=OPCOES_OLLAMA_PADRAO,
         )
+    except TetoTokensExcedidoError:
+        # Bloqueio deliberado (teto de tokens do departamento) não é uma
+        # falha transitória do Ollama — não devolve "nenhum achado" como
+        # se a análise tivesse rodado e não achado nada; deixa subir pra
+        # `server/ti/seguranca.py` tratar como erro de verdade (429).
+        raise
     except Exception:
         return []
 

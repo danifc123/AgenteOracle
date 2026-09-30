@@ -104,19 +104,29 @@ class TestTetoTokensDiario:
     def test_sem_configuracao_devolve_zero_sem_teto(self, monkeypatch):
         _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=None))
 
-        assert mod.teto_tokens_diario() == 0
+        assert mod.teto_tokens_diario("ti") == 0
 
     def test_devolve_o_valor_gravado_como_inteiro(self, monkeypatch):
         _conexao_fake_para(monkeypatch, _CursorFake(linha_fetchone=("50000",)))
 
-        assert mod.teto_tokens_diario() == 50000
+        assert mod.teto_tokens_diario("ti") == 50000
 
-    def test_definir_grava_como_texto(self, monkeypatch):
+    def test_definir_grava_como_texto_com_chave_composta_pelo_dominio(self, monkeypatch):
         cursor = _CursorFake(rowcount=0)
         _conexao_fake_para(monkeypatch, cursor)
 
-        mod.definir_teto_tokens_diario(50000)
+        mod.definir_teto_tokens_diario("ti", 50000)
 
         _sql, binds = cursor.execucoes[-1]
-        assert binds["chave"] == "teto_tokens_diario"
+        assert binds["chave"] == "teto_tokens_diario_ti"
         assert binds["valor"] == "50000"
+
+    def test_dominios_diferentes_usam_chaves_diferentes(self, monkeypatch):
+        cursor = _CursorFake(rowcount=0)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.definir_teto_tokens_diario("ti", 1000)
+        mod.definir_teto_tokens_diario("rh", 2000)
+
+        chaves_gravadas = {binds["chave"] for _sql, binds in cursor.execucoes}
+        assert chaves_gravadas == {"teto_tokens_diario_ti", "teto_tokens_diario_rh"}

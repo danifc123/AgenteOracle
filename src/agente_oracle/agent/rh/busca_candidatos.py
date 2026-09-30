@@ -17,6 +17,7 @@ from ollama import AsyncClient
 
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel, gerar_embedding
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 from agente_oracle.tools.rh.similaridade import similaridade_cosseno
 
 # Quantos candidatos (dos mais similares por embedding) vão pro shortlist
@@ -130,6 +131,11 @@ async def buscar_candidatos(
             format=_SCHEMA,
             options=OPCOES_OLLAMA_PADRAO,
         )
+    except TetoTokensExcedidoError:
+        # Bloqueio deliberado (teto de tokens do RH) não é indisponibilidade
+        # do Ollama — deixa subir pra `server/rh/busca.py` tratar como erro
+        # de verdade (429), não um 503 genérico de "IA fora do ar".
+        raise
     except Exception as erro:
         raise AnaliseIndisponivel("Não foi possível buscar candidatos com a IA no momento.") from erro
 

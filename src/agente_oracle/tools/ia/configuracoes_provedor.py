@@ -2,14 +2,16 @@
 (isso mora em `tools/ia/provedores_llm.py`) — dois ponteiros de qual LLM
 cadastrado está ATIVO agora (um pra chat, outro pra embedding —
 independentes, porque nem todo provedor sabe fazer as duas coisas,
-`capacidades`), mais o teto diário de tokens. Editável sem reiniciar o
-servidor. Lido por `tools/ia/cliente_protegido.py` pra QUALQUER domínio
-que os chamar — hoje TI e RH (uma troca aqui afeta os dois juntos).
-Financeiro/Auditoria ainda não estão ligados nisso: tocam dado real do
-Oracle, e `config.py::validar_ollama_host_seguro` bloqueia esses dois
-domínios de IA remota até o fornecedor ser validado pra esse tipo de
-dado — não é TI-específico de propósito, por isso mora em `tools/ia/`,
-não em `tools/ti/`."""
+`capacidades`), mais o teto diário de tokens (esse sim, POR DOMÍNIO —
+ver `teto_tokens_diario` abaixo). Editável sem reiniciar o servidor. Os
+ponteiros de provedor ativo são lidos por `tools/ia/cliente_protegido.py`
+pra QUALQUER domínio que os chamar — hoje TI e RH (uma troca aqui afeta
+os dois juntos; só o teto é isolado por domínio). Financeiro/Auditoria
+ainda não estão ligados nisso: tocam dado real do Oracle, e
+`config.py::validar_ollama_host_seguro` bloqueia esses dois domínios de
+IA remota até o fornecedor ser validado pra esse tipo de dado — não é
+TI-específico de propósito, por isso mora em `tools/ia/`, não em
+`tools/ti/`."""
 
 from agente_oracle.db.connection import get_postgres_connection
 
@@ -17,7 +19,14 @@ _tabela_garantida = False
 
 _CHAVE_PROVEDOR_LLM_ATIVO_ID = "provedor_llm_ativo_id"
 _CHAVE_PROVEDOR_LLM_EMBEDDING_ATIVO_ID = "provedor_llm_embedding_ativo_id"
-_CHAVE_TETO_TOKENS_DIARIO = "teto_tokens_diario"
+
+
+def _chave_teto_tokens_diario(dominio: str) -> str:
+    # Uma chave por domínio (`teto_tokens_diario_ti`, `_rh`, ...) na mesma
+    # tabela chave-valor genérica — cada departamento tem seu próprio
+    # teto, sem tabela nova nem migração (ver `server/ia/teto_tokens.py`
+    # pra onde isso vira trava de verdade, não só aviso).
+    return f"teto_tokens_diario_{dominio}"
 
 
 def _garantir_tabela(cursor) -> None:
@@ -84,11 +93,12 @@ def provedor_llm_embedding_ativo_id() -> int | None:
     return int(bruto) if bruto else None
 
 
-def definir_teto_tokens_diario(valor: int) -> None:
-    _gravar_texto(_CHAVE_TETO_TOKENS_DIARIO, str(valor))
+def definir_teto_tokens_diario(dominio: str, valor: int) -> None:
+    _gravar_texto(_chave_teto_tokens_diario(dominio), str(valor))
 
 
-def teto_tokens_diario() -> int:
-    """`0` (padrão) = sem teto. Lido por
-    `tools/ia/cliente_protegido.py::ClienteIAProtegido._avisar_teto_tokens`."""
-    return int(_ler_texto(_CHAVE_TETO_TOKENS_DIARIO, padrao="0"))
+def teto_tokens_diario(dominio: str) -> int:
+    """`0` (padrão) = sem teto pra esse domínio. Lido por
+    `tools/ia/cliente_protegido.py::ClienteIAProtegido` antes de cada
+    chamada real, pra decidir se bloqueia (ver `TetoTokensExcedidoError`)."""
+    return int(_ler_texto(_chave_teto_tokens_diario(dominio), padrao="0"))

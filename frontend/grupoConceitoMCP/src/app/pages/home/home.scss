@@ -115,6 +115,43 @@
   }
 }
 
+// Engrenagem de "Configurações de tokens de IA" (só pro admin de um
+// domínio sem tela própria ainda, ver `DOMINIOS_COM_ENGRENAGEM_NA_HOME`
+// em home.ts) — mesma base de `.botao-personalizar`, só vira quadrado
+// (ícone puro, sem texto) em vez do padding retangular de texto.
+.botao-config-ia {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.status-teto {
+  margin: 4px 0 0;
+}
+
+.apoio {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.erro {
+  margin: 8px 0 0;
+  color: var(--color-error);
+  font-size: 14px;
+}
+
+.botoes-rodape {
+  display: flex;
+  gap: 10px;
+
+  .botao-salvar-teto-ia:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
 .grade-widgets {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

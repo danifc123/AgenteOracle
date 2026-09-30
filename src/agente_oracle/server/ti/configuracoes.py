@@ -8,7 +8,6 @@ from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.auth import papeis
-from agente_oracle.tools.ia import configuracoes_provedor
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 
 _CASAS_DECIMAIS_MAXIMAS = 3
@@ -16,12 +15,14 @@ _CASAS_DECIMAIS_MAXIMAS = 3
 # Só desenvolvedor grava; qualquer usuário do módulo TI lê. Escolher QUAL
 # LLM está ativo não é mais uma chave aqui — mora em
 # `server/ti/provedores_llm.py` (tela `/ti/provedores`), junto do cadastro
-# em si.
+# em si. O teto diário de tokens também não é mais uma chave aqui —
+# virou por departamento, mora em `server/ia/teto_tokens.py`
+# (`/api/ia/teto-tokens/{dominio}`), já que RH também precisa configurar
+# o próprio sem depender do módulo TI.
 _CHAVES = (
     "usar_ia_avaliacao_chamado",
     "percentual_amostragem_chamados",
     "ler_chamados_antigos",
-    "teto_tokens_diario",
 )
 
 
@@ -32,14 +33,7 @@ def _corpo_configuracoes() -> dict:
         "percentual_amostragem_chamados": float(configuracoes_tools.percentual_amostragem_chamados()),
         "percentual_alterado_em": alterado_em.isoformat() if alterado_em else None,
         "ler_chamados_antigos": configuracoes_tools.ler_chamados_antigos(),
-        "teto_tokens_diario": configuracoes_provedor.teto_tokens_diario(),
     }
-
-
-def _teto_tokens_valido(bruto) -> bool:
-    """Inteiro `>= 0` — `bool` é recusado (é `int` em Python); `0` é válido
-    e significa "sem teto" (ver `configuracoes_provedor.teto_tokens_diario`)."""
-    return isinstance(bruto, int) and not isinstance(bruto, bool) and bruto >= 0
 
 
 def _percentual_valido(bruto) -> Decimal | None:
@@ -85,8 +79,6 @@ def _gravar(corpo: dict) -> None:
         configuracoes_tools.definir_percentual_amostragem_chamados(
             _percentual_valido(corpo["percentual_amostragem_chamados"])
         )
-    if "teto_tokens_diario" in corpo:
-        configuracoes_provedor.definir_teto_tokens_diario(corpo["teto_tokens_diario"])
 
 
 def _validar(corpo: dict) -> str | None:
@@ -102,8 +94,6 @@ def _validar(corpo: dict) -> str | None:
             "Informe percentual_amostragem_chamados como um número de 0 a 100, "
             f"com até {_CASAS_DECIMAIS_MAXIMAS} casas decimais."
         )
-    if "teto_tokens_diario" in corpo and not _teto_tokens_valido(corpo["teto_tokens_diario"]):
-        return "Informe teto_tokens_diario como um número inteiro >= 0 (0 = sem teto)."
     return None
 
 

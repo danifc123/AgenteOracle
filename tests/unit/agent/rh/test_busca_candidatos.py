@@ -4,6 +4,7 @@ import pytest
 
 from agente_oracle.agent.rh import busca_candidatos as mod
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 
 
 class _RespostaFake:
@@ -148,6 +149,21 @@ class TestBuscarCandidatos:
         candidatos = [_candidato(1, [1.0, 0.0])]
         cliente = _OllamaClientFake(embedding=[1.0, 0.0], levantar_chat=ConnectionError("Ollama fora do ar"))
         with pytest.raises(AnaliseIndisponivel):
+            await mod.buscar_candidatos(cliente, "modelo-teste", "modelo-embed", "descrição", candidatos)
+
+    async def test_teto_de_tokens_excedido_no_ranking_nao_vira_indisponivel_sobe_o_erro(self):
+        # Diferente de uma falha real do Ollama — bloqueio de teto é
+        # deliberado, não "IA fora do ar". `server/rh/busca.py` trata
+        # essa exceção específica como 429, não 503.
+        candidatos = [_candidato(1, [1.0, 0.0])]
+        cliente = _OllamaClientFake(embedding=[1.0, 0.0], levantar_chat=TetoTokensExcedidoError("rh"))
+        with pytest.raises(TetoTokensExcedidoError):
+            await mod.buscar_candidatos(cliente, "modelo-teste", "modelo-embed", "descrição", candidatos)
+
+    async def test_teto_de_tokens_excedido_no_embedding_nao_vira_indisponivel_sobe_o_erro(self):
+        candidatos = [_candidato(1, [1.0, 0.0])]
+        cliente = _OllamaClientFake(levantar_embed=TetoTokensExcedidoError("rh"))
+        with pytest.raises(TetoTokensExcedidoError):
             await mod.buscar_candidatos(cliente, "modelo-teste", "modelo-embed", "descrição", candidatos)
 
     async def test_nenhum_resultado_valido_levanta_indisponivel(self):

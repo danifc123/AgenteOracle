@@ -4,11 +4,12 @@ por dia (`tools/ia/auditoria_externa.py::resumo_por_provedor`/
 chamados do TI (`tools/ti/uso_ia_chamados.py::resumo_uso` — já existia,
 nunca tinha rota) — base da página Tokens do TI
 (`pages/modulos/ti/tokens/`) e do bloco "Consumo de IA" no lobby
-(`pages/modulos/ti/home/`, atrás de `*appSoDev`). Cobre TI + RH juntos (a
-auditoria é única pro processo inteiro), não só chamado. Só desenvolvedor
-acessa — mesmo público que já via essa informação quando ainda era um card
-dentro do diálogo de Configurações do TI (que também é "visível só para
-desenvolvedores")."""
+(`pages/modulos/ti/home/`, atrás de `*appSoDev` só nesse widget específico
+do dashboard). Cobre TI + RH juntos (a auditoria é única pro processo
+inteiro), não só chamado. Qualquer usuário do módulo TI acessa
+(`exigir_modulo_ti`, achado do usuário, 2026-09-28 — antes ficava restrito
+a desenvolvedor sem necessidade real: acompanhar o consumo é leitura, não
+mexe em nada)."""
 
 from anyio import to_thread
 from starlette.requests import Request
@@ -17,7 +18,7 @@ from starlette.responses import JSONResponse, Response
 from agente_oracle.server.auth.decorador_rota import rota_protegida
 from agente_oracle.server.auth.dependencia import exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.auth import papeis, usuarios
+from agente_oracle.tools.auth import usuarios
 from agente_oracle.tools.ia import auditoria_externa, cotacao_dolar, provedores_llm
 from agente_oracle.tools.ia.auditoria_externa import (
     ResumoTokensDia,
@@ -53,8 +54,8 @@ def _custo_e_moeda(
     provedor_nome: str, modelo: str, tokens_entrada: int, tokens_saida: int, cadastro_por_nome_modelo: dict
 ) -> tuple[float | None, str | None]:
     """`None` quando essa linha não bate com nenhum LLM cadastrado hoje —
-    chamada antiga, provedor removido do cadastro, ou o fallback "Ollama
-    (padrão)" (que nunca tem preço, por não ser um cadastro de verdade).
+    chamada antiga, provedor removido do cadastro, ou o fallback "Modelo
+    de IA (padrão)" (que nunca tem preço, por não ser um cadastro de verdade).
     Casa por (nome, modelo) porque é isso que fica gravado em cada
     chamada (ver `tools/ia/cliente_protegido.py::criar_cliente_protegido`)
     — não por id, pra não quebrar se o cadastro for editado depois."""
@@ -166,25 +167,16 @@ def _corpo_uso_ia(dias: int) -> dict:
     }
 
 
-def _acesso_negado(usuario: dict) -> str | None:
-    """Mensagem de erro se `usuario` não for desenvolvedor, `None` se pode
-    passar — módulo TI sozinho (`exigir_modulo_ti`, já checado antes desta
-    função) não é suficiente pra essa rota."""
-    if papeis.eh_desenvolvedor(usuario.get("papeis", [])):
-        return None
-    return "Acesso restrito a desenvolvedores."
-
-
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/uso-ia", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
     async def uso_ia_route(request: Request, usuario: dict) -> Response:
         """Consumo de tokens dos últimos `dias` dias (padrão 30), agrupado
-        por provedor + modelo, mais o total de hoje por domínio. Só
-        desenvolvedor — módulo TI sozinho não basta."""
-        mensagem = _acesso_negado(usuario)
-        if mensagem:
-            return JSONResponse({"erro": mensagem}, status_code=403, headers=CORS_HEADERS)
+        por provedor + modelo, mais o total de hoje por domínio. Visão de
+        leitura — todo o time de TI acessa (`exigir_modulo_ti` já basta,
+        achado do usuário, 2026-09-28: antes ficava restrito a
+        desenvolvedor, sem necessidade — o time só não pode MUDAR o
+        cadastro de provedor, ver `server/ti/provedores_llm.py`)."""
         dias = _dias_da_query(request.query_params.get("dias"))
         corpo = await to_thread.run_sync(_corpo_uso_ia, dias)
         return JSONResponse(corpo, headers=CORS_HEADERS)

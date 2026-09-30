@@ -9,7 +9,7 @@ import { EstadoVazio } from '../../../componentes/estado-vazio/estado-vazio';
 import { IconeOrdenacao } from '../../../componentes/icone-ordenacao/icone-ordenacao';
 import { ModuloHeader } from '../../../componentes/modulo-header/modulo-header';
 import { Selo } from '../../../componentes/selo/selo';
-import { baixarBlob } from '../../../servicos/download-arquivo/download-arquivo';
+import { DownloadArquivo } from '../../../servicos/download-arquivo/download-arquivo';
 import { formatarSql } from '../../../servicos/formatar-sql/formatar-sql';
 import {
   compararValores,
@@ -37,6 +37,7 @@ export interface RelatorioHistorico {
 })
 export class Historico {
   private readonly http = inject(HttpClient);
+  private readonly downloadArquivo = inject(DownloadArquivo);
 
   relatorios = signal<RelatorioHistorico[]>([]);
   carregando = signal(true);
@@ -192,7 +193,7 @@ export class Historico {
             return;
           }
 
-          baixarBlob(blob, `${relatorio.titulo || 'relatorio'}.xlsx`);
+          this.downloadArquivo.baixar(blob, `${relatorio.titulo || 'relatorio'}.xlsx`);
           this.baixandoId.set(null);
         },
         error: () => {

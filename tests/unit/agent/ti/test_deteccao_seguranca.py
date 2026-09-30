@@ -1,7 +1,10 @@
 import json
 
+import pytest
+
 from agente_oracle.agent.ti import deteccao_seguranca as mod
 from agente_oracle.agent.ti.perfil_login import PerfilLogin, PerfilLoginProtheus
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 from agente_oracle.tools.ti.acessos_dados import PerfilAcesso
 
 
@@ -168,6 +171,18 @@ class TestDetectar:
         cliente = _OllamaClientFake(levantar=ConnectionError("Ollama fora do ar"))
         resultado = await mod.detectar(cliente, "modelo-teste", [_perfil_login("joao")], [], [])
         assert resultado == []
+
+    async def test_teto_de_tokens_excedido_nao_vira_lista_vazia_sobe_o_erro(self):
+        # Diferente de qualquer outra falha (ConnectionError, JSON mal
+        # formado etc.) — bloqueio de teto é uma decisão deliberada, não
+        # uma falha transitória do Ollama. Engolir isso como "nenhum
+        # achado" enganaria quem olha a tela (pareceria que a análise
+        # rodou e não achou nada). Ver `server/ti/seguranca.py`, que
+        # trata essa exceção como 429.
+        cliente = _OllamaClientFake(levantar=TetoTokensExcedidoError("ti"))
+
+        with pytest.raises(TetoTokensExcedidoError):
+            await mod.detectar(cliente, "modelo-teste", [_perfil_login("joao")], [], [])
 
     async def test_chave_achados_ausente_devolve_lista_vazia(self):
         cliente = _OllamaClientFake(conteudo=json.dumps({}))

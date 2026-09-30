@@ -24,7 +24,7 @@ também navegue pelos relatórios fixos do módulo Financeiro no navegador.
 - [Frontend (Angular)](#frontend-angular)
 - [Rotas REST expostas pelo backend](#rotas-rest-expostas-pelo-backend)
 - [Autenticação, papéis e segurança](#autenticação-papéis-e-segurança)
-- [Agente local (Ollama)](#agente-local-ollama)
+- [Provedor de IA (chat e embedding)](#provedor-de-ia-chat-e-embedding)
 - [Segurança do SQL livre](#segurança-do-sql-livre)
 - [Views curadas do Financeiro (Oracle)](#views-curadas-do-financeiro-oracle)
 - [Testes](#testes)
@@ -168,7 +168,7 @@ principais, não cada rota individual.
 
 | Prefixo | O que expõe |
 |---|---|
-| `/api/auth/*` | Login, CRUD de usuário, perfil, senha, papéis, (des)bloqueio de conta, trilha de segurança — ver [Autenticação e papéis](#autenticação-papéis-e-segurança) |
+| `/api/auth/*` | Login, CRUD de usuário, perfil, senha, papéis, (des)bloqueio de conta, trilha de segurança, cores de ambiente (tema pessoal, aberto a qualquer usuário) — ver [Autenticação e papéis](#autenticação-papéis-e-segurança) |
 | `/api/financeiro/*` | Chat com a IA, previsão (Vendas/Fluxo de Caixa), relatório customizado, os relatórios fixos (`financeiro/relatorios/*.py`), layouts salvos, cores de categoria |
 | `/api/relatorios/historico*` | Histórico de relatórios gerados pela IA (fixar, apagar, baixar em Excel) |
 | `/api/auditoria*` | Auditoria de qualidade de dado (rodar ao vivo, histórico, dispensar achado) |
@@ -217,9 +217,25 @@ nunca `if papel == "x"` espalhado pelo código:
   é criado via `agente-oracle-criar-usuario` (script de terminal), dali em
   diante outros usuários são criados pela tela Usuários.
 
-## Agente local (Ollama)
+## Provedor de IA (chat e embedding)
 
-O LLM roda localmente, sem custo de API.
+Sem nenhum provedor cadastrado, o sistema cai no Ollama local do `.env` — zero
+configuração, roda sem custo de API. É o caminho mais simples pra rodar o
+projeto pela primeira vez.
+
+Pra produção (ou pra qualquer modelo hospedado — OCI, DeepSeek, qualquer
+serviço compatível com a API da OpenAI), o time de TI cadastra provedores
+pela tela `/ti/provedores` (`tools/ia/provedores_llm.py` +
+`server/ti/provedores_llm.py`), sem precisar editar código nem fazer deploy
+novo pra ligar um modelo a mais. **Chat e embedding têm um "ativo"
+independente cada** (`tools/ia/cliente_protegido.py`) — dá pra ter, por
+exemplo, um modelo de chat ativo e outro de embedding ativo ao mesmo tempo,
+já que nem todo provedor sabe fazer as duas coisas (os modelos de embedding
+puro da OCI, usados pela correção automática de categoria de chamados do TI,
+são exatamente esse caso). Só desenvolvedor cadastra/ativa; o resto do time
+de TI acompanha em modo leitura.
+
+Setup local rápido (fallback Ollama, sem cadastrar nada):
 
 1. Instale o Ollama e baixe um modelo com suporte a *tool calling*:
 

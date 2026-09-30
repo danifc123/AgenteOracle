@@ -140,8 +140,13 @@ def _distribuir_estimativa_ponderada(
     janela = set(meses_janela)
     estimativa: dict[str, float] = {}
     for item in projecao:
+        # Regressão linear sobre uma série em queda pode projetar um mês
+        # negativo — sem o `max(0.0, ...)`, essa fatia negativa quebraria a
+        # garantia de que a estimativa só soma, nunca subtrai do confirmado
+        # (novas vendas/novos títulos futuros não fazem sentido negativos).
+        valor_projetado = max(0.0, item["valor"])
         for share, deslocamento in participacoes:
-            fatia = item["valor"] * share
+            fatia = valor_projetado * share
             mes_destino = proximos_meses(item["mes"], deslocamento)[-1] if deslocamento > 0 else item["mes"]
             if mes_destino in janela:
                 estimativa[mes_destino] = estimativa.get(mes_destino, 0.0) + fatia

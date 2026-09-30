@@ -3,7 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { ConsultaUsada, MensagemChat } from '../../pages/modulos/financeiro/chat/mensagens/chat-mensagens';
-import { baixarBlob, extrairNomeArquivo } from '../download-arquivo/download-arquivo';
+import { DownloadArquivo, extrairNomeArquivo } from '../download-arquivo/download-arquivo';
 import { mensagemErro } from '../mensagens-erro/mensagens-erro';
 
 interface RespostaChat {
@@ -40,6 +40,7 @@ export interface ErroChat {
 export class ChatFinanceiro {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly downloadArquivo = inject(DownloadArquivo);
 
   readonly mensagens = signal<MensagemChat[]>([]);
   readonly enviando = signal(false);
@@ -75,7 +76,7 @@ export class ChatFinanceiro {
             resposta.headers.get('content-disposition'),
             'relatorio.xlsx',
           );
-          baixarBlob(blob, nomeArquivo);
+          this.downloadArquivo.baixar(blob, nomeArquivo);
         },
         error: () => this.baixandoSql.set(null),
       });
@@ -130,7 +131,7 @@ export class ChatFinanceiro {
         id,
         mensagem: mensagemErro(
           erro,
-          'Não foi possível falar com o agente. Verifique se o servidor e o Ollama estão em execução.',
+          'Não foi possível falar com o agente. Verifique se o servidor e o modelo de IA estão em execução.',
         ),
         vista: false,
       },

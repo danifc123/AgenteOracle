@@ -24,9 +24,10 @@ from agente_oracle.tools.ti.glpi import AreaChamado
 class SemTecnicoNaArea(Exception):
     """Levantada por `escolher_tecnico` quando a área pedida não tem
     nenhum técnico cadastrado — sem isso, `min()` estourava `ValueError`
-    cru (visto ao vivo: 500 sem mensagem útil em `chamado_verificar_route`).
-    Quem chama decide como comunicar (rota HTTP devolve erro claro; o
-    poller em background já isola falha por chamado e só loga)."""
+    cru (visto ao vivo: 500 sem mensagem útil numa rota HTTP de
+    `server/ti/chamados.py`). Quem chama decide como comunicar (rota HTTP
+    devolve erro claro; o poller em background já isola falha por chamado
+    e só loga)."""
 
     def __init__(self, area: AreaChamado):
         self.area = area

@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from agente_oracle.server.ti import uso_ia as uso_ia_module
 from agente_oracle.server.ti.uso_ia import (
-    _acesso_negado,
     _chamados_ia_para_json,
     _corpo_uso_ia,
     _custo_convertido_brl,
@@ -36,6 +35,9 @@ def _provedor_llm(**overrides) -> ProvedorLLM:
         "preco_entrada_por_1k": Decimal("0.01"),
         "preco_saida_por_1k": Decimal("0.02"),
         "moeda": "R$",
+        "capacidades": ["chat"],
+        "credenciais_extra": None,
+        "credencial_atualizada_em": datetime.now(UTC),
         "criado_em": datetime.now(UTC),
     }
     campos.update(overrides)
@@ -69,12 +71,12 @@ class TestCustoEMoeda:
         assert custo is None
         assert moeda is None
 
-    def test_fallback_ollama_padrao_nunca_bate_com_cadastro(self):
-        # "Ollama (padrão)" não é uma linha do cadastro — nunca aparece no
-        # mapa (nome, modelo), então nunca tem custo estimado.
+    def test_fallback_modelo_padrao_nunca_bate_com_cadastro(self):
+        # "Modelo de IA (padrão)" não é uma linha do cadastro — nunca
+        # aparece no mapa (nome, modelo), então nunca tem custo estimado.
         mapa = {("ollama", "qwen2.5-coder:7b"): _provedor_llm()}
 
-        custo, moeda = _custo_e_moeda("Ollama (padrão)", "qwen2.5-coder:7b", 1000, 1000, mapa)
+        custo, moeda = _custo_e_moeda("Modelo de IA (padrão)", "qwen2.5-coder:7b", 1000, 1000, mapa)
 
         assert custo is None
         assert moeda is None
@@ -273,14 +275,3 @@ class TestCorpoUsoIa:
             "com_fallback_embedding": 1,
             "duracao_media_ms": 500.0,
         }
-
-
-class TestAcessoNegado:
-    def test_desenvolvedor_pode_acessar(self):
-        assert _acesso_negado({"papeis": ["desenvolvedor"]}) is None
-
-    def test_usuario_de_ti_comum_e_barrado(self):
-        assert _acesso_negado({"papeis": ["ti_admin"]}) == "Acesso restrito a desenvolvedores."
-
-    def test_sem_papeis_e_barrado(self):
-        assert _acesso_negado({}) == "Acesso restrito a desenvolvedores."

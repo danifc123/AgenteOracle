@@ -84,6 +84,23 @@ class TestDistribuirEstimativaPonderada:
             "2026-09": 100.0
         }
 
+    def test_valor_projetado_negativo_vira_zero_nunca_subtrai(self):
+        # Regressão linear sobre venda em queda pode projetar um mês
+        # negativo (achado real, 2026-09-28) — sem o clamp, essa fatia
+        # negativa derrubava "a_receber_estimado" abaixo do confirmado,
+        # quebrando a garantia documentada na rota de que a estimativa só
+        # soma, nunca subtrai.
+        projecao = [{"mes": "2026-08", "valor": -861760.01}]
+        assert mod._distribuir_estimativa_ponderada(projecao, [(1.0, 0)], ["2026-08"]) == {
+            "2026-08": 0.0
+        }
+
+    def test_mistura_projecao_positiva_e_negativa_so_a_negativa_vira_zero(self):
+        projecao = [{"mes": "2026-08", "valor": 100.0}, {"mes": "2026-09", "valor": -50.0}]
+        assert mod._distribuir_estimativa_ponderada(
+            projecao, [(1.0, 0)], ["2026-08", "2026-09"]
+        ) == {"2026-08": 100.0, "2026-09": 0.0}
+
 
 class TestJanelaMesesHistorico:
     def test_termina_no_mes_atual_com_o_tamanho_pedido(self):

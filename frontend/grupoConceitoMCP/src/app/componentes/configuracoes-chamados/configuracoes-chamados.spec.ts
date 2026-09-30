@@ -14,7 +14,6 @@ const RESPOSTA: ConfiguracoesTiResposta = {
   percentual_amostragem_chamados: 20,
   percentual_alterado_em: null,
   ler_chamados_antigos: false,
-  teto_tokens_diario: 0,
 };
 
 function servicoFalso(salvar = vi.fn(() => of(RESPOSTA))) {

@@ -11,7 +11,7 @@ import { TabelaItem } from '../../../../componentes/tabela-item/tabela-item';
 import { VisualizadorExcel } from '../../../../componentes/visualizador-excel/visualizador-excel';
 import { LayoutRelatorio } from '../../../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
 import { FonteView, ViewFinanceira } from '../../../../dadosRelatorios/views-financeiras/views-financeiras';
-import { baixarBlob, extrairNomeArquivo } from '../../../../servicos/download-arquivo/download-arquivo';
+import { DownloadArquivo, extrairNomeArquivo } from '../../../../servicos/download-arquivo/download-arquivo';
 import { mensagemErro } from '../../../../servicos/mensagens-erro/mensagens-erro';
 import { filtrosPorColuna } from './filtros-relatorio';
 import { construirGrafoRelacionamentos, tabelasAlcancaveis } from '../../../../servicos/relacionamento-views/relacionamento-views';
@@ -38,6 +38,7 @@ interface Filial {
 })
 export class CriarRelatorio {
   private readonly http = inject(HttpClient);
+  private readonly downloadArquivo = inject(DownloadArquivo);
 
   protected readonly views = signal<ViewFinanceira[]>([]);
   protected readonly termoBusca = signal('');
@@ -324,7 +325,7 @@ export class CriarRelatorio {
             resposta.headers.get('content-disposition'),
             'relatorio_customizado.xlsx',
           );
-          baixarBlob(blob, nomeArquivo);
+          this.downloadArquivo.baixar(blob, nomeArquivo);
           this.baixandoRelatorio.set(false);
         },
         error: () => {

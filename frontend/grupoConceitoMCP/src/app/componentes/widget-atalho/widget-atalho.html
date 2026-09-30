@@ -1,0 +1,33 @@
+@if (rota()) {
+  <a class="atalho" [routerLink]="rota()">
+    <span class="atalho-icone">
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        [innerHTML]="iconeSeguro()"
+      ></svg>
+    </span>
+    <h2>{{ titulo() }}</h2>
+    <p>{{ texto() }}</p>
+  </a>
+} @else {
+  <a class="atalho" [href]="href()" target="_blank" rel="noopener">
+    <span class="atalho-icone">
+      <svg
+        viewBox="0 0 24 24"
+        width="22"
+        height="22"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        [innerHTML]="iconeSeguro()"
+      ></svg>
+    </span>
+    <h2>{{ titulo() }}</h2>
+    <p>{{ texto() }}</p>
+  </a>
+}

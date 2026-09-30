@@ -15,10 +15,9 @@ que administra o Protheus, não só TI interno)."""
 
 from dataclasses import dataclass
 
-from ollama import AsyncClient
-
 from agente_oracle.agent.core import OPCOES_OLLAMA_PADRAO, resposta_json_como_dict
 from agente_oracle.agent.ti.perfil_login import PerfilLogin, PerfilLoginProtheus
+from agente_oracle.tools.ia.cliente_protegido import ClienteChatIA, TetoTokensExcedidoError
 from agente_oracle.tools.ti.acessos_dados import PerfilAcesso
 
 _TIPOS_ACHADO = ("tentativa_invasao", "acesso_dados_suspeito")
@@ -74,7 +73,7 @@ class AchadoSeguranca:
 
 
 async def detectar(
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteChatIA,
     modelo: str,
     perfis_login: list[PerfilLogin],
     perfis_login_protheus: list[PerfilLoginProtheus],
@@ -82,8 +81,8 @@ async def detectar(
 ) -> list[AchadoSeguranca]:
     """Pede à IA que analise os perfis agregados e aponte usuário com
     padrão suspeito. Nunca deixa a chamada quebrar: qualquer falha do
-    Ollama, resposta vazia ou mal formada devolve lista vazia — a tela
-    simplesmente mostra "nenhum achado" nesse caso."""
+    provedor de IA, resposta vazia ou mal formada devolve lista vazia — a
+    tela simplesmente mostra "nenhum achado" nesse caso."""
     if not perfis_login and not perfis_login_protheus and not perfis_acesso:
         return []
 
@@ -94,7 +93,7 @@ async def detectar(
     )
 
     try:
-        resposta = await ollama_client.chat(
+        resposta = await cliente_ia.chat(
             model=modelo,
             messages=[
                 {"role": "system", "content": _PROMPT_SISTEMA},
@@ -106,6 +105,12 @@ async def detectar(
             format=_ACHADOS_SCHEMA,
             options=OPCOES_OLLAMA_PADRAO,
         )
+    except TetoTokensExcedidoError:
+        # Bloqueio deliberado (teto de tokens do departamento) não é uma
+        # falha transitória do provedor — não devolve "nenhum achado" como
+        # se a análise tivesse rodado e não achado nada; deixa subir pra
+        # `server/ti/seguranca.py` tratar como erro de verdade (429).
+        raise
     except Exception:
         return []
 

@@ -1,7 +1,7 @@
 <app-dialog [aberto]="aberto()" titulo="Configurações" tamanho="compacto" (fechar)="fechar()">
   <div class="config-layout">
     <div class="config-tabs" role="tablist" aria-label="Seções de configuração">
-      @for (aba of ABAS; track aba.id) {
+      @for (aba of ABAS(); track aba.id) {
         <button
           type="button"
           role="tab"
@@ -155,6 +155,60 @@
             >
               Alterar senha
             </app-botao>
+          </section>
+        }
+
+        @case ('ambiente') {
+          <section class="secao-painel">
+            <div class="cabecalho-secao-painel">
+              <div>
+                <h3>Cores de ambiente</h3>
+                <p class="secao-ajuda">
+                  Personalize a aparência do sistema só pra sua conta — não afeta outros usuários.
+                </p>
+              </div>
+              @if (algumaCorAmbientePersonalizada()) {
+                <button
+                  type="button"
+                  class="cor-categoria-redefinir"
+                  [disabled]="redefinindoTodasCoresAmbiente()"
+                  (click)="redefinirTodasCoresAmbiente()"
+                >
+                  {{ redefinindoTodasCoresAmbiente() ? 'Redefinindo...' : 'Redefinir todas' }}
+                </button>
+              }
+            </div>
+
+            <ul class="lista-cores-categoria">
+              @for (item of coresAmbiente.listaParaExibir(); track item.token) {
+                <li class="cor-categoria-item">
+                  <label class="cor-categoria-seletor" [style.background]="item.cor">
+                    <span class="sr-only">{{ item.rotulo }}</span>
+                    <input
+                      type="color"
+                      [value]="item.cor"
+                      (change)="alterarCorAmbiente(item.token, $any($event.target).value)"
+                    />
+                  </label>
+                  <span class="cor-categoria-nome">{{ item.rotulo }}</span>
+                  @if (salvandoCorAmbiente() === item.token) {
+                    <span class="cor-categoria-status">salvando...</span>
+                  } @else if (item.personalizada) {
+                    <button
+                      type="button"
+                      class="cor-categoria-redefinir"
+                      (click)="redefinirCorAmbiente(item.token)"
+                    >
+                      Redefinir
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+
+            @if (erroCoresAmbiente()) {
+              <p class="erro">{{ erroCoresAmbiente() }}</p>
+            }
           </section>
         }
 

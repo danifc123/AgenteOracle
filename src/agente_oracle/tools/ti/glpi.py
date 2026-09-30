@@ -69,6 +69,12 @@ _TAMANHO_PAGINA_SOLICITADO = 999
 # a escala atual (milhares de chamados) com folga, mesmo a ~100 por
 # página.
 _MAX_PAGINAS_LISTAR = 50
+# Mesma escolha de `agent/ti/roteamento_chamado.py::_AREA_PADRAO` e
+# `server/ti/chamados.py::_AREA_PADRAO_ESCALONAMENTO` — duplicada de
+# propósito (é 1 linha, não compensa acoplar os módulos por isso). Só
+# entra em jogo quando o chamado não tem categoria nenhuma (aberto por
+# e-mail).
+_AREA_PADRAO_SEM_CATEGORIA: AreaChamado = "sistemas"
 
 
 @dataclass(frozen=True)
@@ -110,12 +116,25 @@ class Chamado:
     email: str
     avaliacao_mensagem: str | None
     criado_em: datetime
+    # Derivada de `categoria_id` (`AREA_POR_CATEGORIA_ID`) por
+    # `_chamado_do_json` — usada pelo filtro "Minha área" do frontend
+    # (compara com a área do técnico logado). `None` só em `Chamado`
+    # montado manualmente (teste, etc.), nunca no que vem do GLPI real.
     area: AreaChamado | None
     tecnico_atribuido: str | None
+    # `actiontime` do GLPI — soma do tempo (segundos) que o técnico
+    # registrou nas tarefas do chamado. Default `0` pra não quebrar
+    # nenhuma construção manual já existente (testes). Usado pelo KPI
+    # "meus indicadores" (`server/ti/chamados.py::
+    # chamados_meus_indicadores_route`) — confirmado ao vivo que está
+    # zerado em 100% dos chamados recentes no ambiente de homologação
+    # (ninguém aponta hora lá); a expectativa é que produção tenha dado
+    # real.
+    tempo_gasto_segundos: int = 0
 
 
 class ClienteGLPI(Protocol):
-    async def listar(self) -> list[Chamado]: ...
+    async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]: ...
 
     async def buscar(self, chamado_id: int) -> Chamado | None: ...
 
@@ -132,6 +151,8 @@ class ClienteGLPI(Protocol):
     async def atualizar_categoria(self, chamado_id: int, categoria_id: int) -> None: ...
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]: ...
+
+    async def chamados_criados_desde(self, desde: datetime) -> list[Chamado]: ...
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
 
@@ -271,7 +292,13 @@ def _chamado_do_json(item: dict) -> Chamado:
     `user_recipient` só traz `id`/`name` (login), o e-mail exigiria uma
     chamada extra a `/User/{id}`, fora do escopo desta rodada.
     `avaliacao_mensagem` não tem equivalente nativo no GLPI — só existe
-    no nosso modelo, fica sempre `None` vindo de lá."""
+    no nosso modelo, fica sempre `None` vindo de lá. `area` vem de
+    `AREA_POR_CATEGORIA_ID` (import local — `categorias.py` importa
+    `AreaChamado` daqui, ciclo evitado adiando o import pro momento da
+    chamada); sem categoria (chamado aberto por e-mail) cai em
+    `_AREA_PADRAO_SEM_CATEGORIA`."""
+    from agente_oracle.tools.ti import categorias
+
     status = item.get("status") or {}
     categoria = item.get("category")
     categoria_id = categoria["id"] if categoria else None
@@ -287,8 +314,9 @@ def _chamado_do_json(item: dict) -> Chamado:
         email="",
         avaliacao_mensagem=None,
         criado_em=_data_do_glpi(item.get("date_creation")),
-        area=None,
+        area=categorias.AREA_POR_CATEGORIA_ID.get(categoria_id, _AREA_PADRAO_SEM_CATEGORIA),
         tecnico_atribuido=_tecnico_atribuido_do_time(item.get("team") or []),
+        tempo_gasto_segundos=item.get("actiontime") or 0,
     )
 
 
@@ -329,7 +357,7 @@ class ClienteGLPIReal:
         self._token: str | None = None
         self._token_expira_em: datetime | None = None
 
-    async def listar(self) -> list[Chamado]:
+    async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]:
         # Import local pra evitar ciclo (`categorias.py` importa
         # `AreaChamado` daqui).
         from agente_oracle.tools.ti import categorias
@@ -353,9 +381,20 @@ class ClienteGLPIReal:
         # Tira chamado gerenciado fora do nosso sistema (ver
         # `chamado_e_alheio`) — mostrar ele na Auditoria como se fosse
         # nosso só confunde, já que nunca passou pela nossa IA.
-        return [
-            chamado for chamado in chamados if not chamado_e_alheio(chamado, self._settings.glpi_conta_ia_id)
-        ]
+        # `incluir_atribuidos=True` desliga esse corte inteiro (usado só
+        # por `server/ti/chamados.py::chamados_route`, que precisa do
+        # chamado alheio na resposta pros filtros "Meus chamados"/"Todo o
+        # departamento" do front — cada um decide o que mostrar em cima
+        # do mesmo payload, mesmo padrão de "Minha área". Quem decide se
+        # UM chamado específico é alheio continua sendo só
+        # `chamado_e_alheio` — `_chamados_da_tela` reaplica essa mesma
+        # função pra marcar cada chamado no JSON, ver `_chamado_para_json`)
+        # — `False` (padrão, todo chamador que não seja essa rota,
+        # poller/webhook) continua cortando, comportamento idêntico a
+        # antes desse parâmetro existir.
+        if incluir_atribuidos:
+            return chamados
+        return [chamado for chamado in chamados if not chamado_e_alheio(chamado, self._settings.glpi_conta_ia_id)]
 
     async def _listar_com_filtro(self, filtro_status: str) -> list[Chamado]:
         """Confirmado contra a instância real que o header `Range` é
@@ -659,6 +698,25 @@ class ClienteGLPIReal:
             if chamado.tecnico_atribuido in cargas:
                 cargas[chamado.tecnico_atribuido] += 1
         return cargas
+
+    async def chamados_criados_desde(self, desde: datetime) -> list[Chamado]:
+        """Todo chamado criado a partir de `desde` (qualquer status,
+        qualquer categoria, de toda a empresa) — usado pelo KPI "meus
+        indicadores" (`server/ti/chamados.py::
+        chamados_meus_indicadores_route`), que agrupa por
+        `tecnico_atribuido` no Python depois de buscar (soma tanto
+        quantidade quanto `tempo_gasto_segundos`).
+
+        `date_creation=ge=<AAAA-MM-DD>` é o filtro RSQL confirmado ao vivo
+        contra a instância real — `>=` literal devolve 400
+        (`ERROR_INVALID_PARAMETER`, RSQL exige o operador por extenso).
+        Filtrar por `team.id==<id>` direto no servidor (pra já vir só do
+        técnico certo) também foi testado ao vivo e devolve 500 — `team`
+        é array aninhado no Ticket, RSQL não filtra nele; é por isso que
+        quem chama precisa agrupar no Python, mesmo padrão de
+        `carga_atual_por_tecnico`."""
+        filtro = f"date_creation=ge={desde.strftime('%Y-%m-%d')}"
+        return await self._listar_com_filtro(filtro)
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         """Formato confirmado contra a instância real: uma lista de

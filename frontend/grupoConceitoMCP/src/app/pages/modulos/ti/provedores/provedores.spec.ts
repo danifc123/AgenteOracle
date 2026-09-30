@@ -5,7 +5,8 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
-import { ConfiguracoesTi, ConfiguracoesTiResposta } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
+import { Sessao } from '../../../../servicos/sessao/sessao';
+import { RespostaTetoTokensIa, TetoTokensIa } from '../../../../servicos/teto-tokens-ia/teto-tokens-ia';
 import {
   ChamadosIaResposta,
   LinhaUsoIa,
@@ -27,7 +28,14 @@ const PROVEDOR_OLLAMA = {
   preco_entrada_por_1k: 0,
   preco_saida_por_1k: 0,
   moeda: 'R$',
+  capacidades: ['chat'],
+  credenciais_configuradas: false,
+  // Sem chave nenhuma configurada (`api_key_configurada`/
+  // `credenciais_configuradas` os dois `false`) — a idade da credencial
+  // nem chega a aparecer pra esse provedor, então o valor aqui não importa.
+  credencial_atualizada_em: '2026-09-23T00:00:00Z',
   ativo: true,
+  ativo_embedding: false,
   criado_em: '2026-09-23T00:00:00Z',
 };
 
@@ -43,16 +51,16 @@ const PROVEDOR_OCI = {
   preco_entrada_por_1k: 0.01,
   preco_saida_por_1k: 0.02,
   moeda: 'R$',
+  capacidades: ['chat'],
+  credenciais_configuradas: false,
+  // Dinâmico (não fixo) de propósito: este provedor TEM chave configurada
+  // (`api_key_configurada: true`), então a idade dela aparece na tela —
+  // fixo, esse valor viraria "credencial velha" sozinho com o tempo e
+  // quebraria testes que não são sobre idade de credencial.
+  credencial_atualizada_em: new Date().toISOString(),
   ativo: false,
+  ativo_embedding: false,
   criado_em: '2026-09-23T00:00:00Z',
-};
-
-const CONFIGURACOES_RESPOSTA: ConfiguracoesTiResposta = {
-  usar_ia_avaliacao_chamado: true,
-  percentual_amostragem_chamados: 100,
-  percentual_alterado_em: null,
-  ler_chamados_antigos: false,
-  teto_tokens_diario: 1000,
 };
 
 const CHAMADOS_IA_VAZIO: ChamadosIaResposta = {
@@ -62,9 +70,12 @@ const CHAMADOS_IA_VAZIO: ChamadosIaResposta = {
   duracao_media_ms: 0,
 };
 
-function configuracoesFalso(salvar = vi.fn(() => of(CONFIGURACOES_RESPOSTA))) {
+function tetoTokensIaFalso(
+  salvar = vi.fn(() => of<RespostaTetoTokensIa>({ dominio: 'ti', teto_tokens_diario: 5000, tokens_hoje: 0 })),
+) {
   return {
-    tetoTokensDiario: signal(1000),
+    teto: signal<number | null>(1000),
+    tokensHoje: signal(0),
     carregar: vi.fn(),
     salvar,
   };
@@ -86,10 +97,20 @@ function usoIaFalso(opcoes: {
   };
 }
 
+// A tela inteira era só-desenvolvedor até 2026-09-28 (agora o time de TI
+// também acessa, em modo leitura — ver `TestSomenteLeituraParaTime` mais
+// abaixo) — os testes existentes assumem acesso de escrita, então o padrão
+// aqui é `true`; sem essa fake, o `Sessao` real injetado (sem sessão
+// nenhuma) devolveria `false` e esconderia botão nenhum dos testes acham.
+function sessaoFalso(ehDesenvolvedor = true, ehAdminDoModulo = false) {
+  return { ehDesenvolvedor: () => ehDesenvolvedor, ehAdminDoModulo: () => ehAdminDoModulo };
+}
+
 function criar(
   provedoresIniciais: unknown[] = [PROVEDOR_OLLAMA, PROVEDOR_OCI],
-  configuracoes = configuracoesFalso(),
+  tetoTokensIa = tetoTokensIaFalso(),
   usoIa = usoIaFalso(),
+  sessao = sessaoFalso(),
 ) {
   TestBed.configureTestingModule({
     imports: [ProvedoresLlm],
@@ -97,13 +118,18 @@ function criar(
       provideRouter([]),
       provideHttpClient(),
       provideHttpClientTesting(),
-      { provide: ConfiguracoesTi, useValue: configuracoes },
+      { provide: TetoTokensIa, useValue: tetoTokensIa },
       { provide: UsoIa, useValue: usoIa },
+      { provide: Sessao, useValue: sessao },
     ],
   });
   const fixture = TestBed.createComponent(ProvedoresLlm);
   const http = TestBed.inject(HttpTestingController);
   http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush(provedoresIniciais);
+  // A tabela começa fechada por padrão (ver `TestTabelaColapsavel` mais
+  // abaixo, que testa esse padrão especificamente) — os outros testes
+  // deste arquivo assumem a lista já visível, então abre aqui.
+  fixture.componentInstance.tabelaProvedoresAberta.set(true);
   fixture.detectChanges();
 
   const el: HTMLElement = fixture.nativeElement;
@@ -111,7 +137,8 @@ function criar(
   return {
     fixture,
     http,
-    configuracoes,
+    el,
+    tetoTokensIa,
     usoIa,
     texto: () => el.textContent ?? '',
     linhasProvedores: () => Array.from(el.querySelectorAll('.tabela-provedores tbody tr')) as HTMLElement[],
@@ -138,14 +165,35 @@ function criar(
       (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
       fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
-      (botoes.find((b) => b.textContent?.includes('Ativar')) as HTMLButtonElement).click();
+      (botoes.find((b) => b.textContent?.trim() === 'Ativar (chat)') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    clicarAtivarEmbedding: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.trim() === 'Ativar (embedding)') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    clicarDesativarEmbedding: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.trim() === 'Desativar (embedding)') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
+    clicarTestar: (indice: number) => {
+      (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
+      (botoes.find((b) => b.textContent?.includes('Testar conexão')) as HTMLButtonElement).click();
       fixture.detectChanges();
     },
     clicarDesativar: (indice: number) => {
       (el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelector('.gatilho') as HTMLButtonElement).click();
       fixture.detectChanges();
       const botoes = Array.from(el.querySelectorAll('.tabela-provedores tbody tr')[indice].querySelectorAll('button'));
-      (botoes.find((b) => b.textContent?.trim() === 'Desativar') as HTMLButtonElement).click();
+      (botoes.find((b) => b.textContent?.trim() === 'Desativar (chat)') as HTMLButtonElement).click();
       fixture.detectChanges();
     },
     clicarApagar: (indice: number) => {
@@ -169,6 +217,11 @@ function criar(
       fixture.detectChanges();
     },
     campoTeto: () => el.querySelector('.linha-teto input') as HTMLInputElement,
+    interruptorTeto: () => el.querySelector('app-interruptor .interruptor') as HTMLButtonElement,
+    ativarTeto: () => {
+      (el.querySelector('app-interruptor .interruptor') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    },
     botaoSalvarTeto: () =>
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Salvar teto')) as HTMLButtonElement,
     digitarTeto: (valorTexto: string) => {
@@ -188,6 +241,10 @@ function criar(
       Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('Veja um exemplo guiado')) as
         | HTMLButtonElement
         | undefined,
+    botaoAbrirFecharTabela: () =>
+      Array.from(el.querySelectorAll('.cabecalho-secao button')).find(
+        (b) => b.getAttribute('aria-label')?.includes('lista de provedores'),
+      ) as HTMLButtonElement,
   };
 }
 
@@ -263,17 +320,21 @@ describe('ProvedoresLlm', () => {
       ]);
     });
 
-    it('só o provedor ativo mostra o botão "Desativar" no menu de ações', () => {
+    it('só o provedor ativo mostra o botão "Desativar (chat)" no menu de ações', () => {
       const { linhasProvedores, abrirMenuAcoes } = criar();
 
       abrirMenuAcoes(0);
       expect(
-        Array.from(linhasProvedores()[0].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Desativar'),
+        Array.from(linhasProvedores()[0].querySelectorAll('button')).some(
+          (b) => b.textContent?.trim() === 'Desativar (chat)',
+        ),
       ).toBe(true);
 
       abrirMenuAcoes(1);
       expect(
-        Array.from(linhasProvedores()[1].querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Desativar'),
+        Array.from(linhasProvedores()[1].querySelectorAll('button')).some(
+          (b) => b.textContent?.trim() === 'Desativar (chat)',
+        ),
       ).toBe(false);
     });
 
@@ -305,12 +366,12 @@ describe('ProvedoresLlm', () => {
       http.expectNone((req) => req.method === 'DELETE');
     });
 
-    it('apagar o provedor ativo avisa que o sistema volta pro Ollama padrão', () => {
+    it('apagar o provedor ativo avisa que o sistema volta pro modelo de IA padrão', () => {
       const { clicarApagar, texto } = criar();
 
       clicarApagar(0); // PROVEDOR_OLLAMA está ativo
 
-      expect(texto()).toContain('sistema volta a usar o Ollama padrão do .env');
+      expect(texto()).toContain('sistema volta a usar o modelo de IA padrão configurado');
     });
 
     it('confirmar apagar chama DELETE e remove da lista', () => {
@@ -363,6 +424,233 @@ describe('ProvedoresLlm', () => {
     });
   });
 
+  describe('tabela de provedores colapsável', () => {
+    it('começa fechada por padrão', () => {
+      TestBed.configureTestingModule({
+        imports: [ProvedoresLlm],
+        providers: [
+          provideRouter([]),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: TetoTokensIa, useValue: tetoTokensIaFalso() },
+          { provide: UsoIa, useValue: usoIaFalso() },
+        ],
+      });
+      const fixture = TestBed.createComponent(ProvedoresLlm);
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([PROVEDOR_OLLAMA]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.tabela-provedores')).toBeNull();
+    });
+
+    it('clicar no botão de abrir/fechar mostra e esconde a lista', () => {
+      const { fixture, botaoAbrirFecharTabela } = criar();
+
+      // `criar()` já abre a tabela pra não quebrar o resto dos testes —
+      // fecha primeiro pra testar o toggle de verdade.
+      botaoAbrirFecharTabela().click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tabela-provedores')).toBeNull();
+
+      botaoAbrirFecharTabela().click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tabela-provedores')).not.toBeNull();
+    });
+  });
+
+  describe('idade da credencial', () => {
+    it('mostra há quantos dias a credencial foi configurada', () => {
+      const dezDiasAtras = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const provedor = { ...PROVEDOR_OCI, credencial_atualizada_em: dezDiasAtras };
+      const { texto } = criar([PROVEDOR_OLLAMA, provedor]);
+
+      expect(texto()).toContain('há 10 dias');
+    });
+
+    it('credencial com mais de 90 dias mostra aviso pra renovar, não o selo "Configurada"', () => {
+      const noventaEUmDiasAtras = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
+      const provedor = { ...PROVEDOR_OCI, credencial_atualizada_em: noventaEUmDiasAtras };
+      const { texto, linhasProvedores } = criar([PROVEDOR_OLLAMA, provedor]);
+
+      expect(texto()).toContain('Renovar');
+      expect(linhasProvedores()[1].textContent).not.toContain('Configurada');
+    });
+
+    it('credencial recente não mostra aviso', () => {
+      const { texto } = criar([PROVEDOR_OLLAMA, PROVEDOR_OCI]);
+
+      expect(texto()).not.toContain('Renovar');
+    });
+
+    it('provedor sem chave nenhuma não mostra idade de credencial', () => {
+      const { linhasProvedores } = criar([PROVEDOR_OLLAMA, PROVEDOR_OCI]);
+
+      expect(linhasProvedores()[0].textContent).not.toContain('há ');
+    });
+  });
+
+  describe('OCI nativo e capacidades', () => {
+    it('escolher "OCI (SDK nativo)" esconde endereço/chave de API e mostra os campos da OCI', () => {
+      const { fixture, abrirCriar, texto } = criar();
+
+      abrirCriar();
+      fixture.componentInstance.formTipoConexao.set('oci_nativo');
+      fixture.detectChanges();
+
+      expect(texto()).not.toContain('Endereço (URL base)');
+      expect(texto()).not.toContain('Chave de API');
+      expect(texto()).toContain('User OCID');
+      expect(texto()).toContain('Chave privada');
+    });
+
+    it('abrir o diálogo de criação já vem com "Chat" marcado e "Embedding" desmarcado', () => {
+      const { fixture, abrirCriar } = criar();
+
+      abrirCriar();
+
+      expect(fixture.componentInstance.formCapacidadeChat()).toBe(true);
+      expect(fixture.componentInstance.formCapacidadeEmbedding()).toBe(false);
+    });
+
+    it('desmarcar as duas capacidades impede salvar e mostra o erro', () => {
+      const { fixture, abrirCriar, botaoSalvarProvedor, texto, http } = criar();
+
+      abrirCriar();
+      fixture.componentInstance.formNome.set('n');
+      fixture.componentInstance.formBaseUrl.set('http://x');
+      fixture.componentInstance.formModelo.set('m');
+      fixture.componentInstance.formCapacidadeChat.set(false);
+      fixture.componentInstance.formCapacidadeEmbedding.set(false);
+      fixture.detectChanges();
+
+      botaoSalvarProvedor().click();
+      fixture.detectChanges();
+
+      expect(texto()).toContain('Marque ao menos uma capacidade');
+      http.expectNone((req) => req.method === 'POST');
+    });
+
+    it('criar provedor oci_nativo manda credenciais_extra preenchidas e capacidades certas', () => {
+      const { fixture, abrirCriar, botaoSalvarProvedor, http } = criar();
+
+      abrirCriar();
+      const c = fixture.componentInstance;
+      c.formNome.set('Cohere embed');
+      c.formModelo.set('cohere.embed-v4.0');
+      c.formTipoConexao.set('oci_nativo');
+      c.formCapacidadeChat.set(false);
+      c.formCapacidadeEmbedding.set(true);
+      c.formUserOcid.set('ocid1.user.oc1..u');
+      c.formFingerprint.set('aa:bb');
+      c.formTenancyOcid.set('ocid1.tenancy.oc1..t');
+      c.formRegiao.set('sa-saopaulo-1');
+      c.formCompartmentId.set('ocid1.compartment.oc1..c');
+      c.formChavePrivada.set('chave-privada-de-teste');
+      fixture.detectChanges();
+
+      botaoSalvarProvedor().click();
+      fixture.detectChanges();
+
+      const requisicao = http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'POST');
+      expect(requisicao.request.body.capacidades).toEqual(['embedding']);
+      expect(requisicao.request.body.credenciais_extra).toEqual({
+        user_ocid: 'ocid1.user.oc1..u',
+        fingerprint: 'aa:bb',
+        tenancy_ocid: 'ocid1.tenancy.oc1..t',
+        regiao: 'sa-saopaulo-1',
+        compartment_id: 'ocid1.compartment.oc1..c',
+        chave_privada: 'chave-privada-de-teste',
+      });
+      requisicao.flush(PROVEDOR_OCI);
+      // `salvar()` bem-sucedido recarrega a lista — libera esse GET a mais
+      // pra não sobrar requisição presa pro `afterEach` reclamar.
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([]);
+    });
+
+    it('editar oci_nativo sem preencher os campos de credencial não manda credenciais_extra', () => {
+      const provedorOci = { ...PROVEDOR_OCI, tipo_conexao: 'oci_nativo', capacidades: ['embedding'] };
+      const { fixture, abrirEditar, botaoSalvarProvedor, http } = criar([PROVEDOR_OLLAMA, provedorOci]);
+
+      abrirEditar(1);
+      botaoSalvarProvedor().click();
+      fixture.detectChanges();
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith(`/api/ti/provedores-llm/${provedorOci.id}`) && req.method === 'PATCH',
+      );
+      expect(requisicao.request.body.credenciais_extra).toBeUndefined();
+      requisicao.flush(provedorOci);
+      http.expectOne((req) => req.url.endsWith('/api/ti/provedores-llm') && req.method === 'GET').flush([]);
+    });
+
+    it('provedor sem capacidade de chat e inativo não mostra o botão "Ativar (chat)", só "Ativar (embedding)"', () => {
+      const provedorEmbedding = { ...PROVEDOR_OCI, ativo: false, capacidades: ['embedding'] };
+      const { linhasProvedores, abrirMenuAcoes } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
+
+      abrirMenuAcoes(1);
+
+      const textosBotoes = Array.from(linhasProvedores()[1].querySelectorAll('button')).map((b) =>
+        b.textContent?.trim(),
+      );
+      expect(textosBotoes).not.toContain('Ativar (chat)');
+      expect(textosBotoes).toContain('Ativar (embedding)');
+    });
+
+    it('ativar um provedor pra embedding chama a rota certa e atualiza a lista', () => {
+      const provedorEmbedding = { ...PROVEDOR_OCI, id: 3, ativo: false, ativo_embedding: false, capacidades: ['embedding'] };
+      const { fixture, clicarAtivarEmbedding, http, linhasProvedores } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
+
+      clicarAtivarEmbedding(1);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/3/ativar-embedding') && req.method === 'POST',
+      );
+      requisicao.flush([PROVEDOR_OLLAMA, { ...provedorEmbedding, ativo_embedding: true }]);
+      fixture.detectChanges();
+
+      expect(linhasProvedores()[1].textContent).toContain('Ativo (embedding)');
+    });
+
+    it('desativar o embedding chama a rota certa, sem mexer no ativo de chat', () => {
+      const provedorEmbedding = { ...PROVEDOR_OCI, id: 3, ativo: false, ativo_embedding: true, capacidades: ['embedding'] };
+      const { fixture, clicarDesativarEmbedding, http, linhasProvedores } = criar([PROVEDOR_OLLAMA, provedorEmbedding]);
+
+      clicarDesativarEmbedding(1);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/desativar-embedding') && req.method === 'POST',
+      );
+      requisicao.flush([PROVEDOR_OLLAMA, { ...provedorEmbedding, ativo_embedding: false }]);
+      fixture.detectChanges();
+
+      expect(linhasProvedores()[1].textContent).toContain('Inativo');
+      expect(linhasProvedores()[0].textContent).toContain('Ativo (chat)'); // chat de outro provedor intacto
+    });
+
+    it('mostra um selo por capacidade na linha da tabela', () => {
+      const provedorDuasCapacidades = { ...PROVEDOR_OCI, capacidades: ['chat', 'embedding'] };
+      const { linhasProvedores } = criar([PROVEDOR_OLLAMA, provedorDuasCapacidades]);
+
+      const texto = linhasProvedores()[1].textContent ?? '';
+      expect(texto).toContain('Chat');
+      expect(texto).toContain('Embedding');
+    });
+  });
+
+  describe('testar conexão', () => {
+    it('clicar em "Testar conexão" chama a rota certa', () => {
+      const { clicarTestar, http } = criar();
+
+      clicarTestar(0);
+
+      const requisicao = http.expectOne(
+        (req) => req.url.endsWith('/api/ti/provedores-llm/1/testar') && req.method === 'POST',
+      );
+      requisicao.flush({ ok: true });
+    });
+  });
+
   describe('tour guiado', () => {
     it('o botão "Veja um exemplo guiado" só aparece ao criar, não ao editar', () => {
       const { abrirCriar, abrirEditar, botaoVerTour } = criar();
@@ -404,7 +692,7 @@ describe('ProvedoresLlm', () => {
 
   describe('consumo e custo', () => {
     it('carrega o consumo e o teto ao abrir a página', () => {
-      const configuracoes = configuracoesFalso();
+      const configuracoes = tetoTokensIaFalso();
       const usoIa = usoIaFalso();
 
       criar([], configuracoes, usoIa);
@@ -417,7 +705,7 @@ describe('ProvedoresLlm', () => {
       vi.useFakeTimers();
       const usoIa = usoIaFalso();
 
-      criar([], configuracoesFalso(), usoIa);
+      criar([], tetoTokensIaFalso(), usoIa);
 
       expect(usoIa.carregar).toHaveBeenCalledTimes(1); // carga inicial, ao entrar na tela
 
@@ -468,7 +756,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { linhasConsumo } = criar([], configuracoesFalso(), usoIa);
+      const { linhasConsumo } = criar([], tetoTokensIaFalso(), usoIa);
 
       const texto = linhasConsumo()[0].textContent ?? '';
       expect(texto).toContain('134');
@@ -480,7 +768,7 @@ describe('ProvedoresLlm', () => {
       const usoIa = usoIaFalso({
         consumo: [
           {
-            provedor: 'Ollama (padrão)',
+            provedor: 'Modelo de IA (padrão)',
             modelo: 'qwen2.5-coder:7b',
             chamadas: 5,
             tokens_entrada: 134,
@@ -493,7 +781,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { linhasConsumo } = criar([], configuracoesFalso(), usoIa);
+      const { linhasConsumo } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(linhasConsumo()[0].textContent).toContain('—');
     });
@@ -515,7 +803,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).toContain('R$ 0,03');
     });
@@ -537,7 +825,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).toContain('US$ 0,0002');
       expect(texto()).toContain('≈ R$ 0,001');
@@ -560,7 +848,7 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { fixture } = criar([], configuracoesFalso(), usoIa);
+      const { fixture } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(fixture.nativeElement.querySelector('app-grafico-rosca')).not.toBeNull();
     });
@@ -572,7 +860,7 @@ describe('ProvedoresLlm', () => {
           { data: '2026-09-23', chamadas: 5, tokens_entrada: 500, tokens_saida: 250, tokens_total: 750 },
         ],
       });
-      const { fixture } = criar([], configuracoesFalso(), usoIa);
+      const { fixture } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(fixture.nativeElement.querySelector('app-grafico-serie')).not.toBeNull();
     });
@@ -594,28 +882,79 @@ describe('ProvedoresLlm', () => {
           },
         ],
       });
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).toContain('(padrão do provedor)');
     });
 
     it('mostra o percentual do teto consumido hoje', () => {
+      // `tokensHojePorDominio` (soma TI+RH) alimenta só o card informativo
+      // geral de consumo — o percentual do teto usa `tetoTokensIa.tokensHoje`,
+      // que é só do domínio `ti` (teto agora é por departamento).
       const usoIa = usoIaFalso({ tokensHojePorDominio: { ti: 300, rh: 200 } });
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.tokensHoje.set(500);
 
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIa, usoIa);
 
-      expect(texto()).toContain('500'); // soma ti + rh
+      expect(texto()).toContain('500'); // soma ti + rh, no card geral de consumo
       expect(texto()).toContain('50% do teto');
     });
 
     it('sem teto configurado, mostra aviso de "sem teto" em vez de percentual', () => {
-      const configuracoes = configuracoesFalso();
-      configuracoes.tetoTokensDiario.set(0);
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.teto.set(0);
 
-      const { texto, abrirConfiguracoesTeto } = criar([], configuracoes);
+      const { texto, abrirConfiguracoesTeto } = criar([], tetoTokensIa);
       abrirConfiguracoesTeto();
 
       expect(texto()).toContain('Sem teto configurado');
+    });
+
+    it('com teto desativado (0), o campo do valor começa desabilitado', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.teto.set(0);
+
+      const { campoTeto, abrirConfiguracoesTeto } = criar([], tetoTokensIa);
+      abrirConfiguracoesTeto();
+
+      expect(campoTeto().disabled).toBe(true);
+    });
+
+    it('com teto já ativo (> 0), o campo do valor começa habilitado', () => {
+      const { campoTeto, abrirConfiguracoesTeto } = criar([]); // fake padrão já carrega teto = 1000
+      abrirConfiguracoesTeto();
+
+      expect(campoTeto().disabled).toBe(false);
+    });
+
+    it('ativar o interruptor habilita o campo pra digitar o teto', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      tetoTokensIa.teto.set(0);
+
+      const { campoTeto, ativarTeto, abrirConfiguracoesTeto } = criar([], tetoTokensIa);
+      abrirConfiguracoesTeto();
+      expect(campoTeto().disabled).toBe(true);
+
+      ativarTeto();
+
+      expect(campoTeto().disabled).toBe(false);
+    });
+
+    it('salvar com o teto desativado sempre manda 0, mesmo com número digitado antes de desativar', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { abrirConfiguracoesTeto, digitarTeto, ativarTeto, botaoSalvarTeto, fixture } = criar(
+        [],
+        tetoTokensIa,
+      );
+      abrirConfiguracoesTeto();
+      digitarTeto('5000'); // teto já vem ativo no fake padrão (1000) — digita um novo valor
+      ativarTeto(); // desativa de novo (alterna o interruptor que já estava ligado)
+
+      botaoSalvarTeto().click();
+      fixture.detectChanges();
+
+      expect(tetoTokensIa.salvar).toHaveBeenCalledWith('ti', 0);
     });
 
     it('teto inválido (negativo) desabilita "Salvar teto" e mostra o erro', () => {
@@ -625,26 +964,26 @@ describe('ProvedoresLlm', () => {
       digitarTeto('-5');
 
       expect(botaoSalvarTeto().disabled).toBe(true);
-      expect(texto()).toContain('número inteiro maior ou igual a 0');
+      expect(texto()).toContain('número inteiro maior que 0');
     });
 
-    it('salvar teto válido chama o serviço com o valor certo e fecha o diálogo', () => {
-      const configuracoes = configuracoesFalso();
-      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], configuracoes);
+    it('salvar teto válido chama o serviço com o domínio "ti" e o valor certo, fecha o diálogo', () => {
+      const tetoTokensIa = tetoTokensIaFalso();
+      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], tetoTokensIa);
       abrirConfiguracoesTeto();
 
       digitarTeto('5000');
       botaoSalvarTeto().click();
       fixture.detectChanges();
 
-      expect(configuracoes.salvar).toHaveBeenCalledWith({ teto_tokens_diario: 5000 });
+      expect(tetoTokensIa.salvar).toHaveBeenCalledWith('ti', 5000);
       expect(texto()).not.toContain('Salvar teto');
     });
 
     it('erro do servidor ao salvar teto mostra o motivo e mantém o diálogo aberto', () => {
       const erro = new HttpErrorResponse({ status: 400, error: { erro: 'Valor inválido.' } });
-      const configuracoes = configuracoesFalso(vi.fn(() => throwError(() => erro)));
-      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], configuracoes);
+      const tetoTokensIa = tetoTokensIaFalso(vi.fn(() => throwError(() => erro)));
+      const { abrirConfiguracoesTeto, digitarTeto, botaoSalvarTeto, texto, fixture } = criar([], tetoTokensIa);
       abrirConfiguracoesTeto();
 
       digitarTeto('5000');
@@ -670,7 +1009,7 @@ describe('ProvedoresLlm', () => {
         ],
       });
 
-      const { texto } = criar([], configuracoesFalso(), usoIa);
+      const { texto } = criar([], tetoTokensIaFalso(), usoIa);
 
       expect(texto()).not.toContain('Daniel Faria');
     });
@@ -699,7 +1038,7 @@ describe('ProvedoresLlm', () => {
         ],
       });
 
-      const { texto, abrirAba, linhasConsumo } = criar([], configuracoesFalso(), usoIa);
+      const { texto, abrirAba, linhasConsumo } = criar([], tetoTokensIaFalso(), usoIa);
       abrirAba('Por usuário');
 
       const linhas = linhasConsumo();
@@ -714,6 +1053,47 @@ describe('ProvedoresLlm', () => {
       abrirAba('Por usuário');
 
       expect(texto()).toContain('Nenhum consumo ainda');
+    });
+  });
+
+  describe('modo leitura pro time de TI (2026-09-28)', () => {
+    it('quem não é desenvolvedor vê a lista de provedores, mas sem nenhum botão de escrita', () => {
+      const { texto, el } = criar(
+        [PROVEDOR_OLLAMA, PROVEDOR_OCI],
+        tetoTokensIaFalso(),
+        usoIaFalso(),
+        sessaoFalso(false),
+      );
+
+      // Continua vendo os dados — só não pode mexer.
+      expect(texto()).toContain('Ollama local');
+      expect(texto()).toContain('OCI Generative AI — gpt-oss-120b');
+
+      expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
+        false,
+      );
+      expect(el.querySelector('button[aria-label="Configurações de tokens"]')).toBeNull();
+      expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBe(0);
+    });
+
+    it('desenvolvedor continua vendo os botões de escrita normalmente', () => {
+      const { el } = criar([PROVEDOR_OLLAMA], tetoTokensIaFalso(), usoIaFalso(), sessaoFalso(true));
+
+      expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
+        true,
+      );
+      expect(el.querySelector('button[aria-label="Configurações de tokens"]')).not.toBeNull();
+      expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBeGreaterThan(0);
+    });
+
+    it('ti_admin (não desenvolvedor) vê a engrenagem de teto, mas não o CRUD de provedores', () => {
+      const { el } = criar([PROVEDOR_OLLAMA], tetoTokensIaFalso(), usoIaFalso(), sessaoFalso(false, true));
+
+      expect(el.querySelector('button[aria-label="Configurações de tokens"]')).not.toBeNull();
+      expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.includes('Novo provedor'))).toBe(
+        false,
+      );
+      expect(el.querySelectorAll('.tabela-provedores tbody .gatilho').length).toBe(0);
     });
   });
 });

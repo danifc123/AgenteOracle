@@ -13,7 +13,7 @@
     <app-secao-configuracao titulo="Avaliação por IA">
       <app-interruptor
         rotulo="Usar IA na avaliação"
-        descricao="Desligada, usa uma regra simples de contagem de palavras, sem chamar o Ollama."
+        descricao="Desligada, usa uma regra simples de contagem de palavras, sem chamar o modelo de IA."
         [marcado]="usarIa()"
         (alterado)="usarIa.set($event)"
       />

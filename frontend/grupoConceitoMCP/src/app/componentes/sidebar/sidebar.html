@@ -151,12 +151,22 @@
       </div>
     }
 
+    <!-- Os 3 itens abaixo (Histórico de relatórios, Lista de Auditoria,
+         Juntar Excel) são "globais" na sidebar (fora de `GRUPOS_MENU`),
+         mas as duas primeiras rotas só existem no Financeiro
+         (`server/financeiro/historico.py`/`_ACOES_POR_MODULO` só tem
+         "financeiro") — apareciam pra qualquer módulo e davam "Acesso
+         restrito ao módulo Financeiro" pra quem não tinha (achado do
+         usuário, 2026-09-28, testando como time de TI). "Juntar Excel" é
+         de verdade sem módulo no backend, mas some junto por coerência —
+         não é uma ferramenta que o time de TI usa. -->
     <a
       class="nav-link"
       routerLink="/relatorios/historico"
       routerLinkActive="active"
       [title]="colapsado() ? 'Histórico de relatórios' : null"
       (click)="navegarParaFora()"
+      *appSoModulo="'financeiro'"
     >
       <span class="nav-icon">
         <svg
@@ -208,6 +218,7 @@
       routerLinkActive="active"
       [title]="colapsado() ? 'Lista de Auditoria' : null"
       (click)="navegarParaFora()"
+      *appSoModulo="'financeiro'"
     >
       <span class="nav-icon">
         <svg
@@ -235,6 +246,7 @@
       routerLinkActive="active"
       [title]="colapsado() ? 'Juntar Excel' : null"
       (click)="navegarParaFora()"
+      *appSoModulo="'financeiro'"
     >
       <span class="nav-icon">
         <svg

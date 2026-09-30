@@ -11,7 +11,10 @@ from agente_oracle.config import settings
 from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
     _chamados_da_tela,
+    _contagem_por_tecnico,
+    _resumo_indicadores_tecnico,
     _saude_por_area,
+    _tempo_gasto_por_tecnico,
     _texto_para_ia,
     chamado_entra_na_amostra,
     processar_chamado_novo,
@@ -73,6 +76,7 @@ def _chamado(
     categoria: str = "Hardware",
     categoria_id: int | None = None,
     tecnico_atribuido: str | None = None,
+    tempo_gasto_segundos: int = 0,
 ) -> Chamado:
     return Chamado(
         id=id_,
@@ -87,6 +91,7 @@ def _chamado(
         criado_em=datetime(2026, 1, 1, tzinfo=UTC),
         area=None,
         tecnico_atribuido=tecnico_atribuido,
+        tempo_gasto_segundos=tempo_gasto_segundos,
     )
 
 
@@ -136,6 +141,7 @@ class _OllamaClienteFake:
         self._mensagem = mensagem
         self._levantar_no_embed = levantar_no_embed
         self.chamadas_chat: list[dict] = []
+        self.chamadas_embed: list[dict] = []
 
     async def chat(self, **kwargs):
         self.chamadas_chat.append(kwargs)
@@ -146,7 +152,8 @@ class _OllamaClienteFake:
             json.dumps({"suficiente": self._suficiente, "pergunta": self._mensagem, "exemplo": ""})
         )
 
-    async def embed(self, **_kwargs):
+    async def embed(self, **kwargs):
+        self.chamadas_embed.append(kwargs)
         if self._levantar_no_embed:
             raise self._levantar_no_embed
         return _EmbedRespostaFake([1.0, 0.0])
@@ -173,8 +180,13 @@ class _ClienteGLPIFake:
         # ordem/índice de `avaliacoes`, só pra quem quiser conferir
         # `is_private` especificamente.
         self.avaliacoes_privadas: list[bool] = []
+        # Guarda o que foi pedido em cada chamada — inspecionável no
+        # assert quando algum teste precisar confirmar que quem chamou
+        # (`chamados_route`, poller, webhook) pediu o que era esperado.
+        self.listar_incluir_atribuidos: bool = False
 
-    async def listar(self) -> list[Chamado]:
+    async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]:
+        self.listar_incluir_atribuidos = incluir_atribuidos
         return list(self._chamados.values())
 
     async def buscar(self, chamado_id: int) -> Chamado | None:
@@ -201,6 +213,9 @@ class _ClienteGLPIFake:
 
     async def carga_atual_por_tecnico(self, tecnicos_identificadores: list[str]) -> dict[str, int]:
         return dict.fromkeys(tecnicos_identificadores, 0)
+
+    async def chamados_criados_desde(self, desde: datetime) -> list[Chamado]:
+        return [chamado for chamado in self._chamados.values() if chamado.criado_em >= desde]
 
     async def buscar_followups(self, chamado_id: int) -> list[Followup]:
         return self.followups_por_chamado.get(chamado_id, [])
@@ -489,9 +504,9 @@ class TestProcessarChamadoNovo:
 
     async def test_chamado_suficiente_sem_tecnico_na_area_levanta_sem_tecnico_na_area(self, monkeypatch):
         # Antes disso, `escolher_tecnico` estourava `ValueError` cru — sem
-        # try/except em `chamado_verificar_route`, virava 500 sem mensagem
-        # útil (visto ao vivo). Sobrescreve a fixture `_roster_de_tecnicos_
-        # para_teste` (que sempre tem alguém em "infra") só pra este teste.
+        # try/except numa rota HTTP, virava 500 sem mensagem útil (visto ao
+        # vivo). Sobrescreve a fixture `_roster_de_tecnicos_para_teste`
+        # (que sempre tem alguém em "infra") só pra este teste.
         monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: [])
         cliente = _ClienteGLPIFake([_chamado(categoria_id=1)])
         ollama = _OllamaClienteFake(suficiente=True)
@@ -759,6 +774,69 @@ class TestProcessarChamadoNovo:
         assert area == "sistemas"
 
 
+class TestProcessarChamadoNovoEmbeddingClient:
+    """`embedding_client` é o parâmetro que resolve o bug real de
+    2026-09-28: `classificar_categoria` usava sempre `cliente_ia`
+    (o provedor de CHAT ativo) pro `.embed()`, que normalmente não sabe
+    fazer embedding — cai em `EmbeddingNaoSuportado` sempre. Ver
+    `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`."""
+
+    async def test_sem_embedding_client_reusa_o_cliente_ia_pro_embed(self):
+        # Comportamento de antes desse parâmetro existir — mantido pra não
+        # quebrar nenhum call site que ainda não foi atualizado.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", _chamado(categoria_id=999), cargas, True)
+
+        # 2 chamadas: 1 pra cachear o embedding da (única) categoria fake,
+        # 1 pro texto do próprio chamado — ver docstring de
+        # `_cache_embeddings_categorias` em `roteamento_chamado.py`.
+        assert len(ollama.chamadas_embed) == 2
+
+    async def test_com_embedding_client_usa_ele_em_vez_do_cliente_ia(self):
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        embedding = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999),
+            cargas,
+            True,
+            embedding_client=embedding,
+        )
+
+        assert len(ollama.chamadas_embed) == 0
+        assert len(embedding.chamadas_embed) == 2
+
+    async def test_embedding_client_nao_afeta_o_client_usado_pro_chat(self):
+        # `avaliar_chamado` (a checagem de "tem informação suficiente")
+        # continua sempre no `cliente_ia` — só a correção de categoria
+        # (`classificar_categoria`) usa o `embedding_client`.
+        cliente = _ClienteGLPIFake([_chamado(categoria_id=999)])
+        ollama = _OllamaClienteFake(suficiente=True)
+        embedding = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(
+            cliente,
+            ollama,
+            "modelo-teste",
+            _chamado(categoria_id=999),
+            cargas,
+            True,
+            embedding_client=embedding,
+        )
+
+        assert len(ollama.chamadas_chat) == 1
+        assert len(embedding.chamadas_chat) == 0
+
+
 class TestVerificarChamadosPendentes:
     async def test_reprocessa_so_novo_ignora_aguardando_usuario(self, monkeypatch):
         # Reavaliar `aguardando_usuario` de novo a cada rodada (a cada 5
@@ -887,6 +965,10 @@ class TestClienteProtegidoDeVerdade:
         monkeypatch.setattr(cliente_protegido_module, "AsyncClient", lambda **_kwargs: cliente_ollama_fake)
         monkeypatch.setattr(auditoria_externa, "registrar", lambda *_args: None)
         monkeypatch.setattr(auditoria_externa, "contagem_hoje", lambda _dominio: 0)
+        # `_verificar_teto_tokens` roda ANTES de toda chamada real — sem
+        # mockar isso, o teste tentaria consultar o teto no Postgres de
+        # verdade (0 = sem teto, nunca bloqueia; ver `cliente_protegido.py`).
+        monkeypatch.setattr(configuracoes_provedor, "teto_tokens_diario", lambda _dominio: 0)
         # Isola do banco real: este teste quer especificamente o caminho
         # `ollama.AsyncClient` (nenhum provedor cadastrado ativo) — sem
         # isso, ele passa a depender do que estiver ativado no Postgres de
@@ -1130,3 +1212,135 @@ class TestSaudePorArea:
         resultado = _saude_por_area(tecnicos, cargas={})
 
         assert resultado[0]["tecnicos"] == [{"nome": "Denner", "usuario": "denner", "chamados_abertos": 0}]
+
+
+class TestContagemPorTecnico:
+    def test_conta_um_chamado_por_tecnico_atribuido(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+        )
+        chamados = [
+            _chamado(id_=1, tecnico_atribuido="1"),
+            _chamado(id_=2, tecnico_atribuido="1"),
+            _chamado(id_=3, tecnico_atribuido="2"),
+        ]
+
+        resultado = _contagem_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 2, "2": 1}
+
+    def test_tecnico_sem_nenhum_chamado_no_periodo_conta_zero(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+
+        resultado = _contagem_por_tecnico(tecnicos, chamados=[])
+
+        assert resultado == {"1": 0}
+
+    def test_chamado_sem_tecnico_ou_de_tecnico_desconhecido_e_ignorado(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        chamados = [
+            _chamado(id_=1, tecnico_atribuido=None),
+            _chamado(id_=2, tecnico_atribuido="999"),
+        ]
+
+        resultado = _contagem_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 0}
+
+
+class TestTempoGastoPorTecnico:
+    def test_soma_o_tempo_gasto_por_tecnico_atribuido(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+        )
+        chamados = [
+            _chamado(id_=1, tecnico_atribuido="1", tempo_gasto_segundos=3600),
+            _chamado(id_=2, tecnico_atribuido="1", tempo_gasto_segundos=1800),
+            _chamado(id_=3, tecnico_atribuido="2", tempo_gasto_segundos=7200),
+        ]
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 5400, "2": 7200}
+
+    def test_tecnico_sem_chamado_no_periodo_soma_zero(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados=[])
+
+        assert resultado == {"1": 0}
+
+    def test_chamado_sem_tempo_registrado_soma_zero(self):
+        # Confirmado ao vivo: `actiontime` fica 0 quando ninguém aponta
+        # hora no chamado (todo o ambiente de homologação hoje) — não pode
+        # virar erro nem `None` aqui.
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        chamados = [_chamado(id_=1, tecnico_atribuido="1", tempo_gasto_segundos=0)]
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 0}
+
+    def test_chamado_de_tecnico_desconhecido_e_ignorado(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        chamados = [_chamado(id_=1, tecnico_atribuido="999", tempo_gasto_segundos=3600)]
+
+        resultado = _tempo_gasto_por_tecnico(tecnicos, chamados)
+
+        assert resultado == {"1": 0}
+
+
+class TestResumoIndicadoresTecnico:
+    def test_calcula_as_duas_medias_entre_todos_os_tecnicos_incluindo_quem_tem_zero(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+            Tecnico(nome="Carlos", identificador="3", area="processos", usuario="carlos"),
+        )
+        contagens = {"1": 6, "2": 3, "3": 0}
+        tempos = {"1": 3600 * 6, "2": 3600 * 3, "3": 0}
+
+        resultado = _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario_logado="denner")
+
+        assert resultado == {
+            "meus_chamados": 6,
+            "media_chamados_equipe": 3.0,
+            "meu_tempo_gasto_horas": 6.0,
+            "media_tempo_gasto_equipe_horas": 3.0,
+        }
+
+    def test_arredonda_as_duas_medias_pra_1_casa_decimal(self):
+        tecnicos = (
+            Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),
+            Tecnico(nome="Suellen", identificador="2", area="sistemas", usuario="suellen"),
+            Tecnico(nome="Carlos", identificador="3", area="processos", usuario="carlos"),
+        )
+        contagens = {"1": 7, "2": 9, "3": 0}
+        tempos = {"1": 3600, "2": 1800, "3": 0}
+
+        resultado = _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario_logado="denner")
+
+        assert resultado["media_chamados_equipe"] == round(16 / 3, 1)
+        assert resultado["media_tempo_gasto_equipe_horas"] == round((3600 + 1800) / 3 / 3600, 1)
+
+    def test_usuario_logado_sem_tecnico_vinculado_devolve_os_dois_campos_meu_como_none(self):
+        tecnicos = (Tecnico(nome="Denner", identificador="1", area="infra", usuario="denner"),)
+        contagens = {"1": 4}
+        tempos = {"1": 3600}
+
+        resultado = _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario_logado="nao_e_tecnico")
+
+        assert resultado["meus_chamados"] is None
+        assert resultado["meu_tempo_gasto_horas"] is None
+
+    def test_roster_vazio_devolve_medias_zero(self):
+        resultado = _resumo_indicadores_tecnico((), contagens={}, tempos_segundos={}, usuario_logado="ninguem")
+
+        assert resultado == {
+            "meus_chamados": None,
+            "media_chamados_equipe": 0.0,
+            "meu_tempo_gasto_horas": None,
+            "media_tempo_gasto_equipe_horas": 0.0,
+        }

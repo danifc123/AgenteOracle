@@ -52,7 +52,6 @@ import logging
 import time
 
 from anyio import to_thread
-from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -64,6 +63,7 @@ from agente_oracle.server.ti.chamados import (
 )
 from agente_oracle.tools.ia.cliente_protegido import (
     USUARIO_SISTEMA,
+    ClienteChatEmbedIA,
     criar_cliente_protegido,
     modelo_ia_ativo,
 )
@@ -100,7 +100,7 @@ def _autorizado(segredo_recebido: str, segredo_esperado: str) -> bool:
 
 
 async def processar_webhook(
-    corpo: dict, cliente: ClienteGLPI, ollama_client: AsyncClient, modelo: str, usar_ia: bool
+    corpo: dict, cliente: ClienteGLPI, cliente_ia: ClienteChatEmbedIA, modelo: str, usar_ia: bool
 ) -> tuple[int, dict, ResultadoProcessamento | None]:
     """Núcleo do webhook já autenticado (a checagem de segredo mora em
     `glpi_webhook_route`, antes de chamar isto). Devolve
@@ -120,7 +120,7 @@ async def processar_webhook(
     try:
         tecnicos = await to_thread.run_sync(todos_os_tecnicos)
         cargas = await cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
-        resultado = await processar_chamado_novo(cliente, ollama_client, modelo, chamado, cargas, usar_ia)
+        resultado = await processar_chamado_novo(cliente, cliente_ia, modelo, chamado, cargas, usar_ia)
     except Exception:
         _logger.exception("Falha processando webhook do GLPI pro chamado %s", chamado_id)
 
@@ -146,11 +146,11 @@ def registrar(mcp) -> None:
         ):
             return JSONResponse({"ok": True, "amostrado": False}, status_code=200)
 
-        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+        cliente_ia = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
         usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
         inicio = time.monotonic()
         status_code, corpo_resposta, resultado = await processar_webhook(
-            corpo, _cliente, ollama_client, modelo_ia_ativo(settings, "ti"), usar_ia
+            corpo, _cliente, cliente_ia, modelo_ia_ativo(settings, "ti"), usar_ia
         )
         if resultado is not None:
             duracao_ms = round((time.monotonic() - inicio) * 1000)

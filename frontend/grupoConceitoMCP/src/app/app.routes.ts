@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { Layout } from './layout/layout';
-import { HomeRoteador } from './pages/home-roteador/home-roteador';
+import { Home } from './pages/home/home';
 import { Financeiro } from './pages/modulos/financeiro/financeiro';
 import { CriarRelatorio } from './pages/modulos/financeiro/criar-relatorio/criar-relatorio';
 import { FluxoCaixa } from './pages/modulos/financeiro/fluxo-caixa/fluxo-caixa';
@@ -17,10 +17,8 @@ import { ScoreInadimplenciaComponent } from './pages/modulos/financeiro/score-in
 import { AnaliseCandidato } from './pages/modulos/rh/analise-candidato/analise-candidato';
 import { Colaboradores } from './pages/modulos/rh/colaboradores/colaboradores';
 import { Repescagem } from './pages/modulos/rh/repescagem/repescagem';
-import { RhHome } from './pages/modulos/rh/home/rh-home';
 import { ChamadosTi } from './pages/modulos/ti/chamados/chamados';
 import { SegurancaTi } from './pages/modulos/ti/seguranca/seguranca';
-import { TiHome } from './pages/modulos/ti/home/ti-home';
 import { ProvedoresLlm } from './pages/modulos/ti/provedores/provedores';
 import { Login } from './pages/login/login';
 import { AuditoriaHistorico } from './pages/auditoria/historico/auditoria-historico';
@@ -29,7 +27,6 @@ import { Historico } from './pages/relatorios/historico/historico';
 import { Usuarios } from './pages/usuarios/usuarios';
 import { adminGuard } from './servicos/admin.guard/admin.guard';
 import { authGuard } from './servicos/auth.guard/auth.guard';
-import { devGuard } from './servicos/dev.guard/dev.guard';
 
 export const routes: Routes = [
   { path: 'login', component: Login },
@@ -38,7 +35,7 @@ export const routes: Routes = [
     component: Layout,
     canActivate: [authGuard],
     children: [
-      { path: '', component: HomeRoteador },
+      { path: '', component: Home },
       { path: 'financeiro/criar-relatorio', component: CriarRelatorio },
       { path: 'financeiro/fluxo-caixa', component: FluxoCaixa },
       { path: 'financeiro/vendas', component: Vendas },
@@ -52,15 +49,24 @@ export const routes: Routes = [
       { path: 'estoque/especifico-grupo-conceito', component: EstoqueEspecificoGrupoConceito },
       { path: 'estoque/chat', component: EstoqueChat },
       { path: 'estoque', component: Estoque },
-      { path: 'rh', component: RhHome },
+      // A Home é única e mora só na rota '' (`Home` — personalizável por
+      // usuário, com indicadores filtrados pelos módulos liberados) — sem
+      // link nenhum na sidebar apontando pra cá mais, só redireciona quem
+      // ainda tiver um favorito antigo salvo pra essas URLs.
+      { path: 'rh', redirectTo: '' },
+      { path: 'ti', redirectTo: '' },
       { path: 'rh/analise-candidato', component: AnaliseCandidato },
       { path: 'rh/selecionar-candidato', redirectTo: 'rh/analise-candidato' },
       { path: 'rh/repescagem', component: Repescagem },
       { path: 'rh/colaboradores', component: Colaboradores },
-      { path: 'ti', component: TiHome },
       { path: 'ti/seguranca', component: SegurancaTi },
       { path: 'ti/chamados', component: ChamadosTi },
-      { path: 'ti/provedores', component: ProvedoresLlm, canActivate: [devGuard] },
+      // Sem guard de rota (mesmo padrão de `ti/seguranca`/`ti/chamados`
+      // acima): visível pro time de TI inteiro desde 2026-09-28, em modo
+      // leitura — a própria tela decide o que cada um pode fazer
+      // (`provedores.ts`), o backend barra escrita de quem não é
+      // desenvolvedor.
+      { path: 'ti/provedores', component: ProvedoresLlm },
       { path: 'relatorios/historico', component: Historico },
       { path: 'auditoria/historico', component: AuditoriaHistorico },
       { path: 'juntar-excel', component: JuntarExcel },

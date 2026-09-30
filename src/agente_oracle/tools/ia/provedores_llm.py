@@ -10,13 +10,23 @@ como sua própria linha deixa isso explícito em vez de escondido num `if`
 de código, e permite ativar/trocar entre modelos do mesmo vendor sem
 reeditar nada, só trocando qual linha está ativa.
 
-`tipo_conexao` é fechado a duas opções de propósito — são os dois
-formatos que o projeto sabe falar (`ollama.AsyncClient` nativo e
-`ClienteOpenAICompativel`, ver `tools/ia/cliente_protegido.py`). Um
-provedor genuinamente novo só entra sem código se falar um desses dois
-protocolos (o que cobre a maioria dos provedores de IA em nuvem hoje,
-inclusive a própria OCI) — um terceiro protocolo ainda exigiria código
-novo, isso aqui não resolve esse caso.
+`tipo_conexao` é fechado de propósito — são os protocolos que o projeto
+sabe falar (`ollama.AsyncClient` nativo, `ClienteOpenAICompativel`, e
+`ClienteOciNativo` pro SDK nativo da OCI — assinatura RSA, usado pelos
+modelos que não têm endpoint compatível com OpenAI, ex: embedding). Um
+protocolo genuinamente novo ainda exige código novo (um cliente que saiba
+falar esse protocolo) — o que ESTE cadastro generaliza é só o formato das
+CREDENCIAIS: `base_url`/`api_key`/`projeto_id` cobrem os dois primeiros
+tipos; `credenciais_extra` (JSONB livre) cobre qualquer formato de
+credencial que um tipo novo precise, sem exigir `ALTER TABLE` de novo
+(ver `credenciais_extra` abaixo).
+
+`capacidades` (`"chat"`/`"embedding"`, pode ter as duas) diz o que aquele
+modelo sabe fazer — importa porque só 1 provedor pode estar "ativo" por
+vez no sistema hoje (`configuracoes_provedor.provedor_llm_ativo_id`):
+`server/ti/provedores_llm.py::_ativar` recusa ativar um provedor sem
+capacidade "chat", pra não deixar TI/RH inteiro sem conseguir conversar
+por engano.
 
 Preço é opcional (`0` = sem custo, é o padrão) — inclusive pra Ollama,
 que não tem custo real em dinheiro: o campo existe igual pra todo mundo,
@@ -24,8 +34,17 @@ quem cadastra decide se preenche. A conversão de tokens pra custo usa
 sempre o preço CADASTRADO HOJE, não um preço congelado no momento de cada
 chamada — mais simples, e como não convertemos moeda (cada linha só tem
 um prefixo de exibição, `moeda`), o custo é sempre mostrado por linha,
-nunca somado entre provedores com moedas diferentes."""
+nunca somado entre provedores com moedas diferentes.
 
+`credencial_atualizada_em` é SÓ um aviso (pedido do Daniel, 2026-09-25) —
+não expira/bloqueia nada sozinho, só marca a última vez que `api_key` ou
+`credenciais_extra` foram REALMENTE trocados por um valor novo (não toda
+edição — editar só o preço, por exemplo, não conta). Começa igual a
+`criado_em` (a credencial inicial "acabou de ser configurada" também).
+`server/ti/provedores_llm.py` expõe isso pro front decidir quando mostrar
+o aviso de "considere renovar"."""
+
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -33,17 +52,29 @@ from typing import Literal
 
 from agente_oracle.db.connection import DatabaseError, eh_erro_valor_duplicado, get_postgres_connection
 
-TipoConexao = Literal["ollama", "openai_compativel"]
+TipoConexao = Literal["ollama", "openai_compativel", "oci_nativo"]
 EstiloApi = Literal["chat_completions", "responses"]
+Capacidade = Literal["chat", "embedding"]
 
-_TIPOS_CONEXAO_VALIDOS: tuple[TipoConexao, ...] = ("ollama", "openai_compativel")
+_TIPOS_CONEXAO_VALIDOS: tuple[TipoConexao, ...] = ("ollama", "openai_compativel", "oci_nativo")
 _ESTILOS_API_VALIDOS: tuple[EstiloApi, ...] = ("chat_completions", "responses")
+_CAPACIDADES_VALIDAS: tuple[Capacidade, ...] = ("chat", "embedding")
+
+# Campos guardados como JSONB — únicos que passam por `json.dumps`/`::jsonb`
+# na escrita, tanto em `criar` quanto em `atualizar`.
+_CAMPOS_JSON = ("capacidades", "credenciais_extra")
 
 _tabela_garantida = False
 
+# Campos que, quando vêm preenchidos num `atualizar`, significam "a
+# credencial foi trocada de verdade" — bump em `credencial_atualizada_em`
+# (ver `_deve_renovar_credencial`).
+_CAMPOS_CREDENCIAL = ("api_key", "credenciais_extra")
+
 _COLUNAS = (
     "id, nome, tipo_conexao, base_url, api_key, projeto_id, modelo, estilo_api, "
-    "preco_entrada_por_1k, preco_saida_por_1k, moeda, criado_em"
+    "preco_entrada_por_1k, preco_saida_por_1k, moeda, capacidades, credenciais_extra, "
+    "credencial_atualizada_em, criado_em"
 )
 
 
@@ -65,6 +96,9 @@ class ProvedorLLM:
     preco_entrada_por_1k: Decimal
     preco_saida_por_1k: Decimal
     moeda: str
+    capacidades: list[Capacidade]
+    credenciais_extra: dict | None
+    credencial_atualizada_em: datetime
     criado_em: datetime
 
 
@@ -88,7 +122,25 @@ def _garantir_tabela(cursor) -> None:
             criado_em TIMESTAMPTZ NOT NULL
         )
     """)
+    # Aditivas de propósito (ver docstring do módulo) — o `DEFAULT` do
+    # Postgres já preenche `capacidades` das linhas já cadastradas como
+    # `["chat"]` sozinho, sem precisar de UPDATE manual.
+    cursor.execute(
+        "ALTER TABLE provedores_llm ADD COLUMN IF NOT EXISTS capacidades JSONB NOT NULL DEFAULT '[\"chat\"]'"
+    )
+    cursor.execute("ALTER TABLE provedores_llm ADD COLUMN IF NOT EXISTS credenciais_extra JSONB")
+    cursor.execute("ALTER TABLE provedores_llm ADD COLUMN IF NOT EXISTS credencial_atualizada_em TIMESTAMPTZ")
+    # Sem `DEFAULT` fixo (precisa copiar de outra coluna, por linha) — só
+    # preenche quem ainda não tem (`NULL`), nunca sobrescreve uma data já
+    # calculada; roda 1x por processo, igual o resto desta função.
+    cursor.execute(
+        "UPDATE provedores_llm SET credencial_atualizada_em = criado_em WHERE credencial_atualizada_em IS NULL"
+    )
     _tabela_garantida = True
+
+
+def _carregar_json(valor):
+    return json.loads(valor) if isinstance(valor, str) else valor
 
 
 def _linha_para_provedor(linha: tuple) -> ProvedorLLM:
@@ -104,6 +156,9 @@ def _linha_para_provedor(linha: tuple) -> ProvedorLLM:
         preco_entrada_por_1k,
         preco_saida_por_1k,
         moeda,
+        capacidades,
+        credenciais_extra,
+        credencial_atualizada_em,
         criado_em,
     ) = linha
     return ProvedorLLM(
@@ -118,6 +173,12 @@ def _linha_para_provedor(linha: tuple) -> ProvedorLLM:
         preco_entrada_por_1k=Decimal(preco_entrada_por_1k),
         preco_saida_por_1k=Decimal(preco_saida_por_1k),
         moeda=moeda,
+        capacidades=_carregar_json(capacidades) if capacidades is not None else ["chat"],
+        credenciais_extra=_carregar_json(credenciais_extra),
+        # `or criado_em`: só pra uma linha lida ANTES do backfill acima
+        # rodar nesse processo (janela mínima); depois da 1ª chamada a
+        # `_garantir_tabela`, nunca mais vem `None` do banco.
+        credencial_atualizada_em=credencial_atualizada_em or criado_em,
         criado_em=criado_em,
     )
 
@@ -153,6 +214,8 @@ def criar(
     preco_entrada_por_1k: Decimal,
     preco_saida_por_1k: Decimal,
     moeda: str,
+    capacidades: list[Capacidade],
+    credenciais_extra: dict | None = None,
 ) -> ProvedorLLM:
     try:
         with get_postgres_connection() as connection:
@@ -162,9 +225,11 @@ def criar(
                 f"""
                 INSERT INTO provedores_llm
                     (nome, tipo_conexao, base_url, api_key, projeto_id, modelo, estilo_api,
-                     preco_entrada_por_1k, preco_saida_por_1k, moeda, criado_em)
+                     preco_entrada_por_1k, preco_saida_por_1k, moeda, capacidades, credenciais_extra,
+                     credencial_atualizada_em, criado_em)
                 VALUES (:nome, :tipo_conexao, :base_url, :api_key, :projeto_id, :modelo, :estilo_api,
-                        :preco_entrada_por_1k, :preco_saida_por_1k, :moeda, :agora)
+                        :preco_entrada_por_1k, :preco_saida_por_1k, :moeda,
+                        :capacidades::jsonb, :credenciais_extra::jsonb, :agora, :agora)
                 RETURNING {_COLUNAS}
                 """,
                 nome=nome,
@@ -177,6 +242,8 @@ def criar(
                 preco_entrada_por_1k=preco_entrada_por_1k,
                 preco_saida_por_1k=preco_saida_por_1k,
                 moeda=moeda,
+                capacidades=json.dumps(capacidades),
+                credenciais_extra=json.dumps(credenciais_extra) if credenciais_extra is not None else None,
                 agora=datetime.now(UTC),
             )
             linha = cursor.fetchone()
@@ -187,23 +254,47 @@ def criar(
     return _linha_para_provedor(linha)
 
 
+def _deve_renovar_credencial(campos: dict) -> bool:
+    """`True` quando `api_key`/`credenciais_extra` vêm preenchidos de
+    verdade nesta edição — não toda edição (mudar só o preço, por
+    exemplo, não conta) e não quando vêm vazios/`None` (é o caso de
+    "deixei em branco pra manter a credencial atual", que este módulo
+    também não deveria contar como renovação)."""
+    return any(campos.get(campo) for campo in _CAMPOS_CREDENCIAL)
+
+
 def atualizar(id_provedor: int, **campos) -> ProvedorLLM | None:
     """Só grava os campos passados (mesmo padrão de `_gravar` já usado no
     projeto) — `campos` vazio simplesmente não executa nenhum UPDATE.
     `api_key`/`projeto_id` ausentes do corpo mantêm o valor atual (é assim
     que o editar-sem-re-digitar-a-chave funciona — decidido pela rota, não
-    aqui: esta função só reflete o que recebe)."""
+    aqui: esta função só reflete o que recebe). `capacidades`/
+    `credenciais_extra` (JSONB) passam por `json.dumps` + `::jsonb` antes
+    de ir pro bind — os demais campos vão direto, sem cast. Trocar
+    `api_key`/`credenciais_extra` por um valor novo também bate
+    `credencial_atualizada_em` pra agora, mesmo que ninguém tenha pedido
+    isso explicitamente (ver `_deve_renovar_credencial`)."""
     if not campos:
         return buscar(id_provedor)
+    campos_finais = dict(campos)
+    if _deve_renovar_credencial(campos):
+        campos_finais["credencial_atualizada_em"] = datetime.now(UTC)
+    campos_bind = dict(campos_finais)
+    for campo in _CAMPOS_JSON:
+        if campo in campos_bind and campos_bind[campo] is not None:
+            campos_bind[campo] = json.dumps(campos_bind[campo])
     try:
         with get_postgres_connection() as connection:
             cursor = connection.cursor()
             _garantir_tabela(cursor)
-            atribuicoes = ", ".join(f"{campo} = :{campo}" for campo in campos)
+            atribuicoes = ", ".join(
+                f"{campo} = :{campo}::jsonb" if campo in _CAMPOS_JSON else f"{campo} = :{campo}"
+                for campo in campos_finais
+            )
             cursor.execute(
                 f"UPDATE provedores_llm SET {atribuicoes} WHERE id = :id RETURNING {_COLUNAS}",
                 id=id_provedor,
-                **campos,
+                **campos_bind,
             )
             linha = cursor.fetchone()
     except DatabaseError as erro:
@@ -233,3 +324,13 @@ def tipo_conexao_valido(valor: str) -> bool:
 
 def estilo_api_valido(valor: str) -> bool:
     return valor in _ESTILOS_API_VALIDOS
+
+
+def capacidades_validas(valores: list) -> bool:
+    """Lista não-vazia, só com `"chat"`/`"embedding"`, sem duplicata."""
+    return (
+        isinstance(valores, list)
+        and bool(valores)
+        and len(valores) == len(set(valores))
+        and all(valor in _CAPACIDADES_VALIDAS for valor in valores)
+    )

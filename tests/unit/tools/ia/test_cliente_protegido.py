@@ -3,12 +3,17 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from agente_oracle.config import Settings
 from agente_oracle.tools.ia import auditoria_externa, configuracoes_provedor, provedores_llm
 from agente_oracle.tools.ia import cliente_protegido as mod
 from agente_oracle.tools.ia.cliente_protegido import (
     ClienteIAProtegido,
+    TetoTokensExcedidoError,
+    criar_cliente_embedding_protegido,
     criar_cliente_protegido,
+    modelo_embedding_ativo,
     modelo_ia_ativo,
 )
 from agente_oracle.tools.ia.provedores_llm import ProvedorLLM
@@ -27,6 +32,9 @@ def _provedor_llm(**overrides) -> ProvedorLLM:
         "preco_entrada_por_1k": Decimal("0"),
         "preco_saida_por_1k": Decimal("0"),
         "moeda": "R$",
+        "capacidades": ["chat"],
+        "credenciais_extra": None,
+        "credencial_atualizada_em": datetime.now(UTC),
         "criado_em": datetime.now(UTC),
     }
     campos.update(overrides)
@@ -43,6 +51,17 @@ def _sem_cadastro_ativo(monkeypatch) -> None:
 
 def _com_cadastro_ativo(monkeypatch, provedor: ProvedorLLM) -> None:
     monkeypatch.setattr(configuracoes_provedor, "provedor_llm_ativo_id", lambda: provedor.id)
+    monkeypatch.setattr(provedores_llm, "buscar", lambda _id: provedor)
+
+
+def _sem_embedding_ativo(monkeypatch) -> None:
+    """Mesma ideia de `_sem_cadastro_ativo`, mas pro ponteiro de EMBEDDING
+    — independente do de chat (ver docstring de `cliente_protegido.py`)."""
+    monkeypatch.setattr(configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: None)
+
+
+def _com_embedding_ativo(monkeypatch, provedor: ProvedorLLM) -> None:
+    monkeypatch.setattr(configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: provedor.id)
     monkeypatch.setattr(provedores_llm, "buscar", lambda _id: provedor)
 
 
@@ -66,13 +85,13 @@ def _sem_auditoria_real(
 ) -> list[tuple]:
     """Substitui `auditoria_externa`/`configuracoes_provedor` por dublês —
     o wrapper não deve tocar Postgres de verdade num teste unitário.
-    `teto_tokens=0` (padrão) é "sem teto", então `_avisar_teto_tokens` nem
-    chega a chamar `tokens_hoje` na maioria dos testes."""
+    `teto_tokens=0` (padrão) é "sem teto", então `_verificar_teto_tokens`
+    nem chega a comparar `tokens_hoje` na maioria dos testes."""
     registros: list[tuple] = []
     monkeypatch.setattr(auditoria_externa, "registrar", lambda *args: registros.append(args))
     monkeypatch.setattr(auditoria_externa, "contagem_hoje", lambda _dominio: contagem)
     monkeypatch.setattr(auditoria_externa, "tokens_hoje", lambda _dominio: tokens_hoje)
-    monkeypatch.setattr(configuracoes_provedor, "teto_tokens_diario", lambda: teto_tokens)
+    monkeypatch.setattr(configuracoes_provedor, "teto_tokens_diario", lambda _dominio: teto_tokens)
     return registros
 
 
@@ -194,27 +213,43 @@ class TestClienteIAProtegidoChat:
 
         assert caplog.text == ""
 
-    async def test_teto_de_tokens_excedido_gera_warning_sem_bloquear(self, monkeypatch, caplog):
+    async def test_teto_de_tokens_excedido_bloqueia_a_chamada(self, monkeypatch):
         _sem_auditoria_real(monkeypatch, teto_tokens=100, tokens_hoje=150)
+        cliente_real = _ClienteRealFake()
+        protegido = ClienteIAProtegido(cliente_real, "ti", "http://127.0.0.1:11434", True, 500, "ollama", "usuario-teste")
+
+        with pytest.raises(TetoTokensExcedidoError):
+            await protegido.chat(model="m", messages=[{"role": "user", "content": "oi"}])
+
+        # a chamada de rede nem chega a sair — o bloqueio é ANTES dela.
+        assert cliente_real.chamadas_chat == []
+
+    async def test_teto_de_tokens_exatamente_no_limite_tambem_bloqueia(self, monkeypatch):
+        _sem_auditoria_real(monkeypatch, teto_tokens=100, tokens_hoje=100)
+        cliente_real = _ClienteRealFake()
+        protegido = ClienteIAProtegido(cliente_real, "ti", "http://127.0.0.1:11434", True, 500, "ollama", "usuario-teste")
+
+        with pytest.raises(TetoTokensExcedidoError):
+            await protegido.chat(model="m", messages=[{"role": "user", "content": "oi"}])
+
+    async def test_sem_teto_de_tokens_configurado_nunca_bloqueia(self, monkeypatch, caplog):
+        _sem_auditoria_real(monkeypatch, teto_tokens=0, tokens_hoje=999999)
         cliente_real = _ClienteRealFake()
         protegido = ClienteIAProtegido(cliente_real, "ti", "http://127.0.0.1:11434", True, 500, "ollama", "usuario-teste")
 
         with caplog.at_level(logging.WARNING):
             resposta = await protegido.chat(model="m", messages=[{"role": "user", "content": "oi"}])
 
-        assert "teto" in caplog.text.lower()
-        assert "token" in caplog.text.lower()
         assert resposta == "resposta-chat"
 
-    async def test_sem_teto_de_tokens_configurado_nunca_avisa(self, monkeypatch, caplog):
-        _sem_auditoria_real(monkeypatch, teto_tokens=0, tokens_hoje=999999)
+    async def test_teto_de_tokens_abaixo_do_limite_nao_bloqueia(self, monkeypatch):
+        _sem_auditoria_real(monkeypatch, teto_tokens=100, tokens_hoje=99)
         cliente_real = _ClienteRealFake()
         protegido = ClienteIAProtegido(cliente_real, "ti", "http://127.0.0.1:11434", True, 500, "ollama", "usuario-teste")
 
-        with caplog.at_level(logging.WARNING):
-            await protegido.chat(model="m", messages=[{"role": "user", "content": "oi"}])
+        resposta = await protegido.chat(model="m", messages=[{"role": "user", "content": "oi"}])
 
-        assert caplog.text == ""
+        assert resposta == "resposta-chat"
 
 
 class TestClienteIAProtegidoEmbed:
@@ -367,6 +402,47 @@ class TestCriarClienteProtegido:
         assert chamadas[0]["headers"] == {"Authorization": "Bearer chave"}
         assert cliente._provedor == provedor.nome
 
+    def test_provedor_oci_nativo_monta_client_com_as_credenciais_do_cadastro(self, monkeypatch):
+        provedor = _provedor_llm(
+            tipo_conexao="oci_nativo",
+            capacidades=["embedding"],
+            credenciais_extra={
+                "user_ocid": "ocid1.user.oc1..abc",
+                "fingerprint": "aa:bb",
+                "tenancy_ocid": "ocid1.tenancy.oc1..xyz",
+                "regiao": "sa-saopaulo-1",
+                "compartment_id": "ocid1.compartment.oc1..def",
+                "chave_privada": "-----BEGIN PRIVATE KEY-----\nconteudo\n-----END PRIVATE KEY-----",
+            },
+        )
+        _com_cadastro_ativo(monkeypatch, provedor)
+        chamadas_client = []
+        monkeypatch.setattr(
+            mod.oci.generative_ai_inference,
+            "GenerativeAiInferenceClient",
+            lambda **kwargs: chamadas_client.append(kwargs) or "cliente-oci-fake",
+        )
+
+        cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
+
+        # `config` no formato que `oci.config.from_file` devolveria
+        # (`key_content` no lugar de `key_file`) — o SDK monta o signer
+        # sozinho a partir disso, sem precisar de um `oci.signer.Signer`
+        # explícito (ver docstring de `construir_cliente_llm`).
+        config = chamadas_client[0]["config"]
+        assert config["tenancy"] == "ocid1.tenancy.oc1..xyz"
+        assert config["user"] == "ocid1.user.oc1..abc"
+        assert config["fingerprint"] == "aa:bb"
+        assert config["region"] == "sa-saopaulo-1"
+        assert config["key_content"].startswith("-----BEGIN")
+        assert (
+            chamadas_client[0]["service_endpoint"]
+            == "https://inference.generativeai.sa-saopaulo-1.oci.oraclecloud.com"
+        )
+        assert isinstance(cliente._cliente, mod.ClienteOciNativo)
+        assert cliente._cliente._compartment_id == "ocid1.compartment.oc1..def"
+        assert cliente._provedor == provedor.nome
+
     def test_registro_vazio_cai_no_ollama_padrao_como_antes_do_cadastro_existir(self, monkeypatch):
         # Regressão: sem nenhum LLM cadastrado ativo não muda nada do
         # comportamento de antes do cadastro existir.
@@ -377,7 +453,7 @@ class TestCriarClienteProtegido:
         cliente = criar_cliente_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
 
         assert len(chamadas) == 1
-        assert cliente._provedor == mod._PROVEDOR_OLLAMA_PADRAO
+        assert cliente._provedor == mod._PROVEDOR_PADRAO
 
     def test_dominio_financeiro_nunca_consulta_o_cadastro_mesmo_com_algo_ativo(self, monkeypatch):
         provedor = _provedor_llm()
@@ -388,7 +464,7 @@ class TestCriarClienteProtegido:
         cliente = criar_cliente_protegido(Settings(), "financeiro", sanitizar=True, usuario_id="usuario-teste")
 
         assert len(chamadas) == 1  # Ollama do .env, não a OpenAI do cadastro
-        assert cliente._provedor == mod._PROVEDOR_OLLAMA_PADRAO
+        assert cliente._provedor == mod._PROVEDOR_PADRAO
 
     async def test_repassa_o_usuario_id_recebido_pra_auditoria(self, monkeypatch):
         _sem_cadastro_ativo(monkeypatch)
@@ -430,3 +506,80 @@ class TestModeloIaAtivo:
         settings = Settings(ollama_model="qwen2.5-coder:7b")
 
         assert modelo_ia_ativo(settings, "financeiro") == "qwen2.5-coder:7b"
+
+
+class TestCriarClienteEmbeddingProtegido:
+    """Ponteiro independente de TestCriarClienteProtegido (chat) — mesma
+    lógica de resolução, chave de configuração própria."""
+
+    def test_sem_embedding_ativo_cai_no_client_de_chat_ativo(self, monkeypatch):
+        # Regressão do bug real (2026-09-28): antes desse ponteiro existir,
+        # a correção de categoria usava sempre o client de chat pro
+        # embedding — sem nenhum embedding cadastrado ativo, continua
+        # exatamente assim (cai em `criar_cliente_protegido`).
+        provedor_chat = _provedor_llm(id=1, nome="gpt-oss-120b", capacidades=["chat"])
+        _com_cadastro_ativo(monkeypatch, provedor_chat)
+        _sem_embedding_ativo(monkeypatch)
+        chamadas = []
+
+        class _AsyncOpenAIFake:
+            def __init__(self, **kwargs):
+                chamadas.append(kwargs)
+
+        monkeypatch.setattr(mod, "AsyncOpenAI", _AsyncOpenAIFake)
+
+        cliente = criar_cliente_embedding_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
+
+        assert cliente._provedor == "gpt-oss-120b"
+        assert len(chamadas) == 1
+
+    def test_com_embedding_ativo_monta_o_client_desse_provedor_especifico(self, monkeypatch):
+        provedor_embedding = _provedor_llm(
+            id=5, nome="Cohere Embed v4", capacidades=["embedding"], tipo_conexao="ollama", base_url="https://embed.com"
+        )
+        # Um provedor de CHAT também ativo, diferente do de embedding — a
+        # prova real de que os dois ponteiros são independentes: o client
+        # montado aqui tem que vir do de embedding, nunca do de chat.
+        _com_cadastro_ativo(monkeypatch, _provedor_llm(id=1, nome="gpt-oss-120b"))
+        monkeypatch.setattr(configuracoes_provedor, "provedor_llm_embedding_ativo_id", lambda: provedor_embedding.id)
+        monkeypatch.setattr(
+            provedores_llm,
+            "buscar",
+            lambda id_: provedor_embedding if id_ == provedor_embedding.id else _provedor_llm(id=1),
+        )
+        chamadas = []
+        monkeypatch.setattr(mod, "AsyncClient", lambda **kwargs: chamadas.append(kwargs) or _ClienteRealFake())
+
+        cliente = criar_cliente_embedding_protegido(Settings(), "ti", sanitizar=True, usuario_id="usuario-teste")
+
+        assert chamadas[0]["host"] == "https://embed.com"
+        assert cliente._provedor == "Cohere Embed v4"
+
+    def test_dominio_financeiro_nunca_consulta_o_cadastro_mesmo_com_embedding_ativo(self, monkeypatch):
+        _com_embedding_ativo(monkeypatch, _provedor_llm(capacidades=["embedding"]))
+        chamadas = []
+        monkeypatch.setattr(mod, "AsyncClient", lambda **kwargs: chamadas.append(kwargs))
+
+        cliente = criar_cliente_embedding_protegido(Settings(), "financeiro", sanitizar=True, usuario_id="usuario-teste")
+
+        assert len(chamadas) == 1  # Ollama do .env, não o cadastro
+        assert cliente._provedor == mod._PROVEDOR_PADRAO
+
+
+class TestModeloEmbeddingAtivo:
+    def test_sem_embedding_ativo_usa_o_padrao_do_env(self, monkeypatch):
+        _sem_embedding_ativo(monkeypatch)
+        settings = Settings(ollama_embedding_model="nomic-embed-text")
+
+        assert modelo_embedding_ativo(settings, "ti") == "nomic-embed-text"
+
+    def test_com_embedding_ativo_usa_o_modelo_cadastrado(self, monkeypatch):
+        _com_embedding_ativo(monkeypatch, _provedor_llm(modelo="cohere.embed-v4.0", capacidades=["embedding"]))
+
+        assert modelo_embedding_ativo(Settings(), "ti") == "cohere.embed-v4.0"
+
+    def test_dominio_financeiro_nunca_consulta_o_cadastro_mesmo_com_embedding_ativo(self, monkeypatch):
+        _com_embedding_ativo(monkeypatch, _provedor_llm(modelo="cohere.embed-v4.0", capacidades=["embedding"]))
+        settings = Settings(ollama_embedding_model="nomic-embed-text")
+
+        assert modelo_embedding_ativo(settings, "financeiro") == "nomic-embed-text"

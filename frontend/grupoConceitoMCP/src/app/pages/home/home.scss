@@ -1,0 +1,290 @@
+// Hero — antes vivia em `componentes/home-modulo/` (compartilhado por
+// Financeiro/RH/TI, cada um com atalhos fixos abaixo); com os atalhos
+// virando widget, sobrou só o hero em si, com um único chamador (esta
+// tela) — deixou de fazer sentido como componente à parte.
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 40px;
+  box-shadow: var(--shadow-sm);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary-light);
+  margin: 0 0 8px;
+}
+
+.hero h1 {
+  margin: 0 0 12px;
+  font-size: 30px;
+  color: var(--color-primary);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  max-width: 46ch;
+  line-height: 1.5;
+}
+
+.hero-media {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-media-icone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-primary-light);
+}
+
+@media (max-width: 720px) {
+  .hero {
+    flex-direction: column;
+    text-align: center;
+    padding: 28px;
+  }
+
+  .subtitle {
+    max-width: none;
+  }
+}
+
+// É o corpo principal da tela (só o hero fica fora) — sem borda/fundo
+// próprio como o antigo `.cartao-secao`, só respiro em relação ao hero
+// acima.
+.secao-dashboard {
+  margin-top: 20px;
+
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+}
+
+.lista-vazia {
+  margin: 0 0 14px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.cabecalho-dashboard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.acoes-dashboard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.botao-personalizar,
+.botao-adicionar {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg);
+  }
+}
+
+// Engrenagem de "Configurações de tokens de IA" (só pro admin de um
+// domínio sem tela própria ainda, ver `DOMINIOS_COM_ENGRENAGEM_NA_HOME`
+// em home.ts) — mesma base de `.botao-personalizar`, só vira quadrado
+// (ícone puro, sem texto) em vez do padding retangular de texto.
+.botao-config-ia {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.status-teto {
+  margin: 4px 0 0;
+}
+
+.apoio {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.erro {
+  margin: 8px 0 0;
+  color: var(--color-error);
+  font-size: 14px;
+}
+
+.botoes-rodape {
+  display: flex;
+  gap: 10px;
+
+  .botao-salvar-teto-ia:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.grade-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+// Cada widget (indicador de dado OU atalho de navegação, ver
+// `catalogo-widgets-home.ts`) é renderizado via `NgComponentOutlet` — este
+// wrapper só existe pra CDK ter algo pra arrastar e pra caber a barra de
+// edição (alça + tamanho + remover) por cima quando `modoEdicao()` está
+// ligado. Flex coluna (não bloco simples) de propósito: todo widget (ver
+// `cartao-kpi.scss`, `widget-atalho.scss`) declara `:host { height: 100%
+// }` pra preencher este wrapper — em bloco simples isso resolve contra a
+// altura TOTAL esticada pelo grid, sem descontar o espaço que a barra de
+// edição ocupa em cima, e o card "vaza" por baixo, sobrepondo a linha
+// seguinte (e confundindo o cálculo de posição do CDK ao arrastar, que
+// lia esses retângulos sobrepostos e ficava "pulando" entre widgets
+// vizinhos). Com flex, `.corpo-widget` abaixo recebe só o espaço que
+// sobra depois da barra — `height: 100%` do widget passa a resolver
+// contra ISSO, não contra o wrapper inteiro.
+.widget-arrastavel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: transform 200ms ease;
+}
+
+.corpo-widget {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+// 2 colunas do grid — em telas estreitas (grid já colapsa pra 1 coluna via
+// `auto-fit`/`minmax`) não faz diferença, span 2 nunca estoura 1 coluna só.
+.widget-grande {
+  grid-column: span 2;
+}
+
+.barra-edicao-widget {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.espacador-barra-edicao {
+  flex: 1;
+}
+
+.alca-arrastar {
+  cursor: grab;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -2px;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.botao-alternar-tamanho,
+.botao-remover-widget {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--color-text-muted);
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+}
+
+.botao-remover-widget {
+  font-size: 16px;
+
+  &:hover {
+    color: var(--color-error);
+  }
+}
+
+.botao-alternar-tamanho {
+  font-size: 12px;
+}
+
+.opcoes-catalogo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.botao-opcao-catalogo {
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: none;
+  color: var(--color-primary);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-primary-softer);
+  }
+}
+
+// `cdkDrag` acrescenta essa classe no PRÓPRIO `.widget-arrastavel` (não
+// num clone em outro lugar do DOM) enquanto ele é o buraco deixado no
+// lugar de origem durante o arrastar — dá pra estilizar direto, sem
+// `::ng-deep`.
+.widget-arrastavel.cdk-drag-placeholder {
+  opacity: 0.3;
+}
+
+// O preview que segue o cursor É um clone real desta árvore (CDK clona o
+// próprio `.widget-arrastavel`), só que anexado fora dela, no overlay do
+// CDK — sem isto ele herda só o visual padrão do CDK: sem fundo próprio
+// (a `.barra-edicao-widget` é transparente, então "furava" mostrando o
+// que está por trás enquanto arrasta) e sem sombra, então parecia só um
+// card flutuando encostado nos outros em vez de "levantado" por cima
+// deles — daí a sensação de sobreposição ao arrastar.
+.widget-arrastavel.cdk-drag-preview {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  cursor: grabbing;
+}

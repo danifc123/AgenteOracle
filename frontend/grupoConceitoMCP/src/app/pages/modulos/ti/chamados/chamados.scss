@@ -6,12 +6,6 @@
   gap: var(--space-3);
 }
 
-.erro {
-  margin: -12px 0 16px;
-  color: #9a2f2f;
-  font-size: 14px;
-}
-
 .carregando {
   margin: 0;
   color: var(--color-text-muted);
@@ -25,11 +19,28 @@
   padding: 18px 20px;
 
   h2 {
-    margin: 0 0 14px;
+    margin: 0;
     font-size: 15px;
     font-weight: 600;
     color: var(--color-text);
   }
+}
+
+.cabecalho-secao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+// Sem isso, o item flex encolhe pro min-content (`min-width: auto` é o
+// padrão de item flex) e corta o rótulo mais longo ("Minha área:
+// Infraestrutura") com reticências — largura fixa o bastante pro maior
+// rótulo caber inteiro, mesmo com "Todo o departamento" selecionado.
+.filtro-chamados {
+  min-width: 260px;
 }
 
 .tabela-scroll {
@@ -57,11 +68,20 @@ table {
   }
 }
 
+// `display: flex` direto no `<td>` (versão anterior) tirava a célula do
+// modelo de tabela — a borda inferior dela parava de bater com a altura
+// das outras células da mesma linha (achado do usuário, 2026-09-28,
+// print mostrando as linhas desalinhadas). O flex agora vive só no `<div>`
+// interno; o `<td>` continua uma célula normal.
 .coluna-acao {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.acoes-linha {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  white-space: nowrap;
 }
 
 .paginacao {

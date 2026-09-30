@@ -20,11 +20,11 @@ import unicodedata
 from datetime import UTC, datetime
 
 from anyio import to_thread
-from ollama import AsyncClient
 
 from agente_oracle.agent.rh.embeddings import gerar_embedding
 from agente_oracle.agent.rh.perfil_candidato import PerfilCandidato, gerar_perfil
 from agente_oracle.db.connection import get_postgres_connection
+from agente_oracle.tools.ia.cliente_protegido import ClienteChatEmbedIA
 from agente_oracle.tools.rh.extracao_curriculo import extrair_texto
 from agente_oracle.tools.rh.similaridade import similaridade_cosseno
 
@@ -132,7 +132,7 @@ def _linha_para_arquivo(linha: tuple) -> dict:
 
 
 async def criar_candidato(
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteChatEmbedIA,
     modelo: str,
     modelo_embedding: str,
     nome_arquivo: str,
@@ -170,8 +170,8 @@ async def criar_candidato(
     (`gerar_perfil`/`gerar_embedding`) são `await` genuíno; a gravação no
     Postgres (`_gravar_candidato`, síncrona) roda em thread separada."""
     texto_curriculo = extrair_texto(nome_arquivo, conteudo_arquivo)
-    perfil = await gerar_perfil(ollama_client, modelo, texto_curriculo)
-    embedding = await gerar_embedding(ollama_client, modelo_embedding, perfil.resumo_objetivo)
+    perfil = await gerar_perfil(cliente_ia, modelo, texto_curriculo)
+    embedding = await gerar_embedding(cliente_ia, modelo_embedding, perfil.resumo_objetivo)
     tipo_arquivo = "pdf" if nome_arquivo.lower().endswith(".pdf") else "docx"
 
     return await to_thread.run_sync(

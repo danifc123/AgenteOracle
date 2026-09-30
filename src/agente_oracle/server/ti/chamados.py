@@ -77,11 +77,10 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from anyio import to_thread
 from bs4 import BeautifulSoup
-from ollama import AsyncClient
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -94,7 +93,11 @@ from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_m
 from agente_oracle.server.cors import CORS_HEADERS
 from agente_oracle.tools.ia.cliente_protegido import (
     USUARIO_SISTEMA,
+    ClienteChatEmbedIA,
+    ClienteEmbedIA,
+    criar_cliente_embedding_protegido,
     criar_cliente_protegido,
+    modelo_embedding_ativo,
     modelo_ia_ativo,
 )
 from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
@@ -107,7 +110,7 @@ from agente_oracle.tools.ti.glpi import (
     chamado_e_alheio,
     criar_cliente,
 )
-from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico, escolher_tecnico, todos_os_tecnicos
+from agente_oracle.tools.ti.tecnicos import Tecnico, escolher_tecnico, todos_os_tecnicos
 
 _cliente = criar_cliente(settings)
 _logger = logging.getLogger(__name__)
@@ -166,6 +169,14 @@ def _chamado_para_json(chamado: Chamado) -> dict:
         "criado_em": chamado.criado_em.isoformat(),
         "area": chamado.area,
         "tecnico_atribuido": chamado.tecnico_atribuido,
+        # Mesma função que `ClienteGLPIReal.listar()` usa pra decidir se
+        # corta o chamado (ver docstring de `chamado_e_alheio`) — aqui só
+        # rotula, nunca corta, porque `chamados_route` já busca com
+        # `incluir_atribuidos=True` (precisa do chamado alheio na
+        # resposta pros filtros "Meus chamados"/"Todo o departamento" do
+        # front). "Todos"/"Minha área" (padrão) escondem quem tiver isso
+        # `True`, igual `listar()` já escondia sozinho antes.
+        "gerenciado_fora_do_sistema": chamado_e_alheio(chamado, settings.glpi_conta_ia_id),
     }
 
 
@@ -346,6 +357,64 @@ def _saude_por_area(tecnicos: tuple[Tecnico, ...], cargas: dict[str, int]) -> li
     ]
 
 
+# Janela dos indicadores "meus chamados vs média da equipe" (`chamados_
+# meus_indicadores_route`) — 30 dias é uma janela curta o bastante pra
+# não pesar a consulta (38 chamados/mês na empresa toda, confirmado ao
+# vivo) e longa o bastante pra não oscilar demais dia a dia.
+_DIAS_JANELA_INDICADORES_CHAMADOS = 30
+
+
+def _contagem_por_tecnico(tecnicos: tuple[Tecnico, ...], chamados: list[Chamado]) -> dict[str, int]:
+    """Quantos chamados de `chamados` foram atribuídos a cada técnico —
+    mesmo espírito de `ClienteGLPI.carga_atual_por_tecnico`, só que
+    contando no Python em vez de filtrar no servidor (o GLPI não filtra
+    `team.id` direto, ver `chamados_criados_desde`). Técnico sem nenhum
+    chamado no período conta como 0, não fica de fora do dict — dele
+    depender pra não distorcer a média pra cima."""
+    contagens = dict.fromkeys((tecnico.identificador for tecnico in tecnicos), 0)
+    for chamado in chamados:
+        if chamado.tecnico_atribuido in contagens:
+            contagens[chamado.tecnico_atribuido] += 1
+    return contagens
+
+
+def _tempo_gasto_por_tecnico(tecnicos: tuple[Tecnico, ...], chamados: list[Chamado]) -> dict[str, int]:
+    """Soma de `tempo_gasto_segundos` (campo `actiontime` do GLPI) por
+    técnico, mesmo espírito de `_contagem_por_tecnico` — técnico sem
+    chamado no período (ou que nunca registrou hora) entra como 0."""
+    tempos = dict.fromkeys((tecnico.identificador for tecnico in tecnicos), 0)
+    for chamado in chamados:
+        if chamado.tecnico_atribuido in tempos:
+            tempos[chamado.tecnico_atribuido] += chamado.tempo_gasto_segundos
+    return tempos
+
+
+def _resumo_indicadores_tecnico(
+    tecnicos: tuple[Tecnico, ...],
+    contagens: dict[str, int],
+    tempos_segundos: dict[str, int],
+    usuario_logado: str,
+) -> dict:
+    """Extraída de `chamados_meus_indicadores_route` só pra ser testável
+    sem request/auth/GLPI (mesmo espírito de `_saude_por_area` acima).
+    `usuario_logado` é o login do AgenteOracle (JWT), comparado contra
+    `Tecnico.usuario` — mesmo campo que `tecnicos_route` já expõe pro
+    front hoje. Sem técnico vinculado a esse login, os dois campos "meu"
+    saem `None` — quem chama (o componente do front) decide esconder a
+    seção inteira nesse caso."""
+    tecnico_atual = next((tecnico for tecnico in tecnicos if tecnico.usuario == usuario_logado), None)
+    media_chamados = sum(contagens.values()) / len(contagens) if contagens else 0.0
+    media_tempo_horas = (sum(tempos_segundos.values()) / len(tempos_segundos) / 3600) if tempos_segundos else 0.0
+    return {
+        "meus_chamados": contagens.get(tecnico_atual.identificador) if tecnico_atual else None,
+        "media_chamados_equipe": round(media_chamados, 1),
+        "meu_tempo_gasto_horas": (
+            round(tempos_segundos.get(tecnico_atual.identificador, 0) / 3600, 1) if tecnico_atual else None
+        ),
+        "media_tempo_gasto_equipe_horas": round(media_tempo_horas, 1),
+    }
+
+
 def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None) -> bool:
     """Decide a amostragem; se o banco falhar, não analisa (a próxima rodada tenta de novo)."""
     try:
@@ -394,11 +463,12 @@ async def iniciar_poller_verificar_chamados() -> None:
 
 async def processar_chamado_novo(
     cliente: ClienteGLPI,
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteChatEmbedIA,
     modelo: str,
     chamado: Chamado,
     cargas: dict[str, int],
     usar_ia: bool,
+    embedding_client: ClienteEmbedIA | None = None,
 ) -> ResultadoProcessamento:
     """Avalia se o chamado tem informação suficiente, olhando a conversa
     de esclarecimento inteira (`cliente.buscar_followups`, mapeada pra
@@ -452,13 +522,21 @@ async def processar_chamado_novo(
 
     `usar_ia` vem de `tools/ti/configuracoes.py` (lido pela rota, nunca
     aqui — ver docstring de `uso_ia_chamados.py` pro motivo de manter
-    Postgres fora das funções testáveis com fake)."""
+    Postgres fora das funções testáveis com fake).
+
+    `embedding_client` é OPCIONAL de propósito (`None` reaproveita
+    `cliente_ia` pro `.embed()` de `classificar_categoria`, mesmo
+    comportamento de antes desse parâmetro existir) — os call sites reais
+    (poller/webhook/rota manual, mais abaixo neste arquivo) passam o
+    provedor de EMBEDDING ativo (`criar_cliente_embedding_protegido`,
+    ponteiro independente do chat), pra correção de categoria não
+    depender do provedor de chat também saber fazer embedding."""
     descricao_limpa = _texto_para_ia(chamado.descricao)
     followups = await cliente.buscar_followups(chamado.id)
     turnos = _turnos_da_conversa(followups)
     rodadas_do_usuario = sum(1 for turno in turnos if turno.papel == "usuario")
     avaliacao = await avaliar_chamado(
-        ollama_client, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
+        cliente_ia, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
     )
     if not avaliacao.suficiente:
         bateu_limite = rodadas_do_usuario >= _LIMITE_RODADAS_ESCLARECIMENTO
@@ -475,8 +553,8 @@ async def processar_chamado_novo(
         return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
 
     resultado_classificacao = await classificar_categoria(
-        ollama_client,
-        settings.ollama_embedding_model,
+        embedding_client if embedding_client is not None else cliente_ia,
+        modelo_embedding_ativo(settings, "ti"),
         chamado.titulo,
         descricao_limpa,
         chamado.categoria_id,
@@ -563,8 +641,16 @@ def registrar(mcp) -> None:
     async def chamados_route(request: Request, usuario: dict) -> Response:
         """Lista só os chamados que ainda precisam de atenção desta tela —
         ver `_precisa_atencao`. `fila_atendimento` já foi entregue ao GLPI.
-        Chamado fora da amostra também não aparece — ver `_chamados_da_tela`."""
-        chamados = await _cliente.listar()
+        Chamado fora da amostra também não aparece — ver `_chamados_da_tela`.
+
+        `incluir_atribuidos=True` desliga o corte de "chamado alheio" (ver
+        `tools/ti/glpi.py::ClienteGLPIReal.listar`/`chamado_e_alheio`) —
+        a resposta inclui TODO chamado atribuído, de qualquer técnico, já
+        marcado (`gerenciado_fora_do_sistema`, ver `_chamado_para_json`).
+        Quem decide esconder ou mostrar em cada filtro ("Todos", "Minha
+        área", "Meus chamados", "Todo o departamento") é o front, em cima
+        dessa mesma resposta — mesmo padrão já usado pra área/técnico."""
+        chamados = await _cliente.listar(incluir_atribuidos=True)
         fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
         return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
@@ -574,10 +660,22 @@ def registrar(mcp) -> None:
         """Nomes pro badge "Com {técnico}" na tela de Auditoria — o roster
         de verdade (`tools/ti/tecnicos.py`), aberto pra qualquer um do
         módulo TI. Diferente de `/api/ti/tecnicos-glpi` (candidatos crus
-        do GLPI, admin-only, usado só no cadastro de usuário)."""
+        do GLPI, admin-only, usado só no cadastro de usuário). `usuario`
+        (login do AgenteOracle, não do GLPI) vai junto desde 2026-09-28 —
+        o front usa pra descobrir a `area` do técnico logado (comparando
+        com `sessao.usuario()`) e alimentar o filtro "Minha área": como
+        `tecnico_atribuido` só é preenchido no instante em que o chamado
+        vira `fila_atendimento` — status que `_precisa_atencao` já exclui
+        desta tela — filtrar por atribuição literal nunca mostraria nada;
+        a área é o critério que de fato aparece aqui."""
         return JSONResponse(
             [
-                {"identificador": tecnico.identificador, "nome": tecnico.nome}
+                {
+                    "identificador": tecnico.identificador,
+                    "nome": tecnico.nome,
+                    "usuario": tecnico.usuario,
+                    "area": tecnico.area,
+                }
                 for tecnico in todos_os_tecnicos()
             ],
             headers=CORS_HEADERS,
@@ -611,78 +709,27 @@ def registrar(mcp) -> None:
         fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
         return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 
-    @mcp.custom_route("/api/ti/chamados/{id}/verificar", methods=["POST", "OPTIONS"])
-    @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
-    async def chamado_verificar_route(request: Request, usuario: dict) -> Response:
-        """Mesma triagem de `chamados_verificar_route`, só que pra 1
-        chamado específico — dá suporte a testar manualmente contra o GLPI
-        real sem esperar o lote inteiro processar, ou sem depender do
-        chamado ainda estar `novo` (ao contrário do lote, roda de novo
-        mesmo em `aguardando_usuario`/`fila_atendimento` — útil pra
-        reavaliar um chamado depois de ajustar algo manualmente durante
-        teste). Mesma regra de rodadas de `processar_chamado_novo`: clicar
-        "Verificar" de novo num chamado que já esgotou as tentativas de
-        esclarecimento escala pro técnico em vez de gerar outra pergunta.
-        Recusa (409) chamado "alheio" (`chamado_e_alheio`) — já
-        gerenciado fora do nosso sistema, ver docstring dele."""
-        try:
-            chamado_id = int(request.path_params["id"])
-        except ValueError:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        chamado = await _cliente.buscar(chamado_id)
-        if chamado is None:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-
-        if chamado_e_alheio(chamado, settings.glpi_conta_ia_id):
-            return JSONResponse(
-                {"erro": "Chamado gerenciado fora da Auditoria (já tem técnico atribuído no GLPI)."},
-                status_code=409,
-                headers=CORS_HEADERS,
-            )
-
-        ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=usuario["sub"])
+    @mcp.custom_route("/api/ti/chamados/meus-indicadores", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def chamados_meus_indicadores_route(request: Request, usuario: dict) -> Response:
+        """Área de indicadores da Auditoria de Chamados: quantos chamados
+        caíram pro técnico logado nos últimos `_DIAS_JANELA_INDICADORES_
+        CHAMADOS` dias e quanto tempo ele registrou neles (`actiontime` do
+        GLPI), comparado com a média entre TODOS os técnicos de TI (não só
+        a área dele) — pra ele saber se está indo bem sem abrir o GLPI.
+        Conta todo chamado do período, não só "resolvido" (esse conceito
+        não existe no sistema — nem os status GLPI de Solucionado/Fechado
+        são mapeados, ver `tools/ti/glpi.py::_STATUS_GLPI_PARA_NOSSO`).
+        Os dois campos "meu" saem `null` quando o usuário logado não tem
+        técnico vinculado (ex: `desenvolvedor` sem `tecnico_glpi_id`)."""
         tecnicos = await to_thread.run_sync(todos_os_tecnicos)
-        cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
-        usar_ia = await to_thread.run_sync(configuracoes_tools.usar_ia_avaliacao_chamado)
-
-        inicio = time.monotonic()
-        try:
-            resultado = await processar_chamado_novo(
-                _cliente,
-                ollama_client,
-                modelo_ia_ativo(settings, "ti"),
-                chamado,
-                cargas,
-                usar_ia,
-            )
-        except SemTecnicoNaArea as erro:
-            rotulo_area = _ROTULOS_AREA.get(erro.area, erro.area)
-            return JSONResponse(
-                {
-                    "erro": f'Nenhum técnico cadastrado pra área "{rotulo_area}" — cadastre um técnico '
-                    "dessa área em Usuários antes de verificar este chamado de novo."
-                },
-                status_code=422,
-                headers=CORS_HEADERS,
-            )
-        duracao_ms = round((time.monotonic() - inicio) * 1000)
-        await to_thread.run_sync(
-            uso_ia_chamados.registrar,
-            chamado.id,
-            resultado.avaliacao_suficiente,
-            resultado.precisou_embedding,
-            duracao_ms,
+        desde = datetime.now(UTC) - timedelta(days=_DIAS_JANELA_INDICADORES_CHAMADOS)
+        chamados = await _cliente.chamados_criados_desde(desde)
+        contagens = _contagem_por_tecnico(tecnicos, chamados)
+        tempos = _tempo_gasto_por_tecnico(tecnicos, chamados)
+        return JSONResponse(
+            _resumo_indicadores_tecnico(tecnicos, contagens, tempos, usuario["usuario"]), headers=CORS_HEADERS
         )
-
-        chamado_final = await _cliente.buscar(chamado_id)
-        if chamado_final is None:
-            return JSONResponse({"erro": "Chamado não encontrado."}, status_code=404, headers=CORS_HEADERS)
-        # `embedding_indisponivel` é transiente (sobre ESTE processamento,
-        # não um atributo do chamado) — só entra aqui, na rota manual, não
-        # em `_chamado_para_json` (usado também pra listar vários chamados).
-        corpo_resposta = {**_chamado_para_json(chamado_final), "embedding_indisponivel": resultado.embedding_indisponivel}
-        return JSONResponse(corpo_resposta, headers=CORS_HEADERS)
 
     @mcp.custom_route("/api/ti/chamados/documentos/{docid}", methods=["GET", "OPTIONS"])
     @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
@@ -728,7 +775,8 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     diferentes num lote só — mesmo quando disparado pela rota manual (não
     só pelo poller), atribuir o custo todo a quem clicou "Verificar" seria
     enganoso (ver `tools/ia/cliente_protegido.py::USUARIO_SISTEMA`)."""
-    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    cliente_ia = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    embedding_client = criar_cliente_embedding_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -752,11 +800,12 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             inicio = time.monotonic()
             resultado = await processar_chamado_novo(
                 _cliente,
-                ollama_client,
+                cliente_ia,
                 modelo_ia_ativo(settings, "ti"),
                 chamado,
                 cargas,
                 usar_ia,
+                embedding_client=embedding_client,
             )
         except Exception:
             _logger.exception("Falha reavaliando resposta nova do chamado %s", chamado.id)
@@ -806,7 +855,8 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     `usuario_id=USUARIO_SISTEMA`: mesmo motivo de
     `verificar_chamados_aguardando_resposta` — é um lote de vários
     chamados de pessoas diferentes, não a ação de quem disparou."""
-    ollama_client = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    cliente_ia = criar_cliente_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
+    embedding_client = criar_cliente_embedding_protegido(settings, "ti", sanitizar=True, usuario_id=USUARIO_SISTEMA)
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
@@ -822,11 +872,12 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
                 continue
             resultado = await processar_chamado_novo(
                 _cliente,
-                ollama_client,
+                cliente_ia,
                 modelo_ia_ativo(settings, "ti"),
                 chamado,
                 cargas,
                 usar_ia,
+                embedding_client=embedding_client,
             )
         except Exception:
             _logger.exception("Falha processando o chamado %s", chamado.id)

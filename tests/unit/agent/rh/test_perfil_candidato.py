@@ -4,6 +4,7 @@ import pytest
 
 from agente_oracle.agent.rh import perfil_candidato as mod
 from agente_oracle.agent.rh.embeddings import AnaliseIndisponivel
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 
 
 class _RespostaFake:
@@ -142,6 +143,11 @@ class TestGerarPerfil:
     async def test_falha_do_ollama_levanta_indisponivel(self):
         cliente = _OllamaClientFake(levantar=ConnectionError("Ollama fora do ar"))
         with pytest.raises(AnaliseIndisponivel):
+            await mod.gerar_perfil(cliente, "modelo-teste", "texto")
+
+    async def test_teto_de_tokens_excedido_nao_vira_indisponivel_sobe_o_erro(self):
+        cliente = _OllamaClientFake(levantar=TetoTokensExcedidoError("rh"))
+        with pytest.raises(TetoTokensExcedidoError):
             await mod.gerar_perfil(cliente, "modelo-teste", "texto")
 
 

@@ -1,7 +1,9 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { MCP_API_BASE_URL } from '../../app-config';
 import { LayoutRelatorio } from '../../dadosRelatorios/relatorio-layouts/relatorio-layouts';
+import { CoresAmbiente } from '../../servicos/cores-ambiente/cores-ambiente';
 import { CoresCategoria } from '../../servicos/cores-categoria/cores-categoria';
 import { iniciais } from '../../servicos/iniciais/iniciais';
 import { mensagemErro } from '../../servicos/mensagens-erro/mensagens-erro';
@@ -22,16 +24,35 @@ export class ConfiguracoesUsuario {
   private readonly http = inject(HttpClient);
   protected readonly sessao = inject(Sessao);
   protected readonly coresCategoria = inject(CoresCategoria);
+  protected readonly coresAmbiente = inject(CoresAmbiente);
   protected readonly iniciais = iniciais;
 
   protected readonly aberto = signal(false);
-  protected readonly secaoAtiva = signal<'perfil' | 'senha' | 'layouts' | 'cores'>('perfil');
-  protected readonly ABAS = [
-    { id: 'perfil', rotulo: 'Perfil' },
-    { id: 'senha', rotulo: 'Senha' },
-    { id: 'layouts', rotulo: 'Layouts salvos' },
-    { id: 'cores', rotulo: 'Cores das categorias' },
-  ] as const;
+  protected readonly secaoAtiva = signal<'perfil' | 'senha' | 'layouts' | 'cores' | 'ambiente'>('perfil');
+  // "Layouts salvos" e "Cores das categorias" são só do Financeiro
+  // (`exigir_modulo_financeiro` nas duas rotas por trás) — apareciam pra
+  // qualquer usuário e a aba "Cores" carregava sozinha ao abrir o diálogo
+  // (`CoresCategoria`, provider raiz), gerando um toast de "Acesso
+  // restrito ao módulo Financeiro" pra quem não é do Financeiro (achado
+  // do usuário, 2026-09-28, testando como time de TI). "Cores de ambiente"
+  // é diferente de propósito: fica na base (sem gate nenhum) porque é
+  // aberta a QUALQUER usuário — aparência é preferência pessoal, não dado
+  // de negócio de módulo nenhum (ver `CoresAmbiente`).
+  protected readonly ABAS = computed(() => {
+    const abas = [
+      { id: 'perfil', rotulo: 'Perfil' },
+      { id: 'senha', rotulo: 'Senha' },
+      { id: 'ambiente', rotulo: 'Cores de ambiente' },
+    ] as const;
+    if (!this.sessao.modulos().includes('financeiro')) {
+      return abas;
+    }
+    return [
+      ...abas,
+      { id: 'layouts', rotulo: 'Layouts salvos' },
+      { id: 'cores', rotulo: 'Cores das categorias' },
+    ] as const;
+  });
 
   protected readonly nome = signal('');
   protected readonly fotoPreview = signal<string | null>(null);
@@ -63,6 +84,13 @@ export class ConfiguracoesUsuario {
   protected readonly salvandoCorCategoria = signal<string | null>(null);
   protected readonly erroCores = signal<string | null>(null);
 
+  protected readonly salvandoCorAmbiente = signal<string | null>(null);
+  protected readonly redefinindoTodasCoresAmbiente = signal(false);
+  protected readonly erroCoresAmbiente = signal<string | null>(null);
+  protected readonly algumaCorAmbientePersonalizada = computed(() =>
+    this.coresAmbiente.listaParaExibir().some((item) => item.personalizada),
+  );
+
   abrir(): void {
     this.secaoAtiva.set('perfil');
     this.nome.set(this.sessao.nome());
@@ -75,7 +103,13 @@ export class ConfiguracoesUsuario {
     this.erroSenha.set(null);
     this.senhaAlterada.set(false);
     this.aberto.set(true);
-    this.carregarLayouts();
+    // Só carrega se a aba "Layouts salvos" de fato existe pra esse usuário
+    // (ver `ABAS`) — a rota é `exigir_modulo_financeiro`, chamar sem
+    // precisar só gerava um toast de erro sem nenhuma aba pra mostrar o
+    // resultado.
+    if (this.sessao.modulos().includes('financeiro')) {
+      this.carregarLayouts();
+    }
   }
 
   private carregarLayouts(): void {
@@ -108,6 +142,22 @@ export class ConfiguracoesUsuario {
       error: (erro: HttpErrorResponse) => {
         this.erroCores.set(mensagemErro(erro, 'Não foi possível salvar a cor.'));
         this.salvandoCorCategoria.set(null);
+      },
+    });
+  }
+
+  protected alterarCorAmbiente(token: string, cor: string): void {
+    this.salvandoCorAmbiente.set(token);
+    this.erroCoresAmbiente.set(null);
+
+    this.coresAmbiente.definirCor(token, cor).subscribe({
+      next: () => {
+        this.coresAmbiente.aplicarCorLocal(token, cor);
+        this.salvandoCorAmbiente.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCoresAmbiente.set(mensagemErro(erro, 'Não foi possível salvar a cor.'));
+        this.salvandoCorAmbiente.set(null);
       },
     });
   }
@@ -240,6 +290,48 @@ export class ConfiguracoesUsuario {
       error: (erro: HttpErrorResponse) => {
         this.erroCores.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
         this.salvandoCorCategoria.set(null);
+      },
+    });
+  }
+
+  protected redefinirCorAmbiente(token: string): void {
+    this.salvandoCorAmbiente.set(token);
+    this.erroCoresAmbiente.set(null);
+
+    this.coresAmbiente.redefinirCor(token).subscribe({
+      next: () => {
+        this.coresAmbiente.removerCorLocal(token);
+        this.salvandoCorAmbiente.set(null);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCoresAmbiente.set(mensagemErro(erro, 'Não foi possível redefinir a cor.'));
+        this.salvandoCorAmbiente.set(null);
+      },
+    });
+  }
+
+  protected redefinirTodasCoresAmbiente(): void {
+    const tokensPersonalizados = this.coresAmbiente
+      .listaParaExibir()
+      .filter((item) => item.personalizada)
+      .map((item) => item.token);
+    if (!tokensPersonalizados.length) {
+      return;
+    }
+
+    this.redefinindoTodasCoresAmbiente.set(true);
+    this.erroCoresAmbiente.set(null);
+
+    forkJoin(tokensPersonalizados.map((token) => this.coresAmbiente.redefinirCor(token))).subscribe({
+      next: () => {
+        for (const token of tokensPersonalizados) {
+          this.coresAmbiente.removerCorLocal(token);
+        }
+        this.redefinindoTodasCoresAmbiente.set(false);
+      },
+      error: (erro: HttpErrorResponse) => {
+        this.erroCoresAmbiente.set(mensagemErro(erro, 'Não foi possível redefinir todas as cores.'));
+        this.redefinindoTodasCoresAmbiente.set(false);
       },
     });
   }

@@ -159,3 +159,16 @@ def sigla_usuario(papeis_usuario: list[str]) -> str:
 
 def tem_acesso_modulo(papeis: list[str], modulo: str) -> bool:
     return any(papel.acesso_total or modulo in papel.modulos for papel in _papeis_validos(papeis))
+
+
+def eh_administrador_do_modulo(papeis: list[str], modulo: str) -> bool:
+    """Diferente de `eh_administrador` (verdadeiro pra QUALQUER papel
+    administrador, de qualquer módulo), aqui exige que o admin seja
+    especificamente DESSE módulo — ex: `financeiro_admin` passa pra
+    `modulo="financeiro"`, não pra `modulo="ti"`. `desenvolvedor`
+    (`acesso_total`) passa em qualquer módulo, via `tem_acesso_modulo`.
+    Mesma combinação já usada (duplicada) em `server/auth/rotas.py::
+    _filiais_bloqueadas`, extraída aqui pra reuso — usada por
+    `server/ia/teto_tokens.py` pra deixar cada admin de módulo mexer só
+    no teto de IA do próprio departamento."""
+    return eh_administrador(papeis) and tem_acesso_modulo(papeis, modulo)

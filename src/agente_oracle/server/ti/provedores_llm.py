@@ -1,10 +1,26 @@
 """Rotas HTTP do cadastro de LLM (`tools/ia/provedores_llm.py`) — listar,
-criar, editar, apagar e ativar. Só desenvolvedor acessa, travado no
-DECORATOR de cada rota (não só checado dentro da função, como o resto do
-TI) — aqui tem chave de API de verdade, então o fechamento tem que ser
-mais rígido desde a entrada. A chave nunca volta pro navegador depois de
-salva: GET devolve só `api_key_configurada: bool`; editar sem mandar uma
-chave nova mantém a que já estava lá."""
+criar, editar, apagar, ativar (chat E/OU embedding, ponteiros
+independentes — ver docstring de `tools/ia/cliente_protegido.py`) e
+testar. Listar (GET) é visualização e
+libera pra todo o time de TI (`exigir_modulo_ti`, achado do usuário,
+2026-09-28: o time queria ACOMPANHAR o consumo sem depender de um
+desenvolvedor) — qualquer escrita (criar/editar/apagar/ativar/testar)
+continua travada a desenvolvedor, a maioria delas no DECORATOR da própria
+rota; a exceção é o POST de `/api/ti/provedores-llm` (mesmo endpoint do
+GET liberado), checado dentro da função. Aqui tem chave de API/chave
+privada de verdade, então o fechamento das rotas de escrita é rígido de
+propósito. A credencial nunca volta pro navegador depois de salva: GET
+devolve só `api_key_configurada`/`credenciais_configuradas: bool`; editar
+sem mandar uma credencial nova mantém a que já estava lá.
+
+`testar` (`POST .../{id}/testar`) dispara uma chamada real contra UM
+cadastro específico sem tocar no ponteiro de "ativo" — deixa confirmar
+que uma credencial recém-cadastrada funciona antes de considerar ativá-la,
+sem arriscar derrubar o provedor que o resto do TI/RH já está usando (só
+1 fica ativo por vez, ver `tools/ia/provedores_llm.py`). Passa pelo mesmo
+`ClienteIAProtegido` de qualquer chamada real (`dominio="ti"`) — vira
+linha em `auditoria_ia_externa` como qualquer outra, aparece em "Detalhe
+do consumo"."""
 
 from decimal import Decimal, InvalidOperation
 
@@ -12,13 +28,26 @@ from anyio import to_thread
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from agente_oracle.config import settings
 from agente_oracle.server.auth.decorador_rota import rota_protegida
-from agente_oracle.server.auth.dependencia import exigir_desenvolvedor
+from agente_oracle.server.auth.dependencia import exigir_desenvolvedor, exigir_modulo_ti
 from agente_oracle.server.cors import CORS_HEADERS
-from agente_oracle.tools.ia import configuracoes_provedor, provedores_llm
+from agente_oracle.tools.auth import papeis
+from agente_oracle.tools.ia import cliente_protegido, configuracoes_provedor, provedores_llm
 from agente_oracle.tools.ia.provedores_llm import ProvedorLLM, ProvedorLlmJaExiste
 
 _CAMPOS_TEXTO_OBRIGATORIOS = ("nome", "base_url", "modelo")
+# `oci_nativo` não pede `base_url` digitado — é calculado a partir da
+# `regiao` em `credenciais_extra` (ver `_base_url_para_criar`).
+_CAMPOS_TEXTO_OBRIGATORIOS_OCI_NATIVO = ("nome", "modelo")
+_CAMPOS_CREDENCIAIS_OCI_NATIVO = (
+    "user_ocid",
+    "fingerprint",
+    "tenancy_ocid",
+    "regiao",
+    "compartment_id",
+    "chave_privada",
+)
 _CAMPOS_ATUALIZAVEIS = (
     "nome",
     "tipo_conexao",
@@ -30,6 +59,8 @@ _CAMPOS_ATUALIZAVEIS = (
     "preco_entrada_por_1k",
     "preco_saida_por_1k",
     "moeda",
+    "capacidades",
+    "credenciais_extra",
 )
 
 
@@ -43,7 +74,7 @@ def _preco_valido(bruto) -> Decimal | None:
     return valor if valor.is_finite() and valor >= 0 else None
 
 
-def _provedor_para_json(provedor: ProvedorLLM, id_ativo: int | None) -> dict:
+def _provedor_para_json(provedor: ProvedorLLM, id_ativo: int | None, id_embedding_ativo: int | None) -> dict:
     return {
         "id": provedor.id,
         "nome": provedor.nome,
@@ -56,7 +87,18 @@ def _provedor_para_json(provedor: ProvedorLLM, id_ativo: int | None) -> dict:
         "preco_entrada_por_1k": float(provedor.preco_entrada_por_1k),
         "preco_saida_por_1k": float(provedor.preco_saida_por_1k),
         "moeda": provedor.moeda,
+        "capacidades": provedor.capacidades,
+        # Mesmo espírito de `api_key_configurada` — `credenciais_extra`
+        # (chave privada da OCI, etc.) nunca volta pro navegador.
+        "credenciais_configuradas": bool(provedor.credenciais_extra),
+        # Só um aviso pro front decidir quando sugerir renovar — nunca
+        # expira/bloqueia nada sozinho (ver docstring de
+        # tools/ia/provedores_llm.py).
+        "credencial_atualizada_em": provedor.credencial_atualizada_em.isoformat(),
         "ativo": provedor.id == id_ativo,
+        # Ponteiro independente do "ativo" de chat — ver docstring do
+        # módulo e de `tools/ia/cliente_protegido.py`.
+        "ativo_embedding": provedor.id == id_embedding_ativo,
         "criado_em": provedor.criado_em.isoformat(),
     }
 
@@ -67,23 +109,49 @@ def _erro(mensagem: str, status_code: int) -> Response:
 
 def _listar() -> Response:
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
-    linhas = [_provedor_para_json(provedor, id_ativo) for provedor in provedores_llm.listar()]
+    id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    linhas = [
+        _provedor_para_json(provedor, id_ativo, id_embedding_ativo) for provedor in provedores_llm.listar()
+    ]
     return JSONResponse(linhas, headers=CORS_HEADERS)
 
 
 def _validar_campos_comuns(corpo: dict, exigir_obrigatorios: bool) -> str | None:
+    tipo_conexao = corpo.get("tipo_conexao", "openai_compativel")
     if exigir_obrigatorios:
-        for campo in _CAMPOS_TEXTO_OBRIGATORIOS:
+        campos = (
+            _CAMPOS_TEXTO_OBRIGATORIOS_OCI_NATIVO if tipo_conexao == "oci_nativo" else _CAMPOS_TEXTO_OBRIGATORIOS
+        )
+        for campo in campos:
             if not str(corpo.get(campo, "")).strip():
                 return f"Informe {campo}."
     if "tipo_conexao" in corpo and not provedores_llm.tipo_conexao_valido(corpo["tipo_conexao"]):
-        return 'Informe tipo_conexao como "ollama" ou "openai_compativel".'
+        return 'Informe tipo_conexao como "ollama", "openai_compativel" ou "oci_nativo".'
     if "estilo_api" in corpo and not provedores_llm.estilo_api_valido(corpo["estilo_api"]):
         return 'Informe estilo_api como "chat_completions" ou "responses".'
     for campo in ("preco_entrada_por_1k", "preco_saida_por_1k"):
         if campo in corpo and _preco_valido(corpo[campo]) is None:
             return f"Informe {campo} como um número >= 0."
+    if "capacidades" in corpo and not provedores_llm.capacidades_validas(corpo["capacidades"]):
+        return 'Informe capacidades como uma lista não vazia com "chat" e/ou "embedding".'
+    if exigir_obrigatorios and tipo_conexao == "oci_nativo":
+        credenciais = corpo.get("credenciais_extra")
+        if not isinstance(credenciais, dict):
+            return "Informe credenciais_extra (user_ocid, fingerprint, tenancy_ocid, regiao, compartment_id, chave_privada)."
+        for campo in _CAMPOS_CREDENCIAIS_OCI_NATIVO:
+            if not str(credenciais.get(campo, "")).strip():
+                return f"Informe {campo} em credenciais_extra."
     return None
+
+
+def _base_url_para_criar(corpo: dict, tipo_conexao: str) -> str:
+    """`oci_nativo` calcula o endereço a partir da `regiao` em
+    `credenciais_extra` — não pede pra digitar duas vezes a mesma coisa
+    (a região já define o endpoint univocamente)."""
+    if tipo_conexao != "oci_nativo":
+        return str(corpo.get("base_url", "")).strip()
+    regiao = corpo["credenciais_extra"]["regiao"].strip()
+    return f"https://inference.generativeai.{regiao}.oci.oraclecloud.com"
 
 
 def _criar(corpo: dict) -> Response:
@@ -91,11 +159,14 @@ def _criar(corpo: dict) -> Response:
     if mensagem:
         return _erro(mensagem, 400)
 
+    tipo_conexao = corpo.get("tipo_conexao", "openai_compativel")
+    credenciais_extra = corpo.get("credenciais_extra") if tipo_conexao == "oci_nativo" else None
+
     try:
         provedor = provedores_llm.criar(
             nome=str(corpo["nome"]).strip(),
-            tipo_conexao=corpo.get("tipo_conexao", "openai_compativel"),
-            base_url=str(corpo["base_url"]).strip(),
+            tipo_conexao=tipo_conexao,
+            base_url=_base_url_para_criar(corpo, tipo_conexao),
             api_key=str(corpo.get("api_key", "")).strip(),
             projeto_id=str(corpo.get("projeto_id", "")).strip(),
             modelo=str(corpo["modelo"]).strip(),
@@ -103,12 +174,17 @@ def _criar(corpo: dict) -> Response:
             preco_entrada_por_1k=_preco_valido(corpo.get("preco_entrada_por_1k", 0)) or Decimal(0),
             preco_saida_por_1k=_preco_valido(corpo.get("preco_saida_por_1k", 0)) or Decimal(0),
             moeda=str(corpo.get("moeda") or "R$").strip(),
+            capacidades=corpo.get("capacidades") or ["chat"],
+            credenciais_extra=credenciais_extra,
         )
     except ProvedorLlmJaExiste as erro:
         return _erro(str(erro), 400)
 
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
-    return JSONResponse(_provedor_para_json(provedor, id_ativo), status_code=201, headers=CORS_HEADERS)
+    id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    return JSONResponse(
+        _provedor_para_json(provedor, id_ativo, id_embedding_ativo), status_code=201, headers=CORS_HEADERS
+    )
 
 
 def _atualizar(id_provedor_bruto: str, corpo: dict) -> Response:
@@ -137,7 +213,8 @@ def _atualizar(id_provedor_bruto: str, corpo: dict) -> Response:
         return _erro("Provedor não encontrado.", 404)
 
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
-    return JSONResponse(_provedor_para_json(provedor, id_ativo), headers=CORS_HEADERS)
+    id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
+    return JSONResponse(_provedor_para_json(provedor, id_ativo, id_embedding_ativo), headers=CORS_HEADERS)
 
 
 def _remover(id_provedor_bruto: str) -> Response:
@@ -148,17 +225,21 @@ def _remover(id_provedor_bruto: str) -> Response:
 
     if not provedores_llm.remover(id_provedor):
         return _erro("Provedor não encontrado.", 404)
-    # Se era o ativo, ninguém fica ativo — cai no Ollama padrão do `.env`
+    # Se era o ativo (chat ou embedding — ponteiros independentes),
+    # ninguém fica ativo naquele ponto — cai no Ollama padrão do `.env`
     # (ver `tools/ia/cliente_protegido.py`), nunca aponta pra um id morto.
     if configuracoes_provedor.provedor_llm_ativo_id() == id_provedor:
         configuracoes_provedor.definir_provedor_llm_ativo_id(None)
+    if configuracoes_provedor.provedor_llm_embedding_ativo_id() == id_provedor:
+        configuracoes_provedor.definir_provedor_llm_embedding_ativo_id(None)
     return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
 
 def _desativar() -> Response:
-    """Volta o ponteiro pra `None` — mesmo estado de "nenhum LLM cadastrado
-    ativo" (`criar_cliente_protegido` cai no Ollama padrão do `.env`), sem
-    apagar nenhum provedor cadastrado."""
+    """Volta o ponteiro de CHAT pra `None` — mesmo estado de "nenhum LLM
+    cadastrado ativo" (`criar_cliente_protegido` cai no Ollama padrão do
+    `.env`), sem apagar nenhum provedor cadastrado. Não mexe no ponteiro
+    de embedding (`_desativar_embedding`), são independentes."""
     configuracoes_provedor.definir_provedor_llm_ativo_id(None)
     return _listar()
 
@@ -169,27 +250,107 @@ def _ativar(id_provedor_bruto: str) -> Response:
     except ValueError:
         return _erro("Provedor não encontrado.", 404)
 
-    if provedores_llm.buscar(id_provedor) is None:
+    provedor = provedores_llm.buscar(id_provedor)
+    if provedor is None:
         return _erro("Provedor não encontrado.", 404)
+    # Só 1 provedor ativo de CHAT por vez no sistema inteiro (o ponteiro de
+    # embedding é independente, ver `_ativar_embedding`) — ativar um sem
+    # capacidade de chat quebraria toda conversa do TI/RH sem aviso nenhum.
+    if "chat" not in provedor.capacidades:
+        return _erro("Esse provedor só serve pra embedding, não pode virar o provedor ativo do sistema.", 400)
     configuracoes_provedor.definir_provedor_llm_ativo_id(id_provedor)
     return _listar()
 
 
+def _desativar_embedding() -> Response:
+    """Mesma ideia de `_desativar`, mas pro ponteiro de EMBEDDING — volta
+    a correção de categoria de chamado a usar o provedor de CHAT ativo pro
+    embedding (mesmo comportamento de antes desse ponteiro existir, ver
+    `tools/ia/cliente_protegido.py::criar_cliente_embedding_protegido`)."""
+    configuracoes_provedor.definir_provedor_llm_embedding_ativo_id(None)
+    return _listar()
+
+
+def _ativar_embedding(id_provedor_bruto: str) -> Response:
+    try:
+        id_provedor = int(id_provedor_bruto)
+    except ValueError:
+        return _erro("Provedor não encontrado.", 404)
+
+    provedor = provedores_llm.buscar(id_provedor)
+    if provedor is None:
+        return _erro("Provedor não encontrado.", 404)
+    # Espelha o guardrail de `_ativar`, mas pra capacidade oposta — um
+    # provedor só-chat não sabe responder `.embed()`, ativá-lo aqui
+    # deixaria a correção de categoria sempre caindo em
+    # `EmbeddingNaoSuportado` de novo.
+    if "embedding" not in provedor.capacidades:
+        return _erro("Esse provedor não tem capacidade de embedding.", 400)
+    configuracoes_provedor.definir_provedor_llm_embedding_ativo_id(id_provedor)
+    return _listar()
+
+
+async def _testar(id_provedor_bruto: str, usuario_id: str) -> Response:
+    """Dispara UMA chamada real e barata contra ESSE provedor
+    especificamente — nunca mexe no ponteiro de ativo (`configuracoes_provedor`).
+    Deixa confirmar que uma credencial recém-cadastrada funciona de
+    verdade sem precisar ativar (e arriscar derrubar o provedor que o
+    resto do TI/RH já está usando). Passa pelo mesmo `ClienteIAProtegido`
+    de qualquer chamada real do TI (achado do usuário, 2026-09-28: era a
+    única chamada de IA do TI que não virava linha em
+    `auditoria_ia_externa`) — a intenção é ter todo gasto registrado,
+    então até essa chamadinha de teste aparece em "Detalhe do consumo"."""
+    try:
+        id_provedor = int(id_provedor_bruto)
+    except ValueError:
+        return _erro("Provedor não encontrado.", 404)
+
+    provedor = await to_thread.run_sync(provedores_llm.buscar, id_provedor)
+    if provedor is None:
+        return _erro("Provedor não encontrado.", 404)
+
+    cliente_real, host = cliente_protegido.construir_cliente_llm(provedor)
+    cliente = cliente_protegido.ClienteIAProtegido(
+        cliente_real, "ti", host, False, settings.teto_diario_ia_externa, provedor.nome, usuario_id
+    )
+    try:
+        if "embedding" in provedor.capacidades:
+            await cliente.embed(input="teste de conexão", model=provedor.modelo)
+        else:
+            await cliente.chat(messages=[{"role": "user", "content": "oi"}], model=provedor.modelo)
+    except Exception as erro:
+        return _erro(f"Falha ao testar a conexão: {erro}", 400)
+    return JSONResponse({"ok": True}, headers=CORS_HEADERS)
+
+
 def registrar(mcp) -> None:
     @mcp.custom_route("/api/ti/provedores-llm", methods=["GET", "POST", "OPTIONS"])
-    @rota_protegida("GET, POST, OPTIONS", exigir=exigir_desenvolvedor)
+    @rota_protegida("GET, POST, OPTIONS", exigir=exigir_modulo_ti)
     async def provedores_llm_route(request: Request, usuario: dict) -> Response:
+        """Listar (GET) é visualização — todo o time de TI vê os provedores
+        cadastrados e o consumo, mesmo espírito de `server/ti/uso_ia.py`.
+        Cadastrar um provedor novo (POST) mexe em credencial de verdade —
+        continua travado a desenvolvedor, só que checado aqui dentro (não
+        no decorator) já que o GET do mesmo endpoint precisa ficar aberto."""
         if request.method == "GET":
             return await to_thread.run_sync(_listar)
+        if not papeis.eh_desenvolvedor(usuario.get("papeis", [])):
+            return _erro("Acesso restrito a desenvolvedores.", 403)
         corpo = await request.json()
         return await to_thread.run_sync(_criar, corpo)
 
-    # Registrada ANTES de `/{id}` de propósito — mesmo número de segmentos
-    # de path, "desativar" bateria com o padrão `{id}` se essa viesse depois.
+    # Registradas ANTES de `/{id}` de propósito — mesmo número de segmentos
+    # de path, "desativar"/"desativar-embedding" bateriam com o padrão
+    # `{id}` se viessem depois.
     @mcp.custom_route("/api/ti/provedores-llm/desativar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
     async def provedor_llm_desativar_route(request: Request, usuario: dict) -> Response:
         return await to_thread.run_sync(_desativar)
+
+    @mcp.custom_route("/api/ti/provedores-llm/desativar-embedding", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
+    async def provedor_llm_desativar_embedding_route(request: Request, usuario: dict) -> Response:
+        return await to_thread.run_sync(_desativar_embedding)
 
     @mcp.custom_route("/api/ti/provedores-llm/{id}", methods=["PATCH", "DELETE", "OPTIONS"])
     @rota_protegida("PATCH, DELETE, OPTIONS", exigir=exigir_desenvolvedor)
@@ -204,3 +365,13 @@ def registrar(mcp) -> None:
     @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
     async def provedor_llm_ativar_route(request: Request, usuario: dict) -> Response:
         return await to_thread.run_sync(_ativar, request.path_params["id"])
+
+    @mcp.custom_route("/api/ti/provedores-llm/{id}/ativar-embedding", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
+    async def provedor_llm_ativar_embedding_route(request: Request, usuario: dict) -> Response:
+        return await to_thread.run_sync(_ativar_embedding, request.path_params["id"])
+
+    @mcp.custom_route("/api/ti/provedores-llm/{id}/testar", methods=["POST", "OPTIONS"])
+    @rota_protegida("POST, OPTIONS", exigir=exigir_desenvolvedor)
+    async def provedor_llm_testar_route(request: Request, usuario: dict) -> Response:
+        return await _testar(request.path_params["id"], usuario["sub"])

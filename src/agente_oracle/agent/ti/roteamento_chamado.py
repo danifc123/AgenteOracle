@@ -6,7 +6,7 @@ categoria real mais adequada? A área (`processos`/`sistemas`/`infra`) sai
 de graça da categoria escolhida, porque cada uma já vem com o grupo GLPI
 dono dela (`CategoriaGlpi.area`).
 
-Nunca falha, nunca trava um chamado real — falha do Ollama (ou
+Nunca falha, nunca trava um chamado real — falha do provedor de IA (ou
 `usar_ia=False`, a flag do time de TI) cai pra área já resolvida da
 categoria atual, sem tentar corrigir nada; sem categoria atual nenhuma
 (nem isso), cai pra `_AREA_PADRAO` — "sistemas" (decisão do Daniel,
@@ -25,9 +25,8 @@ chamado) é gerado a cada chamada real."""
 import math
 from dataclasses import dataclass
 
-from ollama import AsyncClient
-
 from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
+from agente_oracle.tools.ia.cliente_protegido import ClienteEmbedIA
 from agente_oracle.tools.ti import categorias
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
 from agente_oracle.tools.ti.glpi import AreaChamado
@@ -43,7 +42,7 @@ class ResultadoClassificacao:
     # ID da categoria corrigida — só preenchido quando a categoria atual
     # estava errada (precisa de um `PATCH` de verdade no GLPI). `None`
     # quando a atual já estava certa, ou quando não deu pra avaliar
-    # (usar_ia=False, falha do Ollama).
+    # (usar_ia=False, falha do provedor de IA).
     categoria_id: int | None
     precisou_embedding: bool
     # `True` só quando a falha foi especificamente o provedor de IA ativo
@@ -55,16 +54,16 @@ class ResultadoClassificacao:
 
 
 async def classificar_categoria(
-    ollama_client: AsyncClient,
+    cliente_ia: ClienteEmbedIA,
     modelo_embedding: str,
     titulo: str,
     descricao: str,
     categoria_atual_id: int | None,
     usar_ia: bool,
 ) -> ResultadoClassificacao:
-    """`usar_ia=False` nunca chama o Ollama — mantém a categoria atual e
-    usa a área que já dava pra resolver dela (ou `_AREA_PADRAO` se a
-    categoria atual for desconhecida/vazia)."""
+    """`usar_ia=False` nunca chama o provedor de IA — mantém a categoria
+    atual e usa a área que já dava pra resolver dela (ou `_AREA_PADRAO` se
+    a categoria atual for desconhecida/vazia)."""
     area_atual = categorias.AREA_POR_CATEGORIA_ID.get(categoria_atual_id) if categoria_atual_id else None
 
     if not usar_ia:
@@ -73,7 +72,7 @@ async def classificar_categoria(
         )
 
     try:
-        escolhida = await _melhor_categoria(ollama_client, modelo_embedding, titulo, descricao)
+        escolhida = await _melhor_categoria(cliente_ia, modelo_embedding, titulo, descricao)
     except EmbeddingNaoSuportado:
         return ResultadoClassificacao(
             area=area_atual or _AREA_PADRAO,
@@ -86,16 +85,23 @@ async def classificar_categoria(
             area=area_atual or _AREA_PADRAO, categoria_id=None, precisou_embedding=True
         )
 
-    if escolhida.area == area_atual:
+    # Compara pela categoria exata, não só pela área: usuário pode ter
+    # escolhido manualmente uma categoria errada que por coincidência já
+    # está na área certa (ex: marcou "Sharepoint" — infra — pra um
+    # problema de impressora — também infra). Bug real achado pelo
+    # usuário, 2026-09-28: a comparação antiga era só `escolhida.area ==
+    # area_atual`, então esse caso nunca era corrigido — a área batia,
+    # então "parecia" já estar certo.
+    if escolhida.id == categoria_atual_id:
         return ResultadoClassificacao(area=area_atual, categoria_id=None, precisou_embedding=True)
     return ResultadoClassificacao(area=escolhida.area, categoria_id=escolhida.id, precisou_embedding=True)
 
 
 async def _melhor_categoria(
-    ollama_client: AsyncClient, modelo_embedding: str, titulo: str, descricao: str
+    cliente_ia: ClienteEmbedIA, modelo_embedding: str, titulo: str, descricao: str
 ) -> CategoriaGlpi:
-    embeddings_categorias = await _embeddings_categorias_cacheados(ollama_client, modelo_embedding)
-    embedding_chamado = await _gerar_embedding(ollama_client, modelo_embedding, f"{titulo}\n{descricao}")
+    embeddings_categorias = await _embeddings_categorias_cacheados(cliente_ia, modelo_embedding)
+    embedding_chamado = await _gerar_embedding(cliente_ia, modelo_embedding, f"{titulo}\n{descricao}")
 
     melhor = categorias.CATEGORIAS_ATRIBUIVEIS[0]
     melhor_similaridade = -2.0  # abaixo do mínimo possível (-1.0), garante que a 1a categoria sempre entra
@@ -108,19 +114,19 @@ async def _melhor_categoria(
 
 
 async def _embeddings_categorias_cacheados(
-    ollama_client: AsyncClient, modelo_embedding: str
+    cliente_ia: ClienteEmbedIA, modelo_embedding: str
 ) -> dict[int, list[float]]:
     global _cache_embeddings_categorias
     if _cache_embeddings_categorias is None:
         _cache_embeddings_categorias = {
-            categoria.id: await _gerar_embedding(ollama_client, modelo_embedding, categoria.nome)
+            categoria.id: await _gerar_embedding(cliente_ia, modelo_embedding, categoria.nome)
             for categoria in categorias.CATEGORIAS_ATRIBUIVEIS
         }
     return _cache_embeddings_categorias
 
 
-async def _gerar_embedding(ollama_client: AsyncClient, modelo_embedding: str, texto: str) -> list[float]:
-    resposta = await ollama_client.embed(model=modelo_embedding, input=texto)
+async def _gerar_embedding(cliente_ia: ClienteEmbedIA, modelo_embedding: str, texto: str) -> list[float]:
+    resposta = await cliente_ia.embed(model=modelo_embedding, input=texto)
     return list(resposta.embeddings[0])
 
 

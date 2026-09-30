@@ -9,7 +9,6 @@ const RESPOSTA: ConfiguracoesTiResposta = {
   percentual_amostragem_chamados: 20,
   percentual_alterado_em: '2026-09-21T14:41:00Z',
   ler_chamados_antigos: true,
-  teto_tokens_diario: 50000,
 };
 
 describe('ConfiguracoesTi', () => {
@@ -46,7 +45,6 @@ describe('ConfiguracoesTi', () => {
     expect(servico.percentualAmostragemChamados()).toBe(20);
     expect(servico.percentualAlteradoEm()).toBe('2026-09-21T14:41:00Z');
     expect(servico.lerChamadosAntigos()).toBe(true);
-    expect(servico.tetoTokensDiario()).toBe(50000);
   });
 
   it('deveria manter os signals quando o servidor recusa a alteração', () => {

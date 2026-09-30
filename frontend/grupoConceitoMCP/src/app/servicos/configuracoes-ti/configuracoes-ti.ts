@@ -9,18 +9,15 @@ export interface ConfiguracoesTiResposta {
   percentual_amostragem_chamados: number;
   percentual_alterado_em: string | null;
   ler_chamados_antigos: boolean;
-  /** `0` = sem teto — ver `tools/ia/configuracoes_provedor.py::teto_tokens_diario`. */
-  teto_tokens_diario: number;
 }
 
 /** Só as chaves que mudaram (o backend valida tudo antes de gravar). Qual
  * LLM está ativo não é mais uma chave aqui — mora em `/ti/provedores`
- * (`pages/modulos/ti/provedores/provedores.ts`), junto do cadastro em si. */
+ * (`pages/modulos/ti/provedores/provedores.ts`), junto do cadastro em si.
+ * O teto diário de tokens também não — virou por departamento, mora em
+ * `servicos/teto-tokens-ia/teto-tokens-ia.ts` (`/api/ia/teto-tokens/{dominio}`). */
 export type AlteracoesConfiguracoesTi = Partial<
-  Pick<
-    ConfiguracoesTiResposta,
-    'usar_ia_avaliacao_chamado' | 'percentual_amostragem_chamados' | 'ler_chamados_antigos' | 'teto_tokens_diario'
-  >
+  Pick<ConfiguracoesTiResposta, 'usar_ia_avaliacao_chamado' | 'percentual_amostragem_chamados' | 'ler_chamados_antigos'>
 >;
 
 const URL_CONFIGURACOES = `${MCP_API_BASE_URL}/api/ti/configuracoes`;
@@ -34,14 +31,12 @@ export class ConfiguracoesTi {
   readonly percentualAmostragemChamados = signal(100);
   readonly percentualAlteradoEm = signal<string | null>(null);
   readonly lerChamadosAntigos = signal(false);
-  readonly tetoTokensDiario = signal(0);
 
   private aplicar(resposta: ConfiguracoesTiResposta): void {
     this.usarIaAvaliacaoChamado.set(resposta.usar_ia_avaliacao_chamado);
     this.percentualAmostragemChamados.set(resposta.percentual_amostragem_chamados);
     this.percentualAlteradoEm.set(resposta.percentual_alterado_em);
     this.lerChamadosAntigos.set(resposta.ler_chamados_antigos);
-    this.tetoTokensDiario.set(resposta.teto_tokens_diario);
   }
 
   carregar(): void {

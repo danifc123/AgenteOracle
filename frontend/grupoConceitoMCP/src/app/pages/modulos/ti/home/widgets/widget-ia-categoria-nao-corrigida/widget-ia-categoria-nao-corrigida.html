@@ -1,0 +1,7 @@
+@if (usoIa.chamadosIa(); as chamadosIa) {
+  <app-cartao-kpi
+    rotulo="Categoria não corrigida automaticamente (30d)"
+    tipo="numero"
+    [valor]="chamadosIa.com_fallback_embedding"
+  />
+}

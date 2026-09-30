@@ -2,6 +2,7 @@ import json
 
 from agente_oracle.agent.ti import qualidade_chamado as mod
 from agente_oracle.agent.ti.qualidade_chamado import TurnoConversa
+from agente_oracle.tools.ia.cliente_protegido import TetoTokensExcedidoError
 
 _DESCRICAO_LONGA = (
     "O sistema financeiro trava sempre que tento gerar o relatório de vendas do mês passado desde ontem"
@@ -176,6 +177,22 @@ class TestAvaliarChamado:
 
     async def test_falha_no_ollama_cai_pra_regra(self):
         cliente = _OllamaClientFake(levantar=ConnectionError("Ollama fora do ar"))
+
+        avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Título", _DESCRICAO_LONGA, "Sistemas")
+
+        assert avaliacao.suficiente is True
+        assert avaliacao.origem == "regra"
+
+    async def test_teto_de_tokens_excedido_tambem_cai_pra_regra_decisao_deliberada(self):
+        # Diferente de `deteccao_seguranca.py`/`busca_candidatos.py`
+        # (onde o teto excedido SOBE como erro, ver `TetoTokensExcedidoError`)
+        # — aqui o contrato "nunca levanta" de `avaliar_chamado` é mantido
+        # de propósito: a triagem automática de chamados já trata QUALQUER
+        # falha de IA (Ollama fora do ar, JSON mal formado, teto excedido)
+        # caindo pra regra determinística, e o chamado acaba escalado a um
+        # técnico humano se isso persistir por mais de 1 rodada — é a
+        # mesma rede de segurança de sempre, não uma falha silenciosa.
+        cliente = _OllamaClientFake(levantar=TetoTokensExcedidoError("ti"))
 
         avaliacao = await mod.avaliar_chamado(cliente, "modelo-teste", "Título", _DESCRICAO_LONGA, "Sistemas")
 

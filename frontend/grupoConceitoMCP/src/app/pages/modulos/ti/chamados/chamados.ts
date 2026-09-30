@@ -9,6 +9,7 @@ import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
 import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
+import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
 import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
@@ -37,18 +38,33 @@ export interface Chamado {
   criado_em: string;
   area: 'infra' | 'sistemas' | 'processos';
   tecnico_atribuido: string | null;
+  // `true` = chamado que um técnico de verdade já está tratando fora do
+  // fluxo da IA (ver `tools/ti/glpi.py::chamado_e_alheio`) — "Todos"/
+  // "Minha área" escondem esse chamado por padrão (mostrar ele junto
+  // com os que ainda dependem da nossa triagem só confunde); "Meus
+  // chamados"/"Todo o departamento" mostram de propósito.
+  gerenciado_fora_do_sistema: boolean;
 }
 
 interface TecnicoNome {
   identificador: string;
   nome: string;
   // Login do AgenteOracle (não do GLPI) — usado só pra achar "qual técnico
-  // sou eu" no filtro "Minha área" (compara com `sessao.usuario()`).
+  // sou eu" nos filtros "Minha área"/"Meus chamados" (compara com
+  // `sessao.usuario()`).
   usuario: string;
   // Área do técnico logado — o filtro "Minha área" usa ISSO, não
   // `tecnico_atribuido` (ver comentário de `minhaArea` mais abaixo).
   area: 'infra' | 'sistemas' | 'processos';
 }
+
+// Valor selecionado no `app-select-busca` do cabeçalho da lista — `null`/
+// ausente do select (`aoTrocarFiltro`) sempre cai em `''` ("Todos"). É
+// string vazia (não `'todos'`) de propósito: `SelectBusca.temSelecao()`
+// só esconde o botão "Limpar campo" quando `valor()` é falsy — com
+// `'todos'` (truthy) o botão de limpar aparecia mesmo no estado padrão,
+// sem filtro nenhum ativo.
+type FiltroChamados = '' | 'area' | 'meus' | 'departamento';
 
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
@@ -91,6 +107,7 @@ interface TecnicoNome {
     IndicadoresTecnico,
     ModuloHeader,
     SaudeRoster,
+    SelectBusca,
     Selo,
     SoDev,
   ],
@@ -140,14 +157,53 @@ export class ChamadosTi {
     const area = this.minhaArea();
     return area ? ROTULOS_AREA[area] : null;
   });
-  protected readonly somenteMinhaArea = signal(false);
+  // Id do técnico GLPI ligado à conta logada — diferente de `minhaArea`,
+  // ESTE alimenta "Meus chamados": só faz sentido pra chamado que JÁ foi
+  // atribuído a um técnico. O backend (`chamados_route`) sempre busca com
+  // `incluir_atribuidos=True` — a resposta já vem com todo chamado
+  // atribuído, de qualquer técnico, marcado (`gerenciado_fora_do_sistema`)
+  // — é este filtro, no front, que decide o que mostrar em cada opção.
+  // `null` = sem técnico GLPI vinculado, mesma regra de `minhaArea`.
+  protected readonly meuIdentificador = signal<string | null>(null);
+  protected readonly filtroChamados = signal<FiltroChamados>('');
+
+  protected readonly opcoesFiltro = computed<OpcaoSelectBusca[]>(() => {
+    const opcoes: OpcaoSelectBusca[] = [{ valor: '', rotulo: 'Todos' }];
+    const rotuloArea = this.rotuloMinhaArea();
+    if (rotuloArea) {
+      opcoes.push({ valor: 'area', rotulo: 'Minha área: ' + rotuloArea });
+    }
+    if (this.meuIdentificador()) {
+      opcoes.push({ valor: 'meus', rotulo: 'Meus chamados' });
+    }
+    opcoes.push({ valor: 'departamento', rotulo: 'Todo o departamento' });
+    return opcoes;
+  });
 
   protected readonly chamadosFiltrados = computed(() => {
-    const area = this.minhaArea();
-    if (!this.somenteMinhaArea() || !area) {
+    const filtro = this.filtroChamados();
+    // "Todo o departamento" é o único que mostra chamado já gerenciado
+    // fora do sistema por OUTRO técnico — as outras opções escondem,
+    // mesmo espírito de antes desse filtro existir (ver `Chamado.
+    // gerenciado_fora_do_sistema`).
+    if (filtro === 'departamento') {
       return this.chamados();
     }
-    return this.chamados().filter((chamado) => chamado.area === area);
+    if (filtro === 'meus') {
+      const identificador = this.meuIdentificador();
+      return identificador
+        ? this.chamados().filter((chamado) => chamado.tecnico_atribuido === identificador)
+        : this.chamados();
+    }
+    if (filtro === 'area') {
+      const area = this.minhaArea();
+      return area
+        ? this.chamados().filter(
+            (chamado) => !chamado.gerenciado_fora_do_sistema && chamado.area === area,
+          )
+        : this.chamados();
+    }
+    return this.chamados().filter((chamado) => !chamado.gerenciado_fora_do_sistema);
   });
 
   protected readonly paginaAtual = signal(1);
@@ -194,13 +250,14 @@ export class ChamadosTi {
         this.nomesTecnicos.set(
           Object.fromEntries(tecnicos.map((tecnico) => [tecnico.identificador, tecnico.nome])),
         );
-        this.minhaArea.set(
-          tecnicos.find((tecnico) => tecnico.usuario === this.sessao.usuario())?.area ?? null,
-        );
+        const meuTecnico = tecnicos.find((tecnico) => tecnico.usuario === this.sessao.usuario());
+        this.minhaArea.set(meuTecnico?.area ?? null);
+        this.meuIdentificador.set(meuTecnico?.identificador ?? null);
       },
       error: () => {
         this.nomesTecnicos.set({});
         this.minhaArea.set(null);
+        this.meuIdentificador.set(null);
       },
     });
   }
@@ -209,8 +266,8 @@ export class ChamadosTi {
     this.chamadoAberto.set(chamado);
   }
 
-  protected alternarMinhaArea(): void {
-    this.somenteMinhaArea.update((atual) => !atual);
+  protected aoTrocarFiltro(valor: string | null): void {
+    this.filtroChamados.set((valor as FiltroChamados | null) ?? '');
     this.paginaAtual.set(1);
   }
 

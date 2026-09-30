@@ -35,6 +35,14 @@
   margin-bottom: 14px;
 }
 
+// Sem isso, o item flex encolhe pro min-content (`min-width: auto` é o
+// padrão de item flex) e corta o rótulo mais longo ("Minha área:
+// Infraestrutura") com reticências — largura fixa o bastante pro maior
+// rótulo caber inteiro, mesmo com "Todo o departamento" selecionado.
+.filtro-chamados {
+  min-width: 260px;
+}
+
 .tabela-scroll {
   overflow-x: auto;
 }

@@ -180,8 +180,13 @@ class _ClienteGLPIFake:
         # ordem/índice de `avaliacoes`, só pra quem quiser conferir
         # `is_private` especificamente.
         self.avaliacoes_privadas: list[bool] = []
+        # Guarda o que foi pedido em cada chamada — inspecionável no
+        # assert quando algum teste precisar confirmar que quem chamou
+        # (`chamados_route`, poller, webhook) pediu o que era esperado.
+        self.listar_incluir_atribuidos: bool = False
 
-    async def listar(self) -> list[Chamado]:
+    async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]:
+        self.listar_incluir_atribuidos = incluir_atribuidos
         return list(self._chamados.values())
 
     async def buscar(self, chamado_id: int) -> Chamado | None:

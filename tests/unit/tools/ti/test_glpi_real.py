@@ -372,6 +372,46 @@ class TestListarFiltraSoTi:
 
         assert sorted(chamado.id for chamado in chamados) == [1, 2]
 
+    async def test_incluir_atribuidos_desliga_o_corte_de_chamado_alheio(self):
+        # `incluir_atribuidos=True` (usado por `chamados_route` pros
+        # filtros "Meus chamados"/"Todo o departamento") reaparece TODO
+        # chamado alheio, de qualquer técnico — mesmo cenário de
+        # `test_exclui_chamado_alheio_pendente_com_tecnico_real` (chamado
+        # #2, técnico "7"), só que agora pedindo a lista sem o corte.
+        fake = _GlpiApiFake()
+        fake.tickets.append(
+            {
+                **fake.tickets[0],
+                "id": 2,
+                "status": {"id": 4, "name": "Pendente"},
+                "team": [{"role": "assigned", "type": "User", "id": 7, "name": "tec7"}],
+            }
+        )
+        cliente = _cliente_fake(fake)
+
+        chamados = await cliente.listar(incluir_atribuidos=True)
+
+        assert sorted(chamado.id for chamado in chamados) == [1, 2]
+
+    async def test_incluir_atribuidos_false_e_o_padrao_e_continua_cortando(self):
+        # `False` (sem passar nada) é o comportamento de todo chamador que
+        # não seja `chamados_route` (poller, webhook) — continua idêntico
+        # a antes desse parâmetro existir.
+        fake = _GlpiApiFake()
+        fake.tickets.append(
+            {
+                **fake.tickets[0],
+                "id": 2,
+                "status": {"id": 4, "name": "Pendente"},
+                "team": [{"role": "assigned", "type": "User", "id": 7, "name": "tec7"}],
+            }
+        )
+        cliente = _cliente_fake(fake)
+
+        chamados = await cliente.listar()
+
+        assert [chamado.id for chamado in chamados] == [1]
+
 
 class TestAtualizarAvaliacao:
     async def test_sem_mensagem_nao_levanta(self):

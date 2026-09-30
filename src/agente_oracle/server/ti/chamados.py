@@ -107,6 +107,7 @@ from agente_oracle.tools.ti.glpi import (
     Chamado,
     ClienteGLPI,
     Followup,
+    chamado_e_alheio,
     criar_cliente,
 )
 from agente_oracle.tools.ti.tecnicos import Tecnico, escolher_tecnico, todos_os_tecnicos
@@ -168,6 +169,14 @@ def _chamado_para_json(chamado: Chamado) -> dict:
         "criado_em": chamado.criado_em.isoformat(),
         "area": chamado.area,
         "tecnico_atribuido": chamado.tecnico_atribuido,
+        # Mesma função que `ClienteGLPIReal.listar()` usa pra decidir se
+        # corta o chamado (ver docstring de `chamado_e_alheio`) — aqui só
+        # rotula, nunca corta, porque `chamados_route` já busca com
+        # `incluir_atribuidos=True` (precisa do chamado alheio na
+        # resposta pros filtros "Meus chamados"/"Todo o departamento" do
+        # front). "Todos"/"Minha área" (padrão) escondem quem tiver isso
+        # `True`, igual `listar()` já escondia sozinho antes.
+        "gerenciado_fora_do_sistema": chamado_e_alheio(chamado, settings.glpi_conta_ia_id),
     }
 
 
@@ -632,8 +641,16 @@ def registrar(mcp) -> None:
     async def chamados_route(request: Request, usuario: dict) -> Response:
         """Lista só os chamados que ainda precisam de atenção desta tela —
         ver `_precisa_atencao`. `fila_atendimento` já foi entregue ao GLPI.
-        Chamado fora da amostra também não aparece — ver `_chamados_da_tela`."""
-        chamados = await _cliente.listar()
+        Chamado fora da amostra também não aparece — ver `_chamados_da_tela`.
+
+        `incluir_atribuidos=True` desliga o corte de "chamado alheio" (ver
+        `tools/ti/glpi.py::ClienteGLPIReal.listar`/`chamado_e_alheio`) —
+        a resposta inclui TODO chamado atribuído, de qualquer técnico, já
+        marcado (`gerenciado_fora_do_sistema`, ver `_chamado_para_json`).
+        Quem decide esconder ou mostrar em cada filtro ("Todos", "Minha
+        área", "Meus chamados", "Todo o departamento") é o front, em cima
+        dessa mesma resposta — mesmo padrão já usado pra área/técnico."""
+        chamados = await _cliente.listar(incluir_atribuidos=True)
         fora_da_amostra = await to_thread.run_sync(amostragem_chamados.ids_fora_da_amostra)
         return JSONResponse(_chamados_da_tela(chamados, fora_da_amostra), headers=CORS_HEADERS)
 

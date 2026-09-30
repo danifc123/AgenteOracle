@@ -134,7 +134,7 @@ class Chamado:
 
 
 class ClienteGLPI(Protocol):
-    async def listar(self) -> list[Chamado]: ...
+    async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]: ...
 
     async def buscar(self, chamado_id: int) -> Chamado | None: ...
 
@@ -357,7 +357,7 @@ class ClienteGLPIReal:
         self._token: str | None = None
         self._token_expira_em: datetime | None = None
 
-    async def listar(self) -> list[Chamado]:
+    async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]:
         # Import local pra evitar ciclo (`categorias.py` importa
         # `AreaChamado` daqui).
         from agente_oracle.tools.ti import categorias
@@ -381,9 +381,20 @@ class ClienteGLPIReal:
         # Tira chamado gerenciado fora do nosso sistema (ver
         # `chamado_e_alheio`) — mostrar ele na Auditoria como se fosse
         # nosso só confunde, já que nunca passou pela nossa IA.
-        return [
-            chamado for chamado in chamados if not chamado_e_alheio(chamado, self._settings.glpi_conta_ia_id)
-        ]
+        # `incluir_atribuidos=True` desliga esse corte inteiro (usado só
+        # por `server/ti/chamados.py::chamados_route`, que precisa do
+        # chamado alheio na resposta pros filtros "Meus chamados"/"Todo o
+        # departamento" do front — cada um decide o que mostrar em cima
+        # do mesmo payload, mesmo padrão de "Minha área". Quem decide se
+        # UM chamado específico é alheio continua sendo só
+        # `chamado_e_alheio` — `_chamados_da_tela` reaplica essa mesma
+        # função pra marcar cada chamado no JSON, ver `_chamado_para_json`)
+        # — `False` (padrão, todo chamador que não seja essa rota,
+        # poller/webhook) continua cortando, comportamento idêntico a
+        # antes desse parâmetro existir.
+        if incluir_atribuidos:
+            return chamados
+        return [chamado for chamado in chamados if not chamado_e_alheio(chamado, self._settings.glpi_conta_ia_id)]
 
     async def _listar_com_filtro(self, filtro_status: str) -> list[Chamado]:
         """Confirmado contra a instância real que o header `Range` é

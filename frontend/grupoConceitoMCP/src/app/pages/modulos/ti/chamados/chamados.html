@@ -51,18 +51,13 @@
 <section class="cartao-secao">
   <div class="cabecalho-secao">
     <h2>Chamados</h2>
-    <app-botao
-      [variant]="somenteMinhaArea() ? 'primaria' : 'contorno'"
-      [disabled]="!minhaArea()"
-      [title]="
-        rotuloMinhaArea()
-          ? 'Mostrar só os chamados da área ' + rotuloMinhaArea()
-          : 'Sua conta não tem técnico do GLPI vinculado'
-      "
-      (clicked)="alternarMinhaArea()"
-    >
-      {{ rotuloMinhaArea() ? 'Minha área: ' + rotuloMinhaArea() + (somenteMinhaArea() ? ' ✓' : '') : 'Minha área' }}
-    </app-botao>
+    <app-select-busca
+      class="filtro-chamados"
+      placeholder="Todos"
+      [opcoes]="opcoesFiltro()"
+      [valor]="filtroChamados()"
+      (valorChange)="aoTrocarFiltro($event)"
+    />
   </div>
   @if (carregando()) {
     <p class="carregando">Carregando...</p>
@@ -81,7 +76,7 @@
       <p>Nenhum chamado cadastrado ainda.</p>
     </app-estado-vazio>
   } @else if (chamadosFiltrados().length === 0) {
-    <app-estado-vazio titulo="Nenhum chamado da área" variante="simples">
+    <app-estado-vazio titulo="Nenhum chamado" variante="simples">
       <svg
         viewBox="0 0 24 24"
         width="40"
@@ -92,7 +87,15 @@
       >
         <path d="M4 5h16v11H8l-4 4V5Z" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
-      <p>Nenhum chamado da área {{ rotuloMinhaArea() }} no momento.</p>
+      @if (filtroChamados() === 'area') {
+        <p>Nenhum chamado da área {{ rotuloMinhaArea() }} no momento.</p>
+      } @else if (filtroChamados() === 'meus') {
+        <p>Nenhum chamado atribuído a você no momento.</p>
+      } @else if (filtroChamados() === 'departamento') {
+        <p>Nenhum chamado do departamento no momento.</p>
+      } @else {
+        <p>Nenhum chamado no momento.</p>
+      }
     </app-estado-vazio>
   } @else {
     <div class="tabela-scroll">

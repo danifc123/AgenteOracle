@@ -292,6 +292,26 @@ describe('Home', () => {
       expect(fixture.nativeElement.querySelector('.botao-adicionar')).not.toBeNull();
     });
 
+    it('em modo de edição, o conteúdo do widget fica num wrapper próprio (`.corpo-widget`), separado da barra de edição', () => {
+      // Regressão: sem esse wrapper, o conteúdo do widget (que declara
+      // `height: 100%` no próprio `:host`) resolvia contra a altura toda
+      // do `.widget-arrastavel` — sem descontar o espaço da barra de
+      // edição acima dele — e vazava por baixo, sobrepondo a linha
+      // seguinte da grade (e confundindo o cálculo de posição do CDK ao
+      // arrastar). Ver comentário de `.widget-arrastavel`/`.corpo-widget`
+      // em `home.scss`.
+      const { fixture, ligarPersonalizar } = criar();
+
+      ligarPersonalizar();
+
+      const widget = fixture.nativeElement.querySelector('.widget-arrastavel') as HTMLElement;
+      const barra = widget.querySelector(':scope > .barra-edicao-widget');
+      const corpo = widget.querySelector(':scope > .corpo-widget');
+      expect(corpo).not.toBeNull();
+      expect(corpo?.children.length).toBeGreaterThan(0);
+      expect(barra?.compareDocumentPosition(corpo!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+
     it('catálogo só mostra widgets (indicador ou atalho) do módulo liberado pro usuário', () => {
       const { texto, ligarPersonalizar, abrirCatalogo } = criar(sessaoFalso(['financeiro']));
 

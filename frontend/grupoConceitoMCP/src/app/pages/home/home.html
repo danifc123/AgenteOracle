@@ -94,7 +94,9 @@
             </button>
           </div>
         }
-        <ng-container [ngComponentOutlet]="componenteDoWidget(item.id)" [ngComponentOutletInputs]="propsDoWidget(item.id)" />
+        <div class="corpo-widget">
+          <ng-container [ngComponentOutlet]="componenteDoWidget(item.id)" [ngComponentOutletInputs]="propsDoWidget(item.id)" />
+        </div>
       </div>
     }
   </div>

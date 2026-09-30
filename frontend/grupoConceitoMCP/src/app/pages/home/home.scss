@@ -162,11 +162,27 @@
 // `catalogo-widgets-home.ts`) é renderizado via `NgComponentOutlet` — este
 // wrapper só existe pra CDK ter algo pra arrastar e pra caber a barra de
 // edição (alça + tamanho + remover) por cima quando `modoEdicao()` está
-// ligado.
+// ligado. Flex coluna (não bloco simples) de propósito: todo widget (ver
+// `cartao-kpi.scss`, `widget-atalho.scss`) declara `:host { height: 100%
+// }` pra preencher este wrapper — em bloco simples isso resolve contra a
+// altura TOTAL esticada pelo grid, sem descontar o espaço que a barra de
+// edição ocupa em cima, e o card "vaza" por baixo, sobrepondo a linha
+// seguinte (e confundindo o cálculo de posição do CDK ao arrastar, que
+// lia esses retângulos sobrepostos e ficava "pulando" entre widgets
+// vizinhos). Com flex, `.corpo-widget` abaixo recebe só o espaço que
+// sobra depois da barra — `height: 100%` do widget passa a resolver
+// contra ISSO, não contra o wrapper inteiro.
 .widget-arrastavel {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   transition: transform 200ms ease;
+}
+
+.corpo-widget {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 // 2 colunas do grid — em telas estreitas (grid já colapsa pra 1 coluna via
@@ -254,8 +270,21 @@
 // `cdkDrag` acrescenta essa classe no PRÓPRIO `.widget-arrastavel` (não
 // num clone em outro lugar do DOM) enquanto ele é o buraco deixado no
 // lugar de origem durante o arrastar — dá pra estilizar direto, sem
-// `::ng-deep`. O preview que segue o cursor é outro elemento (fora desta
-// árvore, no overlay do CDK) e fica com o visual padrão do CDK.
+// `::ng-deep`.
 .widget-arrastavel.cdk-drag-placeholder {
   opacity: 0.3;
+}
+
+// O preview que segue o cursor É um clone real desta árvore (CDK clona o
+// próprio `.widget-arrastavel`), só que anexado fora dela, no overlay do
+// CDK — sem isto ele herda só o visual padrão do CDK: sem fundo próprio
+// (a `.barra-edicao-widget` é transparente, então "furava" mostrando o
+// que está por trás enquanto arrasta) e sem sombra, então parecia só um
+// card flutuando encostado nos outros em vez de "levantado" por cima
+// deles — daí a sensação de sobreposição ao arrastar.
+.widget-arrastavel.cdk-drag-preview {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  cursor: grabbing;
 }

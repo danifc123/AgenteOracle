@@ -103,7 +103,7 @@ from agente_oracle.tools.ia.cliente_protegido import (
     modelo_embedding_ativo,
     modelo_ia_ativo,
 )
-from agente_oracle.tools.ti import amostragem_chamados, categorias, uso_ia_chamados
+from agente_oracle.tools.ti import amostragem_chamados, anexos_chamado, categorias, uso_ia_chamados
 from agente_oracle.tools.ti import configuracoes as configuracoes_tools
 from agente_oracle.tools.ti.glpi import (
     AreaChamado,
@@ -709,13 +709,34 @@ async def processar_chamado_novo(
     (poller/webhook/rota manual, mais abaixo neste arquivo) passam o
     provedor de EMBEDDING ativo (`criar_cliente_embedding_protegido`,
     ponteiro independente do chat), pra correção de categoria não
-    depender do provedor de chat também saber fazer embedding."""
+    depender do provedor de chat também saber fazer embedding.
+
+    Texto de anexo (PDF/.txt/.log, ver `tools/ti/anexos_chamado.py`) entra
+    SÓ na avaliação de suficiência, nunca em `descricao_limpa` — essa
+    mesma variável também alimenta `classificar_categoria` e
+    `escolher_tecnico`, e um anexo ali quebraria os dois: o embedding
+    nativo da OCI manda `truncate="NONE"` (um anexo grande estoura o
+    limite e falha a correção de categoria, silenciosamente, caindo no
+    `except Exception` de `_melhor_categoria`), e `escolher_tecnico` casa
+    o primeiro nome de cada técnico contra o texto inteiro — um log real
+    cheio de nome próprio desviaria a escolha por coincidência. Só busca
+    anexo com `usar_ia=True` (com a IA desligada, a avaliação usa só a
+    regra de contagem de palavra — anexar texto ali só infla a contagem à
+    toa e gasta chamada no GLPI sem necessidade)."""
     descricao_limpa = _texto_para_ia(chamado.descricao)
     followups = await cliente.buscar_followups(chamado.id)
     turnos = _turnos_da_conversa(followups)
     rodadas_do_usuario = sum(1 for turno in turnos if turno.papel == "usuario")
+    textos_anexos = await anexos_chamado.extrair_textos_anexos(cliente, chamado.id) if usar_ia else []
+    descricao_para_avaliacao = descricao_limpa + anexos_chamado.montar_bloco_anexos(textos_anexos)
     avaliacao = await avaliar_chamado(
-        cliente_ia, modelo, chamado.titulo, descricao_limpa, chamado.categoria, turnos=turnos, usar_ia=usar_ia
+        cliente_ia,
+        modelo,
+        chamado.titulo,
+        descricao_para_avaliacao,
+        chamado.categoria,
+        turnos=turnos,
+        usar_ia=usar_ia,
     )
     if not avaliacao.suficiente:
         bateu_limite = rodadas_do_usuario >= _LIMITE_RODADAS_ESCLARECIMENTO

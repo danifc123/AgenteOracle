@@ -114,6 +114,9 @@ class _ClienteGLPIFake:
     async def buscar_followups(self, chamado_id: int) -> list:
         return []
 
+    async def listar_documentos(self, chamado_id: int) -> list:
+        return []
+
 
 class TestAutorizado:
     def test_segredo_certo_autoriza(self):

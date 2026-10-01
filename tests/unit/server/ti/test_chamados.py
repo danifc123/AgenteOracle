@@ -28,9 +28,9 @@ from agente_oracle.server.ti.chamados import (
     verificar_chamados_pendentes,
 )
 from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
-from agente_oracle.tools.ti import uso_ia_chamados
+from agente_oracle.tools.ti import anexos_chamado, uso_ia_chamados
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
-from agente_oracle.tools.ti.glpi import Chamado, Followup
+from agente_oracle.tools.ti.glpi import Chamado, DocumentoAnexo, DocumentoBaixado, Followup
 from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico
 
 # `classificar_categoria` compara contra as ~211 categorias reais — pesado
@@ -169,6 +169,28 @@ def _chat_nunca_chamado(**_kwargs):
     raise AssertionError("chat() não deveria ser chamado com usar_ia=False")
 
 
+class _PaginaPdfFake:
+    def __init__(self, texto: str):
+        self._texto = texto
+
+    def extract_text(self):
+        return self._texto
+
+
+class _PdfReaderComTexto:
+    """Fake de `pypdf.PdfReader` — mesmo padrão de
+    `tests/unit/tools/ti/test_anexos_chamado.py`, usado aqui só pra testar
+    a integração de ponta a ponta (PDF com conteúdo real -> suficiente)."""
+
+    def __init__(self, _stream):
+        self.is_encrypted = False
+        self.pages = [
+            _PaginaPdfFake(
+                "Relatorio de erro - o certificado digital expirou na estacao EST-034 e precisa ser renovado"
+            )
+        ]
+
+
 class _ClienteGLPIFake:
     """Implementação manual do Protocol `ClienteGLPI`, sem banco nem HTTP
     de verdade — só guarda o que foi chamado, pra inspecionar no `assert`."""
@@ -190,6 +212,14 @@ class _ClienteGLPIFake:
         # assert quando algum teste precisar confirmar que quem chamou
         # (`chamados_route`, poller, webhook) pediu o que era esperado.
         self.listar_incluir_atribuidos: bool = False
+        # Anexos de chamado (ver `tools/ti/anexos_chamado.py`) — mesmo
+        # padrão de `followups_por_chamado`: vazio por padrão, não afeta
+        # nenhum teste que não configura isso explicitamente.
+        self.documentos_por_chamado: dict[int, list] = {}
+        self.conteudos_por_documento: dict[int, object] = {}
+        self.chamados_id_pedidos_em_listar_documentos: list[int] = []
+        self.documentos_baixados: list[int] = []
+        self._falha_listar_documentos: bool = False
 
     async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]:
         self.listar_incluir_atribuidos = incluir_atribuidos
@@ -234,8 +264,15 @@ class _ClienteGLPIFake:
         self.usuarios_desatribuidos.append((chamado_id, usuario_id))
         self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=None)
 
-    async def baixar_documento(self, documento_id: int) -> None:
-        return None
+    async def baixar_documento(self, documento_id: int):
+        self.documentos_baixados.append(documento_id)
+        return self.conteudos_por_documento.get(documento_id)
+
+    async def listar_documentos(self, chamado_id: int) -> list:
+        self.chamados_id_pedidos_em_listar_documentos.append(chamado_id)
+        if self._falha_listar_documentos:
+            raise RuntimeError("GLPI fora do ar (simulado)")
+        return self.documentos_por_chamado.get(chamado_id, [])
 
     async def buscar_tecnicos_disponiveis(self) -> list:
         return []
@@ -784,6 +821,105 @@ class TestProcessarChamadoNovo:
         assert len(cliente.atribuicoes) == 1
         _chamado_id, area, _tecnico = cliente.atribuicoes[0]
         assert area == "sistemas"
+
+    async def test_texto_de_anexo_chega_na_avaliacao_mas_nao_na_classificacao_de_categoria(self):
+        # Regressão do risco achado no plano: `classificar_categoria` manda
+        # a descrição pro `.embed()` da OCI com `truncate="NONE"` — um
+        # anexo grande ali estouraria o limite do modelo de embedding e
+        # derrubaria a correção de categoria silenciosamente. O texto do
+        # anexo só pode chegar no `.chat()` (avaliação), nunca no
+        # `.embed()`.
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.documentos_por_chamado[1] = [
+            DocumentoAnexo(id=10, nome_arquivo="log.txt", mime="text/plain")
+        ]
+        cliente.conteudos_por_documento[10] = DocumentoBaixado(
+            conteudo=b"ERRO FATAL: certificado digital expirado na estacao EST-034", content_type="text/plain"
+        )
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        conteudo_chat = ollama.chamadas_chat[0]["messages"][1]["content"]
+        assert "certificado digital expirado" in conteudo_chat
+        conteudo_embed = ollama.chamadas_embed[0]["input"]
+        assert "certificado digital expirado" not in conteudo_embed
+
+    async def test_texto_de_anexo_citando_nome_de_tecnico_nao_muda_a_escolha(self, monkeypatch):
+        # Regressão do segundo risco achado no plano: `escolher_tecnico`
+        # casa o primeiro nome de um técnico contra o texto INTEIRO —
+        # um log real cheio de nome próprio (`user=pablo`) não pode
+        # desviar o chamado do critério de menor carga sem ninguém
+        # perceber por quê. O texto do anexo não entra na string que
+        # `escolher_tecnico` recebe.
+        roster = [
+            {"usuario": "pablo", "nome": "Pablo Silva", "tecnico_glpi_id": "pablo", "area_ti": "infra"},
+            {"usuario": "denner", "nome": "Denner Souza", "tecnico_glpi_id": "denner", "area_ti": "infra"},
+        ]
+        monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.documentos_por_chamado[1] = [
+            DocumentoAnexo(id=10, nome_arquivo="log.txt", mime="text/plain")
+        ]
+        cliente.conteudos_por_documento[10] = DocumentoBaixado(
+            conteudo=b"usuario=pablo processo travou as 14:02", content_type="text/plain"
+        )
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"pablo": 5, "denner": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        _chamado_id, _area, tecnico = cliente.atribuicoes[0]
+        assert tecnico == "denner"  # menor carga vence — "pablo" do log não contou como citação
+
+    async def test_usar_ia_false_nunca_busca_anexo(self):
+        descricao_longa = (
+            "O computador da recepção não liga desde ontem de manhã mesmo depois de trocar o cabo de força"
+        )
+        chamado = _chamado(descricao=descricao_longa, categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(cliente, _OllamaClienteFake(), "modelo-teste", chamado, cargas, False)
+
+        assert cliente.chamados_id_pedidos_em_listar_documentos == []
+
+    async def test_listar_documentos_falhando_nao_impede_a_avaliacao_de_terminar(self):
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente._falha_listar_documentos = True
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        assert resultado.avaliacao_suficiente is True
+
+    async def test_descricao_curta_com_pdf_anexado_contendo_a_resposta_fica_suficiente(self, monkeypatch):
+        # Ponta a ponta do caso de uso pedido (espelha o chamado real
+        # #3360): descrição vaga, resposta de verdade só no anexo.
+        monkeypatch.setattr(anexos_chamado.pypdf, "PdfReader", _PdfReaderComTexto)
+        chamado = _chamado(descricao="ver anexo", categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.documentos_por_chamado[1] = [
+            DocumentoAnexo(id=10, nome_arquivo="relatorio.pdf", mime="application/pdf")
+        ]
+        cliente.conteudos_por_documento[10] = DocumentoBaixado(conteudo=b"pdf", content_type="application/pdf")
+        # `_avaliar_por_regra` (plano B) só conta palavra — o texto extraído
+        # do PDF fake tem bastante palavra real, suficiente pra passar
+        # mesmo sem IA real respondendo (usa o Ollama fake de qualquer jeito
+        # só pra não derrubar o teste em erro de rede).
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        conteudo_chat = ollama.chamadas_chat[0]["messages"][1]["content"]
+        assert "certificado" in conteudo_chat
+        assert resultado.avaliacao_suficiente is True
 
 
 class TestProcessarChamadoNovoEmbeddingClient:

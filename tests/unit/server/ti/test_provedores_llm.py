@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -616,6 +617,44 @@ class TestTestar:
         resposta = await mod._testar("1", "42")
 
         assert resposta.status_code == 400
+
+    async def test_falha_tipo_not_found_num_provedor_openai_compativel_ganha_dica_acionavel(self, monkeypatch):
+        # Erro cru de verdade visto ao vivo (2026-10-01): "Entity with key
+        # openai.gpt-oss-120b not found" — sem contexto, só diz "não
+        # encontrado", não diz PRA ONDE olhar (achado do usuário: sem essa
+        # dica, ele ia sempre acionar o suporte sem entender o que fazer).
+        provedor = _provedor_llm(tipo_conexao="openai_compativel", capacidades=["chat"])
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        self._sem_efeito_na_auditoria_real(monkeypatch)
+
+        class _ClienteQueFalha:
+            async def chat(self, **kwargs):
+                raise RuntimeError("Error code: 404 - {'code': '404', 'message': 'Entity with key x not found'}")
+
+        monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteQueFalha(), "host"))
+
+        resposta = await mod._testar("1", "42")
+
+        assert resposta.status_code == 400
+        corpo = json.loads(resposta.body)
+        assert "Estilo de chamada" in corpo["erro"]
+        assert "Entity with key x not found" in corpo["erro"]
+
+    async def test_falha_sem_relacao_com_not_found_nao_ganha_a_dica(self, monkeypatch):
+        provedor = _provedor_llm(tipo_conexao="openai_compativel", capacidades=["chat"])
+        monkeypatch.setattr(mod.provedores_llm, "buscar", lambda _id: provedor)
+        self._sem_efeito_na_auditoria_real(monkeypatch)
+
+        class _ClienteQueFalha:
+            async def chat(self, **kwargs):
+                raise RuntimeError("chave de API inválida")
+
+        monkeypatch.setattr(mod.cliente_protegido, "construir_cliente_llm", lambda _p: (_ClienteQueFalha(), "host"))
+
+        resposta = await mod._testar("1", "42")
+
+        corpo = json.loads(resposta.body)
+        assert corpo["erro"] == "Falha ao testar a conexão: chave de API inválida"
 
     async def test_nao_mexe_no_ponteiro_de_ativo(self, monkeypatch):
         provedor = _provedor_llm(capacidades=["embedding"])

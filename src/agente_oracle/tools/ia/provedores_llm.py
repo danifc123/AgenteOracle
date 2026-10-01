@@ -60,6 +60,24 @@ _TIPOS_CONEXAO_VALIDOS: tuple[TipoConexao, ...] = ("ollama", "openai_compativel"
 _ESTILOS_API_VALIDOS: tuple[EstiloApi, ...] = ("chat_completions", "responses")
 _CAPACIDADES_VALIDAS: tuple[Capacidade, ...] = ("chat", "embedding")
 
+# Modelo -> `estilo_api` CONHECIDO pros modelos de chat da OCI já liberados
+# (confirmado com o suporte Oracle — ver docstring de
+# `tools/ia/cliente_openai_compativel.py`): não é escolha livre de quem
+# cadastra, é o próprio modelo que exige uma API ou outra. `criar`/
+# `atualizar` corrigem sozinhos o `estilo_api` quando o modelo bate com um
+# destes — sem isso, escolher o estilo errado só dava erro na hora de
+# TESTAR a conexão, com uma mensagem crua da API (`Entity with key X not
+# found`) que não dizia o que fazer (achado do usuário, 2026-10-01: ele
+# reabriu "Editar" com a tela desatualizada e resalvou o valor errado por
+# cima da correção manual, o que só reforça que isso não pode depender de
+# ninguém lembrar de escolher certo). Modelo novo liberado no futuro:
+# adiciona aqui, não precisa mexer em mais nada.
+_ESTILO_API_CONHECIDO: dict[str, EstiloApi] = {
+    "openai.gpt-oss-120b": "responses",
+    "meta.llama-3.3-70b-instruct": "chat_completions",
+    "meta.llama-4-scout-17b-16e-instruct": "chat_completions",
+}
+
 # Campos guardados como JSONB — únicos que passam por `json.dumps`/`::jsonb`
 # na escrita, tanto em `criar` quanto em `atualizar`.
 _CAMPOS_JSON = ("capacidades", "credenciais_extra")
@@ -217,6 +235,7 @@ def criar(
     capacidades: list[Capacidade],
     credenciais_extra: dict | None = None,
 ) -> ProvedorLLM:
+    estilo_api = _ESTILO_API_CONHECIDO.get(modelo.strip(), estilo_api)
     try:
         with get_postgres_connection() as connection:
             cursor = connection.cursor()
@@ -273,9 +292,18 @@ def atualizar(id_provedor: int, **campos) -> ProvedorLLM | None:
     de ir pro bind — os demais campos vão direto, sem cast. Trocar
     `api_key`/`credenciais_extra` por um valor novo também bate
     `credencial_atualizada_em` pra agora, mesmo que ninguém tenha pedido
-    isso explicitamente (ver `_deve_renovar_credencial`)."""
+    isso explicitamente (ver `_deve_renovar_credencial`). Trocar pra um
+    `modelo` CONHECIDO (`_ESTILO_API_CONHECIDO`) também corrige o
+    `estilo_api` sozinho, mesmo que quem chamou não tenha mandado esse
+    campo nesta edição (ou tenha mandado um valor errado) — é assim que a
+    tela reenviando um formulário desatualizado não consegue regravar um
+    `estilo_api` errado por cima de um certo."""
     if not campos:
         return buscar(id_provedor)
+    if "modelo" in campos:
+        estilo_conhecido = _ESTILO_API_CONHECIDO.get(str(campos["modelo"]).strip())
+        if estilo_conhecido is not None:
+            campos = {**campos, "estilo_api": estilo_conhecido}
     campos_finais = dict(campos)
     if _deve_renovar_credencial(campos):
         campos_finais["credencial_atualizada_em"] = datetime.now(UTC)

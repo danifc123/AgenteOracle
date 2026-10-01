@@ -107,6 +107,26 @@ def _erro(mensagem: str, status_code: int) -> Response:
     return JSONResponse({"erro": mensagem}, status_code=status_code, headers=CORS_HEADERS)
 
 
+def _mensagem_falha_teste(erro: Exception, provedor: ProvedorLLM) -> str:
+    """Traduz o erro cru da API numa dica acionável — sem isso, uma
+    mensagem tipo `Entity with key X not found` não diz ONDE olhar, e quem
+    cadastrou acaba achando que algo está quebrado (achado do usuário,
+    2026-10-01: errou o "Estilo de chamada" pro `openai.gpt-oss-120b" e só
+    viu um erro técnico indecifrável, sem pista de que o problema era essa
+    escolha). `tools/ia/provedores_llm.py::_ESTILO_API_CONHECIDO` já evita
+    esse erro pros modelos conhecidos — esta mensagem cobre o que ainda
+    pode dar errado (modelo novo, ainda não mapeado; endereço errado)."""
+    texto = str(erro)
+    if provedor.tipo_conexao == "openai_compativel" and "not found" in texto.lower():
+        return (
+            f'Falha ao testar a conexão: {texto}. Isso costuma acontecer quando o "Estilo de '
+            'chamada" está diferente do que esse modelo exige, ou o endereço/nome do modelo tem um '
+            "erro de digitação — não é escolha livre, cada modelo da OCI fala só uma API "
+            '(confirmado com o suporte Oracle). Confira em "Editar" antes de testar de novo.'
+        )
+    return f"Falha ao testar a conexão: {texto}"
+
+
 def _listar() -> Response:
     id_ativo = configuracoes_provedor.provedor_llm_ativo_id()
     id_embedding_ativo = configuracoes_provedor.provedor_llm_embedding_ativo_id()
@@ -319,7 +339,7 @@ async def _testar(id_provedor_bruto: str, usuario_id: str) -> Response:
         else:
             await cliente.chat(messages=[{"role": "user", "content": "oi"}], model=provedor.modelo)
     except Exception as erro:
-        return _erro(f"Falha ao testar a conexão: {erro}", 400)
+        return _erro(_mensagem_falha_teste(erro, provedor), 400)
     return JSONResponse({"ok": True}, headers=CORS_HEADERS)
 
 

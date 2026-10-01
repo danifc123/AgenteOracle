@@ -61,9 +61,13 @@ interface ProvedorLlm {
   criado_em: string;
 }
 
+// Só os dois tipos que a OCI (contratada pela DB IT) realmente usa hoje
+// (pedido do Daniel, 2026-10-01: evitar cadastrar um provedor com o tipo
+// errado) — "Ollama" continua válido no backend (tipagem antiga, nunca usado
+// em produção), só não aparece mais aqui pra escolher. Um provedor novo que
+// precise de Ollama ou de outro tipo volta pra cá quando a hora chegar.
 const OPCOES_TIPO_CONEXAO: OpcaoSelectBusca[] = [
-  { valor: 'ollama', rotulo: 'Ollama' },
-  { valor: 'openai_compativel', rotulo: 'Compatível com OpenAI' },
+  { valor: 'openai_compativel', rotulo: 'Compatível com OpenAI (chat)' },
   { valor: 'oci_nativo', rotulo: 'OCI (SDK nativo) — embedding' },
 ];
 
@@ -113,7 +117,7 @@ const PASSOS_TOUR_CADASTRO: PassoTour[] = [
     alvo: '[data-tour-alvo="tipo-conexao"]',
     titulo: 'Tipo de conexão',
     descricao:
-      'Escolha o formato que o provedor fala: "Ollama" pra Ollama local ou instalação própria, e "Compatível com OpenAI" pra qualquer serviço que fale a API da OpenAI — a OCI é um exemplo disso. Escolher "Compatível com OpenAI" revela dois campos a mais (Estilo de chamada e Projeto), cada um com sua própria dica quando aparecer.',
+      '"Compatível com OpenAI" é pra modelo de CHAT da OCI (ela expõe um endpoint compatível com a API da OpenAI pra isso) — revela dois campos a mais (Estilo de chamada e Projeto), cada um com sua própria dica quando aparecer. "OCI (SDK nativo)" é só pra modelo de EMBEDDING da OCI — ela não tem endpoint compatível com OpenAI pra embedding, então esse tipo usa autenticação por chave privada em vez de chave de API simples.',
   },
   {
     alvo: '[data-tour-alvo="endereco"]',
@@ -294,7 +298,7 @@ export class ProvedoresLlm {
   testandoId = signal<number | null>(null);
 
   formNome = signal('');
-  formTipoConexao = signal<TipoConexaoLlm>('ollama');
+  formTipoConexao = signal<TipoConexaoLlm>('openai_compativel');
   formBaseUrl = signal('');
   formApiKey = signal('');
   formProjetoId = signal('');
@@ -462,7 +466,7 @@ export class ProvedoresLlm {
   abrirDialogCriar(): void {
     this.editando.set(null);
     this.formNome.set('');
-    this.formTipoConexao.set('ollama');
+    this.formTipoConexao.set('openai_compativel');
     this.formBaseUrl.set('');
     this.formApiKey.set('');
     this.formProjetoId.set('');

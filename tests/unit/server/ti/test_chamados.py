@@ -1156,6 +1156,38 @@ class TestProcessarChamadoNovoLimpaHtml:
         assert "<p>" not in mensagem_usuario
         assert "Sistema lento desde ontem de manhã, no financeiro" in mensagem_usuario
 
+    async def test_manda_texto_limpo_do_followup_tambem_nao_so_da_descricao(self):
+        # Regressão: `_turnos_da_conversa` não limpava `Followup.conteudo`
+        # antes desta correção — uma imagem colada numa resposta de
+        # acompanhamento (`<img src="...">`) vazava a tag bruta pro prompt
+        # da IA, diferente da descrição inicial (que já passava por
+        # `_texto_para_ia`).
+        chamado = _chamado(
+            descricao="Sistema financeiro travando toda vez que abro o relatório.", categoria_id=999
+        )
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.followups_por_chamado[chamado.id] = [
+            Followup(
+                autor_id=999,
+                autor_nome="solicitante.teste",
+                conteudo=(
+                    'Segue o print: <img src="document.send.php?docid=34" alt="erro.png"> '
+                    "isso é o que aparece."
+                ),
+                criado_em=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ]
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        assert len(ollama.chamadas_chat) == 1
+        texto_completo = " ".join(m["content"] for m in ollama.chamadas_chat[0]["messages"])
+        assert "<img" not in texto_completo
+        assert "Segue o print:" in texto_completo
+        assert "isso é o que aparece." in texto_completo
+
 
 class TestSaudePorArea:
     def test_conta_tecnico_por_area(self):

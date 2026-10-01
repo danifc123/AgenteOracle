@@ -254,9 +254,18 @@ def _turnos_da_conversa(followups: list[Followup]) -> list[TurnoConversa]:
     `criado_em`, ver `ClienteGLPIReal.buscar_followups`) pro tipo
     GLPI-agnóstico que `avaliar_chamado` entende — `qualidade_chamado.py`
     não sabe (nem precisa saber) o que é `settings.glpi_username`, essa
-    decisão de "quem é a IA" é só nossa."""
+    decisão de "quem é a IA" é só nossa.
+
+    `_texto_para_ia` limpa o HTML de `followup.conteudo` antes de virar
+    `TurnoConversa.conteudo` — sem isso, um followup com imagem colada
+    (`<img src="...">`) vazava a tag bruta como texto literal pra IA (a
+    descrição inicial do chamado já passava por essa mesma limpeza, ver
+    docstring de `_texto_para_ia`; aqui faltava o mesmo tratamento)."""
     return [
-        TurnoConversa(papel="ia" if followup.autor_nome == settings.glpi_username else "usuario", conteudo=followup.conteudo)
+        TurnoConversa(
+            papel="ia" if followup.autor_nome == settings.glpi_username else "usuario",
+            conteudo=_texto_para_ia(followup.conteudo),
+        )
         for followup in followups
     ]
 
@@ -627,8 +636,13 @@ def _texto_para_ia(html: str) -> str:
     interpretado junto com o texto. Tira as tags e extrai só o texto —
     não separa boilerplate de conteúdo real (isso exigiria regra própria
     pros padrões de e-mail do GLPI), só corta o ruído da marcação em si.
-    Usado só pra montar o texto que vai pra IA — `chamado.descricao` em
-    si não muda, a tela continua renderizando o HTML original."""
+    Mesmo motivo cobre imagem colada (`<img src="...">`): sem isso, a
+    tag bruta vazava como texto literal pra IA — aqui ela só some, sem
+    deixar rastro (ver `visao_imagens_chamados_futuro` no roteiro, se um
+    dia isso precisar virar um marcador em vez de sumir). Usado só pra
+    montar o texto que vai pra IA (descrição inicial e cada followup, ver
+    `_turnos_da_conversa`) — `chamado.descricao`/`Followup.conteudo` em
+    si não mudam, a tela continua renderizando o HTML original."""
     sopa = BeautifulSoup(html, "html.parser")
     for tag_indesejada in sopa(["style", "script"]):
         tag_indesejada.decompose()

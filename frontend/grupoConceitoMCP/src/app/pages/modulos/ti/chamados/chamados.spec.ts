@@ -180,18 +180,18 @@ describe('ChamadosTi', () => {
     TestBed.inject(HttpTestingController).verify();
   });
 
-  it('carrega e mostra todos os chamados por padrão', () => {
+  it('carrega e mostra todo o departamento por padrão, sem nenhum filtro selecionado', () => {
     const { linhas } = criar();
 
     expect(linhas().length).toBe(3);
   });
 
-  it('o filtro sempre oferece "Todos", e "Minha área: {área}" quando a conta logada tem técnico do GLPI vinculado', () => {
+  it('o filtro sempre oferece "Todo o departamento", e "Minha área: {área}" quando a conta logada tem técnico do GLPI vinculado', () => {
     const { opcoesDoFiltro, abrirFiltro } = criar(sessaoFalso('rafa.teste'));
 
     abrirFiltro();
 
-    expect(opcoesDoFiltro()).toContain('Todos');
+    expect(opcoesDoFiltro()).toContain('Todo o departamento');
     expect(opcoesDoFiltro()).toContain('Minha área: Infraestrutura');
   });
 
@@ -213,11 +213,11 @@ describe('ChamadosTi', () => {
     expect(restantes[0].textContent).toContain('VPN não conecta');
   });
 
-  it('voltar pra "Todos" depois de "Minha área" mostra a lista inteira de novo', () => {
+  it('voltar pra "Todo o departamento" depois de "Minha área" mostra a lista inteira de novo', () => {
     const { selecionarFiltro, linhas } = criar(sessaoFalso('rafa.teste'));
 
     selecionarFiltro('Minha área: Infraestrutura');
-    selecionarFiltro('Todos');
+    selecionarFiltro('Todo o departamento');
 
     expect(linhas().length).toBe(3);
   });
@@ -265,13 +265,14 @@ describe('ChamadosTi', () => {
     expect(el.textContent).toContain('Nenhum chamado atribuído a você no momento.');
   });
 
-  it('"Todos" (padrão) esconde chamado já gerenciado fora do sistema, mesmo sem nenhum filtro selecionado', () => {
+  it('padrão ("Todo o departamento") mostra chamado já gerenciado fora do sistema, mesmo sem nenhum filtro selecionado', () => {
+    // Decisão confirmada com o usuário (2026-10-01): não existe mais um
+    // "Todos" escondendo esse chamado por padrão — só "Minha área"
+    // esconde (teste abaixo). O padrão mostra tudo, igual o GLPI mostraria.
     const chamados = [CHAMADO_AREA_SISTEMAS, CHAMADO_ATRIBUIDO_A_MIM, CHAMADO_ATRIBUIDO_A_OUTRO];
     const { linhas } = criar(sessaoFalso('rafa.teste'), chamados);
 
-    const restantes = linhas();
-    expect(restantes.length).toBe(1);
-    expect(restantes[0].textContent).toContain('Impressora não liga');
+    expect(linhas().length).toBe(3);
   });
 
   it('"Minha área" também esconde chamado gerenciado fora do sistema, mesmo sendo da área certa', () => {

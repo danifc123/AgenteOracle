@@ -39,10 +39,11 @@ export interface Chamado {
   area: 'infra' | 'sistemas' | 'processos';
   tecnico_atribuido: string | null;
   // `true` = chamado que um técnico de verdade já está tratando fora do
-  // fluxo da IA (ver `tools/ti/glpi.py::chamado_e_alheio`) — "Todos"/
-  // "Minha área" escondem esse chamado por padrão (mostrar ele junto
-  // com os que ainda dependem da nossa triagem só confunde); "Meus
-  // chamados"/"Todo o departamento" mostram de propósito.
+  // fluxo da IA (ver `tools/ti/glpi.py::chamado_e_alheio`) — "Minha
+  // área" esconde esse chamado (mostrar ele junto com os que ainda
+  // dependem da nossa triagem só confunde, e ele não "tende a cair" pra
+  // ninguém — já foi pego); "Meus chamados"/"Todo o departamento"
+  // mostram de propósito.
   gerenciado_fora_do_sistema: boolean;
 }
 
@@ -59,12 +60,12 @@ interface TecnicoNome {
 }
 
 // Valor selecionado no `app-select-busca` do cabeçalho da lista — `null`/
-// ausente do select (`aoTrocarFiltro`) sempre cai em `''` ("Todos"). É
-// string vazia (não `'todos'`) de propósito: `SelectBusca.temSelecao()`
-// só esconde o botão "Limpar campo" quando `valor()` é falsy — com
-// `'todos'` (truthy) o botão de limpar aparecia mesmo no estado padrão,
-// sem filtro nenhum ativo.
-type FiltroChamados = '' | 'area' | 'meus' | 'departamento';
+// ausente do select (`aoTrocarFiltro`) sempre cai em `'departamento'`:
+// só 3 opções, sem um "Todos" à parte (tirado de propósito — "Todos" e
+// "Todo o departamento" liam parecido demais e um deles escondia
+// chamado sem avisar; "Todo o departamento" já é o estado neutro,
+// mostra tudo que está novo ou aguardando resposta no GLPI, igual lá).
+type FiltroChamados = 'area' | 'meus' | 'departamento';
 
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
@@ -165,10 +166,10 @@ export class ChamadosTi {
   // — é este filtro, no front, que decide o que mostrar em cada opção.
   // `null` = sem técnico GLPI vinculado, mesma regra de `minhaArea`.
   protected readonly meuIdentificador = signal<string | null>(null);
-  protected readonly filtroChamados = signal<FiltroChamados>('');
+  protected readonly filtroChamados = signal<FiltroChamados>('departamento');
 
   protected readonly opcoesFiltro = computed<OpcaoSelectBusca[]>(() => {
-    const opcoes: OpcaoSelectBusca[] = [{ valor: '', rotulo: 'Todos' }];
+    const opcoes: OpcaoSelectBusca[] = [];
     const rotuloArea = this.rotuloMinhaArea();
     if (rotuloArea) {
       opcoes.push({ valor: 'area', rotulo: 'Minha área: ' + rotuloArea });
@@ -182,13 +183,6 @@ export class ChamadosTi {
 
   protected readonly chamadosFiltrados = computed(() => {
     const filtro = this.filtroChamados();
-    // "Todo o departamento" é o único que mostra chamado já gerenciado
-    // fora do sistema por OUTRO técnico — as outras opções escondem,
-    // mesmo espírito de antes desse filtro existir (ver `Chamado.
-    // gerenciado_fora_do_sistema`).
-    if (filtro === 'departamento') {
-      return this.chamados();
-    }
     if (filtro === 'meus') {
       const identificador = this.meuIdentificador();
       return identificador
@@ -203,7 +197,8 @@ export class ChamadosTi {
           )
         : this.chamados();
     }
-    return this.chamados().filter((chamado) => !chamado.gerenciado_fora_do_sistema);
+    // 'departamento' (padrão) — tudo, de qualquer técnico, sem exceção.
+    return this.chamados();
   });
 
   protected readonly paginaAtual = signal(1);
@@ -267,7 +262,7 @@ export class ChamadosTi {
   }
 
   protected aoTrocarFiltro(valor: string | null): void {
-    this.filtroChamados.set((valor as FiltroChamados | null) ?? '');
+    this.filtroChamados.set((valor as FiltroChamados | null) ?? 'departamento');
     this.paginaAtual.set(1);
   }
 

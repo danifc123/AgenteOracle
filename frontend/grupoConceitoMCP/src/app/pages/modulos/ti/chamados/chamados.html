@@ -53,7 +53,7 @@
     <h2>Chamados</h2>
     <app-select-busca
       class="filtro-chamados"
-      placeholder="Todos"
+      placeholder="Todo o departamento"
       [opcoes]="opcoesFiltro()"
       [valor]="filtroChamados()"
       (valorChange)="aoTrocarFiltro($event)"
@@ -91,10 +91,8 @@
         <p>Nenhum chamado da área {{ rotuloMinhaArea() }} no momento.</p>
       } @else if (filtroChamados() === 'meus') {
         <p>Nenhum chamado atribuído a você no momento.</p>
-      } @else if (filtroChamados() === 'departamento') {
-        <p>Nenhum chamado do departamento no momento.</p>
       } @else {
-        <p>Nenhum chamado no momento.</p>
+        <p>Nenhum chamado do departamento no momento.</p>
       }
     </app-estado-vazio>
   } @else {

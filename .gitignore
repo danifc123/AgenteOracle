@@ -43,6 +43,7 @@ htmlcov/
 Thumbs.db
 
 # Notas pessoais locais (não versionar)
+GUIA_DOCKER.md
 COMO_INICIAR.md
 Proposta_Infraestrutura_IA_Agente_Oracle.docx
 MAPA_BANCOS_LOCAL.md

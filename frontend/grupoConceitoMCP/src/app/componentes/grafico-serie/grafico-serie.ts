@@ -72,6 +72,14 @@ interface Tooltip {
 const LARGURA_TOOLTIP = 148;
 const ALTURA_LINHA_TOOLTIP = 16;
 
+// Sem teto, `larguraGrupo = LARGURA_PLOT / totalGrupos` dá uma barra gigante
+// quando há só 1-2 dias de dado (ex: tela recém-aberta, consumo de hoje) —
+// a barra tomava quase o gráfico inteiro (achado do usuário, 2026-10-01).
+// Não cresce de novo conforme mais dias chegam: com muitos pontos a conta
+// normal já dá uma barra bem mais fina que isso, o teto só segura o caso
+// de poucos pontos.
+const LARGURA_MAXIMA_BARRA = 40;
+
 const LARGURA = 640;
 const ALTURA = 260;
 // 56 não é largura suficiente pra rótulo abreviado grande ("R$ 593,5 Mil",
@@ -320,7 +328,7 @@ export class GraficoSerie {
     const totalGrupos = rotulos.length || 1;
     const larguraGrupo = LARGURA_PLOT / totalGrupos;
     const totalSeries = series.length || 1;
-    const larguraBarra = (larguraGrupo * 0.6) / totalSeries;
+    const larguraBarra = Math.min((larguraGrupo * 0.6) / totalSeries, LARGURA_MAXIMA_BARRA);
     const espacamentoBarra = larguraBarra * 0.15;
 
     const valorPorRotulo = series.map(

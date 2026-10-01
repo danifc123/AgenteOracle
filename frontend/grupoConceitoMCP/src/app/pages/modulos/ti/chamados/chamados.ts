@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteudo-chamado';
@@ -8,13 +8,21 @@ import { ConfiguracoesChamados } from '../../../../componentes/configuracoes-cha
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
+import { PainelProcesso } from '../../../../componentes/painel-processo/painel-processo';
 import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
 import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
+import { PollerTi } from '../../../../servicos/poller-ti/poller-ti';
 import { Sessao } from '../../../../servicos/sessao/sessao';
 import { IndicadoresTecnico } from './indicadores-tecnico/indicadores-tecnico';
+
+// Consultado só enquanto o painel "Ver logs" está aberto (ver `constructor`)
+// — o poller de verdade roda a cada 5 min, não precisa de nada mais rápido
+// que isso pra parecer "ao vivo" num painel que ninguém deixa aberto o
+// tempo todo.
+const INTERVALO_ATUALIZACAO_POLLER_MS = 5000;
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -39,10 +47,11 @@ export interface Chamado {
   area: 'infra' | 'sistemas' | 'processos';
   tecnico_atribuido: string | null;
   // `true` = chamado que um técnico de verdade já está tratando fora do
-  // fluxo da IA (ver `tools/ti/glpi.py::chamado_e_alheio`) — "Todos"/
-  // "Minha área" escondem esse chamado por padrão (mostrar ele junto
-  // com os que ainda dependem da nossa triagem só confunde); "Meus
-  // chamados"/"Todo o departamento" mostram de propósito.
+  // fluxo da IA (ver `tools/ti/glpi.py::chamado_e_alheio`) — "Minha
+  // área" esconde esse chamado (mostrar ele junto com os que ainda
+  // dependem da nossa triagem só confunde, e ele não "tende a cair" pra
+  // ninguém — já foi pego); "Meus chamados"/"Todo o departamento"
+  // mostram de propósito.
   gerenciado_fora_do_sistema: boolean;
 }
 
@@ -59,12 +68,12 @@ interface TecnicoNome {
 }
 
 // Valor selecionado no `app-select-busca` do cabeçalho da lista — `null`/
-// ausente do select (`aoTrocarFiltro`) sempre cai em `''` ("Todos"). É
-// string vazia (não `'todos'`) de propósito: `SelectBusca.temSelecao()`
-// só esconde o botão "Limpar campo" quando `valor()` é falsy — com
-// `'todos'` (truthy) o botão de limpar aparecia mesmo no estado padrão,
-// sem filtro nenhum ativo.
-type FiltroChamados = '' | 'area' | 'meus' | 'departamento';
+// ausente do select (`aoTrocarFiltro`) sempre cai em `'departamento'`:
+// só 3 opções, sem um "Todos" à parte (tirado de propósito — "Todos" e
+// "Todo o departamento" liam parecido demais e um deles escondia
+// chamado sem avisar; "Todo o departamento" já é o estado neutro,
+// mostra tudo que está novo ou aguardando resposta no GLPI, igual lá).
+type FiltroChamados = 'area' | 'meus' | 'departamento';
 
 /** MÓDULO TI — TELA "AUDITORIA DE CHAMADOS" (2026-08)
  *
@@ -78,6 +87,12 @@ type FiltroChamados = '' | 'area' | 'meus' | 'departamento';
  * Se a IA insistir que falta informação numa 2ª avaliação seguida, o
  * chamado é escalado pra um técnico humano (`tecnicoEscalado()` mostra
  * isso na tela — "Aguardando resposta" vira "Com {técnico}").
+ *
+ * Botão "Ver logs" (ícone de documento, aberto pro time de TI inteiro)
+ * abre `app-painel-processo` com o status ao vivo desse poller — etapa
+ * atual, quantos chamados cada perna processou na última rodada, e
+ * contagem regressiva até a próxima (`/api/ti/poller/status`, consultado
+ * só enquanto o painel está aberto).
  *
  * A engrenagem no cabeçalho (só desenvolvedor) abre as configurações da Auditoria (`ConfiguracoesChamados`).
  *
@@ -106,6 +121,7 @@ type FiltroChamados = '' | 'area' | 'meus' | 'departamento';
     EstadoVazio,
     IndicadoresTecnico,
     ModuloHeader,
+    PainelProcesso,
     SaudeRoster,
     SelectBusca,
     Selo,
@@ -117,6 +133,7 @@ type FiltroChamados = '' | 'area' | 'meus' | 'departamento';
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
+  protected readonly pollerTi = inject(PollerTi);
   protected readonly sessao = inject(Sessao);
   private readonly ITENS_POR_PAGINA = 10;
 
@@ -131,6 +148,9 @@ export class ChamadosTi {
   protected readonly carregando = signal(true);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly configuracoesAbertas = signal(false);
+  // Painel "Ver logs" (poller do GLPI) — time de TI inteiro, não só
+  // desenvolvedor (ver `app-painel-processo` em chamados.html).
+  protected readonly painelProcessoAberto = signal(false);
   // Avisa de relance (só desenvolvedor) que há amostragem ativa.
   protected readonly amostragemAtiva = computed(
     () => this.configuracoesTi.percentualAmostragemChamados() < 100,
@@ -165,10 +185,10 @@ export class ChamadosTi {
   // — é este filtro, no front, que decide o que mostrar em cada opção.
   // `null` = sem técnico GLPI vinculado, mesma regra de `minhaArea`.
   protected readonly meuIdentificador = signal<string | null>(null);
-  protected readonly filtroChamados = signal<FiltroChamados>('');
+  protected readonly filtroChamados = signal<FiltroChamados>('departamento');
 
   protected readonly opcoesFiltro = computed<OpcaoSelectBusca[]>(() => {
-    const opcoes: OpcaoSelectBusca[] = [{ valor: '', rotulo: 'Todos' }];
+    const opcoes: OpcaoSelectBusca[] = [];
     const rotuloArea = this.rotuloMinhaArea();
     if (rotuloArea) {
       opcoes.push({ valor: 'area', rotulo: 'Minha área: ' + rotuloArea });
@@ -182,13 +202,6 @@ export class ChamadosTi {
 
   protected readonly chamadosFiltrados = computed(() => {
     const filtro = this.filtroChamados();
-    // "Todo o departamento" é o único que mostra chamado já gerenciado
-    // fora do sistema por OUTRO técnico — as outras opções escondem,
-    // mesmo espírito de antes desse filtro existir (ver `Chamado.
-    // gerenciado_fora_do_sistema`).
-    if (filtro === 'departamento') {
-      return this.chamados();
-    }
     if (filtro === 'meus') {
       const identificador = this.meuIdentificador();
       return identificador
@@ -203,7 +216,8 @@ export class ChamadosTi {
           )
         : this.chamados();
     }
-    return this.chamados().filter((chamado) => !chamado.gerenciado_fora_do_sistema);
+    // 'departamento' (padrão) — tudo, de qualquer técnico, sem exceção.
+    return this.chamados();
   });
 
   protected readonly paginaAtual = signal(1);
@@ -223,6 +237,24 @@ export class ChamadosTi {
       this.configuracoesTi.carregar();
       this.carregarSaudeAreas();
     }
+
+    // Só consulta o status do poller enquanto o painel estiver aberto —
+    // sem isso, ficaria pingando o backend pro resto da sessão mesmo com
+    // ninguém olhando.
+    effect((onCleanup) => {
+      if (!this.painelProcessoAberto()) {
+        return;
+      }
+      this.pollerTi.carregar();
+      const intervalo = setInterval(() => this.pollerTi.carregar(), INTERVALO_ATUALIZACAO_POLLER_MS);
+      // Log ao vivo abre/fecha junto com o painel — fechado, cancela a
+      // conexão de verdade (`fecharStreamDeLogs`), não só para de ler.
+      this.pollerTi.abrirStreamDeLogs();
+      onCleanup(() => {
+        clearInterval(intervalo);
+        this.pollerTi.fecharStreamDeLogs();
+      });
+    });
   }
 
   private carregarChamados(): void {
@@ -267,7 +299,7 @@ export class ChamadosTi {
   }
 
   protected aoTrocarFiltro(valor: string | null): void {
-    this.filtroChamados.set((valor as FiltroChamados | null) ?? '');
+    this.filtroChamados.set((valor as FiltroChamados | null) ?? 'departamento');
     this.paginaAtual.set(1);
   }
 

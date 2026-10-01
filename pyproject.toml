@@ -5,7 +5,13 @@ description = "Servidor MCP para integração com Oracle - emissão de relatóri
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp[cli]>=1.6.0",
+    # Teto em <2 de propósito: mcp 2.x renomeou `FastMCP` pra `MCPServer`
+    # (e mudou outras APIs) — `server/app.py` usa `from
+    # mcp.server.fastmcp import FastMCP`, API v1. Sem esse teto, qualquer
+    # instalação limpa (ex: imagem Docker nova, sem lockfile no projeto)
+    # puxa a 2.x mais recente e quebra o import na hora do boot (achado
+    # ao testar o go-live em Docker, 2026-10-01).
+    "mcp[cli]>=1.6.0,<2",
     "oracledb>=2.4.0",
     "ollama>=0.4.0",
     "pydantic-settings>=2.6.0",

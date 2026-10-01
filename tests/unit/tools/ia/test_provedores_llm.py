@@ -250,6 +250,24 @@ class TestCriar:
         with pytest.raises(psycopg.Error):
             mod.criar(**self._campos())
 
+    def test_modelo_conhecido_corrige_o_estilo_api_mandado_errado(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.criar(**self._campos(modelo="openai.gpt-oss-120b", estilo_api="chat_completions"))
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["estilo_api"] == "responses"
+
+    def test_modelo_desconhecido_mantem_o_estilo_api_mandado(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.criar(**self._campos(modelo="um-modelo-qualquer", estilo_api="responses"))
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["estilo_api"] == "responses"
+
 
 class TestDeveRenovarCredencial:
     def test_api_key_preenchida_renova(self):
@@ -358,6 +376,35 @@ class TestAtualizar:
 
         with pytest.raises(ProvedorLlmJaExiste):
             mod.atualizar(1, nome="Já existe")
+
+    def test_trocar_pra_modelo_conhecido_corrige_o_estilo_api_mesmo_sem_mandar_esse_campo(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, modelo="openai.gpt-oss-120b")
+
+        sql, binds = cursor.execucoes[-1]
+        assert "estilo_api = :estilo_api" in sql
+        assert binds["estilo_api"] == "responses"
+
+    def test_trocar_pra_modelo_conhecido_corrige_mesmo_mandando_o_estilo_api_errado(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, modelo="meta.llama-3.3-70b-instruct", estilo_api="responses")
+
+        _sql, binds = cursor.execucoes[-1]
+        assert binds["estilo_api"] == "chat_completions"
+
+    def test_trocar_pra_modelo_desconhecido_nao_mexe_no_estilo_api(self, monkeypatch):
+        cursor = _CursorFake(linha_fetchone=_LINHA_CRUA)
+        _conexao_fake_para(monkeypatch, cursor)
+
+        mod.atualizar(1, modelo="um-modelo-novo-qualquer")
+
+        sql, binds = cursor.execucoes[-1]
+        assert "estilo_api" not in binds
+        assert "estilo_api = :estilo_api" not in sql
 
 
 class TestRemover:

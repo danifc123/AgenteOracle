@@ -1,8 +1,18 @@
-/* Engrenagem e selo no slot `acoes`, alinhados ao título (longe do sino fixo do canto). */
-.acoes-config {
+/* Um wrapper só no slot `acoes` (ver modulo-header.html::ng-content select="[acoes]")
+   — projetar "Ver logs" e `.acoes-config` como dois elementos soltos deixava os 3 filhos
+   de `.page-header` (bloco da esquerda + os dois) espalhados pelo `justify-content:
+   space-between` dele, em vez de ficarem agrupados à direita. */
+.acoes-cabecalho {
   display: flex;
   align-items: center;
   align-self: flex-end;
+  gap: var(--space-3);
+}
+
+/* Engrenagem e selo, lado a lado dentro do wrapper acima. */
+.acoes-config {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
 }
 

@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -12,8 +14,12 @@ from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
     _chamados_da_tela,
     _contagem_por_tecnico,
+    _estado_poller_para_json,
+    _executar_uma_rodada,
+    _publicar_log,
     _resumo_indicadores_tecnico,
     _saude_por_area,
+    _stream_log,
     _tempo_gasto_por_tecnico,
     _texto_para_ia,
     chamado_entra_na_amostra,
@@ -22,9 +28,9 @@ from agente_oracle.server.ti.chamados import (
     verificar_chamados_pendentes,
 )
 from agente_oracle.tools.ia.cliente_openai_compativel import EmbeddingNaoSuportado
-from agente_oracle.tools.ti import uso_ia_chamados
+from agente_oracle.tools.ti import anexos_chamado, uso_ia_chamados
 from agente_oracle.tools.ti.categorias import CategoriaGlpi
-from agente_oracle.tools.ti.glpi import Chamado, Followup
+from agente_oracle.tools.ti.glpi import Chamado, DocumentoAnexo, DocumentoBaixado, Followup
 from agente_oracle.tools.ti.tecnicos import SemTecnicoNaArea, Tecnico
 
 # `classificar_categoria` compara contra as ~211 categorias reais — pesado
@@ -163,6 +169,28 @@ def _chat_nunca_chamado(**_kwargs):
     raise AssertionError("chat() não deveria ser chamado com usar_ia=False")
 
 
+class _PaginaPdfFake:
+    def __init__(self, texto: str):
+        self._texto = texto
+
+    def extract_text(self):
+        return self._texto
+
+
+class _PdfReaderComTexto:
+    """Fake de `pypdf.PdfReader` — mesmo padrão de
+    `tests/unit/tools/ti/test_anexos_chamado.py`, usado aqui só pra testar
+    a integração de ponta a ponta (PDF com conteúdo real -> suficiente)."""
+
+    def __init__(self, _stream):
+        self.is_encrypted = False
+        self.pages = [
+            _PaginaPdfFake(
+                "Relatorio de erro - o certificado digital expirou na estacao EST-034 e precisa ser renovado"
+            )
+        ]
+
+
 class _ClienteGLPIFake:
     """Implementação manual do Protocol `ClienteGLPI`, sem banco nem HTTP
     de verdade — só guarda o que foi chamado, pra inspecionar no `assert`."""
@@ -184,6 +212,14 @@ class _ClienteGLPIFake:
         # assert quando algum teste precisar confirmar que quem chamou
         # (`chamados_route`, poller, webhook) pediu o que era esperado.
         self.listar_incluir_atribuidos: bool = False
+        # Anexos de chamado (ver `tools/ti/anexos_chamado.py`) — mesmo
+        # padrão de `followups_por_chamado`: vazio por padrão, não afeta
+        # nenhum teste que não configura isso explicitamente.
+        self.documentos_por_chamado: dict[int, list] = {}
+        self.conteudos_por_documento: dict[int, object] = {}
+        self.chamados_id_pedidos_em_listar_documentos: list[int] = []
+        self.documentos_baixados: list[int] = []
+        self._falha_listar_documentos: bool = False
 
     async def listar(self, incluir_atribuidos: bool = False) -> list[Chamado]:
         self.listar_incluir_atribuidos = incluir_atribuidos
@@ -228,8 +264,15 @@ class _ClienteGLPIFake:
         self.usuarios_desatribuidos.append((chamado_id, usuario_id))
         self._chamados[chamado_id] = replace(self._chamados[chamado_id], tecnico_atribuido=None)
 
-    async def baixar_documento(self, documento_id: int) -> None:
-        return None
+    async def baixar_documento(self, documento_id: int):
+        self.documentos_baixados.append(documento_id)
+        return self.conteudos_por_documento.get(documento_id)
+
+    async def listar_documentos(self, chamado_id: int) -> list:
+        self.chamados_id_pedidos_em_listar_documentos.append(chamado_id)
+        if self._falha_listar_documentos:
+            raise RuntimeError("GLPI fora do ar (simulado)")
+        return self.documentos_por_chamado.get(chamado_id, [])
 
     async def buscar_tecnicos_disponiveis(self) -> list:
         return []
@@ -384,6 +427,8 @@ class TestProcessarChamadoNovo:
         assert cargas == {}
         assert resultado.avaliacao_suficiente is False
         assert resultado.precisou_embedding is None  # nem chegou a classificar_categoria
+        assert resultado.acao == "aguardando_usuario"
+        assert resultado.tecnico is None  # ainda não tem técnico nenhum, só a IA está com o chamado
 
     async def test_chamado_insuficiente_pela_primeira_vez_atribui_a_conta_da_ia(self, monkeypatch):
         # GLPI rejeita silenciosamente troca de status sem ninguém
@@ -485,6 +530,8 @@ class TestProcessarChamadoNovo:
         assert resultado.avaliacao_suficiente is True
         assert resultado.precisou_embedding is True
         assert resultado.embedding_indisponivel is False
+        assert resultado.acao == "liberado"
+        assert resultado.tecnico == "Técnico Infra"  # único técnico da área "infra" no roster fake
 
     async def test_provedor_sem_embedding_marca_embedding_indisponivel_mas_nao_trava(self):
         # Ex: provedor ativo é OCI Generative AI (sem suporte a embedding) —
@@ -678,6 +725,8 @@ class TestProcessarChamadoNovo:
         assert chamado_id == 1
         assert area == "infra"
         assert resultado.avaliacao_suficiente is False
+        assert resultado.acao == "escalado"
+        assert resultado.tecnico == "Técnico Infra"  # único técnico da área "infra" no roster fake
 
     async def test_insuficiente_com_menos_rodadas_que_o_limite_continua_perguntando(self):
         # Menos de 3 respostas do solicitante ainda: mais uma rodada de
@@ -773,6 +822,105 @@ class TestProcessarChamadoNovo:
         _chamado_id, area, _tecnico = cliente.atribuicoes[0]
         assert area == "sistemas"
 
+    async def test_texto_de_anexo_chega_na_avaliacao_mas_nao_na_classificacao_de_categoria(self):
+        # Regressão do risco achado no plano: `classificar_categoria` manda
+        # a descrição pro `.embed()` da OCI com `truncate="NONE"` — um
+        # anexo grande ali estouraria o limite do modelo de embedding e
+        # derrubaria a correção de categoria silenciosamente. O texto do
+        # anexo só pode chegar no `.chat()` (avaliação), nunca no
+        # `.embed()`.
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.documentos_por_chamado[1] = [
+            DocumentoAnexo(id=10, nome_arquivo="log.txt", mime="text/plain")
+        ]
+        cliente.conteudos_por_documento[10] = DocumentoBaixado(
+            conteudo=b"ERRO FATAL: certificado digital expirado na estacao EST-034", content_type="text/plain"
+        )
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        conteudo_chat = ollama.chamadas_chat[0]["messages"][1]["content"]
+        assert "certificado digital expirado" in conteudo_chat
+        conteudo_embed = ollama.chamadas_embed[0]["input"]
+        assert "certificado digital expirado" not in conteudo_embed
+
+    async def test_texto_de_anexo_citando_nome_de_tecnico_nao_muda_a_escolha(self, monkeypatch):
+        # Regressão do segundo risco achado no plano: `escolher_tecnico`
+        # casa o primeiro nome de um técnico contra o texto INTEIRO —
+        # um log real cheio de nome próprio (`user=pablo`) não pode
+        # desviar o chamado do critério de menor carga sem ninguém
+        # perceber por quê. O texto do anexo não entra na string que
+        # `escolher_tecnico` recebe.
+        roster = [
+            {"usuario": "pablo", "nome": "Pablo Silva", "tecnico_glpi_id": "pablo", "area_ti": "infra"},
+            {"usuario": "denner", "nome": "Denner Souza", "tecnico_glpi_id": "denner", "area_ti": "infra"},
+        ]
+        monkeypatch.setattr("agente_oracle.tools.ti.tecnicos.listar_tecnicos_ti", lambda: roster)
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.documentos_por_chamado[1] = [
+            DocumentoAnexo(id=10, nome_arquivo="log.txt", mime="text/plain")
+        ]
+        cliente.conteudos_por_documento[10] = DocumentoBaixado(
+            conteudo=b"usuario=pablo processo travou as 14:02", content_type="text/plain"
+        )
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"pablo": 5, "denner": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        _chamado_id, _area, tecnico = cliente.atribuicoes[0]
+        assert tecnico == "denner"  # menor carga vence — "pablo" do log não contou como citação
+
+    async def test_usar_ia_false_nunca_busca_anexo(self):
+        descricao_longa = (
+            "O computador da recepção não liga desde ontem de manhã mesmo depois de trocar o cabo de força"
+        )
+        chamado = _chamado(descricao=descricao_longa, categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cargas: dict[str, int] = {}
+
+        await processar_chamado_novo(cliente, _OllamaClienteFake(), "modelo-teste", chamado, cargas, False)
+
+        assert cliente.chamados_id_pedidos_em_listar_documentos == []
+
+    async def test_listar_documentos_falhando_nao_impede_a_avaliacao_de_terminar(self):
+        chamado = _chamado(categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente._falha_listar_documentos = True
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        assert resultado.avaliacao_suficiente is True
+
+    async def test_descricao_curta_com_pdf_anexado_contendo_a_resposta_fica_suficiente(self, monkeypatch):
+        # Ponta a ponta do caso de uso pedido (espelha o chamado real
+        # #3360): descrição vaga, resposta de verdade só no anexo.
+        monkeypatch.setattr(anexos_chamado.pypdf, "PdfReader", _PdfReaderComTexto)
+        chamado = _chamado(descricao="ver anexo", categoria_id=999)
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.documentos_por_chamado[1] = [
+            DocumentoAnexo(id=10, nome_arquivo="relatorio.pdf", mime="application/pdf")
+        ]
+        cliente.conteudos_por_documento[10] = DocumentoBaixado(conteudo=b"pdf", content_type="application/pdf")
+        # `_avaliar_por_regra` (plano B) só conta palavra — o texto extraído
+        # do PDF fake tem bastante palavra real, suficiente pra passar
+        # mesmo sem IA real respondendo (usa o Ollama fake de qualquer jeito
+        # só pra não derrubar o teste em erro de rede).
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas: dict[str, int] = {}
+
+        resultado = await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        conteudo_chat = ollama.chamadas_chat[0]["messages"][1]["content"]
+        assert "certificado" in conteudo_chat
+        assert resultado.avaliacao_suficiente is True
+
 
 class TestProcessarChamadoNovoEmbeddingClient:
     """`embedding_client` é o parâmetro que resolve o bug real de
@@ -842,8 +990,7 @@ class TestVerificarChamadosPendentes:
         # Reavaliar `aguardando_usuario` de novo a cada rodada (a cada 5
         # min, via poller) gastaria IA à toa sem que o solicitante tenha
         # respondido nada — só `novo` é reprocessado (ver docstring de
-        # `verificar_chamados_pendentes`). `aguardando_usuario` continua
-        # saindo no retorno (é o que alimenta a tela), só não é escrito.
+        # `verificar_chamados_pendentes`).
         chamado_novo = _chamado(id_=1, categoria_id=999)
         chamado_pendente = replace(_chamado(id_=2, categoria_id=999), status="aguardando_usuario")
         cliente = _ClienteGLPIFake([chamado_novo, chamado_pendente])
@@ -856,7 +1003,7 @@ class TestVerificarChamadosPendentes:
 
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {1}
-        assert {chamado.id for chamado in resultado} == {1, 2}
+        assert resultado == 1  # só o chamado `novo` (id 1) conta — o `aguardando_usuario` é pulado
 
     async def test_falha_num_chamado_nao_bloqueia_o_resto_do_lote(self, monkeypatch):
         # Reproduz o bug real do chamado #2660: um chamado que quebra ao
@@ -886,7 +1033,7 @@ class TestVerificarChamadosPendentes:
 
         assert cliente.avaliacoes == [(2, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {2}
-        assert {chamado.id for chamado in resultado} == {1, 2}
+        assert resultado == 1  # só o chamado 2 (o que não falhou) conta como processado
 
     async def test_so_processa_os_chamados_que_entram_na_amostra(self, monkeypatch):
         cliente = _ClienteGLPIFake([_chamado(id_=1, categoria_id=999), _chamado(id_=2, categoria_id=999)])
@@ -902,9 +1049,9 @@ class TestVerificarChamadosPendentes:
         resultado = await verificar_chamados_pendentes(usar_ia=True)
 
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
-        # O chamado fora da amostra continua na listagem devolvida — quem
-        # esconde ele da tela é `_chamados_da_tela`, não este loop.
-        assert {chamado.id for chamado in resultado} == {1, 2}
+        # Só o chamado 1 (dentro da amostra) conta como processado — o 2
+        # fica de fora da amostra e é pulado antes de processar.
+        assert resultado == 1
 
     async def test_chamado_ja_avaliado_antes_ignora_a_amostragem(self, monkeypatch):
         # Ficou "meio processado" numa rodada anterior: já está no ciclo,
@@ -1101,6 +1248,136 @@ class TestVerificarChamadosAguardandoResposta:
         assert cliente.atribuicoes == []
 
 
+class TestExecutarUmaRodada:
+    """`_executar_uma_rodada` é o corpo do poller em background
+    (`iniciar_poller_verificar_chamados`), extraído pra dar pra testar uma
+    volta isolada sem precisar simular o `while True` infinito — estes
+    testes cobrem só o que ela adiciona por cima das duas pernas já
+    testadas acima (`TestVerificarChamadosPendentes`/
+    `TestVerificarChamadosAguardandoResposta`): atualizar `_estado_poller`
+    corretamente."""
+
+    @pytest.fixture(autouse=True)
+    def _reseta_estado_poller(self):
+        # `_estado_poller` é module-level (compartilhado pelo processo
+        # inteiro) — sem resetar entre testes, um teste vazaria estado
+        # pro próximo (ex: `erro` de um teste anterior sobrevivendo).
+        chamados_module._estado_poller = chamados_module.EstadoPoller()
+        yield
+        chamados_module._estado_poller = chamados_module.EstadoPoller()
+
+    async def test_caminho_feliz_marca_as_duas_etapas_concluidas_com_contagem(self, monkeypatch):
+        chamado_novo = _chamado(id_=1, categoria_id=999)
+        chamado_pendente = replace(_chamado(id_=2, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_novo, chamado_pendente])
+        registro_anterior = uso_ia_chamados.RegistroUsoIa(
+            avaliacao_suficiente=False, criado_em=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        cliente.followups_por_chamado[2] = [
+            Followup(
+                autor_id=999,
+                autor_nome="solicitante.teste",
+                conteudo="Resposta nova do solicitante.",
+                criado_em=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ]
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
+        )
+        monkeypatch.setattr(
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+        monkeypatch.setattr(chamados_module.configuracoes_tools, "usar_ia_avaliacao_chamado", lambda: True)
+
+        await _executar_uma_rodada()
+
+        estado = _estado_poller_para_json()
+        etapas_por_id = {etapa["id"]: etapa for etapa in estado["etapas"]}
+        assert etapas_por_id["chamados_novos"]["status"] == "concluido"
+        assert etapas_por_id["chamados_novos"]["processados"] == 1  # só o chamado `novo` (id 1) é processado
+        assert etapas_por_id["chamados_aguardando_resposta"]["status"] == "concluido"
+        assert etapas_por_id["chamados_aguardando_resposta"]["processados"] == 1
+        assert estado["erro"] is None
+        assert estado["ultima_rodada_em"] is not None
+        assert estado["proxima_rodada_em"] is None  # só o loop externo seta isso
+
+    async def test_falha_numa_perna_marca_erro_sem_impedir_a_outra_de_rodar(self, monkeypatch):
+        chamado_pendente = replace(_chamado(id_=1, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_pendente])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(chamados_module.configuracoes_tools, "usar_ia_avaliacao_chamado", lambda: True)
+
+        async def _quebra(*_args, **_kwargs):
+            raise RuntimeError("GLPI fora do ar")
+
+        monkeypatch.setattr(chamados_module, "verificar_chamados_pendentes", _quebra)
+        monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
+        monkeypatch.setattr(
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await _executar_uma_rodada()
+
+        estado = _estado_poller_para_json()
+        etapas_por_id = {etapa["id"]: etapa for etapa in estado["etapas"]}
+        assert etapas_por_id["chamados_novos"]["status"] == "erro"
+        # Chamado sem registro anterior é pulado (não quebra) — a 2ª perna
+        # rodou até o fim apesar da 1ª ter falhado.
+        assert etapas_por_id["chamados_aguardando_resposta"]["status"] == "concluido"
+        assert estado["erro"] == "GLPI fora do ar"
+
+
+class TestStreamLog:
+    """`_stream_log` é o gerador por trás de `/api/ti/poller/logs` — testado
+    direto (sem TestClient), chamando `__anext__()` à mão, já que é mais
+    simples do que simular uma conexão HTTP de verdade pra um stream que
+    nunca termina sozinho."""
+
+    @pytest.fixture(autouse=True)
+    def _reseta_log(self):
+        chamados_module._historico_log.clear()
+        chamados_module._assinantes_log.clear()
+        yield
+        chamados_module._historico_log.clear()
+        chamados_module._assinantes_log.clear()
+
+    async def test_manda_o_historico_na_hora_de_conectar(self):
+        _publicar_log("evento antigo")
+
+        gerador = _stream_log()
+        primeira_linha = await gerador.__anext__()
+
+        assert "evento antigo" in primeira_linha
+        await gerador.aclose()
+
+    async def test_recebe_linha_publicada_depois_de_conectar(self):
+        gerador = _stream_log()
+        tarefa = asyncio.ensure_future(gerador.__anext__())
+        await asyncio.sleep(0)  # deixa o generator rodar até o `await fila.get()`
+        assert len(chamados_module._assinantes_log) == 1
+
+        _publicar_log("chamado #1 liberado pra Fulano")
+        linha = await asyncio.wait_for(tarefa, timeout=1)
+
+        assert "chamado #1 liberado pra Fulano" in linha
+        await gerador.aclose()
+
+    async def test_desconectar_remove_o_assinante_sem_vazar(self):
+        gerador = _stream_log()
+        tarefa = asyncio.ensure_future(gerador.__anext__())
+        await asyncio.sleep(0)
+        assert len(chamados_module._assinantes_log) == 1
+
+        # Mesmo mecanismo de um navegador fechando a conexão de verdade: o
+        # ASGI cancela a coroutine do gerador, que propaga pro `finally`.
+        tarefa.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tarefa
+
+        assert len(chamados_module._assinantes_log) == 0
+
+
 class TestTextoParaIa:
     def test_tira_tags_e_extrai_texto(self):
         html = "<p>Computador <strong>não liga</strong> desde ontem.</p>"
@@ -1155,6 +1432,38 @@ class TestProcessarChamadoNovoLimpaHtml:
         assert "<style>" not in mensagem_usuario
         assert "<p>" not in mensagem_usuario
         assert "Sistema lento desde ontem de manhã, no financeiro" in mensagem_usuario
+
+    async def test_manda_texto_limpo_do_followup_tambem_nao_so_da_descricao(self):
+        # Regressão: `_turnos_da_conversa` não limpava `Followup.conteudo`
+        # antes desta correção — uma imagem colada numa resposta de
+        # acompanhamento (`<img src="...">`) vazava a tag bruta pro prompt
+        # da IA, diferente da descrição inicial (que já passava por
+        # `_texto_para_ia`).
+        chamado = _chamado(
+            descricao="Sistema financeiro travando toda vez que abro o relatório.", categoria_id=999
+        )
+        cliente = _ClienteGLPIFake([chamado])
+        cliente.followups_por_chamado[chamado.id] = [
+            Followup(
+                autor_id=999,
+                autor_nome="solicitante.teste",
+                conteudo=(
+                    'Segue o print: <img src="document.send.php?docid=34" alt="erro.png"> '
+                    "isso é o que aparece."
+                ),
+                criado_em=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ]
+        ollama = _OllamaClienteFake(suficiente=True)
+        cargas = {"tecnico1": 0}
+
+        await processar_chamado_novo(cliente, ollama, "modelo-teste", chamado, cargas, True)
+
+        assert len(ollama.chamadas_chat) == 1
+        texto_completo = " ".join(m["content"] for m in ollama.chamadas_chat[0]["messages"])
+        assert "<img" not in texto_completo
+        assert "Segue o print:" in texto_completo
+        assert "isso é o que aparece." in texto_completo
 
 
 class TestSaudePorArea:

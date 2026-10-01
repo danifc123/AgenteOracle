@@ -463,10 +463,9 @@
       (valorChange)="formTipoConexao.set($any($event))"
     />
     <p class="dica">
-      Ollama roda local ou numa instalação própria; "Compatível com OpenAI" cobre qualquer serviço que
-      fale a API da OpenAI — como a OCI Generative AI; "OCI (SDK nativo)" é só pra quem não tem
-      endpoint compatível com OpenAI, como os modelos de embedding da OCI (autenticação por chave
-      privada, não por token simples).
+      "Compatível com OpenAI" é pra modelo de CHAT da OCI Generative AI (endpoint compatível com a API
+      da OpenAI); "OCI (SDK nativo)" é só pra modelo de EMBEDDING da OCI, que não tem esse endpoint —
+      autenticação por chave privada, não por token simples.
     </p>
 
     <fieldset class="campo-capacidades">
@@ -498,16 +497,12 @@
           [value]="formBaseUrl()"
           (input)="formBaseUrl.set($any($event.target).value)"
           autocomplete="off"
-          [placeholder]="ehOpenAiCompativel() ? 'https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1' : 'http://127.0.0.1:11434'"
+          placeholder="https://inference.generativeai.<região>.oci.oraclecloud.com/openai/v1"
         />
-        @if (ehOpenAiCompativel()) {
-          <span class="dica">
-            Formato da OCI Generative AI, sem colar o rótulo — só o endereço:
-            <code>https://inference.generativeai.&lt;região&gt;.oci.oraclecloud.com/openai/v1</code>
-          </span>
-        } @else {
-          <span class="dica">Formato local do Ollama, sem colar o rótulo — só o endereço: <code>http://127.0.0.1:11434</code></span>
-        }
+        <span class="dica">
+          Formato da OCI Generative AI, sem colar o rótulo — só o endereço:
+          <code>https://inference.generativeai.&lt;região&gt;.oci.oraclecloud.com/openai/v1</code>
+        </span>
       </label>
     }
 
@@ -521,8 +516,8 @@
         placeholder="Ex: qwen2.5-coder:7b"
       />
       <span class="dica">
-        Nome exato do modelo, do jeito que o provedor espera — ex: openai.gpt-oss-120b,
-        meta.llama-3.3-70b-instruct, ou qwen2.5-coder:7b pro Ollama.
+        Nome exato do modelo liberado pelo suporte Oracle — ex: openai.gpt-oss-120b,
+        meta.llama-3.3-70b-instruct, ou cohere.embed-v4.0.
       </span>
     </label>
 
@@ -672,8 +667,8 @@
     </div>
 
     <p class="dica">
-      Preço é opcional (0 = sem custo) — inclusive pra Ollama, que não tem custo real. Só alimenta a
-      estimativa de custo mostrada mais abaixo, nesta mesma tela.
+      Preço é opcional (0 = sem custo) — preencha depois, quando a Oracle mandar a tabela de preços.
+      Só alimenta a estimativa de custo mostrada mais abaixo, nesta mesma tela.
     </p>
 
     @if (erroForm()) {

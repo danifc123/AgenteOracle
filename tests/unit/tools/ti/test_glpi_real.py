@@ -58,6 +58,18 @@ class _GlpiApiFake:
         # Documento real simulado (ver `baixar_documento`) — id 1 existe,
         # qualquer outro simula "não encontrado".
         self.documentos: dict[int, tuple[bytes, str]] = {1: (b"conteudo-fake-da-imagem", "image/png")}
+        # Anexos de um chamado (ver `listar_documentos`) — formato confirmado
+        # ao vivo contra `Ticket/{id}/Timeline/Document` (chamado real #3360):
+        # lista de `{"type": "Document", "item": {"documents_id": N, ...}}`,
+        # chaveado por chamado_id. `documentos_metadados` é o
+        # `Management/Document/{id}` separado (nome/mime reais — o
+        # `document.name` dentro do item acima é só um placeholder genérico,
+        # não serve); valor `int` simula um erro (status code) só naquele
+        # metadado específico. `erro_timeline_document` simula a LISTAGEM em
+        # si falhando (status code por chamado_id).
+        self.documentos_timeline: dict[int, list[dict]] = {}
+        self.documentos_metadados: dict[int, dict | int] = {}
+        self.erro_timeline_document: dict[int, int] = {}
         # Candidatos a técnico (ver `buscar_tecnicos_disponiveis`) — formato
         # confirmado ao vivo contra `Administration/User`.
         self.usuarios_technician: list[dict] = [
@@ -149,6 +161,24 @@ class _GlpiApiFake:
         if caminho == "/legacy/killSession" and metodo == "GET":
             self.sessoes_legadas_fechadas += 1
             return httpx.Response(200, json={})
+        if (
+            caminho.startswith("/api.php/v2.3/Assistance/Ticket/")
+            and caminho.endswith("/Timeline/Document")
+            and metodo == "GET"
+        ):
+            chamado_id = int(caminho.removeprefix("/api.php/v2.3/Assistance/Ticket/").removesuffix("/Timeline/Document"))
+            erro = self.erro_timeline_document.get(chamado_id)
+            if erro:
+                return httpx.Response(erro, json={"erro": "erro simulado"})
+            return httpx.Response(200, json=self.documentos_timeline.get(chamado_id, []))
+        if caminho.startswith("/api.php/v2.3/Management/Document/") and metodo == "GET":
+            documento_id = int(caminho.removeprefix("/api.php/v2.3/Management/Document/"))
+            metadado = self.documentos_metadados.get(documento_id)
+            if metadado is None:
+                return httpx.Response(404, json={"erro": "não encontrado"})
+            if isinstance(metadado, int):
+                return httpx.Response(metadado, json={"erro": "erro simulado"})
+            return httpx.Response(200, json=metadado)
         if caminho.startswith("/legacy/Document/") and metodo == "GET":
             documento_id = int(caminho.removeprefix("/legacy/Document/"))
             if documento_id not in self.documentos:
@@ -661,6 +691,101 @@ class TestBaixarDocumento:
         # Sessão é aberta e fechada mesmo quando o documento não existe.
         assert fake.sessoes_legadas_abertas == 1
         assert fake.sessoes_legadas_fechadas == 1
+
+
+class TestListarDocumentos:
+    async def test_lista_documentos_inline_e_timeline_com_nome_e_mime_reais(self):
+        # `document.name` dentro do item do Timeline é só um placeholder
+        # genérico ("Documento do Chamado N") — confirmado ao vivo que o
+        # nome/mime reais só vêm de `Management/Document/{id}`.
+        fake = _GlpiApiFake()
+        fake.documentos_timeline[1] = [
+            {
+                "type": "Document",
+                "item": {
+                    "id": 9866,
+                    "documents_id": 2145,
+                    "timeline_position": -1,
+                    "document": {"id": 2145, "name": "Documento do Chamado 1"},
+                },
+            },
+            {
+                "type": "Document",
+                "item": {
+                    "id": 9867,
+                    "documents_id": 2146,
+                    "timeline_position": 1,
+                    "document": {"id": 2146, "name": "Documento do Chamado 1"},
+                },
+            },
+        ]
+        fake.documentos_metadados[2145] = {"id": 2145, "filename": "erro.png", "mime": "image/png"}
+        fake.documentos_metadados[2146] = {"id": 2146, "filename": "relatorio.pdf", "mime": "application/pdf"}
+        cliente = _cliente_fake(fake)
+
+        documentos = await cliente.listar_documentos(1)
+
+        assert len(documentos) == 2
+        assert documentos[0].id == 2145
+        assert documentos[0].nome_arquivo == "erro.png"
+        assert documentos[0].mime == "image/png"
+        assert documentos[1].id == 2146
+        assert documentos[1].nome_arquivo == "relatorio.pdf"
+        assert documentos[1].mime == "application/pdf"
+
+    async def test_sem_documento_nenhum_devolve_lista_vazia(self):
+        cliente = _cliente_fake(_GlpiApiFake())
+        assert await cliente.listar_documentos(1) == []
+
+    async def test_documents_id_repetido_e_deduplicado(self):
+        fake = _GlpiApiFake()
+        fake.documentos_timeline[1] = [
+            {"type": "Document", "item": {"documents_id": 2145, "timeline_position": -1}},
+            {"type": "Document", "item": {"documents_id": 2145, "timeline_position": 1}},
+        ]
+        fake.documentos_metadados[2145] = {"id": 2145, "filename": "erro.png", "mime": "image/png"}
+        cliente = _cliente_fake(fake)
+
+        documentos = await cliente.listar_documentos(1)
+
+        assert len(documentos) == 1
+
+    async def test_metadado_de_um_documento_falhando_nao_derruba_os_outros(self):
+        fake = _GlpiApiFake()
+        fake.documentos_timeline[1] = [
+            {"type": "Document", "item": {"documents_id": 2145, "timeline_position": -1}},
+            {"type": "Document", "item": {"documents_id": 2146, "timeline_position": 1}},
+        ]
+        fake.documentos_metadados[2145] = {"id": 2145, "filename": "erro.png", "mime": "image/png"}
+        fake.documentos_metadados[2146] = 403  # simula sem permissão nesse documento específico
+        cliente = _cliente_fake(fake)
+
+        documentos = await cliente.listar_documentos(1)
+
+        assert len(documentos) == 1
+        assert documentos[0].id == 2145
+
+    async def test_ordena_por_id_pra_prompt_deterministico_entre_rodadas(self):
+        fake = _GlpiApiFake()
+        fake.documentos_timeline[1] = [
+            {"type": "Document", "item": {"documents_id": 2147, "timeline_position": 1}},
+            {"type": "Document", "item": {"documents_id": 2145, "timeline_position": -1}},
+        ]
+        fake.documentos_metadados[2145] = {"id": 2145, "filename": "a.png", "mime": "image/png"}
+        fake.documentos_metadados[2147] = {"id": 2147, "filename": "b.txt", "mime": "text/plain"}
+        cliente = _cliente_fake(fake)
+
+        documentos = await cliente.listar_documentos(1)
+
+        assert [d.id for d in documentos] == [2145, 2147]
+
+    async def test_erro_na_listagem_em_si_levanta(self):
+        fake = _GlpiApiFake()
+        fake.erro_timeline_document[1] = 500
+        cliente = _cliente_fake(fake)
+
+        with pytest.raises(httpx.HTTPStatusError):
+            await cliente.listar_documentos(1)
 
 
 class TestBuscarTecnicosDisponiveis:

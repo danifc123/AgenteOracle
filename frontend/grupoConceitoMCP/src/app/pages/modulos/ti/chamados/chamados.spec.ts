@@ -180,18 +180,18 @@ describe('ChamadosTi', () => {
     TestBed.inject(HttpTestingController).verify();
   });
 
-  it('carrega e mostra todos os chamados por padrão', () => {
+  it('carrega e mostra todo o departamento por padrão, sem nenhum filtro selecionado', () => {
     const { linhas } = criar();
 
     expect(linhas().length).toBe(3);
   });
 
-  it('o filtro sempre oferece "Todos", e "Minha área: {área}" quando a conta logada tem técnico do GLPI vinculado', () => {
+  it('o filtro sempre oferece "Todo o departamento", e "Minha área: {área}" quando a conta logada tem técnico do GLPI vinculado', () => {
     const { opcoesDoFiltro, abrirFiltro } = criar(sessaoFalso('rafa.teste'));
 
     abrirFiltro();
 
-    expect(opcoesDoFiltro()).toContain('Todos');
+    expect(opcoesDoFiltro()).toContain('Todo o departamento');
     expect(opcoesDoFiltro()).toContain('Minha área: Infraestrutura');
   });
 
@@ -213,11 +213,11 @@ describe('ChamadosTi', () => {
     expect(restantes[0].textContent).toContain('VPN não conecta');
   });
 
-  it('voltar pra "Todos" depois de "Minha área" mostra a lista inteira de novo', () => {
+  it('voltar pra "Todo o departamento" depois de "Minha área" mostra a lista inteira de novo', () => {
     const { selecionarFiltro, linhas } = criar(sessaoFalso('rafa.teste'));
 
     selecionarFiltro('Minha área: Infraestrutura');
-    selecionarFiltro('Todos');
+    selecionarFiltro('Todo o departamento');
 
     expect(linhas().length).toBe(3);
   });
@@ -265,13 +265,14 @@ describe('ChamadosTi', () => {
     expect(el.textContent).toContain('Nenhum chamado atribuído a você no momento.');
   });
 
-  it('"Todos" (padrão) esconde chamado já gerenciado fora do sistema, mesmo sem nenhum filtro selecionado', () => {
+  it('padrão ("Todo o departamento") mostra chamado já gerenciado fora do sistema, mesmo sem nenhum filtro selecionado', () => {
+    // Decisão confirmada com o usuário (2026-10-01): não existe mais um
+    // "Todos" escondendo esse chamado por padrão — só "Minha área"
+    // esconde (teste abaixo). O padrão mostra tudo, igual o GLPI mostraria.
     const chamados = [CHAMADO_AREA_SISTEMAS, CHAMADO_ATRIBUIDO_A_MIM, CHAMADO_ATRIBUIDO_A_OUTRO];
     const { linhas } = criar(sessaoFalso('rafa.teste'), chamados);
 
-    const restantes = linhas();
-    expect(restantes.length).toBe(1);
-    expect(restantes[0].textContent).toContain('Impressora não liga');
+    expect(linhas().length).toBe(3);
   });
 
   it('"Minha área" também esconde chamado gerenciado fora do sistema, mesmo sendo da área certa', () => {
@@ -309,5 +310,36 @@ describe('ChamadosTi', () => {
     abrirFiltro();
 
     expect(opcoesDoFiltro()).toContain('Todo o departamento');
+  });
+
+  it('botão "Ver logs" aparece pra qualquer usuário do módulo TI (não só desenvolvedor) e abre o painel', () => {
+    // `ehDesenvolvedor: false` de propósito — diferente da engrenagem de
+    // configurações (só-desenvolvedor, *appSoDev), "Ver logs" é pro time
+    // de TI inteiro, já que é só uma janela pro poller que já roda sozinho.
+    const { fixture, http, el } = criar(sessaoFalso('rafa.teste', false));
+
+    const botaoVerLogs = Array.from(el.querySelectorAll('button')).find(
+      (botao) => botao.getAttribute('aria-label') === 'Ver logs',
+    ) as HTMLButtonElement | undefined;
+    expect(botaoVerLogs).toBeTruthy();
+
+    botaoVerLogs?.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('.painel')).toBeTruthy();
+
+    http
+      .expectOne((req) => req.url.endsWith('/api/ti/poller/status'))
+      .flush({ etapas: [], ultima_rodada_em: null, proxima_rodada_em: null, erro: null });
+    // Log ao vivo abre junto com o painel (ver efeito em chamados.ts).
+    const requisicaoLogs = http.expectOne((req) => req.url.endsWith('/api/ti/poller/logs'));
+    expect(requisicaoLogs.request.method).toBe('GET');
+
+    // Fechar o painel precisa cancelar a conexão de verdade, não só parar
+    // de ler — senão ela fica aberta pro resto da sessão sem ninguém olhando.
+    (el.querySelector('.fechar') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(requisicaoLogs.cancelled).toBe(true);
   });
 });

@@ -92,6 +92,17 @@ class DocumentoBaixado:
 
 
 @dataclass(frozen=True)
+class DocumentoAnexo:
+    """Um anexo do chamado — inline (colado no texto) ou solto na
+    timeline (botão de clipe), ver `listar_documentos`. `id` é o que
+    `baixar_documento` espera pra baixar o conteúdo de verdade."""
+
+    id: int
+    nome_arquivo: str
+    mime: str
+
+
+@dataclass(frozen=True)
 class TecnicoGlpiCandidato:
     id: str
     nome: str
@@ -157,6 +168,8 @@ class ClienteGLPI(Protocol):
     async def buscar_followups(self, chamado_id: int) -> list[Followup]: ...
 
     async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None: ...
+
+    async def listar_documentos(self, chamado_id: int) -> list[DocumentoAnexo]: ...
 
     async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]: ...
 
@@ -551,12 +564,14 @@ class ClienteGLPIReal:
 
     async def baixar_documento(self, documento_id: int) -> DocumentoBaixado | None:
         """Proxy pro anexo/imagem real do GLPI — só a API Legada consegue
-        devolver o arquivo bruto (`GET .../Document/{id}` com `Accept:
+        devolver o arquivo BRUTO (`GET .../Document/{id}` com `Accept:
         application/octet-stream`; confirmado ao vivo, inclusive o
-        `content-type` correto vindo no header), a v2.3 não tem endpoint
-        de Document nenhum. Sem `glpi_legacy_api_url` configurada, ou
-        documento inexistente/sem permissão, devolve `None` — quem chama
-        (rota HTTP) decide o fallback (404, ícone quebrado no front)."""
+        `content-type` correto vindo no header). A v2.3 TEM endpoint de
+        Document pros METADADOS (nome/mime, ver `listar_documentos`), só
+        não devolve os bytes do arquivo em si — essa parte continua só na
+        API Legada. Sem `glpi_legacy_api_url` configurada, ou documento
+        inexistente/sem permissão, devolve `None` — quem chama (rota HTTP)
+        decide o fallback (404, ícone quebrado no front)."""
         if not self._settings.glpi_legacy_api_url:
             return None
         async with self._sessao_legada() as (base, cabecalhos):
@@ -570,6 +585,51 @@ class ClienteGLPIReal:
             conteudo=resposta.content,
             content_type=resposta.headers.get("content-type", "application/octet-stream"),
         )
+
+    async def listar_documentos(self, chamado_id: int) -> list[DocumentoAnexo]:
+        """Descobre TODOS os anexos de um chamado — colado inline no texto
+        (`timeline_position == -1`) ou solto na timeline, anexado pelo
+        botão de clipe (`timeline_position >= 1`); os dois tipos vêm juntos
+        nessa mesma lista, sem diferença de tratamento aqui (quem decide o
+        que fazer com cada um é `tools/ti/anexos_chamado.py`). Endpoint
+        achado via `/api.php/doc.json` (Swagger da instância) — não
+        documentado em lugar nenhum antes disso, e nunca usado neste
+        projeto até agora. Confirmado ao vivo (chamado real #3360,
+        2026-10-01) que `item.document.name` devolvido aqui é só um
+        placeholder genérico ("Documento do Chamado N" pra TODOS os
+        anexos, não o nome real) — por isso o nome/mime de verdade vêm de
+        uma segunda chamada, `Management/Document/{id}`, uma por anexo, em
+        paralelo. Erro na LISTAGEM em si levanta (mesmo contrato de
+        `buscar_followups`); erro no METADADO de um anexo específico (ex:
+        403 num documento de outra entidade) só descarta aquele anexo,
+        não derruba os outros. Devolve ordenado por id — prompt
+        determinístico entre rodadas do poller, não muda de ordem à toa."""
+        resposta = await self._requisicao(
+            "GET", f"/api.php/v2.3/Assistance/Ticket/{chamado_id}/Timeline/Document"
+        )
+        resposta.raise_for_status()
+        ids_documentos = []
+        vistos = set()
+        for item in resposta.json():
+            documento_id = item["item"]["documents_id"]
+            if documento_id not in vistos:
+                vistos.add(documento_id)
+                ids_documentos.append(documento_id)
+        if not ids_documentos:
+            return []
+
+        metadados = await asyncio.gather(
+            *(self._requisicao("GET", f"/api.php/v2.3/Management/Document/{id_}") for id_ in ids_documentos),
+            return_exceptions=True,
+        )
+        documentos = []
+        for id_documento, resultado in zip(ids_documentos, metadados, strict=True):
+            if isinstance(resultado, BaseException) or resultado.status_code != 200:
+                continue
+            dados = resultado.json()
+            documentos.append(DocumentoAnexo(id=id_documento, nome_arquivo=dados["filename"], mime=dados["mime"]))
+        documentos.sort(key=lambda documento: documento.id)
+        return documentos
 
     async def buscar_tecnicos_disponiveis(self) -> list[TecnicoGlpiCandidato]:
         """Candidatos a vincular no cadastro de usuário — filtra pelo

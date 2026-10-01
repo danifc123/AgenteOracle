@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agente_oracle}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Só uma réplica, sempre — ver comentário no Dockerfile (poller do GLPI
+    # roda em memória, duplicar o processo duplica o poller).
+    env_file:
+      - .env
+    environment:
+      # Sobrescreve qualquer valor de MCP_HOST vindo do .env — dentro do
+      # container, 127.0.0.1 só aceita conexão de si mesmo.
+      MCP_HOST: 0.0.0.0
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8000), 3).close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    # Comentado de propósito — o frontend chega no backend pela rede interna
+    # do compose (`http://backend:8000`, ver nginx.conf). Só descomente se
+    # precisar expor a API/MCP diretamente pra fora (ex: cliente MCP externo
+    # tipo Claude Desktop apontando pra esse servidor).
+    # ports:
+    #   - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend/grupoConceitoMCP
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

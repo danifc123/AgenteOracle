@@ -56,7 +56,7 @@
       routerLink="/"
       routerLinkActive="active"
       [routerLinkActiveOptions]="{ exact: true }"
-      [title]="colapsado() ? 'Início' : null"
+      title="Início"
       (click)="navegarParaFora()"
     >
       <span class="nav-icon">
@@ -85,7 +85,7 @@
           type="button"
           class="nav-link nav-parent"
           [class.aberto]="grupoAberto() === grupo.chave"
-          [title]="colapsado() ? grupo.rotulo : null"
+          [attr.title]="grupo.rotulo"
           (click)="toggleGrupo(grupo.chave)"
         >
           <span class="nav-icon">
@@ -129,7 +129,7 @@
                 [routerLink]="item.rota"
                 routerLinkActive="active"
                 [routerLinkActiveOptions]="{ exact: !!item.exato }"
-                [title]="colapsado() ? item.rotulo : null"
+                [attr.title]="item.rotulo"
                 (click)="closeSidebar()"
               >
                 <span class="nav-icon">
@@ -164,7 +164,7 @@
       class="nav-link"
       routerLink="/relatorios/historico"
       routerLinkActive="active"
-      [title]="colapsado() ? 'Histórico de relatórios' : null"
+      title="Histórico de relatórios"
       (click)="navegarParaFora()"
       *appSoModulo="'financeiro'"
     >
@@ -188,7 +188,7 @@
       class="nav-link"
       routerLink="/usuarios"
       routerLinkActive="active"
-      [title]="colapsado() ? 'Usuários' : null"
+      title="Usuários"
       (click)="navegarParaFora()"
       *appSoAdmin
     >
@@ -216,7 +216,7 @@
       class="nav-link"
       routerLink="/auditoria/historico"
       routerLinkActive="active"
-      [title]="colapsado() ? 'Lista de Auditoria' : null"
+      title="Lista de Auditoria"
       (click)="navegarParaFora()"
       *appSoModulo="'financeiro'"
     >
@@ -244,7 +244,7 @@
       class="nav-link"
       routerLink="/juntar-excel"
       routerLinkActive="active"
-      [title]="colapsado() ? 'Juntar Excel' : null"
+      title="Juntar Excel"
       (click)="navegarParaFora()"
       *appSoModulo="'financeiro'"
     >
@@ -266,7 +266,7 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="user-avatar" [title]="colapsado() ? sessao.nome() || 'Usuário' : null">
+    <div class="user-avatar" [attr.title]="colapsado() ? sessao.nome() || 'Usuário' : null">
       @if (sessao.foto()) {
         <img [src]="sessao.foto()" alt="" />
       } @else {
@@ -274,8 +274,10 @@
       }
     </div>
     <div class="user-info">
-      <span class="user-name">{{ sessao.nome() || 'Usuário' }}</span>
-      <span class="user-role">{{ sessao.papeis().join(', ') || 'Sem papel' }}</span>
+      <span class="user-name" [title]="sessao.nome() || 'Usuário'">{{ sessao.nome() || 'Usuário' }}</span>
+      <span class="user-role" [title]="sessao.papeis().join(', ') || 'Sem papel'">{{
+        sessao.papeis().join(', ') || 'Sem papel'
+      }}</span>
     </div>
     <div class="acoes-footer">
       <button

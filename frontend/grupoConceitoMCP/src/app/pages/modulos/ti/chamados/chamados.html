@@ -3,15 +3,12 @@
   titulo="Auditoria de Chamados"
   descricao="Não é a central de chamados (isso continua sendo o GLPI) — aqui a IA audita cada chamado novo do GLPI e só libera pra fila de atendimento quando tem informação suficiente e a categoria bate com o conteúdo."
 >
-  <div acoes *appSoDev class="acoes-config">
-    @if (amostragemAtiva()) {
-      <app-selo tom="atencao" [texto]="'Amostragem: ' + percentualFormatado() + '%'" />
-    }
+  <div acoes class="acoes-cabecalho">
     <app-botao
       variant="icone"
-      ariaLabel="Configurações da Auditoria"
-      title="Configurações da Auditoria"
-      (clicked)="configuracoesAbertas.set(true)"
+      ariaLabel="Ver logs"
+      title="Ver logs do poller de verificação"
+      (clicked)="painelProcessoAberto.set(true)"
     >
       <svg
         viewBox="0 0 24 24"
@@ -24,12 +21,40 @@
         stroke-linejoin="round"
         aria-hidden="true"
       >
-        <circle cx="12" cy="12" r="3" />
-        <path
-          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-        />
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 11v5" />
+        <path d="M12 8h.01" />
       </svg>
     </app-botao>
+
+    <div *appSoDev class="acoes-config">
+      @if (amostragemAtiva()) {
+        <app-selo tom="atencao" [texto]="'Amostragem: ' + percentualFormatado() + '%'" />
+      }
+      <app-botao
+        variant="icone"
+        ariaLabel="Configurações da Auditoria"
+        title="Configurações da Auditoria"
+        (clicked)="configuracoesAbertas.set(true)"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="22"
+          height="22"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+          />
+        </svg>
+      </app-botao>
+    </div>
   </div>
 </app-modulo-header>
 
@@ -184,3 +209,14 @@
     </div>
   }
 </app-dialog>
+
+<app-painel-processo
+  [aberto]="painelProcessoAberto()"
+  titulo="Poller do GLPI"
+  [etapas]="pollerTi.etapas()"
+  [ultimaRodadaEm]="pollerTi.ultimaRodadaEm()"
+  [proximaRodadaEm]="pollerTi.proximaRodadaEm()"
+  [erro]="pollerTi.erro()"
+  [logs]="pollerTi.logs()"
+  (fechar)="painelProcessoAberto.set(false)"
+/>

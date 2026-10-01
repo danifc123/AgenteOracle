@@ -76,13 +76,16 @@ import html
 import logging
 import re
 import time
-from dataclasses import dataclass
+from collections import deque
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from anyio import to_thread
 from bs4 import BeautifulSoup
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from agente_oracle.agent.ti.qualidade_chamado import TurnoConversa, avaliar_chamado
 from agente_oracle.agent.ti.roteamento_chamado import classificar_categoria
@@ -119,6 +122,114 @@ _logger = logging.getLogger(__name__)
 # não sobrecarregar a API do GLPI/Ollama com verificação constante.
 _INTERVALO_POLLER_SEGUNDOS = 300
 
+_StatusEtapaPoller = Literal["pendente", "rodando", "concluido", "erro"]
+
+
+@dataclass
+class EtapaPoller:
+    id: str
+    rotulo: str
+    status: _StatusEtapaPoller = "pendente"
+    processados: int | None = None
+
+
+@dataclass
+class EstadoPoller:
+    """Snapshot em memória do que o poller está fazendo agora — só pra
+    observabilidade (painel "Ver logs" da Auditoria de Chamados, ver
+    `poller_status_route`); nunca decide nada do fluxo em si. Escrita só
+    por `_executar_uma_rodada` (chamada de dentro de
+    `iniciar_poller_verificar_chamados`, a ÚNICA task assíncrona do
+    processo que mexe nisso) — sem lock de propósito, não há concorrência
+    de escrita em asyncio cooperativo; leitura via HTTP nunca pega estado
+    "no meio" de uma troca de atributo."""
+
+    etapas: list[EtapaPoller] = field(
+        default_factory=lambda: [
+            EtapaPoller(id="chamados_novos", rotulo="Verificando chamados novos"),
+            EtapaPoller(id="chamados_aguardando_resposta", rotulo="Verificando respostas novas"),
+        ]
+    )
+    ultima_rodada_em: datetime | None = None
+    proxima_rodada_em: datetime | None = None
+    erro: str | None = None
+
+
+_estado_poller = EstadoPoller()
+
+
+def _definir_etapa(etapa_id: str, status: _StatusEtapaPoller, processados: int | None = None) -> None:
+    for etapa in _estado_poller.etapas:
+        if etapa.id == etapa_id:
+            etapa.status = status
+            etapa.processados = processados
+            return
+
+
+def _estado_poller_para_json() -> dict:
+    return {
+        "etapas": [
+            {"id": etapa.id, "rotulo": etapa.rotulo, "status": etapa.status, "processados": etapa.processados}
+            for etapa in _estado_poller.etapas
+        ],
+        "ultima_rodada_em": _estado_poller.ultima_rodada_em.isoformat()
+        if _estado_poller.ultima_rodada_em
+        else None,
+        "proxima_rodada_em": _estado_poller.proxima_rodada_em.isoformat()
+        if _estado_poller.proxima_rodada_em
+        else None,
+        "erro": _estado_poller.erro,
+    }
+
+
+# Últimas 200 linhas de log publicadas pelo poller — histórico curto pro
+# painel "Ver logs" não abrir vazio quando alguém entra no meio de uma
+# rodada. Só memória do processo, de propósito (mesmo espírito de
+# `_estado_poller`): zera num restart, não precisa de mais que isso.
+_historico_log: deque[str] = deque(maxlen=200)
+# Uma fila por painel "Ver logs" aberto nesse instante — `_publicar_log`
+# escreve em todas, cada assinante lê a dela sozinha (ver `_stream_log`).
+_assinantes_log: set[asyncio.Queue[str]] = set()
+# Bem abaixo do `proxy_read_timeout 300s` do nginx (`nginx.conf`) — a
+# conexão nunca fecha por "inatividade" enquanto o heartbeat (linha vazia)
+# continuar saindo nesse intervalo, mesmo numa rodada parada sem nada pra
+# logar de verdade.
+_INTERVALO_HEARTBEAT_SEGUNDOS = 20
+
+
+def _publicar_log(linha: str) -> None:
+    """Único escritor é o poller (mesma garantia de `_estado_poller` —
+    sem lock, sem concorrência de escrita em asyncio cooperativo)."""
+    texto = f"{datetime.now(UTC):%H:%M:%S} {linha}"
+    _historico_log.append(texto)
+    for fila in _assinantes_log:
+        fila.put_nowait(texto)
+
+
+async def _stream_log() -> AsyncIterator[str]:
+    """Gerador da rota `/api/ti/poller/logs` — manda o histórico curto na
+    hora que conecta, depois fica esperando linha nova (`_publicar_log`)
+    pra sempre, com heartbeat de linha vazia pra manter a conexão viva
+    (o parser do frontend já ignora linha vazia, mesmo padrão de
+    `previsao-stream.ts`). Sai do loop (e remove a própria fila de
+    `_assinantes_log`, no `finally`) quando o navegador desconecta — o
+    ASGI cancela a coroutine, que propaga pra cá."""
+    for linha in _historico_log:
+        yield linha + "\n"
+
+    fila: asyncio.Queue[str] = asyncio.Queue()
+    _assinantes_log.add(fila)
+    try:
+        while True:
+            try:
+                linha = await asyncio.wait_for(fila.get(), timeout=_INTERVALO_HEARTBEAT_SEGUNDOS)
+                yield linha + "\n"
+            except TimeoutError:
+                yield "\n"
+    finally:
+        _assinantes_log.discard(fila)
+
+
 # Mesma escolha de `agent/ti/roteamento_chamado.py::_AREA_PADRAO` — duplicada
 # de propósito (é 1 linha, não compensa acoplar os dois módulos por isso).
 # Só entra em jogo em `_escalar_para_tecnico`, quando o chamado nem tem
@@ -149,11 +260,30 @@ class ResultadoProcessamento:
     # a `classificar_categoria`, a pergunta "precisou de embedding" não se
     # aplica. `False` só acontece com `usar_ia=False`.
     precisou_embedding: bool | None
+    # O "porquê" por trás de `avaliacao_suficiente` — usado só pra montar a
+    # linha de log do painel "Ver logs" (`_publicar_log`, mais abaixo),
+    # `avaliacao_suficiente`/`precisou_embedding` continuam sendo o que o
+    # resto do código decide em cima.
+    acao: Literal["liberado", "aguardando_usuario", "escalado"]
+    # Nome de quem ficou com o chamado — só preenchido quando `acao` é
+    # "liberado" ou "escalado" (`None` em "aguardando_usuario": ainda não
+    # tem técnico nenhum, só a IA está com o chamado).
+    tecnico: str | None = None
     # `True` só quando a correção de categoria não rodou porque o provedor
     # de IA ativo não suporta embedding (ver
     # `agent/ti/roteamento_chamado.py::ResultadoClassificacao`) — usado pra
     # avisar o usuário na rota manual "Verificar" (`chamado_verificar_route`).
     embedding_indisponivel: bool = False
+
+
+def _descricao_acao(resultado: ResultadoProcessamento) -> str:
+    """Texto da linha de log (`_publicar_log`) pro resultado de UM chamado
+    — só isso, nenhuma lógica de negócio olha pra esse texto depois."""
+    if resultado.acao == "aguardando_usuario":
+        return "aguardando resposta do solicitante"
+    if resultado.acao == "escalado":
+        return f"escalado pra {resultado.tecnico}"
+    return f"liberado pra {resultado.tecnico}"
 
 
 def _chamado_para_json(chamado: Chamado) -> dict:
@@ -433,6 +563,61 @@ def chamado_entra_na_amostra(chamado_id: int, criado_em: datetime | None = None)
         return False
 
 
+async def _executar_uma_rodada() -> None:
+    """Uma volta do poller: as duas pernas, isoladas uma da outra (falha
+    numa não impede a outra de rodar) — `verificar_chamados_pendentes`
+    cobre chamado `novo`; `verificar_chamados_aguardando_resposta` cobre
+    `aguardando_usuario`, mas só reavalia quando detecta resposta nova
+    (nunca reprocessa um chamado parado sem que nada tenha mudado,
+    gastaria IA à toa). Mesma garantia de nunca deixar uma falha (rede
+    instável, Ollama fora do ar) derrubar a rodada inteira — loga e segue
+    pra próxima perna — só que agora também grava o resumo em
+    `_estado_poller`, pro painel "Ver logs" da Auditoria de Chamados
+    mostrar sem precisar vasculhar o log do servidor.
+
+    Extraída do `while True` de `iniciar_poller_verificar_chamados` de
+    propósito: dá pra testar uma rodada isolada, sem precisar simular um
+    loop infinito."""
+    usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
+    _estado_poller.erro = None
+    # Sem isso, a 2ª etapa continuava mostrando "concluído" da RODADA
+    # ANTERIOR enquanto a 1ª já estava "rodando" na rodada nova — lido
+    # (com razão) como inconsistente no painel "Ver logs" (achado do
+    # usuário testando ao vivo, 2026-10-01).
+    for etapa in _estado_poller.etapas:
+        etapa.status = "pendente"
+        etapa.processados = None
+
+    _publicar_log("Rodada iniciada")
+
+    _definir_etapa("chamados_novos", "rodando")
+    _publicar_log("Verificando chamados novos…")
+    try:
+        novos = await verificar_chamados_pendentes(usar_ia)
+        _definir_etapa("chamados_novos", "concluido", processados=novos)
+        _publicar_log(f"{novos} chamado(s) novo(s) verificado(s)")
+    except Exception as erro:
+        _logger.exception("Falha no poller de verificação de chamados novos")
+        _definir_etapa("chamados_novos", "erro")
+        _estado_poller.erro = str(erro)
+        _publicar_log(f"Falha verificando chamados novos: {erro}")
+
+    _definir_etapa("chamados_aguardando_resposta", "rodando")
+    _publicar_log("Verificando respostas novas…")
+    try:
+        reprocessados = await verificar_chamados_aguardando_resposta(usar_ia)
+        _definir_etapa("chamados_aguardando_resposta", "concluido", processados=reprocessados)
+        _publicar_log(f"{reprocessados} resposta(s) nova(s) reprocessada(s)")
+    except Exception as erro:
+        _logger.exception("Falha no poller de verificação de respostas novas")
+        _definir_etapa("chamados_aguardando_resposta", "erro")
+        _estado_poller.erro = str(erro)
+        _publicar_log(f"Falha verificando respostas novas: {erro}")
+
+    _estado_poller.ultima_rodada_em = datetime.now(UTC)
+    _publicar_log("Rodada concluída")
+
+
 async def iniciar_poller_verificar_chamados() -> None:
     """Substitui o clique manual em "Verificar Chamados Novos" — roda pra
     sempre em background, a cada `_INTERVALO_POLLER_SEGUNDOS`, enquanto o
@@ -441,32 +626,17 @@ async def iniciar_poller_verificar_chamados() -> None:
     `auditoria/rotas.py` etc.): sem isso, um chamado novo só seria
     triado quando alguém abrisse a tela e clicasse (ou via webhook, que
     ainda não foi ativado/testado contra a instância real — ver TODO em
-    `server/ti/webhook_glpi.py`).
+    `server/ti/webhook_glpi.py`). Cada volta é `_executar_uma_rodada`;
+    aqui só cuida do "pra sempre" e de quando é a próxima.
 
-    Duas pernas por rodada, isoladas uma da outra (falha numa não impede a
-    outra de rodar): `verificar_chamados_pendentes` cobre chamado `novo`;
-    `verificar_chamados_aguardando_resposta` cobre `aguardando_usuario`,
-    mas só reavalia quando detecta resposta nova — nunca reprocessa um
-    chamado parado sem que nada tenha mudado (gastaria IA à toa; sem
-    resposta nova, é o próprio GLPI que resolve sozinho em 3 dias).
-
-    Nunca deixa uma falha de uma rodada (rede instável, Ollama fora do
-    ar) derrubar o loop inteiro — loga e tenta de novo na próxima volta.
     Só roda se o GLPI estiver configurado (mesmo espírito de
     `criar_cliente()`: TI opcional não deveria travar nada pros outros
     times); iniciado em `server/app.py::criar_app()`."""
     if not settings.glpi_base_url:
         return
     while True:
-        usar_ia = configuracoes_tools.usar_ia_avaliacao_chamado()
-        try:
-            await verificar_chamados_pendentes(usar_ia)
-        except Exception:
-            _logger.exception("Falha no poller de verificação de chamados novos")
-        try:
-            await verificar_chamados_aguardando_resposta(usar_ia)
-        except Exception:
-            _logger.exception("Falha no poller de verificação de respostas novas")
+        await _executar_uma_rodada()
+        _estado_poller.proxima_rodada_em = datetime.now(UTC) + timedelta(seconds=_INTERVALO_POLLER_SEGUNDOS)
         await asyncio.sleep(_INTERVALO_POLLER_SEGUNDOS)
 
 
@@ -554,12 +724,14 @@ async def processar_chamado_novo(
             avaliacao.mensagem, turnos
         )
         if bateu_limite or regra_repetiria or pergunta_repetitiva:
-            await _escalar_para_tecnico(cliente, chamado, cargas, turnos)
-        else:
-            if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
-                await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
-            await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", _mensagem_para_glpi(avaliacao.mensagem))
-        return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None)
+            tecnico_escalado = await _escalar_para_tecnico(cliente, chamado, cargas, turnos)
+            return ResultadoProcessamento(
+                avaliacao_suficiente=False, precisou_embedding=None, acao="escalado", tecnico=tecnico_escalado
+            )
+        if settings.glpi_conta_ia_id and chamado.tecnico_atribuido != settings.glpi_conta_ia_id:
+            await cliente.atribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
+        await cliente.atualizar_avaliacao(chamado.id, "aguardando_usuario", _mensagem_para_glpi(avaliacao.mensagem))
+        return ResultadoProcessamento(avaliacao_suficiente=False, precisou_embedding=None, acao="aguardando_usuario")
 
     resultado_classificacao = await classificar_categoria(
         embedding_client if embedding_client is not None else cliente_ia,
@@ -584,13 +756,15 @@ async def processar_chamado_novo(
     return ResultadoProcessamento(
         avaliacao_suficiente=True,
         precisou_embedding=resultado_classificacao.precisou_embedding,
+        acao="liberado",
+        tecnico=tecnico.nome,
         embedding_indisponivel=resultado_classificacao.embedding_indisponivel,
     )
 
 
 async def _escalar_para_tecnico(
     cliente: ClienteGLPI, chamado: Chamado, cargas: dict[str, int], turnos: list[TurnoConversa]
-) -> None:
+) -> str:
     """Chamado que segue sem informação suficiente (bateu
     `_LIMITE_RODADAS_ESCLARECIMENTO`, ou o plano B repetiria a mesma
     pergunta — ver `processar_chamado_novo`) não ganha outra pergunta
@@ -611,7 +785,11 @@ async def _escalar_para_tecnico(
     chamar `classificar_categoria`/Ollama de novo — mais barato, e nesta
     altura corrigir a categoria não é o problema (falta informação, não
     categoria errada). Cai em `_AREA_PADRAO_ESCALONAMENTO` se o chamado
-    não tiver categoria nenhuma (aberto por e-mail)."""
+    não tiver categoria nenhuma (aberto por e-mail).
+
+    Devolve o nome do técnico escalado — usado por `processar_chamado_novo`
+    só pra compor `ResultadoProcessamento.tecnico` (linha de log do painel
+    "Ver logs"), nenhuma lógica própria depende disso."""
     if settings.glpi_conta_ia_id and chamado.tecnico_atribuido == settings.glpi_conta_ia_id:
         await cliente.desatribuir_usuario(chamado.id, settings.glpi_conta_ia_id)
 
@@ -622,6 +800,7 @@ async def _escalar_para_tecnico(
     resumo = _resumo_esclarecimento_incompleto(turnos) if turnos else None
     await cliente.atualizar_avaliacao(chamado.id, "fila_atendimento", resumo, privado=True)
     cargas[tecnico.identificador] = cargas.get(tecnico.identificador, 0) + 1
+    return tecnico.nome
 
 
 def _texto_para_ia(html: str) -> str:
@@ -709,6 +888,25 @@ def registrar(mcp) -> None:
         cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
         return JSONResponse(_saude_por_area(tecnicos, cargas), headers=CORS_HEADERS)
 
+    @mcp.custom_route("/api/ti/poller/status", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def poller_status_route(request: Request, usuario: dict) -> Response:
+        """Status ao vivo do poller em background (`_executar_uma_rodada`),
+        pro painel "Ver logs" da Auditoria de Chamados — aberto pro time de
+        TI inteiro, não só desenvolvedor: é só uma janela pro que já roda
+        sozinho de qualquer jeito, sem exigir nada a mais de quem olha."""
+        return JSONResponse(_estado_poller_para_json(), headers=CORS_HEADERS)
+
+    @mcp.custom_route("/api/ti/poller/logs", methods=["GET", "OPTIONS"])
+    @rota_protegida("GET, OPTIONS", exigir=exigir_modulo_ti)
+    async def poller_logs_route(request: Request, usuario: dict) -> Response:
+        """Log ao vivo do poller (`_stream_log`) — conexão fica aberta
+        enquanto o painel "Ver logs" estiver aberto no navegador, uma linha
+        por chamado processado (mais heartbeat a cada
+        `_INTERVALO_HEARTBEAT_SEGUNDOS` pra não cair por inatividade).
+        Mesmo guard de `poller_status_route` (time de TI inteiro)."""
+        return StreamingResponse(_stream_log(), media_type="text/plain", headers=CORS_HEADERS)
+
     @mcp.custom_route("/api/ti/chamados/verificar", methods=["POST", "OPTIONS"])
     @rota_protegida("POST, OPTIONS", exigir=exigir_modulo_ti)
     async def chamados_verificar_route(request: Request, usuario: dict) -> Response:
@@ -763,13 +961,15 @@ def registrar(mcp) -> None:
         return Response(documento.conteudo, media_type=documento.content_type, headers=CORS_HEADERS)
 
 
-async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
+async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> int:
     """Segunda perna do poller: chamado `novo` é coberto por
     `verificar_chamados_pendentes`, chamado `aguardando_usuario` é coberto
     aqui — só reavalia quando detecta uma resposta NOVA (Followup mais
     recente que a última avaliação registrada, escrito por alguém que não
     seja a nossa própria conta de serviço), pra não gastar IA (nem uma
     chamada de rede) à toa a cada rodada num chamado que ninguém tocou.
+    Devolve quantos chamados tinham resposta nova e foram de fato
+    reprocessados (usado por `_executar_uma_rodada` pro painel "Ver logs").
 
     Sem log de "última avaliação" (`uso_ia_chamados.ultima_avaliacao`), não
     dá pra saber se há resposta nova nem qual o histórico — chamado nessa
@@ -794,6 +994,7 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
+    processados = 0
     for chamado in await _cliente.listar():
         if chamado.status != "aguardando_usuario":
             continue
@@ -832,9 +1033,13 @@ async def verificar_chamados_aguardando_resposta(usar_ia: bool) -> None:
             resultado.precisou_embedding,
             duracao_ms,
         )
+        _publicar_log(f"Chamado #{chamado.id} — {chamado.titulo}: {_descricao_acao(resultado)}")
+        processados += 1
+
+    return processados
 
 
-async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
+async def verificar_chamados_pendentes(usar_ia: bool) -> int:
     """Roda `processar_chamado_novo` só em chamado `novo` — `listar()`
     também devolve `aguardando_usuario` (é o que a tela mostra), mas
     reprocessar esses é trabalho de `verificar_chamados_aguardando_resposta`,
@@ -852,9 +1057,10 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
 
     Chamado sem avaliação só é processado se entrar na amostra (`chamado_entra_na_amostra`).
 
-    Devolve a listagem completa (`novo` + `aguardando_usuario`, sem
-    filtrar por status) — é o que alimenta a tela, mesmo os chamados que
-    este loop pulou de propósito.
+    Devolve quantos chamados `novo` foram de fato processados (usado por
+    `_executar_uma_rodada` pro painel "Ver logs") — a tela de verdade
+    (`chamados_route`) busca a listagem dela mesma, direto do GLPI, não
+    depende deste retorno.
 
     Falha isolada num chamado (rede, um erro de validação do GLPI etc.)
     não pode travar o lote inteiro — sem isolar por chamado, um problema
@@ -874,6 +1080,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
     tecnicos = await to_thread.run_sync(todos_os_tecnicos)
     cargas = await _cliente.carga_atual_por_tecnico([tecnico.identificador for tecnico in tecnicos])
 
+    processados = 0
     for chamado in await _cliente.listar():
         if chamado.status != "novo":
             continue
@@ -904,5 +1111,7 @@ async def verificar_chamados_pendentes(usar_ia: bool) -> list[Chamado]:
             resultado.precisou_embedding,
             duracao_ms,
         )
+        _publicar_log(f"Chamado #{chamado.id} — {chamado.titulo}: {_descricao_acao(resultado)}")
+        processados += 1
 
-    return await _cliente.listar()
+    return processados

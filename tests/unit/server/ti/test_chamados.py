@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -12,8 +14,12 @@ from agente_oracle.server.ti import chamados as chamados_module
 from agente_oracle.server.ti.chamados import (
     _chamados_da_tela,
     _contagem_por_tecnico,
+    _estado_poller_para_json,
+    _executar_uma_rodada,
+    _publicar_log,
     _resumo_indicadores_tecnico,
     _saude_por_area,
+    _stream_log,
     _tempo_gasto_por_tecnico,
     _texto_para_ia,
     chamado_entra_na_amostra,
@@ -384,6 +390,8 @@ class TestProcessarChamadoNovo:
         assert cargas == {}
         assert resultado.avaliacao_suficiente is False
         assert resultado.precisou_embedding is None  # nem chegou a classificar_categoria
+        assert resultado.acao == "aguardando_usuario"
+        assert resultado.tecnico is None  # ainda não tem técnico nenhum, só a IA está com o chamado
 
     async def test_chamado_insuficiente_pela_primeira_vez_atribui_a_conta_da_ia(self, monkeypatch):
         # GLPI rejeita silenciosamente troca de status sem ninguém
@@ -485,6 +493,8 @@ class TestProcessarChamadoNovo:
         assert resultado.avaliacao_suficiente is True
         assert resultado.precisou_embedding is True
         assert resultado.embedding_indisponivel is False
+        assert resultado.acao == "liberado"
+        assert resultado.tecnico == "Técnico Infra"  # único técnico da área "infra" no roster fake
 
     async def test_provedor_sem_embedding_marca_embedding_indisponivel_mas_nao_trava(self):
         # Ex: provedor ativo é OCI Generative AI (sem suporte a embedding) —
@@ -678,6 +688,8 @@ class TestProcessarChamadoNovo:
         assert chamado_id == 1
         assert area == "infra"
         assert resultado.avaliacao_suficiente is False
+        assert resultado.acao == "escalado"
+        assert resultado.tecnico == "Técnico Infra"  # único técnico da área "infra" no roster fake
 
     async def test_insuficiente_com_menos_rodadas_que_o_limite_continua_perguntando(self):
         # Menos de 3 respostas do solicitante ainda: mais uma rodada de
@@ -842,8 +854,7 @@ class TestVerificarChamadosPendentes:
         # Reavaliar `aguardando_usuario` de novo a cada rodada (a cada 5
         # min, via poller) gastaria IA à toa sem que o solicitante tenha
         # respondido nada — só `novo` é reprocessado (ver docstring de
-        # `verificar_chamados_pendentes`). `aguardando_usuario` continua
-        # saindo no retorno (é o que alimenta a tela), só não é escrito.
+        # `verificar_chamados_pendentes`).
         chamado_novo = _chamado(id_=1, categoria_id=999)
         chamado_pendente = replace(_chamado(id_=2, categoria_id=999), status="aguardando_usuario")
         cliente = _ClienteGLPIFake([chamado_novo, chamado_pendente])
@@ -856,7 +867,7 @@ class TestVerificarChamadosPendentes:
 
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {1}
-        assert {chamado.id for chamado in resultado} == {1, 2}
+        assert resultado == 1  # só o chamado `novo` (id 1) conta — o `aguardando_usuario` é pulado
 
     async def test_falha_num_chamado_nao_bloqueia_o_resto_do_lote(self, monkeypatch):
         # Reproduz o bug real do chamado #2660: um chamado que quebra ao
@@ -886,7 +897,7 @@ class TestVerificarChamadosPendentes:
 
         assert cliente.avaliacoes == [(2, "fila_atendimento", None)]
         assert {chamado_id for chamado_id, *_ in cliente.atribuicoes} == {2}
-        assert {chamado.id for chamado in resultado} == {1, 2}
+        assert resultado == 1  # só o chamado 2 (o que não falhou) conta como processado
 
     async def test_so_processa_os_chamados_que_entram_na_amostra(self, monkeypatch):
         cliente = _ClienteGLPIFake([_chamado(id_=1, categoria_id=999), _chamado(id_=2, categoria_id=999)])
@@ -902,9 +913,9 @@ class TestVerificarChamadosPendentes:
         resultado = await verificar_chamados_pendentes(usar_ia=True)
 
         assert cliente.avaliacoes == [(1, "fila_atendimento", None)]
-        # O chamado fora da amostra continua na listagem devolvida — quem
-        # esconde ele da tela é `_chamados_da_tela`, não este loop.
-        assert {chamado.id for chamado in resultado} == {1, 2}
+        # Só o chamado 1 (dentro da amostra) conta como processado — o 2
+        # fica de fora da amostra e é pulado antes de processar.
+        assert resultado == 1
 
     async def test_chamado_ja_avaliado_antes_ignora_a_amostragem(self, monkeypatch):
         # Ficou "meio processado" numa rodada anterior: já está no ciclo,
@@ -1099,6 +1110,136 @@ class TestVerificarChamadosAguardandoResposta:
 
         assert cliente.avaliacoes == []
         assert cliente.atribuicoes == []
+
+
+class TestExecutarUmaRodada:
+    """`_executar_uma_rodada` é o corpo do poller em background
+    (`iniciar_poller_verificar_chamados`), extraído pra dar pra testar uma
+    volta isolada sem precisar simular o `while True` infinito — estes
+    testes cobrem só o que ela adiciona por cima das duas pernas já
+    testadas acima (`TestVerificarChamadosPendentes`/
+    `TestVerificarChamadosAguardandoResposta`): atualizar `_estado_poller`
+    corretamente."""
+
+    @pytest.fixture(autouse=True)
+    def _reseta_estado_poller(self):
+        # `_estado_poller` é module-level (compartilhado pelo processo
+        # inteiro) — sem resetar entre testes, um teste vazaria estado
+        # pro próximo (ex: `erro` de um teste anterior sobrevivendo).
+        chamados_module._estado_poller = chamados_module.EstadoPoller()
+        yield
+        chamados_module._estado_poller = chamados_module.EstadoPoller()
+
+    async def test_caminho_feliz_marca_as_duas_etapas_concluidas_com_contagem(self, monkeypatch):
+        chamado_novo = _chamado(id_=1, categoria_id=999)
+        chamado_pendente = replace(_chamado(id_=2, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_novo, chamado_pendente])
+        registro_anterior = uso_ia_chamados.RegistroUsoIa(
+            avaliacao_suficiente=False, criado_em=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+        cliente.followups_por_chamado[2] = [
+            Followup(
+                autor_id=999,
+                autor_nome="solicitante.teste",
+                conteudo="Resposta nova do solicitante.",
+                criado_em=datetime(2026, 1, 2, tzinfo=UTC),
+            )
+        ]
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(
+            chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: registro_anterior
+        )
+        monkeypatch.setattr(
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+        monkeypatch.setattr(chamados_module.configuracoes_tools, "usar_ia_avaliacao_chamado", lambda: True)
+
+        await _executar_uma_rodada()
+
+        estado = _estado_poller_para_json()
+        etapas_por_id = {etapa["id"]: etapa for etapa in estado["etapas"]}
+        assert etapas_por_id["chamados_novos"]["status"] == "concluido"
+        assert etapas_por_id["chamados_novos"]["processados"] == 1  # só o chamado `novo` (id 1) é processado
+        assert etapas_por_id["chamados_aguardando_resposta"]["status"] == "concluido"
+        assert etapas_por_id["chamados_aguardando_resposta"]["processados"] == 1
+        assert estado["erro"] is None
+        assert estado["ultima_rodada_em"] is not None
+        assert estado["proxima_rodada_em"] is None  # só o loop externo seta isso
+
+    async def test_falha_numa_perna_marca_erro_sem_impedir_a_outra_de_rodar(self, monkeypatch):
+        chamado_pendente = replace(_chamado(id_=1, categoria_id=999), status="aguardando_usuario")
+        cliente = _ClienteGLPIFake([chamado_pendente])
+        monkeypatch.setattr(chamados_module, "_cliente", cliente)
+        monkeypatch.setattr(chamados_module.configuracoes_tools, "usar_ia_avaliacao_chamado", lambda: True)
+
+        async def _quebra(*_args, **_kwargs):
+            raise RuntimeError("GLPI fora do ar")
+
+        monkeypatch.setattr(chamados_module, "verificar_chamados_pendentes", _quebra)
+        monkeypatch.setattr(chamados_module.uso_ia_chamados, "ultima_avaliacao", lambda _id: None)
+        monkeypatch.setattr(
+            chamados_module, "criar_cliente_protegido", lambda *_args, **_kwargs: _OllamaClienteFake(suficiente=True)
+        )
+
+        await _executar_uma_rodada()
+
+        estado = _estado_poller_para_json()
+        etapas_por_id = {etapa["id"]: etapa for etapa in estado["etapas"]}
+        assert etapas_por_id["chamados_novos"]["status"] == "erro"
+        # Chamado sem registro anterior é pulado (não quebra) — a 2ª perna
+        # rodou até o fim apesar da 1ª ter falhado.
+        assert etapas_por_id["chamados_aguardando_resposta"]["status"] == "concluido"
+        assert estado["erro"] == "GLPI fora do ar"
+
+
+class TestStreamLog:
+    """`_stream_log` é o gerador por trás de `/api/ti/poller/logs` — testado
+    direto (sem TestClient), chamando `__anext__()` à mão, já que é mais
+    simples do que simular uma conexão HTTP de verdade pra um stream que
+    nunca termina sozinho."""
+
+    @pytest.fixture(autouse=True)
+    def _reseta_log(self):
+        chamados_module._historico_log.clear()
+        chamados_module._assinantes_log.clear()
+        yield
+        chamados_module._historico_log.clear()
+        chamados_module._assinantes_log.clear()
+
+    async def test_manda_o_historico_na_hora_de_conectar(self):
+        _publicar_log("evento antigo")
+
+        gerador = _stream_log()
+        primeira_linha = await gerador.__anext__()
+
+        assert "evento antigo" in primeira_linha
+        await gerador.aclose()
+
+    async def test_recebe_linha_publicada_depois_de_conectar(self):
+        gerador = _stream_log()
+        tarefa = asyncio.ensure_future(gerador.__anext__())
+        await asyncio.sleep(0)  # deixa o generator rodar até o `await fila.get()`
+        assert len(chamados_module._assinantes_log) == 1
+
+        _publicar_log("chamado #1 liberado pra Fulano")
+        linha = await asyncio.wait_for(tarefa, timeout=1)
+
+        assert "chamado #1 liberado pra Fulano" in linha
+        await gerador.aclose()
+
+    async def test_desconectar_remove_o_assinante_sem_vazar(self):
+        gerador = _stream_log()
+        tarefa = asyncio.ensure_future(gerador.__anext__())
+        await asyncio.sleep(0)
+        assert len(chamados_module._assinantes_log) == 1
+
+        # Mesmo mecanismo de um navegador fechando a conexão de verdade: o
+        # ASGI cancela a coroutine do gerador, que propaga pro `finally`.
+        tarefa.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await tarefa
+
+        assert len(chamados_module._assinantes_log) == 0
 
 
 class TestTextoParaIa:

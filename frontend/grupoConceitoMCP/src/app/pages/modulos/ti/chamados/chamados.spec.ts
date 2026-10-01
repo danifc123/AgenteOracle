@@ -311,4 +311,35 @@ describe('ChamadosTi', () => {
 
     expect(opcoesDoFiltro()).toContain('Todo o departamento');
   });
+
+  it('botão "Ver logs" aparece pra qualquer usuário do módulo TI (não só desenvolvedor) e abre o painel', () => {
+    // `ehDesenvolvedor: false` de propósito — diferente da engrenagem de
+    // configurações (só-desenvolvedor, *appSoDev), "Ver logs" é pro time
+    // de TI inteiro, já que é só uma janela pro poller que já roda sozinho.
+    const { fixture, http, el } = criar(sessaoFalso('rafa.teste', false));
+
+    const botaoVerLogs = Array.from(el.querySelectorAll('button')).find(
+      (botao) => botao.getAttribute('aria-label') === 'Ver logs',
+    ) as HTMLButtonElement | undefined;
+    expect(botaoVerLogs).toBeTruthy();
+
+    botaoVerLogs?.click();
+    fixture.detectChanges();
+
+    expect(el.querySelector('.painel')).toBeTruthy();
+
+    http
+      .expectOne((req) => req.url.endsWith('/api/ti/poller/status'))
+      .flush({ etapas: [], ultima_rodada_em: null, proxima_rodada_em: null, erro: null });
+    // Log ao vivo abre junto com o painel (ver efeito em chamados.ts).
+    const requisicaoLogs = http.expectOne((req) => req.url.endsWith('/api/ti/poller/logs'));
+    expect(requisicaoLogs.request.method).toBe('GET');
+
+    // Fechar o painel precisa cancelar a conexão de verdade, não só parar
+    // de ler — senão ela fica aberta pro resto da sessão sem ninguém olhando.
+    (el.querySelector('.fechar') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(requisicaoLogs.cancelled).toBe(true);
+  });
 });

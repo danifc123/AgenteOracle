@@ -1,0 +1,140 @@
+@if (aberto()) {
+  <!-- Clique no backdrop é só conveniência de mouse: Esc já fecha o painel pra
+       quem usa teclado (ver @HostListener('document:keydown.escape') em
+       painel-processo.ts), e o botão "Fechar" abaixo é focável. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+  <div class="backdrop" (click)="fechar.emit()">
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events -->
+    <aside class="painel" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <header class="cabecalho">
+        <div class="cabecalho-titulo">
+          <h2>{{ titulo() }}</h2>
+          @if (ultimaRodadaEm()) {
+            <span class="subtitulo">Última rodada: {{ ultimaRodadaEm() | date: 'HH:mm:ss' }}</span>
+          }
+        </div>
+        <button type="button" class="fechar" aria-label="Fechar" (click)="fechar.emit()">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M6 6 18 18M18 6 6 18" />
+          </svg>
+        </button>
+      </header>
+
+      <div class="progresso">
+        <div class="progresso-barra">
+          <div class="progresso-preenchido" [style.width.%]="progresso()"></div>
+        </div>
+        <span class="progresso-texto">{{ etapasConcluidas() }} de {{ etapas().length }} etapas concluídas</span>
+      </div>
+
+      <div class="etapas">
+        @for (etapa of etapas(); track etapa.id) {
+          <div class="etapa">
+            <div class="etapa-marcador-coluna">
+              <span
+                class="etapa-marcador"
+                [class.etapa-marcador--concluida]="etapa.status === 'concluido'"
+                [class.etapa-marcador--rodando]="etapa.status === 'rodando'"
+                [class.etapa-marcador--erro]="etapa.status === 'erro'"
+              >
+                @if (etapa.status === 'concluido') {
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3">
+                    <path d="m5 13 4 4 10-10" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                } @else if (etapa.status === 'rodando') {
+                  <span class="etapa-pulso"></span>
+                }
+              </span>
+              <span class="etapa-linha"></span>
+            </div>
+            <div class="etapa-texto">
+              <span class="etapa-rotulo">{{ etapa.rotulo }}</span>
+              <span class="etapa-meta">
+                @if (etapa.status === 'concluido') {
+                  {{ etapa.processados }} processado(s)
+                } @else if (etapa.status === 'rodando') {
+                  em andamento…
+                } @else if (etapa.status === 'erro') {
+                  falhou
+                } @else {
+                  aguardando
+                }
+              </span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="log-secao" [class.log-secao--expandida]="logsExpandidos()">
+        <button
+          type="button"
+          class="log-toggle"
+          (click)="alternarLogs()"
+          [attr.aria-expanded]="logsExpandidos()"
+        >
+          <svg
+            class="log-chevron"
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+          <span>Ver log detalhado</span>
+          <span class="log-ao-vivo">
+            <span class="etapa-pulso"></span>
+            ao vivo
+          </span>
+        </button>
+
+        @if (logsExpandidos()) {
+          <div class="log-conteudo" #logContainer>
+            @if (logs().length === 0) {
+              <div class="log-linha log-linha--vazio">Nenhum chamado processado ainda nesta sessão.</div>
+            }
+            @for (linha of logs(); track $index) {
+              <div class="log-linha">{{ linha }}</div>
+            }
+          </div>
+        }
+      </div>
+
+      @if (erro(); as mensagemErro) {
+        <div class="aviso-erro">{{ mensagemErro }}</div>
+      }
+
+      @if (contagemRegressiva(); as contagem) {
+        <footer class="rodape-proxima">
+          <div class="rodape-texto">
+            <span class="rodape-label">Próxima execução automática</span>
+            @if (proximaRodadaEm() && !rodandoAgora()) {
+              <span class="rodape-horario">hoje às {{ proximaRodadaEm() | date: 'HH:mm' }}</span>
+            }
+          </div>
+          @if (rodandoAgora()) {
+            <span class="rodape-rodando">
+              <span class="etapa-pulso"></span>
+              Rodando agora
+            </span>
+          } @else {
+            <span class="rodape-contagem">{{ contagem }}</span>
+          }
+        </footer>
+      }
+    </aside>
+  </div>
+}

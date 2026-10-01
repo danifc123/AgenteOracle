@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MCP_API_BASE_URL } from '../../../../app-config';
 import { Botao } from '../../../../componentes/botao/botao';
 import { ConteudoChamado } from '../../../../componentes/conteudo-chamado/conteudo-chamado';
@@ -8,13 +8,21 @@ import { ConfiguracoesChamados } from '../../../../componentes/configuracoes-cha
 import { Dialog } from '../../../../componentes/dialog/dialog';
 import { EstadoVazio } from '../../../../componentes/estado-vazio/estado-vazio';
 import { ModuloHeader } from '../../../../componentes/modulo-header/modulo-header';
+import { PainelProcesso } from '../../../../componentes/painel-processo/painel-processo';
 import { SaudeArea, SaudeRoster } from '../../../../componentes/saude-roster/saude-roster';
 import { OpcaoSelectBusca, SelectBusca } from '../../../../componentes/select-busca/select-busca';
 import { Selo } from '../../../../componentes/selo/selo';
 import { SoDev } from '../../../../diretivas/so-dev/so-dev';
 import { ConfiguracoesTi } from '../../../../servicos/configuracoes-ti/configuracoes-ti';
+import { PollerTi } from '../../../../servicos/poller-ti/poller-ti';
 import { Sessao } from '../../../../servicos/sessao/sessao';
 import { IndicadoresTecnico } from './indicadores-tecnico/indicadores-tecnico';
+
+// Consultado só enquanto o painel "Ver logs" está aberto (ver `constructor`)
+// — o poller de verdade roda a cada 5 min, não precisa de nada mais rápido
+// que isso pra parecer "ao vivo" num painel que ninguém deixa aberto o
+// tempo todo.
+const INTERVALO_ATUALIZACAO_POLLER_MS = 5000;
 
 export type StatusChamado = 'novo' | 'aguardando_usuario' | 'fila_atendimento';
 
@@ -80,6 +88,12 @@ type FiltroChamados = 'area' | 'meus' | 'departamento';
  * chamado é escalado pra um técnico humano (`tecnicoEscalado()` mostra
  * isso na tela — "Aguardando resposta" vira "Com {técnico}").
  *
+ * Botão "Ver logs" (ícone de documento, aberto pro time de TI inteiro)
+ * abre `app-painel-processo` com o status ao vivo desse poller — etapa
+ * atual, quantos chamados cada perna processou na última rodada, e
+ * contagem regressiva até a próxima (`/api/ti/poller/status`, consultado
+ * só enquanto o painel está aberto).
+ *
  * A engrenagem no cabeçalho (só desenvolvedor) abre as configurações da Auditoria (`ConfiguracoesChamados`).
  *
  * Sem botão de "reportar ao usuário" de propósito: o Followup que a IA
@@ -107,6 +121,7 @@ type FiltroChamados = 'area' | 'meus' | 'departamento';
     EstadoVazio,
     IndicadoresTecnico,
     ModuloHeader,
+    PainelProcesso,
     SaudeRoster,
     SelectBusca,
     Selo,
@@ -118,6 +133,7 @@ type FiltroChamados = 'area' | 'meus' | 'departamento';
 export class ChamadosTi {
   private readonly http = inject(HttpClient);
   private readonly configuracoesTi = inject(ConfiguracoesTi);
+  protected readonly pollerTi = inject(PollerTi);
   protected readonly sessao = inject(Sessao);
   private readonly ITENS_POR_PAGINA = 10;
 
@@ -132,6 +148,9 @@ export class ChamadosTi {
   protected readonly carregando = signal(true);
   protected readonly chamadoAberto = signal<Chamado | null>(null);
   protected readonly configuracoesAbertas = signal(false);
+  // Painel "Ver logs" (poller do GLPI) — time de TI inteiro, não só
+  // desenvolvedor (ver `app-painel-processo` em chamados.html).
+  protected readonly painelProcessoAberto = signal(false);
   // Avisa de relance (só desenvolvedor) que há amostragem ativa.
   protected readonly amostragemAtiva = computed(
     () => this.configuracoesTi.percentualAmostragemChamados() < 100,
@@ -218,6 +237,24 @@ export class ChamadosTi {
       this.configuracoesTi.carregar();
       this.carregarSaudeAreas();
     }
+
+    // Só consulta o status do poller enquanto o painel estiver aberto —
+    // sem isso, ficaria pingando o backend pro resto da sessão mesmo com
+    // ninguém olhando.
+    effect((onCleanup) => {
+      if (!this.painelProcessoAberto()) {
+        return;
+      }
+      this.pollerTi.carregar();
+      const intervalo = setInterval(() => this.pollerTi.carregar(), INTERVALO_ATUALIZACAO_POLLER_MS);
+      // Log ao vivo abre/fecha junto com o painel — fechado, cancela a
+      // conexão de verdade (`fecharStreamDeLogs`), não só para de ler.
+      this.pollerTi.abrirStreamDeLogs();
+      onCleanup(() => {
+        clearInterval(intervalo);
+        this.pollerTi.fecharStreamDeLogs();
+      });
+    });
   }
 
   private carregarChamados(): void {
